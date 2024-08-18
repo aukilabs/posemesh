@@ -14,7 +14,7 @@ This project is currently managed by [Auki Labs](https://auki.ai), but we welcom
 
 **- Create a Pull Request:** Once your changes are ready, submit a pull request.
 
-**- Dicuss:** We encourage discussions about this project to happen on the [posemesh community discord server](https://discord.gg/aukiverse).
+**- Discuss:** We encourage discussions about this project to happen on the [posemesh community discord server](https://discord.gg/aukiverse).
 
 ## Contact
 
