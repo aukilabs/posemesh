@@ -6,14 +6,14 @@ Our mission is to help machines see the world, to enable the future of AI, robot
 
 ## Contributors:
 
-This project is currently managed by Auki Labs, but we welcome contributions from the community! Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
+This project is currently managed by [Auki Labs](https://auki.ai), but we welcome contributions from the community! Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
 
 **- Fork the Repository:** Start by forking the repository and creating a new branch for your feature or bugfix.
 
 **- Create a Pull Request:** Once your changes are ready, submit a pull request.
 
-**- Dicuss:** We encourage discussions about this project to happen at discord.gg/aukiverse.
+**- Dicuss:** We encourage discussions about this project to happen on the [posemesh community discord server](https://discord.gg/aukiverse).
 
 ## Contact
 
-For any questions or support, please open an issue, or reach out to Auki Labs via discord.gg/aukiverse or contact@aukilabs.com
+For any questions or support, please open an issue, or reach out to Auki Labs via [discord](discord.gg/aukiverse) or [email](contact@aukilabs.com)
