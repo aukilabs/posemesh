@@ -4,6 +4,8 @@ The posemesh is a decentralized machine perception network and collaborative spa
 
 Our mission is to help machines see the world, to enable the future of AI, robotics and the metaverse. To this end, we aim to develop and deploy civilization-scale network infrastructure funded, owned and operated by the people. We build together in public, with the support of our community and backers. This is how we win.
 
+To learn more about this vision, read the [whitepaper](auki.ai/whitepaper).
+
 ## Contributors:
 
 This project is currently managed by [Auki Labs](https://auki.ai), but we welcome contributions from the community! Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
