@@ -1,5 +1,5 @@
 # Motion
 
-The motion node type is also known as SALVIA - Server-side Augmented Localization through Visual-Inertial Algorithms. Salvia is a domain-side server that does pose refinement if you feed it RGB and imu data. Basically, it does SLAM on behalf of another device that is sending its sensor data.
+The Motion node type is a domain-side server that does pose refinement if you feed it RGB and IMU data. Basically, it does SLAM on behalf of another device that is sending its sensor data.
 
 More info coming soon, stay tuned!
