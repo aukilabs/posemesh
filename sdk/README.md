@@ -2,4 +2,6 @@
 
 Previously known as ConjureKit but it's now open source.
 
-TBD
+Coming soon, stay tuned!
+
+* [Documentation](https://conjurekit.dev)
