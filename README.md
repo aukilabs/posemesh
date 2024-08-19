@@ -16,6 +16,10 @@ The posemesh is an open protocol built by the community. It is currently managed
 
 **- Discuss:** We encourage discussions about this project to happen on the [posemesh community discord server](https://discord.gg/aukiverse).
 
-## Contact
+## Contact:
 
 For any questions or support, please open an issue, or reach out to Auki Labs via [discord](discord.gg/aukiverse) or [email](contact@aukilabs.com)
+
+## Backers:
+
+This project was made possible through the generous support of [Outlier Ventures](https://outlierventures.io/), [Kenetic Capital](https://www.kenetic.capital/), [Shima Capital](https://shima.capital/), [Tribe Capital](https://tribecap.co/), [Primal Capital](https://www.primalcapital.io/), [NGC Ventures](https://ngc.fund/), [Animoca Brands](https://www.animocabrands.com/), [Baboon VC](https://www.baboon.vc/), [Pulsar Trading](https://pulsar.com/), [Maelstrom](https://maelstrom.fund/), [the vVv Fund](https://vvv.net/), [Vespertine Capital](https://www.vespertine.capital/), [ARKN Ventures](https://arkn.io/), [Exnetwork Capital](https://exnetworkcapital.com/).
