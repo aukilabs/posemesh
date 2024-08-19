@@ -8,7 +8,7 @@ To learn more about this vision, read the [whitepaper](auki.ai/whitepaper).
 
 ## Contributors:
 
-This project is currently managed by [Auki Labs](https://auki.ai), but we welcome contributions from the community! Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
+The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.ai). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
 
 **- Fork the Repository:** Start by forking the repository and creating a new branch for your feature or bugfix.
 
