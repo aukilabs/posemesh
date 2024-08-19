@@ -18,7 +18,7 @@ The posemesh is an open protocol built by the community. It is currently managed
 
 ## Contact:
 
-For any questions or support, please open an issue, or reach out to Auki Labs via [discord](discord.gg/aukiverse) or [email](contact@aukilabs.com)
+For any questions or support, please open an issue, or reach out to Auki Labs via [discord](discord.gg/aukiverse) or [email](contact@aukilabs.com).
 
 ## Backers:
 
