@@ -19,9 +19,9 @@ For the posemesh to work one a wide range of devices and software stacks, cross-
 - Feature Modules
 
 
-The **Posemesh module** handles all the essential parts of the posemesh protocol. You cannot communicate with the posemesh without it. Any software or app with posemesh support must, at a minimum, use the posemesh.
+The **Posemesh module** contains all the essential parts needed for interacting with the posemesh.
 
-The other **feature modules** enable different types of more specific functionality, similar to how modules are used in the current SDK already.
+Other **feature modules** enable different types of functionality, similar to how modules are used in the ConjureKit SDK already.
 
 ### Layers
 
