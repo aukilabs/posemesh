@@ -99,9 +99,10 @@ The data is currently stored as CSV files and images. However, when storing it i
         - Portal ShortID
         - Position (x,y,z) [meters]
         - Quaternion (x,y,z,w)
+        - Image space corners x 4 (x,y) [pixels]
 
     ```csv
-    timestamp, shortID, px, py, pz, qx, qy, qz, qw
+    timestamp, shortID, px, py, pz, qx, qy, qz, qw, c0_x, c0_y, c1_x, c1_y, c2_x, c2_y, c3_x, c3_y
     ```
     
 - Accel.csv
