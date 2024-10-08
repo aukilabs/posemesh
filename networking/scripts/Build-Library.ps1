@@ -156,7 +156,14 @@ If(-Not $PushLocationResult) {
 }
 Try {
     $RustToolchainList = & $RustUpCommand toolchain list
-    If(-Not ($RustToolchainList | Select-String $RustToolchain)) {
+    $RustToolchainInstalled = $False
+    ForEach($RustToolchainListItem In $RustToolchainList) {
+        If(($RustToolchainListItem -Match "^\s*$RustToolchain$") -Or ($RustToolchainListItem -Match "^\s*$RustToolchain[ -]")) {
+            $RustToolchainInstalled = $True
+            Break
+        }
+    }
+    If(-Not $RustToolchainInstalled) {
         If(-Not $InstallNecessaryRustToolchainsAndTargets) {
             Write-Error -Message "Rust toolchain '$RustToolchain' is required. Please run this script with '-InstallNecessaryRustToolchainsAndTargets' flag or alternatively run 'rustup toolchain install $RustToolchain'."
             Exit 1
@@ -168,7 +175,14 @@ Try {
         }
     }
     $RustTargetList = & $RustUpCommand "+$RustToolchain" target list --installed
-    If(-Not ($RustTargetList | Select-String $RustTarget)) {
+    $RustTargetInstalled = $False
+    ForEach($RustTargetListItem In $RustTargetList) {
+        If($RustTargetListItem -Match "^\s*$RustTarget\s*$") {
+            $RustTargetInstalled = $True
+            Break
+        }
+    }
+    If(-Not $RustTargetInstalled) {
         If(-Not $InstallNecessaryRustToolchainsAndTargets) {
             Write-Error -Message "Rust target '$RustTarget' is required for '$RustToolchain' toolchain. Please run this script with '-InstallNecessaryRustToolchainsAndTargets' flag or alternatively run 'rustup +$RustToolchain target add $RustTarget'."
             Exit 1
