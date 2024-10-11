@@ -195,7 +195,7 @@ Try {
     }
     & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ })
     If($LastExitCode -Ne 0) {
-        Write-Error -Message 'Failed to build Posemesh Networking Rust library.'
+        Write-Error -Message 'Failed to build Posemesh Networking library.'
         Exit 1
     }
 } Finally {

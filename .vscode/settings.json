@@ -1,0 +1,8 @@
+{
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cmake.preferredGenerators": [ "Xcode" ],
+    "cmake.configureArgs": [ "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/sdk/cmake/VSCodeToolchainSelector.cmake" ],
+    "cmake.installPrefix": "${workspaceFolder}/sdk/out",
+    "cmake.buildDirectory": "${workspaceFolder}/sdk/build",
+    "cmake.sourceDirectory": "${workspaceFolder}/sdk"
+}
