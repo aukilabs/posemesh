@@ -104,6 +104,9 @@ function(ADD_PLATFORM_LIBRARY NAME)
         endif()
     endforeach()
 
+    if(NOT SOURCES)
+        message(FATAL_ERROR "No source files specified.")
+    endif()
     add_library(${NAME} SHARED ${SOURCES})
 
     if(DEFINED ARG_PUBLIC_HEADER_DIR)
