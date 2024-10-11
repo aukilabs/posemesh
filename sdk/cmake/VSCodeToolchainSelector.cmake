@@ -1,0 +1,8 @@
+if(APPLE)
+    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
+        set(PLATFORM "MAC_ARM64")
+    else()
+        set(PLATFORM "MAC")
+    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/../../third-party/ios-cmake/ios.toolchain.cmake")
+endif()

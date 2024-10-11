@@ -1,0 +1,5 @@
+if(APPLE)
+    if(NOT DEFINED ENV{_IOS_TOOLCHAIN_HAS_RUN})
+        message(FATAL_ERROR "Building for Apple platforms requires using CMake iOS toolchain.")
+    endif()
+endif()
