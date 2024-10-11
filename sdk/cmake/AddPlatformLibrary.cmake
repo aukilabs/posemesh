@@ -104,10 +104,9 @@ function(ADD_PLATFORM_LIBRARY NAME)
         endif()
     endforeach()
 
-    if(PUBLIC_HEADERS)
-        if(NOT DEFINED ARG_PUBLIC_HEADER_DIR)
-            message(FATAL_ERROR "Public header directory must be specified using 'PUBLIC_HEADER_DIR' when using public headers.")
-        endif()
+    add_library(${NAME} SHARED ${SOURCES})
+
+    if(DEFINED ARG_PUBLIC_HEADER_DIR)
         file(REAL_PATH "${ARG_PUBLIC_HEADER_DIR}" PUBLIC_HEADER_DIR_ABSOLUTE BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         if(NOT EXISTS "${PUBLIC_HEADER_DIR_ABSOLUTE}")
             message(FATAL_ERROR "Directory '${PUBLIC_HEADER_DIR_ABSOLUTE}' does not exist.")
@@ -115,9 +114,27 @@ function(ADD_PLATFORM_LIBRARY NAME)
         if(NOT IS_DIRECTORY "${PUBLIC_HEADER_DIR_ABSOLUTE}")
             message(FATAL_ERROR "Directory '${PUBLIC_HEADER_DIR_ABSOLUTE}' is a file.")
         endif()
+        foreach(PUBLIC_HEADER ${PUBLIC_HEADERS})
+            if(NOT "${PUBLIC_HEADER}" MATCHES "^${PUBLIC_HEADER_DIR_ABSOLUTE}(/|\\|$)")
+                message(FATAL_ERROR "Public header '${PUBLIC_HEADER}' is located outside of the specified '${PUBLIC_HEADER_DIR_ABSOLUTE}' public header directory.")
+            endif()
+        endforeach()
+        if(APPLE)
+            target_include_directories(
+                ${NAME}
+                PRIVATE
+                    "${PUBLIC_HEADER_DIR_ABSOLUTE}"
+            )
+        else()
+            target_include_directories(
+                ${NAME}
+                PUBLIC
+                    "${PUBLIC_HEADER_DIR_ABSOLUTE}"
+            )
+        endif()
+    elseif(PUBLIC_HEADERS)
+        message(FATAL_ERROR "Public header directory must be specified using 'PUBLIC_HEADER_DIR' when using public headers.")
     endif()
-
-    add_library(${NAME} SHARED ${SOURCES})
 
     foreach(LANGUAGE C CXX OBJC OBJCXX Swift)
         if(${LANGUAGE}_SOURCES)
@@ -155,7 +172,14 @@ function(ADD_PLATFORM_LIBRARY NAME)
                 DESTINATION "${CMAKE_INSTALL_PREFIX}"
         )
         foreach(PUBLIC_HEADER ${PUBLIC_HEADERS})
-            file(RELATIVE_PATH PUBLIC_HEADER_RELATIVE "${PUBLIC_HEADER_DIR_ABSOLUTE}" "${PUBLIC_HEADER}")
+            set(PUBLIC_HEADER_DIR_APPLE "${PUBLIC_HEADER_DIR_ABSOLUTE}/${NAME}")
+            if(NOT EXISTS "${PUBLIC_HEADER_DIR_APPLE}")
+                message(FATAL_ERROR "Directory '${PUBLIC_HEADER_DIR_APPLE}' does not exist.")
+            endif()
+            if(NOT IS_DIRECTORY "${PUBLIC_HEADER_DIR_APPLE}")
+                message(FATAL_ERROR "Directory '${PUBLIC_HEADER_DIR_APPLE}' is a file.")
+            endif()
+            file(RELATIVE_PATH PUBLIC_HEADER_RELATIVE "${PUBLIC_HEADER_DIR_APPLE}" "${PUBLIC_HEADER}")
             get_filename_component(PUBLIC_HEADER_PREFIX "${PUBLIC_HEADER_RELATIVE}" DIRECTORY)
             set_source_files_properties(
                 "${PUBLIC_HEADER}"
