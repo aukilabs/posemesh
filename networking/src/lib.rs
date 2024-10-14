@@ -1,6 +1,5 @@
 mod network;
 
-use libp2p::PeerId;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::runtime::Runtime;
 #[cfg(target_arch = "wasm32")]

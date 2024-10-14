@@ -1,6 +1,6 @@
 # Posemesh Networking
 
-Posemesh Networking is a Rust library that implements all of the underlying network code for efficient and optimized communication between nodes in the Posemesh network.
+The Networking module is designed to simplify the process of starting a libp2p node, enabling seamless peer-to-peer (p2p) communication within the Posemesh network. This module allows developers to integrate decentralized networking capabilities into their projects by providing an easy-to-use interface for connecting to the Posemesh network. With this module, users can join the network, discover peers, and exchange messages in a decentralized, scalable, and resilient manner.
 
 ## Building
 
@@ -32,3 +32,8 @@ Below is depicted a table of platforms and architectures for which the library c
 | ARM64 | Yes   | Yes          | Yes | Yes           |
 
 Note that building for `macOS`, `Mac-Catalyst`, `iOS` and `iOS-Simulator` can only be done on a machine that is running macOS.
+
+## Browser
+```
+wasm-pack build --target web
+```
