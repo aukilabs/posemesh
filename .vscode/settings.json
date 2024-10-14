@@ -4,5 +4,18 @@
     "cmake.configureArgs": [ "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/sdk/cmake/VSCodeToolchainSelector.cmake" ],
     "cmake.installPrefix": "${workspaceFolder}/sdk/out",
     "cmake.buildDirectory": "${workspaceFolder}/sdk/build",
-    "cmake.sourceDirectory": "${workspaceFolder}/sdk"
+    "cmake.sourceDirectory": "${workspaceFolder}/sdk",
+    "files.associations": {
+        "**/sdk/include/Posemesh/**/*.h": "c",
+        "**/sdk/include/Posemesh/**/*.hpp": "cpp",
+        "**/sdk/src/**/*.h": "c",
+        "**/sdk/src/**/*.hpp": "cpp",
+        "**/sdk/src/**/*.c": "c",
+        "**/sdk/src/**/*.cpp": "cpp",
+        "**/sdk/platform/Apple/include/Posemesh/**/*.h": "objective-c",
+        "**/sdk/platform/Apple/src/**/*.h": "objective-c",
+        "**/sdk/platform/Apple/src/**/*.hpp": "objective-cpp",
+        "**/sdk/platform/Apple/src/**/*.m": "objective-c",
+        "**/sdk/platform/Apple/src/**/*.mm": "objective-cpp"
+    }
 }
