@@ -16,6 +16,7 @@
         "**/sdk/platform/Apple/src/**/*.h": "objective-c",
         "**/sdk/platform/Apple/src/**/*.hpp": "objective-cpp",
         "**/sdk/platform/Apple/src/**/*.m": "objective-c",
-        "**/sdk/platform/Apple/src/**/*.mm": "objective-cpp"
+        "**/sdk/platform/Apple/src/**/*.mm": "objective-cpp",
+        "**/sdk/platform/Apple/src/**/*.swift": "swift"
     }
 }

@@ -31,6 +31,7 @@ if(APPLE)
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
     )
+    set_apple_platform_bridging_header(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh-Bridging-Header.h")
 endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
