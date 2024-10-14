@@ -27,7 +27,7 @@ function(SET_APPLE_PLATFORM_BRIDGING_HEADER NAME BRIDGING_HEADER)
             message(FATAL_ERROR "File '${DUMMY_SWIFT_FILE_ABSOLUTE}' is a directory.")
         endif()
     else()
-        file(WRITE "${DUMMY_SWIFT_FILE_ABSOLUTE}" "// Xcode needs at least one Swift file to recognize Swift build settings such as 'SWIFT_INSTALL_OBJC_HEADER' and 'SWIFT_OBJC_BRIDGING_HEADER' which are set via set_apple_platform_bridging_header() CMake function.")
+        file(WRITE "${DUMMY_SWIFT_FILE_ABSOLUTE}" "// Xcode needs at least one Swift file to recognize Swift build settings such as 'SWIFT_INSTALL_OBJC_HEADER' and 'SWIFT_OBJC_BRIDGING_HEADER' which are set via set_apple_platform_bridging_header() CMake function.\n")
     endif()
 
     add_platform_sources(
