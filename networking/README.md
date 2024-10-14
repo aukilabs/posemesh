@@ -22,6 +22,39 @@ Some platform and architecture combinations may require specific Rust toolchains
 
 The build results end up in a newly-created `target` directory. They include a static library alongside some C++ header files with exported types and function declarations.
 
+### Browser
+```
+wasm-pack build --target web
+
+# web app
+npm install path_to_posemesh_repo/networking/pkg
+```
+```javascript
+import init, {Networking} from 'networking';
+
+function App() {
+  const [bootstrapNodes, setBootstrapNodes] = useState('');
+  const [libp2p, setLibp2p] = useState<Networking | null>(null);
+
+  const connect = async () => {
+    await init();
+    const nt = new Networking(bootstrapNodes.split(","), [], "PRIVATE_KEY", false, "NODE NAME");
+    setLibp2p(nt);
+
+    // nt.send_message() for broadcasting message to all connected nodes
+    // nt.poll_messages() for loading messages from all connected nodes
+    // nt.nodes() for loading all nodes in posemesh network
+  }
+
+  return (
+    <div className="App">
+      <input type="text" value={bootstrapNodes} onChange={(e) => setBootstrapNodes(e.target.value)} />
+      <button onClick={() => connect()}>Connect</button>
+    </div>
+  );
+}
+```
+
 ## Supported platforms and architectures
 
 Below is depicted a table of platforms and architectures for which the library can be built. Intuitively, columns represent platforms and rows represent architectures.
@@ -32,8 +65,3 @@ Below is depicted a table of platforms and architectures for which the library c
 | ARM64 | Yes   | Yes          | Yes | Yes           |
 
 Note that building for `macOS`, `Mac-Catalyst`, `iOS` and `iOS-Simulator` can only be done on a machine that is running macOS.
-
-## Browser
-```
-wasm-pack build --target web
-```
