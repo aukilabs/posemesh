@@ -167,6 +167,7 @@ function(ADD_PLATFORM_LIBRARY NAME)
                 OBJC_STANDARD_REQUIRED ON
                 OBJCXX_STANDARD 14
                 OBJCXX_STANDARD_REQUIRED ON
+                XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
         )
         install(
             TARGETS
