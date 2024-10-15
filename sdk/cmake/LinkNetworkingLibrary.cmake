@@ -23,7 +23,7 @@ function(LINK_NETWORKING_LIBRARY NAME)
     endif()
 
     if(NOT EXISTS "${NETWORKING_INCLUDE_DIR}" OR NOT IS_DIRECTORY "${NETWORKING_INCLUDE_DIR}" OR NOT EXISTS "${NETWORKING_LIBRARY}" OR IS_DIRECTORY "${NETWORKING_LIBRARY}")
-        message(FATAL_ERROR "Posemesh Networking library is not built for this platform, architecture and configuration.")
+        message(FATAL_ERROR "Posemesh Networking library is not built for targeted platform, architecture and configuration (build type).")
     endif()
 
     target_include_directories(
