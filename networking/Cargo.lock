@@ -235,7 +235,7 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d9a9bf8b79a749ee0b911b91b671cc2b6c670bdbc7e3dfd537576ddc94bb2a2"
 dependencies = [
- "http",
+ "http 0.2.12",
  "log",
  "url",
 ]
@@ -1091,16 +1091,16 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.3.26"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81fe527a889e1532da5c525686d96d4c2e74cdd345badf8dfef9f6b39dd5f5e8"
+checksum = "524e8ac6999421f49a846c2d4411f337e53497d8ec55d67753beffa43c5d9205"
 dependencies = [
+ "atomic-waker",
  "bytes",
  "fnv",
  "futures-core",
  "futures-sink",
- "futures-util",
- "http",
+ "http 1.1.0",
  "indexmap",
  "slab",
  "tokio",
@@ -1236,13 +1236,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-body"
-version = "0.4.6"
+name = "http"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
+checksum = "21b9ddb458710bc376481b842f5da65cdf31522de232c1ca8146abce2a358258"
 dependencies = [
  "bytes",
- "http",
+ "fnv",
+ "itoa",
+]
+
+[[package]]
+name = "http-body"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
+dependencies = [
+ "bytes",
+ "http 1.1.0",
+]
+
+[[package]]
+name = "http-body-util"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "793429d76616a256bcb62c2a2ec2bed781c8307e797e2598c50010f2bee2544f"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http 1.1.0",
+ "http-body",
  "pin-project-lite",
 ]
 
@@ -1253,33 +1276,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d71d3574edd2771538b901e6549113b4006ece66150fb69c0fb6d9a2adae946"
 
 [[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
 name = "hyper"
-version = "0.14.30"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a152ddd61dfaec7273fe8419ab357f33aee0d914c5f4efbf0d96fa749eea5ec9"
+checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
 dependencies = [
  "bytes",
  "futures-channel",
- "futures-core",
  "futures-util",
  "h2",
- "http",
+ "http 1.1.0",
  "http-body",
  "httparse",
- "httpdate",
  "itoa",
+ "pin-project-lite",
+ "smallvec",
+ "tokio",
+ "want",
+]
+
+[[package]]
+name = "hyper-util"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41296eb09f183ac68eec06e03cdbea2e759633d4067b2f6552fc2e009bcad08b"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-util",
+ "http 1.1.0",
+ "http-body",
+ "hyper",
  "pin-project-lite",
  "socket2",
  "tokio",
  "tower-service",
  "tracing",
- "want",
 ]
 
 [[package]]
@@ -1333,16 +1365,18 @@ dependencies = [
 
 [[package]]
 name = "igd-next"
-version = "0.14.3"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "064d90fec10d541084e7b39ead8875a5a80d9114a2b18791565253bae25f49e4"
+checksum = "76b0d7d4541def58a37bf8efc559683f21edce7c82f0d866c93ac21f7e098f93"
 dependencies = [
  "async-trait",
  "attohttpc",
  "bytes",
  "futures",
- "http",
+ "http 1.1.0",
+ "http-body-util",
  "hyper",
+ "hyper-util",
  "log",
  "rand",
  "tokio",
@@ -1449,7 +1483,7 @@ checksum = "561d97a539a36e26a9a5fad1ea11a3039a67714694aaa379433e580854bc3dc5"
 [[package]]
 name = "libp2p"
 version = "0.54.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "bytes",
  "either",
@@ -1482,7 +1516,7 @@ dependencies = [
 [[package]]
 name = "libp2p-allow-block-list"
 version = "0.4.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "libp2p-core",
  "libp2p-identity",
@@ -1493,7 +1527,7 @@ dependencies = [
 [[package]]
 name = "libp2p-connection-limits"
 version = "0.4.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "libp2p-core",
  "libp2p-identity",
@@ -1504,7 +1538,7 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.42.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "either",
  "fnv",
@@ -1532,7 +1566,7 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.42.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "async-trait",
  "futures",
@@ -1547,7 +1581,7 @@ dependencies = [
 [[package]]
 name = "libp2p-gossipsub"
 version = "0.47.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "base64 0.22.1",
@@ -1579,7 +1613,7 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.45.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "either",
@@ -1620,7 +1654,7 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.47.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "arrayvec",
  "asynchronous-codec",
@@ -1649,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "libp2p-mdns"
 version = "0.46.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "data-encoding",
  "futures",
@@ -1669,7 +1703,7 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.15.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "libp2p-core",
@@ -1687,7 +1721,7 @@ dependencies = [
 [[package]]
 name = "libp2p-noise"
 version = "0.45.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -1712,7 +1746,7 @@ dependencies = [
 [[package]]
 name = "libp2p-quic"
 version = "0.11.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "bytes",
  "futures",
@@ -1735,7 +1769,7 @@ dependencies = [
 [[package]]
 name = "libp2p-relay"
 version = "0.18.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -1759,7 +1793,7 @@ dependencies = [
 [[package]]
 name = "libp2p-stream"
 version = "0.2.0-alpha"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "libp2p-core",
@@ -1773,7 +1807,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm"
 version = "0.45.2"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "either",
  "fnv",
@@ -1798,7 +1832,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.35.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1809,7 +1843,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.42.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "futures-timer",
@@ -1825,7 +1859,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tls"
 version = "0.5.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "futures-rustls",
@@ -1842,8 +1876,8 @@ dependencies = [
 
 [[package]]
 name = "libp2p-upnp"
-version = "0.3.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+version = "0.3.1"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "futures-timer",
@@ -1858,7 +1892,7 @@ dependencies = [
 [[package]]
 name = "libp2p-webrtc"
 version = "0.8.0-alpha"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1886,7 +1920,7 @@ dependencies = [
 [[package]]
 name = "libp2p-webrtc-utils"
 version = "0.3.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -1908,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "libp2p-webrtc-websys"
 version = "0.4.0-alpha.2"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "bytes",
  "futures",
@@ -1929,7 +1963,7 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.46.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "either",
  "futures",
@@ -2106,7 +2140,7 @@ dependencies = [
 [[package]]
 name = "multistream-select"
 version = "0.13.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "bytes",
  "futures",
@@ -2589,7 +2623,7 @@ dependencies = [
 [[package]]
 name = "quick-protobuf-codec"
 version = "0.3.1"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -2953,7 +2987,7 @@ dependencies = [
 [[package]]
 name = "rw-stream-sink"
 version = "0.4.0"
-source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=0cdaa1e#0cdaa1e9bd1b54bbd3354773249c988c99b11c3f"
+source = "git+https://github.com/aukilabs/rust-libp2p.git?rev=eee1374#eee1374c002911b752800ac1f22951520f8432d3"
 dependencies = [
  "futures",
  "pin-project",
