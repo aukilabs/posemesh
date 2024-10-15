@@ -35,3 +35,6 @@ if(APPLE)
 endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
+
+include(LinkNetworkingLibrary)
+link_networking_library(Posemesh)
