@@ -63,10 +63,17 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                     message(FATAL_ERROR "Library '${LIBRARY_PATH}' is a directory.")
                 endif()
             endif()
+            get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
+            if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
+                string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
+            else()
+                set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
+            endif()
             target_link_options(
                 ${NAME}
                 PUBLIC
-                    "SHELL:-Wl,-hidden-l,\"${LIBRARY_PATH}\""
+                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
             )
         endforeach()
 
@@ -87,10 +94,17 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                     message(FATAL_ERROR "Library '${LIBRARY_PATH}' is a directory.")
                 endif()
             endif()
+            get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
+            if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
+                string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
+            else()
+                set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
+            endif()
             target_link_options(
                 ${NAME}
                 INTERFACE
-                    "SHELL:-Wl,-hidden-l,\"${LIBRARY_PATH}\""
+                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
             )
         endforeach()
 
@@ -111,10 +125,17 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                     message(FATAL_ERROR "Library '${LIBRARY_PATH}' is a directory.")
                 endif()
             endif()
+            get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
+            if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
+                string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
+            else()
+                set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
+            endif()
             target_link_options(
                 ${NAME}
                 PRIVATE
-                    "SHELL:-Wl,-hidden-l,\"${LIBRARY_PATH}\""
+                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
             )
         endforeach()
     else()

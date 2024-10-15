@@ -12,10 +12,14 @@ function(LINK_NETWORKING_LIBRARY NAME)
     set(NETWORKING_TARGET_DIR "${NETWORKING_TARGET_PREFIX}/${RUST_TARGET_NAME}")
 
     set(NETWORKING_INCLUDE_DIR "${NETWORKING_TARGET_DIR}/cxxbridge")
-    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-        set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/debug/libposemesh_networking.a")
+    if(APPLE)
+        if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+            set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/debug/libposemesh_networking.a")
+        else()
+            set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/release/libposemesh_networking.a")
+        endif()
     else()
-        set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/release/libposemesh_networking.a")
+        message(FATAL_ERROR "TODO") # TODO: this needs to be implemented
     endif()
 
     if(NOT EXISTS "${NETWORKING_INCLUDE_DIR}" OR NOT IS_DIRECTORY "${NETWORKING_INCLUDE_DIR}" OR NOT EXISTS "${NETWORKING_LIBRARY}" OR IS_DIRECTORY "${NETWORKING_LIBRARY}")
