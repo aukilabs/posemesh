@@ -44,7 +44,7 @@ if(APPLE)
         set_apple_platform_umbrella_header(
             Posemesh
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh-Umbrella-Header.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/Posemesh.modulemap"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/module.modulemap"
         )
     endif()
     if(USE_APPLE_BRIDGING_HEADER)
