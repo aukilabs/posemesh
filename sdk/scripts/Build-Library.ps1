@@ -32,6 +32,7 @@ $CMakeGenerator = $Null
 $CMakeUseIOSToolchain = $False
 $CMakeIOSToolchainPlatform = $Null
 $CMakeToolchainFilePath = $Null
+$XcodeBuildCommandArgs = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -64,14 +65,26 @@ Switch($Platform) {
         }
         $CMakeGenerator = 'Xcode'
         $CMakeUseIOSToolchain = $True
+        $MacCatalystArchitectureFlagForXcodeBuild = $Null
         Switch($Architecture) {
-            'AMD64' { $CMakeIOSToolchainPlatform = 'MAC_CATALYST' }
-            'ARM64' { $CMakeIOSToolchainPlatform = 'MAC_CATALYST_ARM64' }
+            'AMD64' {
+                $CMakeIOSToolchainPlatform = 'MAC_CATALYST'
+                $MacCatalystArchitectureFlagForXcodeBuild = 'x86_64'
+            }
+            'ARM64' {
+                $CMakeIOSToolchainPlatform = 'MAC_CATALYST_ARM64'
+                $MacCatalystArchitectureFlagForXcodeBuild = 'arm64'
+            }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Mac-Catalyst' platform."
                 Exit 1
             }
         }
+        If($MacCatalystArchitectureFlagForXcodeBuild -Eq $Null) {
+            Write-Error -Message 'ASSERT: Variable $MacCatalystArchitectureFlagForXcodeBuild is not set.'
+            Exit 1
+        }
+        $XcodeBuildCommandArgs = @('-configuration', $BuildType, "ARCHS=$MacCatalystArchitectureFlagForXcodeBuild", '-sdk', 'macosx', 'SUPPORTS_MACCATALYST=YES', '-project', "$PSScriptRoot/../build-$Platform-$Architecture-$BuildType/Posemesh.xcodeproj", '-scheme', 'Posemesh', '-destination', "platform=macOS,arch=$MacCatalystArchitectureFlagForXcodeBuild,variant=Mac Catalyst")
     }
     'iOS' {
         If(-Not $IsMacOS) {
@@ -178,7 +191,8 @@ If(-Not $PushLocationResult) {
     Exit 1
 }
 Try {
-    If($CMakeGenerator -Eq 'Xcode') {
+    $XcodeBuildCommand = $Null
+    If(($CMakeGenerator -Eq 'Xcode') -Or ($XcodeBuildCommandArgs -Ne $Null)) {
         $XcodeBuildCommand = (Get-Command -Name 'xcodebuild') 2> $Null
         If(-Not $XcodeBuildCommand) {
             Write-Error -Message "Could not find 'xcodebuild' command. Is Xcode installed on your machine?"
@@ -229,7 +243,15 @@ Try {
         Write-Error -Message 'Failed to configure CMake project.'
         Exit 1
     }
-    & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+    If($XcodeBuildCommandArgs -Ne $Null) {
+        If($XcodeBuildCommand -Eq $Null) {
+            Write-Error -Message 'ASSERT: Variable $XcodeBuildCommand is not set.'
+            Exit 1
+        }
+        & $XcodeBuildCommand $XcodeBuildCommandArgs
+    } Else {
+        & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+    }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh library.'
         Exit 1
