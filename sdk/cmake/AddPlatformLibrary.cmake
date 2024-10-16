@@ -167,6 +167,7 @@ function(ADD_PLATFORM_LIBRARY NAME)
                 OBJC_STANDARD_REQUIRED ON
                 OBJCXX_STANDARD 14
                 OBJCXX_STANDARD_REQUIRED ON
+                XCODE_ATTRIBUTE_BUILD_LIBRARY_FOR_DISTRIBUTION YES
         )
         install(
             TARGETS
@@ -188,7 +189,8 @@ function(ADD_PLATFORM_LIBRARY NAME)
                 "${PUBLIC_HEADER}"
                 TARGET_DIRECTORY ${NAME}
                 PROPERTIES
-                    MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}")
+                    MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}"
+            )
         endforeach()
     else()
         # TODO: install lib and public headers

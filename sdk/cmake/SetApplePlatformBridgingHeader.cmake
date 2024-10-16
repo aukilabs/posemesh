@@ -21,6 +21,11 @@ function(SET_APPLE_PLATFORM_BRIDGING_HEADER NAME BRIDGING_HEADER)
         message(FATAL_ERROR "Objective-C to Swift bridging header was already set to '${CURRENT_SWIFT_OBJC_BRIDGING_HEADER}' file previously.")
     endif()
 
+    get_target_property(CURRENT_MODULEMAP_FILE ${NAME} XCODE_ATTRIBUTE_MODULEMAP_FILE)
+    if(CURRENT_MODULEMAP_FILE)
+        message(FATAL_ERROR "Objective-C to Swift bridging header cannot be set because the umbrella header was already set.")
+    endif()
+
     set(DUMMY_SWIFT_FILE_ABSOLUTE "${CMAKE_CURRENT_BINARY_DIR}/Dummy.swift")
     if(EXISTS "${DUMMY_SWIFT_FILE_ABSOLUTE}")
         if(IS_DIRECTORY "${DUMMY_SWIFT_FILE_ABSOLUTE}")
@@ -41,7 +46,10 @@ function(SET_APPLE_PLATFORM_BRIDGING_HEADER NAME BRIDGING_HEADER)
     set_target_properties(
         ${NAME}
         PROPERTIES
+            XCODE_ATTRIBUTE_BUILD_LIBRARY_FOR_DISTRIBUTION NO
             XCODE_ATTRIBUTE_SWIFT_INSTALL_OBJC_HEADER NO
             XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${BRIDGING_HEADER_ABSOLUTE}"
     )
+
+    message(WARNING "Using Objective-C to Swift bridging header locks your framework with the Swift version used to compile it (the 'swiftinterface' files are not produced). For this reason you will not be able to produce an XCFramework bundle.")
 endfunction()

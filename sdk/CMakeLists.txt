@@ -7,6 +7,15 @@ project(Posemesh VERSION 0.1.0 LANGUAGES ${PLATFORM_LANGUAGES})
 include(PlatformCheck)
 include(ToolchainCheck)
 
+if(APPLE)
+    option(USE_APPLE_UMBRELLA_HEADER "Use Objective-C to Swift umbrella header on Apple platforms" ON)
+    option(USE_APPLE_BRIDGING_HEADER "Use Objective-C to Swift bridging header on Apple platforms" OFF)
+
+    if(USE_APPLE_UMBRELLA_HEADER AND USE_APPLE_BRIDGING_HEADER)
+        message(FATAL_ERROR "Objective-C to Swift umbrella and bridging headers cannot be used simultaneously.")
+    endif()
+endif()
+
 add_platform_library(
     Posemesh
     PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/include"
@@ -31,7 +40,16 @@ if(APPLE)
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
     )
-    set_apple_platform_bridging_header(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh-Bridging-Header.h")
+    if(USE_APPLE_UMBRELLA_HEADER)
+        set_apple_platform_umbrella_header(
+            Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh-Umbrella-Header.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/Posemesh.modulemap"
+        )
+    endif()
+    if(USE_APPLE_BRIDGING_HEADER)
+        set_apple_platform_bridging_header(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh-Bridging-Header.h")
+    endif()
 endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
