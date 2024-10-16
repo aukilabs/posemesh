@@ -162,7 +162,8 @@ function(ADD_PLATFORM_SOURCES NAME)
                 "${PUBLIC_HEADER}"
                 TARGET_DIRECTORY ${NAME}
                 PROPERTIES
-                    MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}")
+                    MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}"
+            )
         endforeach()
     else()
         # TODO: install public headers
