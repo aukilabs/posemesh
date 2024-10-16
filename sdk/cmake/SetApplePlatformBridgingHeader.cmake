@@ -51,5 +51,5 @@ function(SET_APPLE_PLATFORM_BRIDGING_HEADER NAME BRIDGING_HEADER)
             XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${BRIDGING_HEADER_ABSOLUTE}"
     )
 
-    message(WARNING "Using Objective-C to Swift bridging header locks your framework with the Swift version used to compile it (the 'swiftinterface' files are not produced). For this reason you will not be able to produce an XCFramework bundle.")
+    message(WARNING "Using Objective-C to Swift bridging header locks your framework with the Swift version used to compile it (the '.swiftinterface' files are not produced). For this reason you will not be able to produce an XCFramework bundle.")
 endfunction()
