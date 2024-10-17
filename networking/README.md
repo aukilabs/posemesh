@@ -32,3 +32,9 @@ Below is depicted a table of platforms and architectures for which the library c
 | ARM64 | Yes   | Yes          | Yes | Yes           |
 
 Note that building for `macOS`, `Mac-Catalyst`, `iOS` and `iOS-Simulator` can only be done on a machine that is running macOS.
+
+## Other scripts
+
+There are also other scripts which can aid in the development and deployment process:
+
+- `Build-Apple.ps1` script builds all Apple platform and architecture combinations. It takes one parameter for build type which can be `Debug`, `Release` (default) or `Both`. Similarly to `Build-Library.ps1`, flag `-InstallNecessaryRustToolchainsAndTargets` can be specified to allow the underlying script calls to install the necessary Rust toolchains and targets if missing.
