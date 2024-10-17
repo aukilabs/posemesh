@@ -7,6 +7,8 @@
 #    else
 #        define PSM_API
 #    endif
+#elif defined(__EMSCRIPTEN__)
+#    define PSM_API
 #else
 #    error "Platform not supported."
 #endif

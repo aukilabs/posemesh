@@ -3,14 +3,14 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
 
     [Parameter(Position = 1)]
     [ArgumentCompleter({
-        $PossibleValues = @('AMD64', 'ARM64')
+        $PossibleValues = @('AMD64', 'ARM64', 'WASM32')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Architecture,
@@ -31,6 +31,7 @@ If(-Not $Platform) {
 $CMakeGenerator = $Null
 $CMakeUseIOSToolchain = $False
 $CMakeIOSToolchainPlatform = $Null
+$CMakeUseEmscripten = $False
 $CMakeToolchainFilePath = $Null
 $XcodeBuildCommandArgs = $Null
 Switch($Platform) {
@@ -122,6 +123,18 @@ Switch($Platform) {
             }
         }
     }
+    'Web' {
+        If(-Not $Architecture) {
+            $Architecture = 'WASM32'
+            Write-Warning -Message "Using the implicit '$Architecture' architecture for 'Web' platform."
+        } ElseIf($Architecture -Ne 'WASM32') {
+            Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Web' platform."
+            Exit 1
+        }
+        $CMakeGenerator = ''
+        $CMakeUseEmscripten = $True
+        $CMakeToolchainFilePath = ''
+    }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
         Exit 1
@@ -134,6 +147,10 @@ If($CMakeGenerator -Eq $Null) {
 If($CMakeUseIOSToolchain) {
     If($CMakeIOSToolchainPlatform -Eq $Null) {
         Write-Error -Message 'ASSERT: Variable $CMakeIOSToolchainPlatform is not set.'
+        Exit 1
+    }
+    If($CMakeUseEmscripten) {
+        Write-Error -Message 'ASSERT: Both variables $CMakeUseIOSToolchain and $CMakeUseEmscripten cannot be set to $True simultaneously.'
         Exit 1
     }
     $CMakeToolchainFilePath = '../third-party/ios-cmake/ios.toolchain.cmake'
@@ -199,7 +216,23 @@ Try {
             Exit 1
         }
     }
-    If(-Not (Test-Path -Path $CMakeToolchainFilePath -PathType Leaf)) {
+    $EmCMakeCommand = $Null
+    If($CMakeUseEmscripten) {
+        $EmCMakeCommand = (Get-Command -Name 'emcmake') 2> $Null
+        If(-Not $EmCMakeCommand) {
+            Write-Error -Message "Could not find 'emcmake' command. Is Emscripten installed on your machine?"
+            Exit 1
+        }
+    }
+    $EmMakeCommand = $Null
+    If($CMakeUseEmscripten) {
+        $EmMakeCommand = (Get-Command -Name 'emmake') 2> $Null
+        If(-Not $EmMakeCommand) {
+            Write-Error -Message "Could not find 'emmake' command. Is Emscripten installed on your machine?"
+            Exit 1
+        }
+    }
+    If(($CMakeToolchainFilePath -Ne '') -And (-Not (Test-Path -Path $CMakeToolchainFilePath -PathType Leaf))) {
         If($CMakeUseIOSToolchain) {
             Write-Error -Message "CMake iOS toolchain file '$CMakeToolchainFilePath' does not exist. Are the Git repository submodules cloned?"
         } Else {
@@ -238,7 +271,15 @@ Try {
     If($CMakeUseIOSToolchain) {
         $CMakeIOSToolchainPlatformFlag = "-DPLATFORM=$CMakeIOSToolchainPlatform"
     }
-    & $CMakeCommand $CMakeGeneratorFlags $CMakeToolchainFileFlags @($CMakeIOSToolchainPlatformFlag | Where-Object { $_ }) @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S .
+    $CMakeCommandPrefixForConfiguring = @()
+    If($CMakeUseEmscripten) {
+        If($EmCMakeCommand -Eq $Null) {
+            Write-Error -Message 'ASSERT: Variable $EmCMakeCommand is not set.'
+            Exit 1
+        }
+        $CMakeCommandPrefixForConfiguring = @($EmCMakeCommand)
+    }
+    & $CMakeCommandPrefixForConfiguring $CMakeCommand $CMakeGeneratorFlags $CMakeToolchainFileFlags @($CMakeIOSToolchainPlatformFlag | Where-Object { $_ }) @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S .
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to configure CMake project.'
         Exit 1
@@ -250,7 +291,15 @@ Try {
         }
         & $XcodeBuildCommand $XcodeBuildCommandArgs
     } Else {
-        & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        $CMakeCommandPrefixForBuilding = @()
+        If($CMakeUseEmscripten) {
+            If($EmMakeCommand -Eq $Null) {
+                Write-Error -Message 'ASSERT: Variable $EmMakeCommand is not set.'
+                Exit 1
+            }
+            $CMakeCommandPrefixForBuilding = @($EmMakeCommand)
+        }
+        & $CMakeCommandPrefixForBuilding $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
     }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh library.'

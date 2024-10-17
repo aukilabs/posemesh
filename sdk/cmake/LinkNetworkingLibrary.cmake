@@ -1,7 +1,8 @@
 include("${CMAKE_CURRENT_LIST_DIR}/GetRustTargetName.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/LinkPlatformLibraries.cmake")
 
-set(NETWORKING_TARGET_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../networking/target")
+set(NETWORKING_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../networking")
+set(NETWORKING_TARGET_PREFIX "${NETWORKING_PREFIX}/target")
 
 function(LINK_NETWORKING_LIBRARY NAME)
     if(NOT TARGET ${NAME})
@@ -11,8 +12,13 @@ function(LINK_NETWORKING_LIBRARY NAME)
     get_rust_target_name(RUST_TARGET_NAME)
     set(NETWORKING_TARGET_DIR "${NETWORKING_TARGET_PREFIX}/${RUST_TARGET_NAME}")
 
-    set(NETWORKING_INCLUDE_DIR "${NETWORKING_TARGET_DIR}/cxxbridge")
-    if(APPLE)
+    if(EMSCRIPTEN)
+        set(NETWORKING_INCLUDE_DIR "${NETWORKING_PREFIX}/include")
+    else()
+        set(NETWORKING_INCLUDE_DIR "${NETWORKING_TARGET_DIR}/cxxbridge")
+    endif()
+
+    if(APPLE OR EMSCRIPTEN)
         if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
             set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/debug/libposemesh_networking.a")
         else()

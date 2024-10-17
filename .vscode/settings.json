@@ -6,6 +6,7 @@
     "cmake.buildDirectory": "${workspaceFolder}/sdk/build",
     "cmake.sourceDirectory": "${workspaceFolder}/sdk",
     "files.associations": {
+        "**/networking/include/**/*.h": "c",
         "**/sdk/include/Posemesh/**/*.h": "c",
         "**/sdk/include/Posemesh/**/*.hpp": "cpp",
         "**/sdk/src/**/*.h": "c",
