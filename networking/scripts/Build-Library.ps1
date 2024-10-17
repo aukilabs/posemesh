@@ -3,14 +3,14 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
 
     [Parameter(Position = 1)]
     [ArgumentCompleter({
-        $PossibleValues = @('AMD64', 'ARM64')
+        $PossibleValues = @('AMD64', 'ARM64', 'WASM32')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Architecture,
@@ -104,6 +104,17 @@ Switch($Platform) {
                 Exit 1
             }
         }
+    }
+    'Web' {
+        If(-Not $Architecture) {
+            $Architecture = 'WASM32'
+            Write-Warning -Message "Using the implicit '$Architecture' architecture for 'Web' platform."
+        } ElseIf($Architecture -Ne 'WASM32') {
+            Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Web' platform."
+            Exit 1
+        }
+        $RustToolchain = '1.81.0'
+        $RustTarget = 'wasm32-unknown-unknown'
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
