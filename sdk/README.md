@@ -52,8 +52,3 @@ The features of libp2p that are used by the Posemesh SDK include:
 Communications between nodes always use peer-to-peer connections when possible, but the
 Posemesh SDK also supports using a relay server as a fallback when direct connections
 are not possible. The relay server is only used as a last resort.
-
-The networking code is currently being tested in the
-[libp2p-experiment](https://github.com/aukilabs/libp2p-experiment) repository.
-It's based on go-libp2p but will be ported to Rust in the future and be incorporated
-into the Posemesh module.

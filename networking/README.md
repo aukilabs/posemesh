@@ -1,6 +1,6 @@
 # Posemesh Networking
 
-Posemesh Networking is a Rust library that implements all of the underlying network code for efficient and optimized communication between nodes in the Posemesh network.
+The Networking module is designed to simplify the process of starting a libp2p node, enabling seamless peer-to-peer (p2p) communication within the Posemesh network. This module allows developers to integrate decentralized networking capabilities into their projects by providing an easy-to-use interface for connecting to the Posemesh network. With this module, users can join the network, discover peers, and exchange messages in a decentralized, scalable, and resilient manner.
 
 ## Building
 
@@ -21,6 +21,39 @@ Some platform and architecture combinations may require specific Rust toolchains
 ```
 
 The build results end up in a newly-created `target` directory. They include a static library alongside some C++ header files with exported types and function declarations.
+
+### Browser
+```
+wasm-pack build --target web
+
+# web app
+npm install path_to_posemesh_repo/networking/pkg
+```
+```javascript
+import init, {Networking} from 'networking';
+
+function App() {
+  const [bootstrapNodes, setBootstrapNodes] = useState('');
+  const [libp2p, setLibp2p] = useState<Networking | null>(null);
+
+  const connect = async () => {
+    await init();
+    const nt = new Networking(bootstrapNodes.split(","), [], "PRIVATE_KEY", false, "NODE NAME");
+    setLibp2p(nt);
+
+    // nt.send_message() for broadcasting message to all connected nodes
+    // nt.poll_messages() for loading messages from all connected nodes
+    // nt.nodes() for loading all nodes in posemesh network
+  }
+
+  return (
+    <div className="App">
+      <input type="text" value={bootstrapNodes} onChange={(e) => setBootstrapNodes(e.target.value)} />
+      <button onClick={() => connect()}>Connect</button>
+    </div>
+  );
+}
+```
 
 ## Supported platforms and architectures
 
