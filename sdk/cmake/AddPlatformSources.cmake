@@ -165,6 +165,8 @@ function(ADD_PLATFORM_SOURCES NAME)
                     MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}"
             )
         endforeach()
+    elseif(EMSCRIPTEN)
+        # Do nothing
     else()
         # TODO: install public headers
     endif()
