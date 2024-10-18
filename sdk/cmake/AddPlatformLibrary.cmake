@@ -196,6 +196,18 @@ function(ADD_PLATFORM_LIBRARY NAME)
                     MACOSX_PACKAGE_LOCATION "Headers/${PUBLIC_HEADER_PREFIX}"
             )
         endforeach()
+    elseif(EMSCRIPTEN)
+        install(
+            TARGETS
+                ${NAME}
+            RUNTIME
+                DESTINATION "${CMAKE_INSTALL_PREFIX}"
+        )
+        install(
+            FILES
+                "$<PATH:REMOVE_EXTENSION,LAST_ONLY,$<TARGET_FILE:${NAME}>>.wasm"
+            DESTINATION "${CMAKE_INSTALL_PREFIX}"
+        )
     else()
         # TODO: install lib and public headers
     endif()
