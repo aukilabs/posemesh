@@ -279,7 +279,11 @@ Try {
         }
         $CMakeCommandPrefixForConfiguring = @($EmCMakeCommand)
     }
-    & $CMakeCommandPrefixForConfiguring $CMakeCommand $CMakeGeneratorFlags $CMakeToolchainFileFlags @($CMakeIOSToolchainPlatformFlag | Where-Object { $_ }) @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S .
+    If($CMakeCommandPrefixForConfiguring) {
+        & $CMakeCommandPrefixForConfiguring $CMakeCommand $CMakeGeneratorFlags $CMakeToolchainFileFlags @($CMakeIOSToolchainPlatformFlag | Where-Object { $_ }) @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S .
+    } Else {
+        & $CMakeCommand $CMakeGeneratorFlags $CMakeToolchainFileFlags @($CMakeIOSToolchainPlatformFlag | Where-Object { $_ }) @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S .
+    }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to configure CMake project.'
         Exit 1
@@ -299,7 +303,11 @@ Try {
             }
             $CMakeCommandPrefixForBuilding = @($EmMakeCommand)
         }
-        & $CMakeCommandPrefixForBuilding $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        If($CMakeCommandPrefixForBuilding) {
+            & $CMakeCommandPrefixForBuilding $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        } Else {
+            & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        }
     }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh library.'
