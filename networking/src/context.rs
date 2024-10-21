@@ -1,12 +1,17 @@
 use libp2p::Multiaddr;
 use std::error::Error;
-use crate::network::{NetworkingConfig, RNetworking}; // TODO: review
+use crate::network::{NetworkingConfig, Networking};
+use crate::client;
+use std::sync::Arc;
 
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::runtime::Runtime;
 #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
 use std::{ffi::CStr, os::raw::c_char};
-
-#[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
-use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::future_to_promise;
 
 #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
 #[repr(C)]
@@ -35,14 +40,16 @@ impl Config {
 }
 
 pub struct Context {
-    networking: Box<RNetworking>, // TODO: review
+    #[cfg(not(target_arch = "wasm32"))]
+    runtime: Arc<Runtime>,
+    client: client::Client,
 }
 
 impl Context {
-    pub fn new(config: &Config) -> Result<Box<Self>, Box<dyn Error>> {
-        // ************************
-        // ** serve_as_bootstrap **
-        // ************************
+    pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let rt = Arc::new(Runtime::new().unwrap());
+
 
         #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
         let serve_as_bootstrap = config.serve_as_bootstrap != 0;
@@ -85,20 +92,56 @@ impl Context {
         let _ = serve_as_relay; // TODO: temp
         let _ = bootstraps; // TODO: temp
 
-        Ok(Box::new(Self {
-            networking: Box::new(RNetworking::new(&NetworkingConfig{ // TODO: review
-                port: 0,
-                bootstrap_nodes: vec![],
-                enable_relay_server: false,
-                enable_kdht: false,
-                enable_mdns: false,
-                relay_nodes: vec![],
-                private_key: "".to_string(),
-                private_key_path: "".to_string(),
-                name: "my_name".to_string(),
-                node_types: vec![],
-                node_capabilities: vec![],
-            }).unwrap()),
+        let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+        let n = Networking::new(&NetworkingConfig{
+            port: 0,
+            bootstrap_nodes: vec![],
+            enable_relay_server: false,
+            enable_kdht: false,
+            enable_mdns: false,
+            relay_nodes: vec![],
+            private_key: "".to_string(),
+            private_key_path: "".to_string(),
+            name: "my_name".to_string(),
+            node_types: vec![],
+            node_capabilities: vec![],
+        }, receiver)?;
+        let c = client::new_client(sender);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        rt.spawn(n.run());
+
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(n.run());
+
+        Ok(Box::new(Context {
+            #[cfg(not(target_arch = "wasm32"))]
+            runtime: rt,
+            client: c,
         }))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))] 
+    pub fn send(&mut self, callback: extern "C" fn(i32), msg: Vec<u8>, peer_id: String, protocol: String) {
+        let rt = self.runtime.clone();
+        let mut sender = self.client.clone();
+        rt.spawn(async move {
+            let res = sender.send(msg, peer_id, protocol).await;
+            if let Err(e) = res {
+                eprintln!("Error sending message: {:?}", e);
+                callback(-1);
+            } else {
+                callback(0);
+            }
+        });
+    }
+    
+    #[cfg(target_arch = "wasm32")]
+    pub fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> js_sys::Promise {
+        let mut c = self.client.clone();
+        future_to_promise(async move {
+            c.send(msg, peer_id, protocol).await;
+            Ok(JsValue::NULL)
+        })
     }
 }
