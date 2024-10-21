@@ -3,11 +3,5 @@ name = "posemesh-networking"
 version = "0.1.0"
 edition = "2021"
 
-[target.'cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))'.dependencies]
-cxx = "1.0.128"
-
-[build-dependencies]
-cxx-build = "1.0.128"
-
 [lib]
 crate-type = ["staticlib"]
