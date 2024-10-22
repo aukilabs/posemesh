@@ -109,6 +109,11 @@ function(ADD_PLATFORM_LIBRARY NAME)
     endif()
     if(EMSCRIPTEN)
         add_executable(${NAME} ${SOURCES})
+        target_link_libraries(
+            ${NAME}
+            PRIVATE
+                embind
+        )
     else()
         add_library(${NAME} SHARED ${SOURCES})
     endif()
