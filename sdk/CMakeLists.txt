@@ -50,6 +50,12 @@ if(APPLE)
     if(USE_APPLE_BRIDGING_HEADER)
         set_apple_platform_bridging_header(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh-Bridging-Header.h")
     endif()
+elseif(EMSCRIPTEN)
+    add_platform_sources(
+        Posemesh
+        CXX_SOURCES
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+    )
 endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
