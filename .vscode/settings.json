@@ -18,6 +18,10 @@
         "**/sdk/platform/Apple/src/**/*.hpp": "objective-cpp",
         "**/sdk/platform/Apple/src/**/*.m": "objective-c",
         "**/sdk/platform/Apple/src/**/*.mm": "objective-cpp",
-        "**/sdk/platform/Apple/src/**/*.swift": "swift"
+        "**/sdk/platform/Apple/src/**/*.swift": "swift",
+        "**/sdk/platform/Web/src/**/*.h": "c",
+        "**/sdk/platform/Web/src/**/*.hpp": "cpp",
+        "**/sdk/platform/Web/src/**/*.c": "c",
+        "**/sdk/platform/Web/src/**/*.cpp": "cpp"
     }
 }
