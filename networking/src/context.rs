@@ -22,7 +22,7 @@ impl Context {
         let mut nt = rt.block_on(async {
             Box::new(Context {
                 runtime: None,
-                networking: Box::new(RNetworking::new(cfg).unwrap()),
+                networking: Box::new(RNetworking::new(&cfg).unwrap()),
             })
         });
         nt.runtime = Some(rt);
@@ -48,16 +48,16 @@ impl Context {
 #[wasm_bindgen]
 impl Context {
     #[wasm_bindgen(constructor)]
-    pub fn new(bootstrap_nodes: Vec<String>, relay_nodes: Vec<String>, private_key: String, enable_kdht: bool, name: String) -> Context {
+    pub fn new(bootstrap_nodes: Vec<String>, relay_nodes: Vec<String>, enable_kdht: bool, name: String) -> Context {
         Context {
-            networking: Box::new(network::RNetworking::new(&NetworkingConfig{
+            networking: Box::new(RNetworking::new(&NetworkingConfig{
                 port: 0,
                 bootstrap_nodes: bootstrap_nodes.clone(),
                 enable_relay_server: false,
                 enable_kdht: enable_kdht,
                 enable_mdns: false,
                 relay_nodes: relay_nodes.clone(),
-                private_key: private_key.clone(),
+                private_key: "".to_string(),
                 private_key_path: "".to_string(),
                 name: name.clone(),
                 node_types: vec![],
