@@ -2,15 +2,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/GetRustTargetName.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/LinkPlatformLibraries.cmake")
 
 set(NETWORKING_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../networking")
+set(NETWORKING_PKG_PREFIX "${NETWORKING_PREFIX}/pkg")
 set(NETWORKING_TARGET_PREFIX "${NETWORKING_PREFIX}/target")
 
 function(LINK_NETWORKING_LIBRARY NAME)
     if(NOT TARGET ${NAME})
         message(FATAL_ERROR "Target '${NAME}' does not exist.")
-    endif()
-
-    if(EMSCRIPTEN)
-        return()
     endif()
 
     get_rust_target_name(RUST_TARGET_NAME)
@@ -23,6 +20,12 @@ function(LINK_NETWORKING_LIBRARY NAME)
             set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/debug/libposemesh_networking.a")
         else()
             set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/release/libposemesh_networking.a")
+        endif()
+    elseif(EMSCRIPTEN)
+        if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+            set(NETWORKING_LIBRARY "${NETWORKING_PKG_PREFIX}/Debug/PosemeshNetworking_bg.wasm")
+        else()
+            set(NETWORKING_LIBRARY "${NETWORKING_PKG_PREFIX}/Release/PosemeshNetworking_bg.wasm")
         endif()
     else()
         message(FATAL_ERROR "TODO") # TODO: this needs to be implemented
@@ -37,10 +40,19 @@ function(LINK_NETWORKING_LIBRARY NAME)
         PRIVATE
             "${NETWORKING_INCLUDE_DIR}"
     )
-    link_platform_libraries(
-        ${NAME}
-        HIDE_SYMBOLS
-        PRIVATE
-            "${NETWORKING_LIBRARY}"
-    )
+    if(EMSCRIPTEN)
+        install(
+            FILES
+                "${NETWORKING_LIBRARY}"
+            DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            RENAME "PosemeshNetworking.wasm"
+        )
+    else()
+        link_platform_libraries(
+            ${NAME}
+            HIDE_SYMBOLS
+            PRIVATE
+                "${NETWORKING_LIBRARY}"
+        )
+    endif()
 endfunction()
