@@ -9,12 +9,16 @@ function(LINK_NETWORKING_LIBRARY NAME)
         message(FATAL_ERROR "Target '${NAME}' does not exist.")
     endif()
 
+    if(EMSCRIPTEN)
+        return()
+    endif()
+
     get_rust_target_name(RUST_TARGET_NAME)
     set(NETWORKING_TARGET_DIR "${NETWORKING_TARGET_PREFIX}/${RUST_TARGET_NAME}")
 
     set(NETWORKING_INCLUDE_DIR "${NETWORKING_PREFIX}/include")
 
-    if(APPLE OR EMSCRIPTEN)
+    if(APPLE)
         if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
             set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR}/debug/libposemesh_networking.a")
         else()
