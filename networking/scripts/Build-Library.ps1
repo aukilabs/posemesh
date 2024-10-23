@@ -32,6 +32,7 @@ If(-Not $Platform) {
 
 $RustToolchain = $Null
 $RustTarget = $Null
+$WASMTarget = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -115,6 +116,7 @@ Switch($Platform) {
         }
         $RustToolchain = '1.81.0'
         $RustTarget = 'wasm32-unknown-unknown'
+        $WASMTarget = 'web'
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -135,9 +137,16 @@ If(-Not $BuildType) {
     Write-Warning -Message "Using the implicit '$BuildType' build type."
 }
 $RustBuildTypeFlag = $Null
+$WASMBuildTypeFlag = $Null
 Switch($BuildType) {
-    'Debug' { $RustBuildTypeFlag = '' }
-    'Release' { $RustBuildTypeFlag = '--release' }
+    'Debug' {
+        $RustBuildTypeFlag = ''
+        $WASMBuildTypeFlag = '--dev'
+    }
+    'Release' {
+        $RustBuildTypeFlag = '--release'
+        $WASMBuildTypeFlag = '--release'
+    }
     Default {
         Write-Error -Message "Invalid or unsupported '$BuildType' build type."
         Exit 1
@@ -145,6 +154,10 @@ Switch($BuildType) {
 }
 If($RustBuildTypeFlag -Eq $Null) {
     Write-Error -Message 'ASSERT: Variable $RustBuildTypeFlag is not set.'
+    Exit 1
+}
+If($WASMBuildTypeFlag -Eq $Null) {
+    Write-Error -Message 'ASSERT: Variable $WASMBuildTypeFlag is not set.'
     Exit 1
 }
 
@@ -157,6 +170,18 @@ If(-Not $RustUpCommand) {
 $CargoCommand = (Get-Command -Name 'cargo') 2> $Null
 If(-Not $CargoCommand) {
     Write-Error -Message "Could not find 'cargo' command. Is Rust installed on your machine?"
+    Exit 1
+}
+
+$WASMPackCommand = $Null
+If($RustTarget -Eq 'wasm32-unknown-unknown') {
+    $WASMPackCommand = (Get-Command -Name 'wasm-pack') 2> $Null
+    If(-Not $WASMPackCommand) {
+        Write-Error -Message "Could not find 'wasm-pack' command. Is WASM-Pack installed on your machine?"
+        Exit 1
+    }
+} ElseIf(($RustTarget -Match "^wasm32-") -Or ($RustTarget -Match "^wasm64-")) {
+    Write-Error -Message "Unsupported Rust '$RustTarget' web target."
     Exit 1
 }
 
@@ -204,7 +229,15 @@ Try {
             Exit 1
         }
     }
-    & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ })
+    If($WASMPackCommand) {
+        If($WASMTarget -Eq $Null) {
+            Write-Error -Message 'ASSERT: Variable $WASMTarget is not set.'
+            Exit 1
+        }
+        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ })
+    } Else {
+        & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ })
+    }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh Networking library.'
         Exit 1
