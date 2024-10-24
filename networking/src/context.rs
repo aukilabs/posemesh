@@ -70,9 +70,13 @@ impl Context {
         #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
         let bootstraps_raw = &config.bootstraps;
 
-        let bootstraps = bootstraps_raw.split(';').map(|bootstrap|
-            bootstrap.trim().parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
-        ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+        let bootstraps = bootstraps_raw
+            .split(';')
+            .map(|bootstrap| bootstrap.trim())
+            .filter(|bootstrap| !bootstrap.is_empty())
+            .map(|bootstrap|
+                bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
 
         let _ = serve_as_bootstrap; // TODO: temp
         let _ = serve_as_relay; // TODO: temp

@@ -28,9 +28,9 @@ extern "C" {
     static psm_posemesh_networking_context_t* psm_posemesh_networking_context_create(const psm_posemesh_networking_config_t* config) {
         assert(config);
         void* context = EM_ASM_PTR({
-            let config = new wasm_bindgen.Config(UTF8ToString($0));
+            let config = new __internalPosemeshNetworking.Config(__internalPosemesh.UTF8ToString($0));
             try {
-                return wasm_bindgen.posemeshNetworkingContextCreate(config);
+                return __internalPosemeshNetworking.posemeshNetworkingContextCreate(config);
             } finally {
                 config.free();
             }
@@ -45,7 +45,7 @@ extern "C" {
     static void psm_posemesh_networking_context_destroy(psm_posemesh_networking_context_t* context) {
         assert(context);
         EM_ASM({
-            wasm_bindgen.posemeshNetworkingContextDestroy($0);
+            __internalPosemeshNetworking.posemeshNetworkingContextDestroy($0);
         }, context);
     }
 #endif
