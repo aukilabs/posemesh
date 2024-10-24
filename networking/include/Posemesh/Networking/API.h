@@ -28,7 +28,7 @@ extern "C" {
     static psm_posemesh_networking_context_t* psm_posemesh_networking_context_create(const psm_posemesh_networking_config_t* config) {
         assert(config);
         void* context = EM_ASM_PTR({
-            let config = new __internalPosemeshNetworking.Config(__internalPosemesh.UTF8ToString($0));
+            let config = new __internalPosemeshNetworking.Config(UTF8ToString($0));
             try {
                 return __internalPosemeshNetworking.posemeshNetworkingContextCreate(config);
             } finally {

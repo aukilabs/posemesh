@@ -59,7 +59,7 @@ function(LINK_NETWORKING_LIBRARY NAME)
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
             REPLACES
                 "wasm_bindgen" "__internalPosemeshNetworking"
-                "_bg.wasm" ".wasm"
+                "_bg.wasm" "Networking.wasm"
         )
         install(
             FILES
