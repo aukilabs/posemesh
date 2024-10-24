@@ -116,7 +116,7 @@ Switch($Platform) {
         }
         $RustToolchain = '1.81.0'
         $RustTarget = 'wasm32-unknown-unknown'
-        $WASMTarget = 'web'
+        $WASMTarget = 'no-modules'
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
