@@ -13,6 +13,8 @@ For the posemesh to work on a wide range of devices and software stacks, cross-p
 
 This approach avoids code duplication and makes sure the SDK works the same regardless of platform or programming language.
 
+<img src="docs/images/multiplatform-diagram.png" height="350">
+
 ### Modules
 
 **Modules** are groups of related SDK functionality, similar to modules in the ConjureKit SDK.
@@ -39,6 +41,8 @@ each other. This protocol is based on the [libp2p](https://libp2p.io) project, w
 a modular network stack for peer-to-peer applications. The Posemesh SDK uses a subset of
 libp2p, and adds some custom functionality on top of it to make it work with the
 posemesh.
+
+The Rust implementation of libp2p is used since it is most maintained and up-to-date. However, since the majority of the Posemesh SDK is written in C++, the Rust code is not directly exposed to apps. Instead, it is wrapped in C++ to follow the same general approach to platform-specific bindings.
 
 The features of libp2p that are used by the Posemesh SDK include:
 * QUIC as a default transport protocol
