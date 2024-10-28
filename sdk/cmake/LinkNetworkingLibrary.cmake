@@ -58,7 +58,7 @@ function(LINK_NETWORKING_LIBRARY NAME)
             "${NETWORKING_LIBRARY_JS}"
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
             REPLACES
-                "wasm_bindgen" "__internalPosemeshNetworking"
+                "|MATCH-WORD|wasm_bindgen" "__internalPosemeshNetworking"
                 "script_src.replace(/\\.js$/, '_bg.wasm')" "'PosemeshNetworking.wasm'"
                 "console.warn('using deprecated parameters for the initialization function" "// console.warn('using deprecated parameters for the initialization function" # HACK
         )

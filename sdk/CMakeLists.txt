@@ -89,7 +89,18 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
     )
     if(USE_BABEL_JS)
-        message(FATAL_ERROR "TODO: implement")
+        include(TranspileMinifyJavaScript)
+        transpile_minify_javascript(
+            Posemesh_TranspiledMinified
+            "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TranspiledMinified.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_Merged.js"
+        )
+        install(
+            FILES
+                "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TranspiledMinified.js"
+            DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            RENAME "Posemesh.js"
+        )
     else()
         install(
             FILES

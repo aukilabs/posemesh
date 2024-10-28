@@ -55,8 +55,7 @@ function(MERGE_FILES NAME)
 
     list(
         APPEND COMMAND_ARGS
-            COMMAND
-            "${CMAKE_COMMAND}" -E cat
+            COMMAND "${CMAKE_COMMAND}" -E cat
     )
     list(
         APPEND DEPENDS_ARGS

@@ -1,0 +1,9 @@
+{
+    "devDependencies": {
+        "@babel/cli": "^7.25.9",
+        "@babel/core": "^7.25.9",
+        "@babel/preset-env": "^7.25.9",
+        "babel-minify": "^0.5.2",
+        "babel-plugin-transform-async-to-generator": "^6.24.1"
+    }
+}
