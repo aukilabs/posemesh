@@ -1,5 +1,5 @@
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use libp2p::{core::muxing::StreamMuxerBox, gossipsub, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap ,str::FromStr};
 use std::error::Error;
 use std::time::Duration;
@@ -19,6 +19,8 @@ use libp2p::{mdns, noise, tcp, yamux};
 use tracing_subscriber::EnvFilter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs, path::Path, net::Ipv4Addr};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::interval;
 
 #[cfg(target_arch = "wasm32")]
 use libp2p_webrtc_websys as webrtc_websys;
@@ -88,7 +90,9 @@ pub(crate) struct Networking {
     pub nodes_map: Arc<Mutex<HashMap<PeerId, Node>>>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
-    command_receiver: futures::channel::mpsc::Receiver<client::Command>, 
+    command_receiver: futures::channel::mpsc::Receiver<client::Command>,
+    node: Node,
+    node_regsiter_topic: IdentTopic,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -286,21 +290,8 @@ impl Networking {
 
             swarm.dial(maddr)?;
         }
-
-        // let mut incoming_streams = swarm
-        //     .behaviour_mut()
-        //     .streams
-        //     .new_control()
-        //     .accept(CHAT_PROTOCOL)
-        //     .unwrap();
-        // let stream_control = swarm
-        //     .behaviour_mut()
-        //     .streams.new_control();
         
         let nodes_map: Arc<Mutex<HashMap<PeerId, Node>>> = Arc::new(Mutex::new(HashMap::new()));
-
-        // let messages: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-        // let messages_clone = messages.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         let listeners = build_listeners(cfg.port);
@@ -308,47 +299,6 @@ impl Networking {
         for addr in listeners.iter() {
             swarm.listen_on(addr.clone())?;
         }
-        
-        // #[cfg(not(target_arch = "wasm32"))]
-        // tokio::spawn(async move {
-        //     // This loop handles incoming streams _sequentially_ but that doesn't have to be the case.
-        //     // You can also spawn a dedicated task per stream if you want to.
-        //     // Be aware that this breaks backpressure though as spawning new tasks is equivalent to an unbounded buffer.
-        //     // Each task needs memory meaning an aggressive remote peer may force you OOM this way.
-            
-        //     while let Some((peer, stream)) = incoming_streams.next().await {
-        //         match _receive_message(stream, messages_clone.clone()).await {
-        //             Ok(n) => {
-        //                 tracing::info!(%peer, "Echoed {n} bytes!");
-        //             }
-        //             Err(e) => {
-        //                 tracing::warn!(%peer, "Echo failed: {e}");
-        //                 continue;
-        //             }
-        //         };
-        //     }
-        // });
-
-        // #[cfg(target_arch = "wasm32")]
-        // wasm_bindgen_futures::spawn_local(async move {
-        //     // This loop handles incoming streams _sequentially_ but that doesn't have to be the case.
-        //     // You can also spawn a dedicated task per stream if you want to.
-        //     // Be aware that this breaks backpressure though as spawning new tasks is equivalent to an unbounded buffer.
-        //     // Each task needs memory meaning an aggressive remote peer may force you OOM this way.
-            
-        //     while let Some((peer, stream)) = incoming_streams.next().await {
-        //         match _receive_message(stream, messages_clone.clone()).await {
-        //             Ok(n) => {
-        //                 tracing::info!(%peer, "Echoed {n} bytes!");
-        //             }
-        //             Err(e) => {
-        //                 tracing::warn!(%peer, "Echo failed: {e}");
-        //                 continue;
-        //             }
-        //         };
-        //     }
-        // });
-
 
         let node = Node{
             id: key.public().to_peer_id(),
@@ -357,15 +307,42 @@ impl Networking {
             capabilities: cfg.node_capabilities.clone(),
         };
 
+        // Create a Gossipsub topic
+        let topic = gossipsub::IdentTopic::new("Posemesh");
+        // subscribes to our topic
+        swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+
         Ok(Networking {
             cfg: cfg.clone(),
             nodes_map: nodes_map,
             swarm: swarm,
             command_receiver: command_receiver,
+            node: node,
+            node_regsiter_topic: topic,
         })
     }
 
     pub(crate) async fn run(mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut node_register_interval = interval(Duration::from_secs(10));
+
+        #[cfg(not(target_arch = "wasm32"))]
+        loop {
+            tokio::select! {
+                event = self.swarm.select_next_some() => self.handle_event(event).await,
+                command = self.command_receiver.select_next_some() => self.handle_command(command).await,
+                _ = node_register_interval.tick() => {
+                    match self.register_node() {
+                        Ok(_) => {},
+                        Err(e) => {
+                            eprintln!("Failed to register node: {e}");
+                        }
+                    }
+                }
+            }
+        };
+
+        #[cfg(target_arch = "wasm32")]
         loop {
             futures::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -373,7 +350,6 @@ impl Networking {
             }
         };
     }
-
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
         #[cfg(not(target_arch = "wasm32"))]
@@ -479,11 +455,14 @@ impl Networking {
             SwarmEvent::Behaviour(event) => {
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
                     info: libp2p::identify::Info { observed_addr, .. },
+                    peer_id,
                     ..
                 }) = &event
                 {
                     self.swarm.add_external_address(observed_addr.clone());
-                    println!("{event:?}")
+                    println!("{event:?}");
+                    #[cfg(target_arch = "wasm32")]
+                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
             e => panic!("{e:?}"),
@@ -496,35 +475,7 @@ impl Networking {
                 message_id: _id,
                 message,
             })) => {
-                // match serde_json::from_slice::<Node>(&message.data) {
-                //     Ok(new_node) => {
-                //         match serde_json::to_vec(&node) {
-                //             Ok(serialized) => {
-                //                 match self.swarm.behaviour_mut().gossipsub.publish(topic.clone(), serialized) {
-                //                     Ok(_) => {
-                //                         tracing::debug!("Successfully published node info");
-                //                         // published = true;
-                //                     }
-                //                     Err(e) => {
-                //                         // Handle publish error
-                //                         tracing::debug!("Failed to publish node info: {}", e);
-                //                     }
-                //                 }
-                //             }
-                //             Err(e) => {
-                //                 eprintln!("Failed to serialize node info: {}", e);
-                //             }
-                //         }
-                //         if nodes_map.lock().unwrap().contains_key(&new_node.id) {
-                //             continue;
-                //         }
-                //         tracing::debug!("Node {} joins the network", new_node.name);
-                //         nodes_map.lock().unwrap().insert(new_node.id.clone(), new_node);
-                //     },
-                //     Err(e) => {
-                //         println!("Failed to deserialize node info: {}", e);
-                //     }
-                // }
+                
             },
             SwarmEvent::Behaviour(event) => {
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
@@ -533,8 +484,7 @@ impl Networking {
                     ..
                 }) = &event
                 {
-                    self.swarm.add_external_address(observed_addr.clone());
-                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                    
                 }
                 tracing::debug!("Accepted event: {event:?}")
             }
@@ -566,6 +516,12 @@ impl Networking {
                 }
             }
         }
+    }
+
+    fn register_node(self: &mut Self) -> Result<(), Box<dyn Error>> {
+        let serialized = serde_json::to_vec(&self.node.clone())?;
+        self.swarm.behaviour_mut().gossipsub.publish(self.node_regsiter_topic.clone(), serialized)?;
+        Ok(())
     }
 
     // pub fn send_message(&mut self, msg: Vec<u8>) {
