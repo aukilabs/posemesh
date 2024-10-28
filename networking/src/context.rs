@@ -1,5 +1,6 @@
 use libp2p::Multiaddr;
 use std::error::Error;
+use crate::network::{NetworkingConfig, RNetworking}; // TODO: review
 
 #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
 use std::{ffi::CStr, os::raw::c_char};
@@ -33,7 +34,9 @@ impl Config {
     }
 }
 
-pub struct Context { }
+pub struct Context {
+    networking: Box<RNetworking>, // TODO: review
+}
 
 impl Context {
     pub fn new(config: &Config) -> Result<Box<Self>, Box<dyn Error>> {
@@ -82,6 +85,20 @@ impl Context {
         let _ = serve_as_relay; // TODO: temp
         let _ = bootstraps; // TODO: temp
 
-        Ok(Box::new(Self { }))
+        Ok(Box::new(Self {
+            networking: Box::new(RNetworking::new(&NetworkingConfig{ // TODO: review
+                port: 0,
+                bootstrap_nodes: vec![],
+                enable_relay_server: false,
+                enable_kdht: false,
+                enable_mdns: false,
+                relay_nodes: vec![],
+                private_key: "".to_string(),
+                private_key_path: "".to_string(),
+                name: "my_name".to_string(),
+                node_types: vec![],
+                node_capabilities: vec![],
+            }).unwrap()),
+        }))
     }
 }
