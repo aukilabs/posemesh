@@ -7,11 +7,5 @@
             "useBuiltIns": "usage"
         }],
         ["minify"]
-    ],
-    "plugins": [
-        ["@babel/plugin-transform-runtime", {
-            "corejs": 3,
-            "regenerator": true
-        }]
     ]
 }

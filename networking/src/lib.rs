@@ -60,6 +60,13 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
     posemesh_networking_context_destroy(context);
 }
 
+// ********************************************
+// ** psm_posemesh_networking_send_message() **
+// ********************************************
+
+// TODO: C++ needs a shallow Promise/Task impl
+// TODO: Vec<u8> should use raw ptr and size (also perf optimization: use some sort of custom "stream" type for large messages)
+// TODO: String needs to change to c_char most likely
 #[cfg(feature = "non_web_platform")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
