@@ -232,6 +232,14 @@ Try {
             Exit 1
         }
     }
+    $NPMCommand = $Null
+    If($CMakeUseEmscripten -And ($BuildType -Eq 'Release')) {
+        $NPMCommand = (Get-Command -Name 'npm') 2> $Null
+        If(-Not $NPMCommand) {
+            Write-Error -Message "Could not find 'npm' command. Is NPM installed on your machine?"
+            Exit 1
+        }
+    }
     If(($CMakeToolchainFilePath -Ne '') -And (-Not (Test-Path -Path $CMakeToolchainFilePath -PathType Leaf))) {
         If($CMakeUseIOSToolchain) {
             Write-Error -Message "CMake iOS toolchain file '$CMakeToolchainFilePath' does not exist. Are the Git repository submodules cloned?"
