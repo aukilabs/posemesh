@@ -3,6 +3,10 @@ name = "posemesh-networking"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+non_web_platform = []
+web_platform = []
+
 [dependencies]
 futures = "0.3.30"
 lazy_static = "1.5.0"
@@ -25,6 +29,7 @@ tracing-wasm = "0.2.1"
 wasm-bindgen = "0.2.90"
 wasm-bindgen-futures = "0.4.42"
 serde-wasm-bindgen = "0.6.5"
+js-sys = "0.3.72"
 
 [lib]
 crate-type = ["cdylib", "staticlib"]
