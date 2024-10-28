@@ -1,5 +1,10 @@
 function(ADD_PLATFORM_LIBRARY NAME)
-    list(APPEND OPTION_KEYWORDS)
+    list(
+        APPEND OPTION_KEYWORDS
+            SKIP_INSTALL_JS
+            SKIP_INSTALL_TSD
+            SKIP_INSTALL_WASM
+    )
     list(
         APPEND SINGLE_VALUE_KEYWORDS
             PUBLIC_HEADER_DIR
@@ -31,6 +36,10 @@ function(ADD_PLATFORM_LIBRARY NAME)
     endif()
     if(TARGET ${NAME})
         message(FATAL_ERROR "Target '${NAME}' already exists.")
+    endif()
+
+    if(NOT EMSCRIPTEN AND (ARG_SKIP_INSTALL_JS OR ARG_SKIP_INSTALL_TSD OR ARG_SKIP_INSTALL_WASM))
+        message(FATAL_ERROR "Option keywords 'SKIP_INSTALL_JS', 'SKIP_INSTALL_TSD' and 'SKIP_INSTALL_WASM' are only available for web libraries.")
     endif()
 
     list(APPEND PUBLIC_HEADERS)
@@ -113,6 +122,14 @@ function(ADD_PLATFORM_LIBRARY NAME)
             ${NAME}
             PRIVATE
                 embind
+        )
+        target_link_options(
+            ${NAME}
+            PRIVATE
+                "SHELL:--emit-tsd ${NAME}.d.ts"
+                "SHELL:-s EXPORT_ES6=0"
+                "SHELL:-s EXPORT_NAME=__internal${NAME}"
+                "SHELL:-s MODULARIZE=1"
         )
     else()
         add_library(${NAME} SHARED ${SOURCES})
@@ -202,17 +219,28 @@ function(ADD_PLATFORM_LIBRARY NAME)
             )
         endforeach()
     elseif(EMSCRIPTEN)
-        install(
-            TARGETS
-                ${NAME}
-            RUNTIME
+        if(NOT ARG_SKIP_INSTALL_JS)
+            install(
+                TARGETS
+                    ${NAME}
+                RUNTIME
+                    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            )
+        endif()
+        if(NOT ARG_SKIP_INSTALL_TSD)
+            install(
+                FILES
+                    "$<PATH:REMOVE_EXTENSION,LAST_ONLY,$<TARGET_FILE:${NAME}>>.d.ts"
                 DESTINATION "${CMAKE_INSTALL_PREFIX}"
-        )
-        install(
-            FILES
-                "$<PATH:REMOVE_EXTENSION,LAST_ONLY,$<TARGET_FILE:${NAME}>>.wasm"
-            DESTINATION "${CMAKE_INSTALL_PREFIX}"
-        )
+            )
+        endif()
+        if(NOT ARG_SKIP_INSTALL_WASM)
+            install(
+                FILES
+                    "$<PATH:REMOVE_EXTENSION,LAST_ONLY,$<TARGET_FILE:${NAME}>>.wasm"
+                DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            )
+        endif()
     else()
         # TODO: install lib and public headers
     endif()

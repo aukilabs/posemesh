@@ -14,6 +14,20 @@ if(APPLE)
     if(USE_APPLE_UMBRELLA_HEADER AND USE_APPLE_BRIDGING_HEADER)
         message(FATAL_ERROR "Objective-C to Swift umbrella and bridging headers cannot be used simultaneously.")
     endif()
+
+    list(APPEND ADD_PLATFORM_LIBRARY_EXTRA_FLAGS)
+elseif(EMSCRIPTEN)
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+        option(USE_BABEL_JS "Use Babel.js to transpile and minify JavaScript web code" OFF)
+    else()
+        option(USE_BABEL_JS "Use Babel.js to transpile and minify JavaScript web code" ON)
+    endif()
+
+    list(
+        APPEND ADD_PLATFORM_LIBRARY_EXTRA_FLAGS
+            SKIP_INSTALL_JS
+            SKIP_INSTALL_TSD
+    )
 endif()
 
 add_platform_library(
@@ -28,6 +42,7 @@ add_platform_library(
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
+    ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
 if(APPLE)
@@ -62,3 +77,36 @@ target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 
 include(LinkNetworkingLibrary)
 link_networking_library(Posemesh)
+
+if(EMSCRIPTEN)
+    include(MergeFiles)
+    merge_files(
+        Posemesh_Merged
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_Merged.js"
+        INPUTS
+            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
+            Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+    )
+    if(USE_BABEL_JS)
+        include(TranspileMinifyJavaScript)
+        transpile_minify_javascript(
+            Posemesh_TranspiledMinified
+            "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TranspiledMinified.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_Merged.js"
+        )
+        install(
+            FILES
+                "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TranspiledMinified.js"
+            DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            RENAME "Posemesh.js"
+        )
+    else()
+        install(
+            FILES
+                "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_Merged.js"
+            DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            RENAME "Posemesh.js"
+        )
+    endif()
+endif()
