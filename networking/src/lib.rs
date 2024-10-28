@@ -1,6 +1,7 @@
 mod context;
-use context::{Config, Context};
+mod network;
 
+use context::{Config, Context};
 use std::ptr::null_mut;
 
 #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
