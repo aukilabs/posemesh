@@ -12,9 +12,18 @@
     if (!posemesh) {
         return nil;
     }
-    self = [super init];
+    self = [self initWithNativePosemesh:posemesh];
     if (!self) {
         delete posemesh;
+        return nil;
+    }
+    return self;
+}
+
+- (instancetype)initWithNativePosemesh:(psm::Posemesh*)posemesh {
+    NSAssert(posemesh, @"posemesh is null");
+    self = [super init];
+    if (!self) {
         return nil;
     }
     m_posemesh = posemesh;
@@ -22,7 +31,9 @@
 }
 
 - (void)dealloc {
+    NSAssert(m_posemesh, @"m_posemesh is null");
     delete m_posemesh;
+    m_posemesh = nullptr;
 }
 
 @end
