@@ -1,7 +1,7 @@
 #ifndef __POSEMESH_C_POSEMESH_H__
 #define __POSEMESH_C_POSEMESH_H__
 
-#include "Config.h"
+#include "API.h"
 
 #if defined(__cplusplus)
 namespace psm { class Posemesh; }

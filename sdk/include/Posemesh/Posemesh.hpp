@@ -1,7 +1,7 @@
 #ifndef __POSEMESH_POSEMESH_HPP__
 #define __POSEMESH_POSEMESH_HPP__
 
-#include "Config.hpp"
+#include "API.hpp"
 
 namespace psm {
 

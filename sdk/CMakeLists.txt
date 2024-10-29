@@ -34,10 +34,10 @@ add_platform_library(
     Posemesh
     PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/include"
     PUBLIC_C_HEADERS
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
     PUBLIC_CXX_HEADERS
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
@@ -50,7 +50,7 @@ if(APPLE)
         Posemesh
         PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include"
         PUBLIC_OBJC_HEADERS
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/API.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
