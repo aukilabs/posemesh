@@ -2,8 +2,6 @@ use libp2p::{PeerId, StreamProtocol};
 use std::error::Error;
 use futures::{channel::mpsc::{self}, SinkExt};
 use std::str::FromStr;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
 #[derive(Clone)]
 pub struct Client {
