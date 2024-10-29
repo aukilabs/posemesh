@@ -9,17 +9,17 @@ use std::sync::{Arc, Mutex};
 use libp2p_stream as stream;
 use std::io::{self, Read, Write};
 
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use libp2p_webrtc as webrtc;
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use rand::thread_rng;
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use libp2p::{mdns, noise, tcp, yamux};
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use tracing_subscriber::EnvFilter;
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use std::{fs, path::Path, net::Ipv4Addr};
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use tokio::time::interval;
 
 #[cfg(feature="wasm")]
@@ -36,9 +36,9 @@ struct PosemeshBehaviour {
     streams: stream::Behaviour,
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     mdns: Toggle<mdns::tokio::Behaviour>,
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     relay: Toggle<libp2p::relay::Behaviour>,
 }
 
@@ -95,7 +95,7 @@ pub(crate) struct Networking {
     node_regsiter_topic: IdentTopic,
 }
 
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
     let path = Path::new(private_key_path);
     // Check if the keypair file exists
@@ -138,7 +138,7 @@ fn parse_or_create_keypair(
         return keypair;
     }
 
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     return keypair_file(private_key_path);
 
     #[cfg(feature="wasm")]
@@ -146,7 +146,7 @@ fn parse_or_create_keypair(
 }
 
 fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -205,20 +205,20 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         streams,
         identify,
         kdht: None.into(),
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         mdns: None.into(),
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         relay: None.into(),
     };
 
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     if cfg.enable_mdns {
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())
             .expect("Failed to build mdns behaviour");
         behavior.mdns = Some(mdns).into();
     }
 
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     if cfg.enable_relay_server {
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
         behavior.relay = Some(relay).into();
@@ -235,7 +235,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 fn build_listeners(port: u16) -> [Multiaddr; 3] {
     let mut webrtc_port = port;
     if webrtc_port != 0 {
@@ -256,7 +256,7 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 
 impl Networking {
     pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>) -> Result<Self, Box<dyn Error>> {
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -293,9 +293,9 @@ impl Networking {
         
         let nodes_map: Arc<Mutex<HashMap<PeerId, Node>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let listeners = build_listeners(cfg.port);
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         for addr in listeners.iter() {
             swarm.listen_on(addr.clone())?;
         }
@@ -323,10 +323,10 @@ impl Networking {
     }
 
     pub(crate) async fn run(mut self) {
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let mut node_register_interval = interval(Duration::from_secs(10));
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -352,7 +352,7 @@ impl Networking {
     }
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         match event {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
@@ -531,7 +531,7 @@ impl Networking {
     //         let msg_clone = msg.clone();
     //         let incoming_streams = self.incoming_streams.clone();
     //         println!("Sending message to peer: {:?}", peer);
-    //         #[cfg(feature="default")]
+    //         #[cfg(feature="native")]
     //         tokio::spawn(_send_message(incoming_streams, peer_clone, msg_clone));
     //         #[cfg(feature="wasm")]
     //         wasm_bindgen_futures::spawn_local(_send_message(incoming_streams, peer_clone, msg_clone));

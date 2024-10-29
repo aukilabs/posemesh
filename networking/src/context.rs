@@ -3,9 +3,9 @@ use crate::network::{Networking, NetworkingConfig};
 use libp2p::Multiaddr;
 use std::error::Error;
 
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use std::{ffi::CStr, os::raw::c_char, sync::Arc};
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 use tokio::runtime::Runtime;
 
 #[cfg(feature="wasm")]
@@ -13,7 +13,7 @@ use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 #[cfg(feature="wasm")]
 use wasm_bindgen_futures::future_to_promise;
 
-#[cfg(feature="default")]
+#[cfg(feature="native")]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -40,7 +40,7 @@ impl Config {
 }
 
 pub struct Context {
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     runtime: Arc<Runtime>,
     client: client::Client,
 }
@@ -51,7 +51,7 @@ impl Context {
         // ** serve_as_bootstrap **
         // ************************
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let serve_as_bootstrap = config.serve_as_bootstrap != 0;
 
         #[cfg(feature="wasm")]
@@ -61,7 +61,7 @@ impl Context {
         // ** serve_as_relay **
         // ********************
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let serve_as_relay = config.serve_as_relay != 0;
 
         #[cfg(feature="wasm")]
@@ -71,7 +71,7 @@ impl Context {
         // ** bootstraps **
         // ****************
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
@@ -92,7 +92,7 @@ impl Context {
         let _ = serve_as_relay; // TODO: temp
         let _ = bootstraps; // TODO: temp
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         let runtime = Arc::new(Runtime::new().unwrap());
 
         let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
@@ -111,20 +111,20 @@ impl Context {
         }, receiver)?;
         let client = client::new_client(sender);
 
-        #[cfg(feature="default")]
+        #[cfg(feature="native")]
         runtime.spawn(networking.run());
 
         #[cfg(feature="wasm")]
         wasm_bindgen_futures::spawn_local(networking.run());
 
         Ok(Box::new(Context {
-            #[cfg(feature="default")]
+            #[cfg(feature="native")]
             runtime: runtime,
             client: client,
         }))
     }
 
-    #[cfg(feature="default")]
+    #[cfg(feature="native")]
     pub fn send(&mut self, callback: extern "C" fn(i32), msg: Vec<u8>, peer_id: String, protocol: String) {
         let runtime = self.runtime.clone();
         let mut sender = self.client.clone();
