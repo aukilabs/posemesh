@@ -1,5 +1,5 @@
-#ifndef __POSEMESH_C_CONFIG_H__
-#define __POSEMESH_C_CONFIG_H__
+#ifndef __POSEMESH_C_API_H__
+#define __POSEMESH_C_API_H__
 
 #if defined(__APPLE__)
 #    if defined(POSEMESH_BUILD)
@@ -13,4 +13,4 @@
 #    error "Platform not supported."
 #endif
 
-#endif // __POSEMESH_C_CONFIG_H__
+#endif // __POSEMESH_C_API_H__
