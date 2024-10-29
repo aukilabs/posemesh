@@ -5,7 +5,7 @@ mod network;
 use context::{Config, Context};
 use std::ptr::null_mut;
 
-#[cfg(feature = "web_platform")]
+#[cfg(feature="wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 // ******************************************
@@ -22,14 +22,14 @@ fn posemesh_networking_context_create(config: &Config) -> *mut Context {
     }
 }
 
-#[cfg(feature = "non_web_platform")]
+#[cfg(feature="default")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_context_create(config: *const Config) -> *mut Context {
     assert!(!config.is_null(), "psm_posemesh_networking_context_create(): config is null");
     posemesh_networking_context_create(unsafe { &*config })
 }
 
-#[cfg(feature = "web_platform")]
+#[cfg(feature="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextCreate(config: &Config) -> *mut Context {
@@ -47,13 +47,13 @@ fn posemesh_networking_context_destroy(context: *mut Context) {
     }
 }
 
-#[cfg(feature = "non_web_platform")]
+#[cfg(feature="default")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_context_destroy(context: *mut Context) {
     posemesh_networking_context_destroy(context);
 }
 
-#[cfg(feature = "web_platform")]
+#[cfg(feature="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
@@ -67,7 +67,7 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
 // TODO: C++ needs a shallow Promise/Task impl
 // TODO: Vec<u8> should use raw ptr and size (also perf optimization: use some sort of custom "stream" type for large messages)
 // TODO: String needs to change to c_char most likely
-#[cfg(feature = "non_web_platform")]
+#[cfg(feature="default")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
     assert!(!context.is_null(), "psm_posemesh_networking_send_message(): context is null");
