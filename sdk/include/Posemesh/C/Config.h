@@ -18,6 +18,7 @@ extern "C" {
 
 psm_config_t* PSM_API psm_config_create();
 psm_config_t* PSM_API psm_config_duplicate(const psm_config_t* config);
+uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t* other_config);
 void PSM_API psm_config_destroy(psm_config_t* config);
 
 #if !defined(__EMSCRIPTEN__)
