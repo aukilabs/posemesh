@@ -18,6 +18,9 @@ public:
     Config& PSM_API operator=(const Config& config);
     Config& PSM_API operator=(Config&& config) noexcept;
 
+    bool PSM_API operator==(const Config& config) const noexcept;
+    bool PSM_API operator!=(const Config& config) const noexcept;
+
     #if !defined(__EMSCRIPTEN__)
         bool PSM_API getServeAsBootstrap() const noexcept;
         void PSM_API setServeAsBootstrap(bool serveAsBootstrap) noexcept;

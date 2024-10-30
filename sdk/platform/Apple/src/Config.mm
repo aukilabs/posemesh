@@ -20,6 +20,21 @@
     return self;
 }
 
+- (instancetype)initWithConfig:(PSMConfig*)config {
+    NSAssert(config, @"config is null");
+    NSAssert(config->m_config, @"config->m_config is null");
+    auto* copy = new(std::nothrow) psm::Config(*(config->m_config));
+    if (!copy) {
+        return nil;
+    }
+    self = [self initWithNativeConfig:copy];
+    if (!self) {
+        delete copy;
+        return nil;
+    }
+    return self;
+}
+
 - (instancetype)initWithNativeConfig:(psm::Config*)config {
     NSAssert(config, @"config is null");
     self = [super init];
@@ -48,6 +63,21 @@
     NSAssert(m_config, @"m_config is null");
     delete m_config;
     m_config = nullptr;
+}
+
+- (BOOL)isEqual:(id)object {
+    if (self == object)
+        return YES;
+    if (![object isKindOfClass:[PSMConfig class]])
+        return NO;
+    PSMConfig* config = (PSMConfig*)object;
+    NSAssert(m_config, @"m_config is null");
+    NSAssert(config->m_config, @"config->m_config is null");
+    return m_config->operator==(*(config->m_config));
+}
+
+- (NSUInteger)hash {
+    return 0;
 }
 
 - (BOOL)serveAsBootstrap {

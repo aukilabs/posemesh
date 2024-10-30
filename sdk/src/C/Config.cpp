@@ -17,6 +17,18 @@ psm_config_t* psm_config_duplicate(const psm_config_t* config) {
     return new(std::nothrow) psm::Config(*config);
 }
 
+uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t* other_config) {
+    if (!config) {
+        assert(!"psm_config_equals(): config is null");
+        return 0;
+    }
+    if (!other_config) {
+        assert(!"psm_config_equals(): other_config is null");
+        return 0;
+    }
+    return static_cast<uint8_t>(config->operator==(*other_config));
+}
+
 void psm_config_destroy(psm_config_t* config) {
     delete config;
 }
