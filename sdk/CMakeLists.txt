@@ -77,6 +77,7 @@ elseif(EMSCRIPTEN)
     add_platform_sources(
         Posemesh
         CXX_SOURCES
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
     )
@@ -95,6 +96,8 @@ if(EMSCRIPTEN)
         INPUTS
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
             Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
     )
     if(USE_BABEL_JS)

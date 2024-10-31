@@ -18,4 +18,7 @@ NS_SWIFT_NAME(Config) PSM_API @interface PSMConfig : NSObject<NSCopying>
 - (BOOL)serveAsRelay NS_REFINED_FOR_SWIFT;
 - (void)setServeAsRelay:(BOOL)serveAsRelay NS_REFINED_FOR_SWIFT;
 
+- (NSArray<NSString*>*)getBootstraps;
+- (BOOL)setBootstraps:(NSArray<NSString*>*)bootstraps;
+
 @end

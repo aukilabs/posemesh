@@ -28,6 +28,9 @@ public:
         bool PSM_API getServeAsRelay() const noexcept;
         void PSM_API setServeAsRelay(bool serveAsRelay) noexcept;
     #endif
+
+    std::vector<std::string> PSM_API getBootstraps() const;
+    bool PSM_API setBootstraps(std::vector<std::string> bootstraps) noexcept;
 private:
     #if !defined(__EMSCRIPTEN__)
         bool m_serveAsBootstrap;

@@ -100,4 +100,23 @@
     m_config->setServeAsRelay(static_cast<bool>(serveAsRelay));
 }
 
+- (NSArray<NSString*>*)getBootstraps {
+    NSAssert(m_config, @"m_config is null");
+    const auto bootstraps = m_config->getBootstraps();
+    NSMutableArray<NSString*>* array = [[NSMutableArray<NSString*> alloc] init];
+    for (const auto& bootstrap : bootstraps) {
+        [array addObject:[NSString stringWithUTF8String:bootstrap.c_str()]];
+    }
+    return array;
+}
+
+- (BOOL)setBootstraps:(NSArray<NSString*>*)bootstraps {
+    NSAssert(m_config, @"m_config is null");
+    std::vector<std::string> bootstraps_vector;
+    for (NSString* bootstrap in bootstraps) {
+        bootstraps_vector.emplace_back([bootstrap UTF8String]);
+    }
+    return static_cast<BOOL>(m_config->setBootstraps(std::move(bootstraps_vector)));
+}
+
 @end
