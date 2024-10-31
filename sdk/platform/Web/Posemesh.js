@@ -21,7 +21,11 @@ var Posemesh = {
                 }) : __internalPosemesh();
                 mainPromise.then(mainModule => {
                     Posemesh = mainModule.Posemesh;
-                    Posemesh.__internalModule = mainModule;
+                    Posemesh.__mainModule = mainModule;
+                    Posemesh.Config = mainModule.Config;
+                    for (let builderFunction of __internalPosemeshAPI.builderFunctions) {
+                        builderFunction();
+                    }
                     resolve(Posemesh);
                 }).catch(error => {
                     if (!error) {

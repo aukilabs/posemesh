@@ -24,7 +24,7 @@ function(LINK_NETWORKING_LIBRARY NAME)
     set(NETWORKING_INCLUDE_DIR "${NETWORKING_PREFIX}/include")
 
     if(APPLE)
-        set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR_WITH_BUILD_TYPE}/libposemesh_networking.a")
+        set(NETWORKING_LIBRARY "${NETWORKING_TARGET_DIR_WITH_BUILD_TYPE}/libposemesh_networking_static.a")
     elseif(EMSCRIPTEN)
         set(NETWORKING_LIBRARY_JS "${NETWORKING_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshNetworking.js")
         set(NETWORKING_LIBRARY_WASM "${NETWORKING_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshNetworking_bg.wasm")
@@ -69,6 +69,13 @@ function(LINK_NETWORKING_LIBRARY NAME)
             RENAME "PosemeshNetworking.wasm"
         )
     else()
+        if(APPLE)
+            target_link_libraries(
+                ${NAME}
+                PRIVATE
+                    "-framework SystemConfiguration"
+            )
+        endif()
         link_platform_libraries(
             ${NAME}
             HIDE_SYMBOLS

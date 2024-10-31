@@ -136,14 +136,17 @@ If(-Not $BuildType) {
     $BuildType = 'Release'
     Write-Warning -Message "Using the implicit '$BuildType' build type."
 }
+$RustBuildTypeDirName = $Null
 $RustBuildTypeFlag = $Null
 $WASMBuildTypeFlag = $Null
 Switch($BuildType) {
     'Debug' {
+        $RustBuildTypeDirName = 'debug'
         $RustBuildTypeFlag = ''
         $WASMBuildTypeFlag = '--dev'
     }
     'Release' {
+        $RustBuildTypeDirName = 'release'
         $RustBuildTypeFlag = '--release'
         $WASMBuildTypeFlag = '--release'
     }
@@ -151,6 +154,10 @@ Switch($BuildType) {
         Write-Error -Message "Invalid or unsupported '$BuildType' build type."
         Exit 1
     }
+}
+If($RustBuildTypeDirName -Eq $Null) {
+    Write-Error -Message 'ASSERT: Variable $RustBuildTypeDirName is not set.'
+    Exit 1
 }
 If($RustBuildTypeFlag -Eq $Null) {
     Write-Error -Message 'ASSERT: Variable $RustBuildTypeFlag is not set.'
@@ -241,6 +248,26 @@ Try {
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh Networking library.'
         Exit 1
+    }
+    If(-Not $WASMPackCommand) {
+        $StaticLibraryPathRenamed = "target/$RustTarget/$RustBuildTypeDirName/libposemesh_networking_static.a"
+        If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
+            Remove-Item -Force -Path $StaticLibraryPathRenamed 2> $Null
+            If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
+                Write-Error -Message "Failed to remove '$StaticLibraryPathRenamed' file."
+                Exit 1
+            }
+        }
+        $StaticLibraryPathOriginal = "target/$RustTarget/$RustBuildTypeDirName/libposemesh_networking.a"
+        If(-Not (Test-Path -Path $StaticLibraryPathOriginal -PathType Leaf)) {
+            Write-Error -Message "File '$StaticLibraryPathOriginal' does not exist."
+            Exit 1
+        }
+        $CopyItemResult = $(Copy-Item -Path $StaticLibraryPathOriginal -Destination $StaticLibraryPathRenamed) 2>&1
+        If($CopyItemResult) {
+            Write-Error -Message "Failed to copy '$StaticLibraryPathOriginal' file over to '$StaticLibraryPathRenamed' destination."
+            Exit 1
+        }
     }
 } Finally {
     Pop-Location
