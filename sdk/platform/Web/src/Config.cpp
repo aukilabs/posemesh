@@ -22,5 +22,7 @@ EMSCRIPTEN_BINDINGS(Config) {
         .constructor(&duplicate)
         .function("duplicate()", &duplicate)
         .function("equals(config)", &equals)
+        .function("__getBootstraps()", &Config::getBootstraps)
+        .function("__setBootstraps(bootstraps)", &Config::setBootstraps)
     ;
 }

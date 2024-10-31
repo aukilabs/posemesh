@@ -1,3 +1,4 @@
+#include <iostream>
 #include <Posemesh/Config.hpp>
 
 namespace psm {
@@ -52,5 +53,29 @@ bool Config::operator!=(const Config& config) const noexcept {
         m_serveAsRelay = serveAsRelay;
     }
 #endif
+
+std::vector<std::string> Config::getBootstraps() const {
+    return m_bootstraps;
+}
+
+bool Config::setBootstraps(std::vector<std::string> bootstraps) noexcept {
+    const auto bootstrapsCount = bootstraps.size();
+    for (std::size_t i = 0; i < bootstrapsCount; ++i) {
+        if (bootstraps[i].find(';') != std::string::npos) {
+            std::cerr << "Config::setBootstraps(): bootstrap at index " << i << " contains an illegal ';' character" << std::endl;
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i < bootstrapsCount - 1; ++i) {
+        for (std::size_t j = i + 1; j < bootstrapsCount; ++j) {
+            if (bootstraps[i] == bootstraps[j]) {
+                std::cerr << "Config::setBootstraps(): bootstrap at index " << j << " is the same as bootstrap at index " << i << std::endl;
+                return false;
+            }
+        }
+    }
+    m_bootstraps = std::move(bootstraps);
+    return true;
+}
 
 }
