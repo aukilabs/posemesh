@@ -16,4 +16,10 @@ extension Config {
             __setServeAsRelay(newValue)
         }
     }
+
+    public var bootstraps: [String] {
+        get {
+            return __bootstraps()
+        }
+    }
 }

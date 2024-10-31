@@ -2,6 +2,7 @@
 #define __POSEMESH_C_POSEMESH_H__
 
 #include "API.h"
+#include "Config.h"
 
 #if defined(__cplusplus)
 namespace psm { class Posemesh; }
@@ -15,6 +16,7 @@ extern "C" {
 #endif
 
 psm_posemesh_t* PSM_API psm_posemesh_create();
+psm_posemesh_t* PSM_API psm_posemesh_create_with_config(const psm_config_t* config);
 void PSM_API psm_posemesh_destroy(psm_posemesh_t* posemesh);
 
 #if defined(__cplusplus)

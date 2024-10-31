@@ -100,7 +100,7 @@
     m_config->setServeAsRelay(static_cast<bool>(serveAsRelay));
 }
 
-- (NSArray<NSString*>*)getBootstraps {
+- (NSArray<NSString*>*)bootstraps {
     NSAssert(m_config, @"m_config is null");
     const auto bootstraps = m_config->getBootstraps();
     NSMutableArray<NSString*>* array = [[NSMutableArray<NSString*> alloc] init];
@@ -117,6 +117,11 @@
         bootstraps_vector.emplace_back([bootstrap UTF8String]);
     }
     return static_cast<BOOL>(m_config->setBootstraps(std::move(bootstraps_vector)));
+}
+
+- (void*)nativeConfig {
+    NSAssert(m_config, @"m_config is null");
+    return m_config;
 }
 
 @end
