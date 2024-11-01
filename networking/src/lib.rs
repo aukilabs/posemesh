@@ -1,10 +1,11 @@
-pub mod client;
+mod client;
 pub mod context;
 pub mod network;
 
+use std::ptr::null_mut;
+
 #[cfg(any(feature="cpp", feature="wasm"))]
 use context::{Config, Context};
-use std::ptr::null_mut;
 
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -31,7 +32,7 @@ pub extern "C" fn psm_posemesh_networking_context_create(config: *const Config) 
     posemesh_networking_context_create(unsafe { &*config })
 }
 
-#[cfg(target_family="wasm")]
+#[cfg(feature="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextCreate(config: &Config) -> *mut Context {
@@ -55,7 +56,7 @@ pub extern "C" fn psm_posemesh_networking_context_destroy(context: *mut Context)
     posemesh_networking_context_destroy(context);
 }
 
-#[cfg(target_family="wasm")]
+#[cfg(feature="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
@@ -71,8 +72,14 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
 // TODO: String needs to change to c_char most likely
 #[cfg(feature="cpp")]
 #[no_mangle]
-pub extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
+pub async extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
     assert!(!context.is_null(), "psm_posemesh_networking_send_message(): context is null");
     let context = unsafe { &mut *context };
-    context.send(callback, msg, peer_id, protocol);
+    match context.send(msg, peer_id, protocol).await {
+        Ok(context) => callback(0),
+        Err(error) => {
+            eprintln!("posemesh_networking_context_create(): {:?}", error);
+            callback(1);
+        }
+    }
 }
