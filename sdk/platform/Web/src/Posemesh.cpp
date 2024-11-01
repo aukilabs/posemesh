@@ -7,8 +7,8 @@ using namespace emscripten;
 using namespace psm;
 
 namespace {
-    bool equals(const std::shared_ptr<Posemesh>& self, const std::shared_ptr<Posemesh>& posemesh) {
-        return self.get() == posemesh.get();
+    bool equals(const Posemesh& self, const Posemesh& posemesh) {
+        return &self == &posemesh;
     }
 }
 

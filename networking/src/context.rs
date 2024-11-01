@@ -75,7 +75,7 @@ impl Context {
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
-        }.to_str()?;
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
 
         #[cfg(feature="wasm")]
         let bootstraps_raw = &config.bootstraps;
@@ -93,7 +93,7 @@ impl Context {
         let _ = bootstraps; // TODO: temp
 
         #[cfg(feature="native")]
-        let runtime = Arc::new(Runtime::new().unwrap());
+        let runtime = Arc::new(Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?);
 
         let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
         let networking = Networking::new(&NetworkingConfig{
