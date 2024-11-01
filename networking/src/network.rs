@@ -1,5 +1,6 @@
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use rand::rngs::OsRng;
 use std::{collections::HashMap ,str::FromStr};
 use std::error::Error;
 use std::time::Duration;
@@ -36,10 +37,13 @@ struct PosemeshBehaviour {
     streams: stream::Behaviour,
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
+    autonat_client: libp2p::autonat::v2::client::Behaviour,
     #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     relay: Toggle<libp2p::relay::Behaviour>,
+    #[cfg(not(target_family="wasm"))]
+    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
 }
 
 #[derive(Clone)]
@@ -204,11 +208,18 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         gossipsub,
         streams,
         identify,
+        autonat_client: libp2p::autonat::v2::client::Behaviour::new(
+            OsRng,
+            libp2p::autonat::v2::client::Config::default()
+                .with_probe_interval(Duration::from_secs(5)),
+        ),
         kdht: None.into(),
         #[cfg(not(target_family="wasm"))]
         mdns: None.into(),
         #[cfg(not(target_family="wasm"))]
         relay: None.into(),
+        #[cfg(not(target_family="wasm"))]
+        autonat_server: None.into(),
     };
 
     #[cfg(not(target_family="wasm"))]
@@ -222,6 +233,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     if cfg.enable_relay_server {
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
         behavior.relay = Some(relay).into();
+        behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
     }
 
     if cfg.enable_kdht {
@@ -463,6 +475,25 @@ impl Networking {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Sent { peer_id, .. })) => {
                 println!("Sent identify info to {peer_id:?}")
             },
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
+                server,
+                tested_addr,
+                bytes_sent,
+                result: Ok(()),
+            })) => {
+                println!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
+                server,
+                tested_addr,
+                bytes_sent,
+                result: Err(e),
+            })) => {
+                println!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
+            }
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                println!("External address confirmed: {address}");
+            }
             SwarmEvent::Behaviour(event) => {
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
                     info: libp2p::identify::Info { observed_addr, .. },
@@ -470,8 +501,7 @@ impl Networking {
                     ..
                 }) = &event
                 {
-                    self.swarm.add_external_address(observed_addr.clone());
-                    println!("{event:?}");
+                    println!("Observed address: {observed_addr} for {peer_id}");
                     #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
