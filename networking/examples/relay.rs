@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bootstrap_nodes: vec![],
         enable_relay_server: true,
         enable_kdht: true,
-        enable_mdns: true,
+        enable_mdns: false,
         relay_nodes: vec![],
         private_key: "".to_string(),
         private_key_path: private_key_path,
