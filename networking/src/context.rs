@@ -4,16 +4,12 @@ use libp2p::Multiaddr;
 use std::error::Error;
 
 #[cfg(not(target_family="wasm"))]
-use std::{ffi::CStr, os::raw::c_char, sync::Arc};
-#[cfg(not(target_family="wasm"))]
-use tokio::runtime::Runtime;
+use std::{ffi::CStr, os::raw::c_char};
 
 #[cfg(target_family="wasm")]
-use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
-#[cfg(target_family="wasm")]
-use wasm_bindgen_futures::future_to_promise;
+use wasm_bindgen::prelude::*;
 
-#[cfg(not(target_family="wasm"))]
+#[cfg(all(not(target_family="wasm"), feature="cpp"))]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -21,14 +17,14 @@ pub struct Config {
     pub bootstraps: *const c_char,
 }
 
-#[cfg(target_family="wasm")]
+#[cfg(all(target_family="wasm", feature="wasm"))]
 #[wasm_bindgen(getter_with_clone)]
 #[allow(non_snake_case)]
 pub struct Config {
     pub bootstraps: String,
 }
 
-#[cfg(target_family="wasm")]
+#[cfg(all(target_family="wasm", feature="wasm"))]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]
@@ -41,11 +37,12 @@ impl Config {
 
 pub struct Context {
     #[cfg(feature="cpp")]
-    runtime: Arc<Runtime>,
+    runtime: tokio::runtime::Runtime,
     client: client::Client,
 }
 
 impl Context {
+    #[cfg(any(feature="wasm", feature="cpp"))]
     pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
         // ************************
         // ** serve_as_bootstrap **
@@ -116,7 +113,7 @@ impl Context {
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
     #[cfg(feature="cpp")]
-    let runtime = Arc::new(Runtime::new().unwrap());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
     let networking = Networking::new(config, receiver)?;

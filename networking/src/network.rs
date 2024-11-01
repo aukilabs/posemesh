@@ -1,9 +1,9 @@
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use rand::rngs::OsRng;
 use std::{collections::HashMap ,str::FromStr};
 use std::error::Error;
 use std::time::Duration;
+use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::{Arc, Mutex};
@@ -12,8 +12,6 @@ use std::io::{self, Read, Write};
 
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
-#[cfg(not(target_family="wasm"))]
-use rand::thread_rng;
 #[cfg(not(target_family="wasm"))]
 use libp2p::{mdns, noise, tcp, yamux};
 #[cfg(not(target_family="wasm"))]
