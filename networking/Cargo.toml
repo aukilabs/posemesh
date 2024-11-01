@@ -13,7 +13,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns" ] }
+libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
 tokio = { version = "1.40.0", features = ["full"] }
 rand = "0.8.5"
 libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = ["tokio"] }
