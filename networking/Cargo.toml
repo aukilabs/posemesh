@@ -12,51 +12,30 @@ serde_json = "1.0.128"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", default-features = false }
-tokio = { version = "1.40.0", features = ["full"], optional = true }
-rand = { version = "0.8.5", optional = true }
-libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = ["tokio"], optional = true }
-libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", optional = true }
-tracing-wasm = { version = "0.2.1", optional = true }
-wasm-bindgen = { version = "0.2.90", optional = true }
-wasm-bindgen-futures = { version = "0.4.42", optional = true }
-serde-wasm-bindgen = { version = "0.6.5", optional = true }
-js-sys = { version = "0.3.72", optional = true }
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns" ] }
+tokio = { version = "1.40.0", features = ["full"] }
+rand = "0.8.5"
+libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = ["tokio"] }
+
+[target.'cfg(target_family="wasm")'.dependencies]
+libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad" ] }
+libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374" }
+tracing-wasm = "0.2.1"
+wasm-bindgen = "0.2.90"
+wasm-bindgen-futures = "0.4.42"
+serde-wasm-bindgen = "0.6.5"
 
 [features]
-default = ["native"]
-wasm = [
-    "libp2p/wasm-bindgen",
-    "libp2p/macros",
-    "libp2p/gossipsub",
-    "libp2p/serde",
-    "libp2p/identify",
-    "libp2p/kad",
-    "dep:libp2p-webrtc-websys",
-    "dep:tracing-wasm",
-    "dep:wasm-bindgen",
-    "dep:wasm-bindgen-futures",
-    "dep:serde-wasm-bindgen",
-    "dep:js-sys"
-]
-native = [
-    "dep:tokio",
-    "dep:rand",
-    "dep:libp2p-webrtc",
-    "libp2p/tokio",
-    "libp2p/gossipsub",
-    "libp2p/mdns",
-    "libp2p/noise",
-    "libp2p/macros",
-    "libp2p/tcp",
-    "libp2p/yamux",
-    "libp2p/quic",
-    "libp2p/serde",
-    "libp2p/relay",
-    "libp2p/identify",
-    "libp2p/kad",
-    "libp2p/dns"
-]
+default = []
+cpp = []
+rust = []
+wasm = []
 
 [lib]
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[[example]]
+name = "relay"
+path = "examples/relay.rs"
+required-features = ["rust"]

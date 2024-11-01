@@ -20,7 +20,7 @@ impl Client {
             .send(Command::Send { message, peer_id, protocol: pro})
             .await
             .map_err(|e| Box::new(e) as Box<dyn Error>);
-        }
+    }
 }
 
 #[derive(Debug)]

@@ -6,25 +6,25 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::{Arc, Mutex};
-use libp2p_stream as stream;
+use libp2p_stream::{self as stream, IncomingStreams};
 use std::io::{self, Read, Write};
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use rand::thread_rng;
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use libp2p::{mdns, noise, tcp, yamux};
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use tracing_subscriber::EnvFilter;
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use std::{fs, path::Path, net::Ipv4Addr};
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use tokio::time::interval;
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
 use crate::client;
@@ -36,9 +36,9 @@ struct PosemeshBehaviour {
     streams: stream::Behaviour,
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     relay: Toggle<libp2p::relay::Behaviour>,
 }
 
@@ -86,7 +86,7 @@ pub struct Node {
 const CHAT_PROTOCOL: StreamProtocol = StreamProtocol::new("/chat");
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
-pub(crate) struct Networking {
+pub struct Networking {
     pub nodes_map: Arc<Mutex<HashMap<PeerId, Node>>>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
@@ -95,7 +95,7 @@ pub(crate) struct Networking {
     node_regsiter_topic: IdentTopic,
 }
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
     let path = Path::new(private_key_path);
     // Check if the keypair file exists
@@ -138,15 +138,15 @@ fn parse_or_create_keypair(
         return keypair;
     }
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     return keypair_file(private_key_path);
 
-    #[cfg(feature="wasm")]
+    #[cfg(target_family="wasm")]
     return libp2p::identity::Keypair::generate_ed25519();
 }
 
 fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -166,7 +166,7 @@ fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> R
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    #[cfg(feature="wasm")]
+    #[cfg(target_family="wasm")]
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_wasm_bindgen()
         .with_other_transport(|key| {
@@ -205,20 +205,20 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         streams,
         identify,
         kdht: None.into(),
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         mdns: None.into(),
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         relay: None.into(),
     };
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     if cfg.enable_mdns {
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())
             .expect("Failed to build mdns behaviour");
         behavior.mdns = Some(mdns).into();
     }
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     if cfg.enable_relay_server {
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
         behavior.relay = Some(relay).into();
@@ -235,7 +235,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 fn build_listeners(port: u16) -> [Multiaddr; 3] {
     let mut webrtc_port = port;
     if webrtc_port != 0 {
@@ -256,12 +256,12 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 
 impl Networking {
     pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>) -> Result<Self, Box<dyn Error>> {
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
         
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         tracing_wasm::set_as_global_default();
 
         let mut private_key = cfg.private_key.clone();
@@ -293,9 +293,9 @@ impl Networking {
         
         let nodes_map: Arc<Mutex<HashMap<PeerId, Node>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let listeners = build_listeners(cfg.port);
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         for addr in listeners.iter() {
             swarm.listen_on(addr.clone())?;
         }
@@ -312,6 +312,14 @@ impl Networking {
         // subscribes to our topic
         swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
+        let chat_stream = swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL)?;
+
+        #[cfg(target_family="wasm")]
+        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
+
+        #[cfg(not(target_family="wasm"))]
+        tokio::spawn(chat_protocol_handler(chat_stream));
+
         Ok(Networking {
             cfg: cfg.clone(),
             nodes_map: nodes_map,
@@ -322,11 +330,13 @@ impl Networking {
         })
     }
 
-    pub(crate) async fn run(mut self) {
-        #[cfg(feature="native")]
+    pub async fn run(mut self) {
+        println!("Starting networking");
+        
+        #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -339,10 +349,11 @@ impl Networking {
                         }
                     }
                 }
+                else => break,
             }
         };
 
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         loop {
             futures::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -352,7 +363,7 @@ impl Networking {
     }
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         match event {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
@@ -461,14 +472,14 @@ impl Networking {
                 {
                     self.swarm.add_external_address(observed_addr.clone());
                     println!("{event:?}");
-                    #[cfg(feature="wasm")]
+                    #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
-            e => panic!("{e:?}"),
+            e => println!("{e:?}"),
         }
     
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         match self.swarm.next().await.unwrap() {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Gossipsub(gossipsub::Event::Message {
                 propagation_source: _peer_id,
@@ -514,7 +525,7 @@ impl Networking {
                     tracing::warn!(%peer_id, "Chat protocol failed: {e}");
                     return;
                 }
-            }
+            },
         }
     }
 
@@ -523,27 +534,6 @@ impl Networking {
         self.swarm.behaviour_mut().gossipsub.publish(self.node_regsiter_topic.clone(), serialized)?;
         Ok(())
     }
-
-    // pub fn send_message(&mut self, msg: Vec<u8>) {
-    //     let nodes = self.nodes_map.lock().unwrap();
-    //     nodes.iter().for_each(|(peer, _)| {
-    //         let peer_clone = peer.clone();
-    //         let msg_clone = msg.clone();
-    //         let incoming_streams = self.incoming_streams.clone();
-    //         println!("Sending message to peer: {:?}", peer);
-    //         #[cfg(feature="native")]
-    //         tokio::spawn(_send_message(incoming_streams, peer_clone, msg_clone));
-    //         #[cfg(feature="wasm")]
-    //         wasm_bindgen_futures::spawn_local(_send_message(incoming_streams, peer_clone, msg_clone));
-    //     });
-    // }
-
-    // pub fn poll_messages(&mut self) -> Vec<Vec<u8>> {
-    //     let mut messages = self.messages.lock().unwrap();
-    //     let messages_clone = messages.clone();
-    //     messages.clear();
-    //     messages_clone
-    // }
 }
 
 async fn _send_message(mut controller: stream::Control, peer: PeerId, msg: Vec<u8>) {
@@ -574,7 +564,7 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-async fn _receive_message(mut stream: Stream, messages: Arc<Mutex<Vec<Vec<u8>>>>) -> io::Result<usize> {
+async fn _receive_message(mut stream: Stream) -> io::Result<usize> {
     let mut total = 0;
 
     let mut buf = [0u8; 100];
@@ -586,8 +576,21 @@ async fn _receive_message(mut stream: Stream, messages: Arc<Mutex<Vec<Vec<u8>>>>
         }
 
         total += read;
-        messages.lock().unwrap().push(buf[..read].to_vec());
         // print the message as string
         println!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
+    }
+}
+
+async fn chat_protocol_handler(mut stream: IncomingStreams) {
+    while let Some((peer, stream)) = stream.next().await {
+        match _receive_message(stream).await {
+            Ok(n) => {
+                tracing::info!(%peer, "Echoed {n} bytes!");
+            }
+            Err(e) => {
+                tracing::warn!(%peer, "Echo failed: {e}");
+                continue;
+            }
+        };
     }
 }
