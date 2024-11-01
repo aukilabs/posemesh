@@ -3,17 +3,17 @@ use crate::network::{Networking, NetworkingConfig};
 use libp2p::Multiaddr;
 use std::error::Error;
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use std::{ffi::CStr, os::raw::c_char, sync::Arc};
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use tokio::runtime::Runtime;
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use wasm_bindgen_futures::future_to_promise;
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -21,14 +21,14 @@ pub struct Config {
     pub bootstraps: *const c_char,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen(getter_with_clone)]
 #[allow(non_snake_case)]
 pub struct Config {
     pub bootstraps: String,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]
@@ -40,7 +40,7 @@ impl Config {
 }
 
 pub struct Context {
-    #[cfg(feature="native")]
+    #[cfg(feature="cpp")]
     runtime: Arc<Runtime>,
     client: client::Client,
 }
@@ -51,33 +51,33 @@ impl Context {
         // ** serve_as_bootstrap **
         // ************************
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let serve_as_bootstrap = config.serve_as_bootstrap != 0;
 
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         let serve_as_bootstrap = false;
 
         // ********************
         // ** serve_as_relay **
         // ********************
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let serve_as_relay = config.serve_as_relay != 0;
 
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         let serve_as_relay = false;
 
         // ****************
         // ** bootstraps **
         // ****************
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
         }.to_str()?;
 
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         let bootstraps_raw = &config.bootstraps;
 
         let bootstraps = bootstraps_raw
@@ -89,17 +89,12 @@ impl Context {
             ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
 
         let _ = serve_as_bootstrap; // TODO: temp
-        let _ = serve_as_relay; // TODO: temp
         let _ = bootstraps; // TODO: temp
 
-        #[cfg(feature="native")]
-        let runtime = Arc::new(Runtime::new().unwrap());
-
-        let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
-        let networking = Networking::new(&NetworkingConfig{
+        let cfg = &NetworkingConfig{
             port: 0,
             bootstrap_nodes: vec![],
-            enable_relay_server: false,
+            enable_relay_server: serve_as_relay,
             enable_kdht: false,
             enable_mdns: false,
             relay_nodes: vec![],
@@ -108,43 +103,37 @@ impl Context {
             name: "my_name".to_string(),
             node_types: vec![],
             node_capabilities: vec![],
-        }, receiver)?;
-        let client = client::new_client(sender);
-
-        #[cfg(feature="native")]
-        runtime.spawn(networking.run());
-
-        #[cfg(feature="wasm")]
-        wasm_bindgen_futures::spawn_local(networking.run());
-
-        Ok(Box::new(Context {
-            #[cfg(feature="native")]
-            runtime: runtime,
-            client: client,
-        }))
+        };
+        let ctx = context_create(cfg)?;
+        Ok(Box::new(ctx))
     }
 
-    #[cfg(feature="native")]
-    pub fn send(&mut self, callback: extern "C" fn(i32), msg: Vec<u8>, peer_id: String, protocol: String) {
-        let runtime = self.runtime.clone();
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
         let mut sender = self.client.clone();
-        runtime.spawn(async move {
-            let res = sender.send(msg, peer_id, protocol).await;
-            if let Err(e) = res {
-                eprintln!("Error sending message: {:?}", e);
-                callback(-1);
-            } else {
-                callback(0);
-            }
-        });
+        sender.send(msg, peer_id, protocol).await
     }
+}
 
-    #[cfg(feature="wasm")]
-    pub fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> js_sys::Promise {
-        let mut client = self.client.clone();
-        future_to_promise(async move {
-            client.send(msg, peer_id, protocol).await;
-            Ok(JsValue::NULL)
-        })
-    }
+pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
+    #[cfg(feature="cpp")]
+    let runtime = Arc::new(Runtime::new().unwrap());
+
+    let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    let networking = Networking::new(config, receiver)?;
+    let client = client::new_client(sender);
+
+    #[cfg(feature="cpp")]
+    runtime.spawn(networking.run());
+
+    #[cfg(target_family="wasm")]
+    wasm_bindgen_futures::spawn_local(networking.run());
+
+    #[cfg(feature="rust")]
+    tokio::spawn(networking.run());
+
+    Ok(Context {
+        #[cfg(feature="cpp")]
+        runtime: runtime,
+        client: client,
+    })
 }
