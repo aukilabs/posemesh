@@ -72,7 +72,7 @@ impl Context {
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
-        }.to_str()?;
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
 
         #[cfg(target_family="wasm")]
         let bootstraps_raw = &config.bootstraps;
@@ -113,7 +113,7 @@ impl Context {
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
     #[cfg(feature="cpp")]
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?;
 
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
     let networking = Networking::new(config, receiver)?;
