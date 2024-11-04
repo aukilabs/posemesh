@@ -34,13 +34,17 @@ add_platform_library(
     Posemesh
     PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/include"
     PUBLIC_C_HEADERS
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
     PUBLIC_CXX_HEADERS
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
     CXX_SOURCES
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
@@ -50,10 +54,14 @@ if(APPLE)
         Posemesh
         PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include"
         PUBLIC_OBJC_HEADERS
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/API.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
         OBJCXX_SOURCES
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
+        Swift_SOURCES
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
         set_apple_platform_umbrella_header(
@@ -69,6 +77,8 @@ elseif(EMSCRIPTEN)
     add_platform_sources(
         Posemesh
         CXX_SOURCES
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
     )
 endif()
@@ -86,6 +96,8 @@ if(EMSCRIPTEN)
         INPUTS
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
             Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
     )
     if(USE_BABEL_JS)
