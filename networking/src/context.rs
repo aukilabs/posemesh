@@ -9,7 +9,7 @@ use std::{ffi::CStr, os::raw::c_char};
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(not(target_family="wasm"), feature="cpp"))]
+#[cfg(feature="cpp")]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -17,14 +17,14 @@ pub struct Config {
     pub bootstraps: *const c_char,
 }
 
-#[cfg(all(target_family="wasm", feature="wasm"))]
+#[cfg(feature="wasm")]
 #[wasm_bindgen(getter_with_clone)]
 #[allow(non_snake_case)]
 pub struct Config {
     pub bootstraps: String,
 }
 
-#[cfg(all(target_family="wasm", feature="wasm"))]
+#[cfg(feature="wasm")]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]

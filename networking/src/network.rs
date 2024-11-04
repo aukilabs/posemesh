@@ -35,13 +35,13 @@ struct PosemeshBehaviour {
     streams: stream::Behaviour,
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
-    autonat_client: libp2p::autonat::v2::client::Behaviour,
+    autonat_client: Toggle<libp2p::autonat::v2::client::Behaviour>,
+    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
+    relay_client: Toggle<libp2p::relay::client::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     relay: Toggle<libp2p::relay::Behaviour>,
-    #[cfg(not(target_family="wasm"))]
-    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
 }
 
 #[derive(Clone)]
@@ -116,7 +116,7 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
 
     if let Some(parent) = path.parent() {
         if let Err(err) = fs::create_dir_all(parent) {
-            eprintln!("Failed to create directory: {err}");
+            tracing::error!("Failed to create directory: {err}");
         }
     }
 
@@ -124,7 +124,7 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
     if let Ok(mut file) = fs::File::create(path) {
         let keypair_bytes = keypair.to_protobuf_encoding().expect("Failed to encode keypair");
         if file.write_all(&keypair_bytes).is_err() {
-            eprintln!("Failed to write keypair to file");
+            tracing::error!("Failed to write keypair to file");
         }
     }
 
@@ -147,12 +147,12 @@ fn parse_or_create_keypair(
     return libp2p::identity::Keypair::generate_ed25519();
 }
 
-fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
+fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
     #[cfg(not(target_family="wasm"))]
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
-            tcp::Config::default(),
+            tcp::Config::default().nodelay(true),
             noise::Config::new,
             yamux::Config::default,
         )?
@@ -164,7 +164,11 @@ fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> R
             )
             .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn))))
         })?
-        .with_behaviour(|_| behavior)?
+        .with_relay_client(noise::Config::new, yamux::Config::default)?
+        .with_behaviour(|_, relay_behavior| {
+            behavior.relay_client = Some(relay_behavior).into();
+            behavior
+        })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
@@ -206,11 +210,8 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         gossipsub,
         streams,
         identify,
-        autonat_client: libp2p::autonat::v2::client::Behaviour::new(
-            OsRng,
-            libp2p::autonat::v2::client::Config::default()
-                .with_probe_interval(Duration::from_secs(5)),
-        ),
+        autonat_client: None.into(),
+        relay_client: None.into(),
         kdht: None.into(),
         #[cfg(not(target_family="wasm"))]
         mdns: None.into(),
@@ -232,11 +233,13 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
+    } else {
+        behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
     }
 
     if cfg.enable_kdht {
         let mut kad_cfg = libp2p::kad::Config::new(POSEMESH_PROTO_NAME);
-        kad_cfg.set_query_timeout(Duration::from_secs(5 * 60));
+        kad_cfg.set_query_timeout(Duration::from_secs(5));
         let store = libp2p::kad::store::MemoryStore::new(key.public().to_peer_id());
         let kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
         behavior.kdht = Some(kdht).into();
@@ -277,7 +280,7 @@ impl Networking {
         let mut private_key = cfg.private_key.clone();
         let private_key_bytes = unsafe {private_key.as_bytes_mut()};
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
-        println!("Local peer id: {:?}", key.public().to_peer_id());
+        tracing::info!("Local peer id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
@@ -341,7 +344,7 @@ impl Networking {
     }
 
     pub async fn run(mut self) {
-        println!("Starting networking");
+        tracing::info!("Starting networking");
         
         #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
@@ -355,7 +358,7 @@ impl Networking {
                     match self.register_node() {
                         Ok(_) => {},
                         Err(e) => {
-                            eprintln!("Failed to register node: {e}");
+                            tracing::error!("Failed to register node: {e}");
                         }
                     }
                 }
@@ -377,74 +380,46 @@ impl Networking {
         match event {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
-                    id,
-                    result: kad::QueryResult::StartProviding(_),
-                    ..
-                },
-            )) => {}
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
-                    id,
-                    result:
-                        kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders {
-                            providers,
-                            ..
-                        })),
-                    ..
-                },
-            )) => {}
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::GetClosestPeers(Ok(ok)),
                 ..
                 },
             )) => {
                 if ok.peers.is_empty() {
-                    println!("Query finished with no closest peers");
+                    tracing::info!("Query finished with no closest peers");
                 } else {
-                    println!("Query finished with closest peers: {:#?}", ok.peers);
+                    tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
                 }
-                println!("Query finished with closest peers: {:#?}", ok.peers);
+                tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
             },
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
-                    result:
-                        kad::QueryResult::GetProviders(Ok(
-                            kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. },
-                        )),
-                    ..
-                },
-            )) => {}
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {}
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {
+                tracing::info!("KDHT event => {event:?}");
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                eprintln!(
+                tracing::info!(
                     "Local node is listening on {:?}",
                     address.with(Protocol::P2p(local_peer_id))
                 );
             }
-            SwarmEvent::IncomingConnection { .. } => {}
             SwarmEvent::ConnectionEstablished {
-                peer_id, endpoint, ..
+                peer_id, ..
             } => {
+                tracing::info!("Connected to {peer_id}");
                 self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
-            SwarmEvent::ConnectionClosed { .. } => {}
-            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {}
-            SwarmEvent::IncomingConnectionError { .. } => {}
             SwarmEvent::Dialing {
                 peer_id: Some(peer_id),
                 ..
-            } => eprintln!("Dialing {peer_id}"),
+            } => tracing::info!("Dialing {peer_id}"),
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    println!("mDNS discovered a new peer: {peer_id}");
+                    tracing::info!("mDNS discovered a new peer: {peer_id}");
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    println!("mDNS discover peer has expired: {peer_id}");
+                    tracing::info!("mDNS discover peer has expired: {peer_id}");
                     self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                 }
             },
@@ -461,17 +436,17 @@ impl Networking {
                         if node.id == *self.swarm.local_peer_id() {
                             return;
                         }
-                        println!("Node {} joins the network", node.name);
+                        tracing::info!("Node {} joins the network", node.name);
                         self.nodes_map.lock().unwrap().insert(node.id.clone(), node);
                     },
                     Err(e) => {
-                        println!("Failed to deserialize node info: {}", e);
+                        tracing::info!("Failed to deserialize node info: {}", e);
                     }
                 }
             },
             // Prints peer id identify info is being sent to.
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Sent { peer_id, .. })) => {
-                println!("Sent identify info to {peer_id:?}")
+                tracing::info!("Sent identify info to {peer_id:?}")
             },
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
@@ -479,7 +454,7 @@ impl Networking {
                 bytes_sent,
                 result: Ok(()),
             })) => {
-                println!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
+                tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
@@ -487,24 +462,52 @@ impl Networking {
                 bytes_sent,
                 result: Err(e),
             })) => {
-                println!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
+                tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
+                for relay in self.cfg.relay_nodes.iter() {
+                    let maddr = Multiaddr::from_str(relay).unwrap();
+                    let addr = maddr
+                        .with(Protocol::P2pCircuit);
+                    match self.swarm.listen_on(addr.clone()) {
+                        Ok(_) => {
+                            tracing::info!("Listening on relay address: {addr}");
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to listen on relay address: {addr}. Error: {e}");
+                        }
+                    }
+                }
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
-                println!("External address confirmed: {address}");
+                tracing::info!("External address confirmed: {address}");
+            }
+            SwarmEvent::NewExternalAddrCandidate { address } => {
+                tracing::info!("New external address candidate: {address}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(
+                libp2p::relay::client::Event::ReservationReqAccepted { .. },
+            )) => {
+                tracing::info!("Relay accepted our reservation request");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
+                tracing::info!(?event)
             }
             SwarmEvent::Behaviour(event) => {
+                tracing::info!("{event:?}");
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
                     info: libp2p::identify::Info { observed_addr, .. },
                     peer_id,
                     ..
                 }) = &event
                 {
-                    println!("Observed address: {observed_addr} for {peer_id}");
+                    tracing::info!("Observed address: {observed_addr} for {peer_id}");
+                    if self.swarm.behaviour_mut().relay.is_enabled() {
+                        self.swarm.add_external_address(observed_addr.clone());
+                    }
                     #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
-            e => println!("{e:?}"),
+            e => tracing::debug!("{e:?}"),
         }
     
         #[cfg(target_family="wasm")]
@@ -605,7 +608,7 @@ async fn _receive_message(mut stream: Stream) -> io::Result<usize> {
 
         total += read;
         // print the message as string
-        println!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
+        tracing::info!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
     }
 }
 

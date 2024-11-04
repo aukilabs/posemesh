@@ -32,10 +32,18 @@ cpp = []
 rust = []
 wasm = []
 
-[lib]
-crate-type = ["cdylib", "staticlib", "rlib"]
+[target.'cfg(feature="rust")'.lib]
+crate-type = ["rlib"]
+
+[target.'cfg(not(feature="rust"))'.lib]
+crate-type = ["cdylib", "staticlib"]
 
 [[example]]
 name = "relay"
 path = "examples/relay.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "autonat"
+path = "examples/autonat_client.rs"
 required-features = ["rust"]
