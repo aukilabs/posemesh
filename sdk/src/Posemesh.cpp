@@ -34,6 +34,8 @@ Posemesh::Posemesh(const Config& config) {
 
 Posemesh::Posemesh(Posemesh&& posemesh) {
     assert(posemesh.m_context || !"Posemesh::Posemesh(): posemesh.m_context is null");
+    if (m_context)
+        psm_posemesh_networking_context_destroy(static_cast<psm_posemesh_networking_context_t*>(m_context));
     m_context = posemesh.m_context;
     posemesh.m_context = nullptr;
 }
@@ -48,6 +50,8 @@ Posemesh& Posemesh::operator=(Posemesh&& posemesh) noexcept {
     assert(posemesh.m_context || !"Posemesh::operator=(): posemesh.m_context is null");
     if (this == &posemesh)
         return *this;
+    if (m_context)
+        psm_posemesh_networking_context_destroy(static_cast<psm_posemesh_networking_context_t*>(m_context));
     m_context = posemesh.m_context;
     posemesh.m_context = nullptr;
     return *this;
