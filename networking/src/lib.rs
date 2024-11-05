@@ -2,8 +2,6 @@ mod client;
 pub mod context;
 pub mod network;
 
-use std::ptr::null_mut;
-
 #[cfg(any(feature="cpp", feature="wasm"))]
 use context::{Config, Context};
 
@@ -20,7 +18,7 @@ fn posemesh_networking_context_create(config: &Config) -> *mut Context {
         Ok(context) => Box::into_raw(context),
         Err(error) => {
             eprintln!("posemesh_networking_context_create(): {:?}", error);
-            null_mut()
+            std::ptr::null_mut()
         }
     }
 }

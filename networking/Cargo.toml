@@ -47,3 +47,8 @@ required-features = ["rust"]
 name = "autonat"
 path = "examples/autonat_client.rs"
 required-features = ["rust"]
+
+[[example]]
+name = "holepunch"
+path = "examples/private_dialer.rs"
+required-features = ["rust"]

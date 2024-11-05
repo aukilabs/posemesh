@@ -1,9 +1,8 @@
 use crate::client;
 use crate::network::{Networking, NetworkingConfig};
-use libp2p::Multiaddr;
 use std::error::Error;
 
-#[cfg(not(target_family="wasm"))]
+#[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::c_char};
 
 #[cfg(target_family="wasm")]

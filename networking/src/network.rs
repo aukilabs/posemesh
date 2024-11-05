@@ -1,6 +1,6 @@
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap ,str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 use std::error::Error;
 use std::time::Duration;
 use rand::{thread_rng, rngs::OsRng};
@@ -234,6 +234,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
     } else {
+        // TODO: should not add to clients
         behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
     }
 
@@ -241,7 +242,13 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         let mut kad_cfg = libp2p::kad::Config::new(POSEMESH_PROTO_NAME);
         kad_cfg.set_query_timeout(Duration::from_secs(5));
         let store = libp2p::kad::store::MemoryStore::new(key.public().to_peer_id());
-        let kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
+        let mut kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
+
+        #[cfg(not(target_family="wasm"))]
+        kdht.set_mode(Some(kad::Mode::Server));
+
+        #[cfg(target_family="wasm")]
+        kdht.set_mode(Some(kad::Mode::Client)); // TODO: do it for all clients instead of just wasm
         behavior.kdht = Some(kdht).into();
     }
 
@@ -299,7 +306,7 @@ impl Networking {
                 .behaviour_mut()
                 .kdht
                 .as_mut()
-                .map(|dht| {dht.add_address(&peer_id, maddr.clone())});
+                .map(|dht| { dht.add_address(&peer_id, maddr.clone())});
 
             swarm.dial(maddr)?;
         }
@@ -390,6 +397,13 @@ impl Networking {
                     tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
                 }
                 tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
+                ok.peers.iter().for_each(|peer| {
+                    self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                        peer.addrs.iter().for_each(|addr| {
+                            dht.add_address(&peer.peer_id, addr.clone());
+                        });
+                    });
+                });
             },
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {
                 tracing::info!("KDHT event => {event:?}");
@@ -463,6 +477,8 @@ impl Networking {
                 result: Err(e),
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
+                // TODO: should be done only once and not for every failed autonat test
+                // client should not care
                 for relay in self.cfg.relay_nodes.iter() {
                     let maddr = Multiaddr::from_str(relay).unwrap();
                     let addr = maddr
@@ -489,12 +505,15 @@ impl Networking {
                 tracing::info!("Relay accepted our reservation request");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
-                tracing::info!(?event)
+                tracing::info!("Relay Client: {event:?}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, ..})) => {
+                tracing::info!("Autonat Server tested address: {tested_addr}");
             }
             SwarmEvent::Behaviour(event) => {
                 tracing::info!("{event:?}");
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
-                    info: libp2p::identify::Info { observed_addr, .. },
+                    info: libp2p::identify::Info { observed_addr, listen_addrs, .. },
                     peer_id,
                     ..
                 }) = &event
@@ -503,6 +522,13 @@ impl Networking {
                     if self.swarm.behaviour_mut().relay.is_enabled() {
                         self.swarm.add_external_address(observed_addr.clone());
                     }
+
+                    for addr in listen_addrs {
+                        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                            dht.add_address(peer_id, addr.clone());
+                        });
+                    }
+
                     #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
@@ -538,6 +564,11 @@ impl Networking {
         match command {
             client::Command::Send { message, peer_id, protocol } => {
                 let mut ctrl = self.swarm.behaviour_mut().streams.new_control();
+                // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                //     if let Some(r) = dht.kbucket(peer_id) {
+                //         self.swarm.dial(r.addrs[0].clone()).unwrap();
+                //     }
+                // });
                 let stream = match ctrl.open_stream(peer_id, protocol).await {
                     Ok(stream) => stream,
                     Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
@@ -557,6 +588,7 @@ impl Networking {
                     return;
                 }
             },
+
         }
     }
 
