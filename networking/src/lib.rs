@@ -7,10 +7,19 @@ use context::{Config, Context};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::{c_char, c_uchar, CStr}, os::raw::c_void, slice};
 
+#[cfg(feature="py")]
+use context::Context;
+
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 #[cfg(target_family="wasm")]
 use wasm_bindgen_futures::{future_to_promise, js_sys::{Error, Promise}};
+
+#[cfg(feature="py")]
+use pyo3::prelude::*;
+
+#[cfg(feature="py")]
+use pyo3::exceptions::PyValueError;
 
 // ******************************************
 // ** posemesh_networking_context_create() **
@@ -208,4 +217,39 @@ pub fn posemeshNetworkingContextSendMessage2(
     protocol: *const c_char
 ) -> Promise {
     posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol)
+}
+
+#[cfg(feature="py")]
+#[pyfunction]
+pub fn start(py: Python, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
+    pyo3_log::init();
+    let cfg = network::NetworkingConfig {
+        port: port,
+        bootstrap_nodes: relay_nodes.clone(),
+        enable_relay_server: false,
+        enable_kdht: true,
+        enable_mdns: false,
+        relay_nodes: relay_nodes.clone(),
+        private_key: "".to_string(),
+        private_key_path: pkey_path.clone(),
+        name: name.clone(),
+        node_types: node_types.clone(),
+        node_capabilities: capabilities.clone(),
+    };
+    let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    pyo3_asyncio::tokio::future_into_py(py, async move {
+        let mut networking = network::Networking::new(&cfg, receiver).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        networking.run().await;
+        Ok(())
+    })?;
+
+    Ok(Context{client: client::new_client(sender)})
+}
+
+#[cfg(feature="py")]
+#[pymodule]
+fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<Context>()?;
+    m.add_function(wrap_pyfunction!(start, m)?)?;
+    Ok(())
 }

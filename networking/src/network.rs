@@ -333,14 +333,6 @@ impl Networking {
         // subscribes to our topic
         swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
-        let chat_stream = swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL)?;
-
-        #[cfg(target_family="wasm")]
-        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
-
-        #[cfg(not(target_family="wasm"))]
-        tokio::spawn(chat_protocol_handler(chat_stream));
-
         Ok(Networking {
             cfg: cfg.clone(),
             nodes_map: nodes_map,
@@ -356,6 +348,14 @@ impl Networking {
         
         #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
+
+        let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).unwrap(); // TODO: handle error
+
+        #[cfg(target_family="wasm")]
+        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
+
+        #[cfg(not(target_family="wasm"))]
+        tokio::spawn(chat_protocol_handler(chat_stream));
 
         #[cfg(not(target_family="wasm"))]
         loop {

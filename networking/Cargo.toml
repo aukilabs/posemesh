@@ -12,6 +12,9 @@ serde_json = "1.0.128"
 rand = "0.8.5"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+pyo3 = { version = "0.20.0", features = ["extension-module"], optional = true }
+pyo3-asyncio = { version = "0.20.0", features = ["tokio-runtime"], optional = true }
+pyo3-log = { version = "0.9.0", optional = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
@@ -31,6 +34,7 @@ default = []
 cpp = []
 rust = []
 wasm = []
+py = ["dep:pyo3", "dep:pyo3-asyncio", "dep:pyo3-log"]
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
