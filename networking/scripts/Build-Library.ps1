@@ -243,7 +243,7 @@ Try {
         }
         & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir pkg/$BuildType --out-name PosemeshNetworking --features "wasm"
     } Else {
-        & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --feature "cpp"
+        & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp"
     }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh Networking library.'
