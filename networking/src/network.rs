@@ -36,12 +36,13 @@ struct PosemeshBehaviour {
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
     autonat_client: Toggle<libp2p::autonat::v2::client::Behaviour>,
-    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
     relay_client: Toggle<libp2p::relay::client::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     relay: Toggle<libp2p::relay::Behaviour>,
+    #[cfg(not(target_family="wasm"))]
+    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
 }
 
 #[derive(Clone)]
@@ -383,7 +384,6 @@ impl Networking {
     }
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
-        #[cfg(not(target_family="wasm"))]
         match event {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
@@ -425,12 +425,14 @@ impl Networking {
                 peer_id: Some(peer_id),
                 ..
             } => tracing::info!("Dialing {peer_id}"),
+            #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
                     tracing::info!("mDNS discovered a new peer: {peer_id}");
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
+            #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                 for (peer_id, _multiaddr) in list {
                     tracing::info!("mDNS discover peer has expired: {peer_id}");
@@ -442,6 +444,13 @@ impl Networking {
                 message_id: _id,
                 message,
             })) => {
+                #[cfg(target_family="wasm")]
+                match self.register_node() {
+                    Ok(_) => {},
+                    Err(e) => {
+                        tracing::error!("Failed to register node: {e}");
+                    }
+                }
                 match serde_json::from_slice::<Node>(&message.data) {
                     Ok(node) => {
                         if self.nodes_map.lock().unwrap().contains_key(&node.id) {
@@ -507,6 +516,7 @@ impl Networking {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
                 tracing::info!("Relay Client: {event:?}");
             }
+            #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, ..})) => {
                 tracing::info!("Autonat Server tested address: {tested_addr}");
             }
@@ -519,7 +529,7 @@ impl Networking {
                 }) = &event
                 {
                     tracing::info!("Observed address: {observed_addr} for {peer_id}");
-                    if self.swarm.behaviour_mut().relay.is_enabled() {
+                    if self.cfg.enable_relay_server {
                         self.swarm.add_external_address(observed_addr.clone());
                     }
 
@@ -535,35 +545,13 @@ impl Networking {
             },
             e => tracing::debug!("{e:?}"),
         }
-    
-        #[cfg(target_family="wasm")]
-        match self.swarm.next().await.unwrap() {
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                propagation_source: _peer_id,
-                message_id: _id,
-                message,
-            })) => {
-                
-            },
-            SwarmEvent::Behaviour(event) => {
-                if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
-                    info: libp2p::identify::Info { observed_addr, .. },
-                    peer_id,
-                    ..
-                }) = &event
-                {
-                    
-                }
-                tracing::debug!("Accepted event: {event:?}")
-            }
-            _ => {}
-        }
     }
 
     async fn handle_command(&mut self, command: client::Command) {
         match command {
             client::Command::Send { message, peer_id, protocol } => {
                 let mut ctrl = self.swarm.behaviour_mut().streams.new_control();
+                // TODO: find node in DHT and dial
                 // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                 //     if let Some(r) = dht.kbucket(peer_id) {
                 //         self.swarm.dial(r.addrs[0].clone()).unwrap();
