@@ -4,6 +4,8 @@ use std::error::Error;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::c_char};
+#[cfg(any(feature="cpp", feature="wasm"))]
+use libp2p::Multiaddr;
 
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
