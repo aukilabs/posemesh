@@ -288,7 +288,7 @@ impl Networking {
         let mut private_key = cfg.private_key.clone();
         let private_key_bytes = unsafe {private_key.as_bytes_mut()};
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
-        tracing::info!("Local peer id: {:?}", key.public().to_peer_id());
+        println!("Local peer id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
@@ -333,14 +333,6 @@ impl Networking {
         // subscribes to our topic
         swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
-        let chat_stream = swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL)?;
-
-        #[cfg(target_family="wasm")]
-        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
-
-        #[cfg(not(target_family="wasm"))]
-        tokio::spawn(chat_protocol_handler(chat_stream));
-
         Ok(Networking {
             cfg: cfg.clone(),
             nodes_map: nodes_map,
@@ -356,6 +348,14 @@ impl Networking {
         
         #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
+
+        let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).unwrap(); // TODO: handle error
+
+        #[cfg(target_family="wasm")]
+        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
+
+        #[cfg(not(target_family="wasm"))]
+        tokio::spawn(chat_protocol_handler(chat_stream));
 
         #[cfg(not(target_family="wasm"))]
         loop {
@@ -410,7 +410,7 @@ impl Networking {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                tracing::info!(
+                println!(
                     "Local node is listening on {:?}",
                     address.with(Protocol::P2p(local_peer_id))
                 );
