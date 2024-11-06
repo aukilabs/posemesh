@@ -5,8 +5,17 @@ pub mod network;
 #[cfg(any(feature="cpp", feature="wasm"))]
 use context::{Config, Context};
 
+#[cfg(feature="py")]
+use context::Context;
+
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
+
+#[cfg(feature="py")]
+use pyo3::prelude::*;
+
+#[cfg(feature="py")]
+use pyo3::exceptions::PyValueError;
 
 // ******************************************
 // ** posemesh_networking_context_create() **
@@ -80,4 +89,38 @@ pub async extern "C" fn psm_posemesh_networking_send_message(context: *mut Conte
             callback(1);
         }
     }
+}
+
+#[cfg(feature="py")]
+#[pyfunction]
+pub fn start_server(py: Python, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
+    let cfg = network::NetworkingConfig {
+        port: port,
+        bootstrap_nodes: relay_nodes.clone(),
+        enable_relay_server: false,
+        enable_kdht: true,
+        enable_mdns: false,
+        relay_nodes: relay_nodes.clone(),
+        private_key: "".to_string(),
+        private_key_path: pkey_path.clone(),
+        name: name.clone(),
+        node_types: node_types.clone(),
+        node_capabilities: capabilities.clone(),
+    };
+    let (client, networking) = context::init(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    pyo3_asyncio::tokio::run_until_complete(py, async move {
+        tokio::spawn(async move {
+            networking.run().await;
+        });
+        Ok(())
+    })?;
+    Ok(Context { client })
+}
+
+#[cfg(feature="py")]
+#[pymodule]
+fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<Context>()?;
+    m.add_function(wrap_pyfunction!(start_server, m)?)?;
+    Ok(())
 }

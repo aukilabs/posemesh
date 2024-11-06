@@ -7,8 +7,15 @@ use std::{ffi::CStr, os::raw::c_char};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use libp2p::Multiaddr;
 
+#[cfg(any(feature="cpp", feature="py"))]
+use std::sync::Arc;
+
+use tokio::runtime;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature="py")]
+use pyo3::prelude::*;
 
 #[cfg(feature="cpp")]
 #[repr(C)]
@@ -36,10 +43,18 @@ impl Config {
     }
 }
 
+#[cfg(not(feature="py"))]
 pub struct Context {
     #[cfg(feature="cpp")]
-    runtime: tokio::runtime::Runtime,
+    runtime: Arc<tokio::runtime::Runtime>,
     client: client::Client,
+}
+
+#[cfg(feature="py")]
+#[pyclass]
+pub struct Context {
+    // runtime: Arc<tokio::runtime::Runtime>,
+    pub client: client::Client,
 }
 
 impl Context {
@@ -106,16 +121,25 @@ impl Context {
         Ok(Box::new(ctx))
     }
 
+    #[cfg(feature="rust")]
     pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol).await
     }
+
+    #[cfg(any(feature="cpp"))]
+    pub fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+        let mut sender = self.client.clone();
+
+        let rt = self.runtime.clone();
+        rt.block_on(async {
+            let result = sender.send(msg, peer_id, protocol).await;
+            result
+        })
+    }
 }
 
-pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
-    #[cfg(feature="cpp")]
-    let runtime = tokio::runtime::Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?;
-
+pub fn init(config: &NetworkingConfig) -> Result<(client::Client, Networking), Box<dyn Error>> {
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
@@ -132,12 +156,12 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     #[cfg(target_family="wasm")]
     wasm_bindgen_futures::spawn_local(networking.run());
 
-    #[cfg(feature="rust")]
+    #[cfg(any(feature="rust"))]
     tokio::spawn(networking.run());
 
     Ok(Context {
-        #[cfg(feature="cpp")]
-        runtime: runtime,
-        client: client,
+        #[cfg(any(feature="cpp"))]
+        runtime,
+        client,
     })
 }
