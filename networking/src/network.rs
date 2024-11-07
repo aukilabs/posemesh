@@ -381,6 +381,7 @@ impl Networking {
             futures::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
                 command = self.command_receiver.select_next_some() => self.handle_command(command).await,
+                complete => break,
             }
         };
 

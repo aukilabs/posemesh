@@ -222,7 +222,7 @@ pub fn posemeshNetworkingContextSendMessage2(
 
 #[cfg(feature="py")]
 #[pyfunction]
-pub fn start(py: Python, mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
+pub fn start(mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
     pyo3_log::init();
     let cfg = network::NetworkingConfig {
         port: port,
@@ -241,11 +241,9 @@ pub fn start(py: Python, mdns: bool, relay_nodes: Vec<String>, name: String, nod
     Ok(ctx)
 }
 
-
-
 #[cfg(feature="py")]
 #[pymodule]
-fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn posemesh_networking(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Context>()?;
     m.add_function(wrap_pyfunction!(start, m)?)?;
     Ok(())
