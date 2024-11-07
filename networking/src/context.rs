@@ -110,6 +110,20 @@ impl Context {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol).await
     }
+
+    #[cfg(feature="cpp")]
+    pub fn send_with_callback(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(status: u8)) {
+        let mut sender = self.client.clone();
+        self.runtime.spawn(async move {
+            match sender.send(msg, peer_id, protocol).await {
+                Ok(_) => { callback(1); },
+                Err(error) => {
+                    eprintln!("Context::send_with_callback(): {:?}", error);
+                    callback(0);
+                }
+            }
+        });
+    }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
