@@ -1,30 +1,29 @@
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap ,str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 use std::error::Error;
 use std::time::Duration;
+use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::{Arc, Mutex};
-use libp2p_stream as stream;
+use libp2p_stream::{self as stream, IncomingStreams};
 use std::io::{self, Read, Write};
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
-#[cfg(feature="native")]
-use rand::thread_rng;
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use libp2p::{mdns, noise, tcp, yamux};
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use tracing_subscriber::EnvFilter;
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use std::{fs, path::Path, net::Ipv4Addr};
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 use tokio::time::interval;
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
 use crate::client;
@@ -36,10 +35,14 @@ struct PosemeshBehaviour {
     streams: stream::Behaviour,
     identify: libp2p::identify::Behaviour,
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
-    #[cfg(feature="native")]
+    autonat_client: Toggle<libp2p::autonat::v2::client::Behaviour>,
+    relay_client: Toggle<libp2p::relay::client::Behaviour>,
+    #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     relay: Toggle<libp2p::relay::Behaviour>,
+    #[cfg(not(target_family="wasm"))]
+    autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
 }
 
 #[derive(Clone)]
@@ -86,7 +89,7 @@ pub struct Node {
 const CHAT_PROTOCOL: StreamProtocol = StreamProtocol::new("/chat");
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
-pub(crate) struct Networking {
+pub struct Networking {
     pub nodes_map: Arc<Mutex<HashMap<PeerId, Node>>>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
@@ -95,7 +98,7 @@ pub(crate) struct Networking {
     node_regsiter_topic: IdentTopic,
 }
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
     let path = Path::new(private_key_path);
     // Check if the keypair file exists
@@ -114,7 +117,7 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
 
     if let Some(parent) = path.parent() {
         if let Err(err) = fs::create_dir_all(parent) {
-            eprintln!("Failed to create directory: {err}");
+            tracing::error!("Failed to create directory: {err}");
         }
     }
 
@@ -122,7 +125,7 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
     if let Ok(mut file) = fs::File::create(path) {
         let keypair_bytes = keypair.to_protobuf_encoding().expect("Failed to encode keypair");
         if file.write_all(&keypair_bytes).is_err() {
-            eprintln!("Failed to write keypair to file");
+            tracing::error!("Failed to write keypair to file");
         }
     }
 
@@ -138,19 +141,19 @@ fn parse_or_create_keypair(
         return keypair;
     }
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     return keypair_file(private_key_path);
 
-    #[cfg(feature="wasm")]
+    #[cfg(target_family="wasm")]
     return libp2p::identity::Keypair::generate_ed25519();
 }
 
-fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
-    #[cfg(feature="native")]
+fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error>> {
+    #[cfg(not(target_family="wasm"))]
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
-            tcp::Config::default(),
+            tcp::Config::default().nodelay(true),
             noise::Config::new,
             yamux::Config::default,
         )?
@@ -162,11 +165,15 @@ fn build_swarm(key: libp2p::identity::Keypair, behavior: PosemeshBehaviour) -> R
             )
             .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn))))
         })?
-        .with_behaviour(|_| behavior)?
+        .with_relay_client(noise::Config::new, yamux::Config::default)?
+        .with_behaviour(|_, relay_behavior| {
+            behavior.relay_client = Some(relay_behavior).into();
+            behavior
+        })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    #[cfg(feature="wasm")]
+    #[cfg(target_family="wasm")]
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_wasm_bindgen()
         .with_other_transport(|key| {
@@ -204,38 +211,52 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         gossipsub,
         streams,
         identify,
+        autonat_client: None.into(),
+        relay_client: None.into(),
         kdht: None.into(),
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         mdns: None.into(),
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         relay: None.into(),
+        #[cfg(not(target_family="wasm"))]
+        autonat_server: None.into(),
     };
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     if cfg.enable_mdns {
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())
             .expect("Failed to build mdns behaviour");
         behavior.mdns = Some(mdns).into();
     }
 
-    #[cfg(feature="native")]
+    #[cfg(not(target_family="wasm"))]
     if cfg.enable_relay_server {
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
         behavior.relay = Some(relay).into();
+        behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
+    } else {
+        // TODO: should not add to clients
+        behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
     }
 
     if cfg.enable_kdht {
         let mut kad_cfg = libp2p::kad::Config::new(POSEMESH_PROTO_NAME);
-        kad_cfg.set_query_timeout(Duration::from_secs(5 * 60));
+        kad_cfg.set_query_timeout(Duration::from_secs(5));
         let store = libp2p::kad::store::MemoryStore::new(key.public().to_peer_id());
-        let kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
+        let mut kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
+
+        #[cfg(not(target_family="wasm"))]
+        kdht.set_mode(Some(kad::Mode::Server));
+
+        #[cfg(target_family="wasm")]
+        kdht.set_mode(Some(kad::Mode::Client)); // TODO: do it for all clients instead of just wasm
         behavior.kdht = Some(kdht).into();
     }
 
     behavior
 }
 
-#[cfg(feature="native")]
+#[cfg(not(target_family="wasm"))]
 fn build_listeners(port: u16) -> [Multiaddr; 3] {
     let mut webrtc_port = port;
     if webrtc_port != 0 {
@@ -256,18 +277,18 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 
 impl Networking {
     pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>) -> Result<Self, Box<dyn Error>> {
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
         
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         tracing_wasm::set_as_global_default();
 
         let mut private_key = cfg.private_key.clone();
         let private_key_bytes = unsafe {private_key.as_bytes_mut()};
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
-        println!("Local peer id: {:?}", key.public().to_peer_id());
+        tracing::info!("Local peer id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
@@ -286,16 +307,16 @@ impl Networking {
                 .behaviour_mut()
                 .kdht
                 .as_mut()
-                .map(|dht| {dht.add_address(&peer_id, maddr.clone())});
+                .map(|dht| { dht.add_address(&peer_id, maddr.clone())});
 
             swarm.dial(maddr)?;
         }
         
         let nodes_map: Arc<Mutex<HashMap<PeerId, Node>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         let listeners = build_listeners(cfg.port);
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         for addr in listeners.iter() {
             swarm.listen_on(addr.clone())?;
         }
@@ -312,6 +333,14 @@ impl Networking {
         // subscribes to our topic
         swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
+        let chat_stream = swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL)?;
+
+        #[cfg(target_family="wasm")]
+        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
+
+        #[cfg(not(target_family="wasm"))]
+        tokio::spawn(chat_protocol_handler(chat_stream));
+
         Ok(Networking {
             cfg: cfg.clone(),
             nodes_map: nodes_map,
@@ -322,11 +351,13 @@ impl Networking {
         })
     }
 
-    pub(crate) async fn run(mut self) {
-        #[cfg(feature="native")]
+    pub async fn run(mut self) {
+        tracing::info!("Starting networking");
+        
+        #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
 
-        #[cfg(feature="native")]
+        #[cfg(not(target_family="wasm"))]
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -335,14 +366,15 @@ impl Networking {
                     match self.register_node() {
                         Ok(_) => {},
                         Err(e) => {
-                            eprintln!("Failed to register node: {e}");
+                            tracing::error!("Failed to register node: {e}");
                         }
                     }
                 }
+                else => break,
             }
         };
 
-        #[cfg(feature="wasm")]
+        #[cfg(target_family="wasm")]
         loop {
             futures::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
@@ -352,26 +384,7 @@ impl Networking {
     }
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
-        #[cfg(feature="native")]
         match event {
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
-                    id,
-                    result: kad::QueryResult::StartProviding(_),
-                    ..
-                },
-            )) => {}
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
-                    id,
-                    result:
-                        kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders {
-                            providers,
-                            ..
-                        })),
-                    ..
-                },
-            )) => {}
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::GetClosestPeers(Ok(ok)),
@@ -379,51 +392,50 @@ impl Networking {
                 },
             )) => {
                 if ok.peers.is_empty() {
-                    println!("Query finished with no closest peers");
+                    tracing::info!("Query finished with no closest peers");
                 } else {
-                    println!("Query finished with closest peers: {:#?}", ok.peers);
+                    tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
                 }
-                println!("Query finished with closest peers: {:#?}", ok.peers);
+                tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
+                ok.peers.iter().for_each(|peer| {
+                    self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                        peer.addrs.iter().for_each(|addr| {
+                            dht.add_address(&peer.peer_id, addr.clone());
+                        });
+                    });
+                });
             },
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
-                kad::Event::OutboundQueryProgressed {
-                    result:
-                        kad::QueryResult::GetProviders(Ok(
-                            kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. },
-                        )),
-                    ..
-                },
-            )) => {}
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {}
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {
+                tracing::info!("KDHT event => {event:?}");
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                eprintln!(
+                tracing::info!(
                     "Local node is listening on {:?}",
                     address.with(Protocol::P2p(local_peer_id))
                 );
             }
-            SwarmEvent::IncomingConnection { .. } => {}
             SwarmEvent::ConnectionEstablished {
-                peer_id, endpoint, ..
+                peer_id, ..
             } => {
+                tracing::info!("Connected to {peer_id}");
                 self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
-            SwarmEvent::ConnectionClosed { .. } => {}
-            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {}
-            SwarmEvent::IncomingConnectionError { .. } => {}
             SwarmEvent::Dialing {
                 peer_id: Some(peer_id),
                 ..
-            } => eprintln!("Dialing {peer_id}"),
+            } => tracing::info!("Dialing {peer_id}"),
+            #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    println!("mDNS discovered a new peer: {peer_id}");
+                    tracing::info!("mDNS discovered a new peer: {peer_id}");
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
+            #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    println!("mDNS discover peer has expired: {peer_id}");
+                    tracing::info!("mDNS discover peer has expired: {peer_id}");
                     self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                 }
             },
@@ -432,6 +444,13 @@ impl Networking {
                 message_id: _id,
                 message,
             })) => {
+                #[cfg(target_family="wasm")]
+                match self.register_node() {
+                    Ok(_) => {},
+                    Err(e) => {
+                        tracing::error!("Failed to register node: {e}");
+                    }
+                }
                 match serde_json::from_slice::<Node>(&message.data) {
                     Ok(node) => {
                         if self.nodes_map.lock().unwrap().contains_key(&node.id) {
@@ -440,55 +459,91 @@ impl Networking {
                         if node.id == *self.swarm.local_peer_id() {
                             return;
                         }
-                        println!("Node {} joins the network", node.name);
+                        tracing::info!("Node {} joins the network", node.name);
                         self.nodes_map.lock().unwrap().insert(node.id.clone(), node);
                     },
                     Err(e) => {
-                        println!("Failed to deserialize node info: {}", e);
+                        tracing::info!("Failed to deserialize node info: {}", e);
                     }
                 }
             },
             // Prints peer id identify info is being sent to.
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Sent { peer_id, .. })) => {
-                println!("Sent identify info to {peer_id:?}")
+                tracing::info!("Sent identify info to {peer_id:?}")
             },
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
+                server,
+                tested_addr,
+                bytes_sent,
+                result: Ok(()),
+            })) => {
+                tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
+                server,
+                tested_addr,
+                bytes_sent,
+                result: Err(e),
+            })) => {
+                tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
+                // TODO: should be done only once and not for every failed autonat test
+                // client should not care
+                for relay in self.cfg.relay_nodes.iter() {
+                    let maddr = Multiaddr::from_str(relay).unwrap();
+                    let addr = maddr
+                        .with(Protocol::P2pCircuit);
+                    match self.swarm.listen_on(addr.clone()) {
+                        Ok(_) => {
+                            tracing::info!("Listening on relay address: {addr}");
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to listen on relay address: {addr}. Error: {e}");
+                        }
+                    }
+                }
+            }
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                tracing::info!("External address confirmed: {address}");
+            }
+            SwarmEvent::NewExternalAddrCandidate { address } => {
+                tracing::info!("New external address candidate: {address}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(
+                libp2p::relay::client::Event::ReservationReqAccepted { .. },
+            )) => {
+                tracing::info!("Relay accepted our reservation request");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
+                tracing::info!("Relay Client: {event:?}");
+            }
+            #[cfg(not(target_family="wasm"))]
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, ..})) => {
+                tracing::info!("Autonat Server tested address: {tested_addr}");
+            }
             SwarmEvent::Behaviour(event) => {
+                tracing::info!("{event:?}");
                 if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
-                    info: libp2p::identify::Info { observed_addr, .. },
+                    info: libp2p::identify::Info { observed_addr, listen_addrs, .. },
                     peer_id,
                     ..
                 }) = &event
                 {
-                    self.swarm.add_external_address(observed_addr.clone());
-                    println!("{event:?}");
-                    #[cfg(feature="wasm")]
+                    tracing::info!("Observed address: {observed_addr} for {peer_id}");
+                    if self.cfg.enable_relay_server {
+                        self.swarm.add_external_address(observed_addr.clone());
+                    }
+
+                    for addr in listen_addrs {
+                        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                            dht.add_address(peer_id, addr.clone());
+                        });
+                    }
+
+                    #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                 }
             },
-            e => panic!("{e:?}"),
-        }
-    
-        #[cfg(feature="wasm")]
-        match self.swarm.next().await.unwrap() {
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                propagation_source: _peer_id,
-                message_id: _id,
-                message,
-            })) => {
-                
-            },
-            SwarmEvent::Behaviour(event) => {
-                if let PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
-                    info: libp2p::identify::Info { observed_addr, .. },
-                    peer_id,
-                    ..
-                }) = &event
-                {
-                    
-                }
-                tracing::debug!("Accepted event: {event:?}")
-            }
-            _ => {}
+            e => tracing::debug!("{e:?}"),
         }
     }
 
@@ -496,6 +551,12 @@ impl Networking {
         match command {
             client::Command::Send { message, peer_id, protocol } => {
                 let mut ctrl = self.swarm.behaviour_mut().streams.new_control();
+                // TODO: find node in DHT and dial
+                // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                //     if let Some(r) = dht.kbucket(peer_id) {
+                //         self.swarm.dial(r.addrs[0].clone()).unwrap();
+                //     }
+                // });
                 let stream = match ctrl.open_stream(peer_id, protocol).await {
                     Ok(stream) => stream,
                     Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
@@ -514,7 +575,8 @@ impl Networking {
                     tracing::warn!(%peer_id, "Chat protocol failed: {e}");
                     return;
                 }
-            }
+            },
+
         }
     }
 
@@ -523,27 +585,6 @@ impl Networking {
         self.swarm.behaviour_mut().gossipsub.publish(self.node_regsiter_topic.clone(), serialized)?;
         Ok(())
     }
-
-    // pub fn send_message(&mut self, msg: Vec<u8>) {
-    //     let nodes = self.nodes_map.lock().unwrap();
-    //     nodes.iter().for_each(|(peer, _)| {
-    //         let peer_clone = peer.clone();
-    //         let msg_clone = msg.clone();
-    //         let incoming_streams = self.incoming_streams.clone();
-    //         println!("Sending message to peer: {:?}", peer);
-    //         #[cfg(feature="native")]
-    //         tokio::spawn(_send_message(incoming_streams, peer_clone, msg_clone));
-    //         #[cfg(feature="wasm")]
-    //         wasm_bindgen_futures::spawn_local(_send_message(incoming_streams, peer_clone, msg_clone));
-    //     });
-    // }
-
-    // pub fn poll_messages(&mut self) -> Vec<Vec<u8>> {
-    //     let mut messages = self.messages.lock().unwrap();
-    //     let messages_clone = messages.clone();
-    //     messages.clear();
-    //     messages_clone
-    // }
 }
 
 async fn _send_message(mut controller: stream::Control, peer: PeerId, msg: Vec<u8>) {
@@ -574,7 +615,7 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-async fn _receive_message(mut stream: Stream, messages: Arc<Mutex<Vec<Vec<u8>>>>) -> io::Result<usize> {
+async fn _receive_message(mut stream: Stream) -> io::Result<usize> {
     let mut total = 0;
 
     let mut buf = [0u8; 100];
@@ -586,8 +627,21 @@ async fn _receive_message(mut stream: Stream, messages: Arc<Mutex<Vec<Vec<u8>>>>
         }
 
         total += read;
-        messages.lock().unwrap().push(buf[..read].to_vec());
         // print the message as string
-        println!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
+        tracing::info!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
+    }
+}
+
+async fn chat_protocol_handler(mut stream: IncomingStreams) {
+    while let Some((peer, stream)) = stream.next().await {
+        match _receive_message(stream).await {
+            Ok(n) => {
+                tracing::info!(%peer, "Echoed {n} bytes!");
+            }
+            Err(e) => {
+                tracing::warn!(%peer, "Echo failed: {e}");
+                continue;
+            }
+        };
     }
 }

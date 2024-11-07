@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="Posemesh.js"></script>
+    </head>
+    <body>
+        <script>
+            var posemesh;
+            async function smokeTest() {
+                await Posemesh.initialize();
+                let config = new Posemesh.Config();
+                try {
+                    posemesh = new Posemesh(config);
+                } finally {
+                    config.delete();
+                }
+            }
+            smokeTest();
+        </script>
+    </body>
+</html>
