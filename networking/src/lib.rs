@@ -109,21 +109,24 @@ pub fn start(py: Python, mdns: bool, relay_nodes: Vec<String>, name: String, nod
         node_types: node_types.clone(),
         node_capabilities: capabilities.clone(),
     };
-    let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
-    let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
+    // let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    // let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
 
-    let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-    rt.spawn(async move {
-        let networking = network::Networking::new(&cfg, receiver, event_sender).unwrap();
-        networking.run().await.expect("Failed to run networking");
-    });
+    let ctx = context::context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(ctx)
+
+    // let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+    // rt.spawn(async move {
+    //     let networking = network::Networking::new(&cfg, receiver, event_sender).unwrap();
+    //     networking.run().await.expect("Failed to run networking");
+    // });
     // pyo3_asyncio::tokio::future_into_py(py, async move {
     //     let mut networking = network::Networking::new(&cfg, receiver, event_sender).map_err(|e| PyValueError::new_err(e.to_string()))?;
     //     networking.run().await.expect("Failed to run networking");
     //     Ok(())
     // })?;
 
-    Ok(Context{client: client::new_client(sender), event_receiver, runtime: rt})
+    // Ok(Context{client: client::new_client(sender), event_receiver, runtime: rt})
 }
 
 

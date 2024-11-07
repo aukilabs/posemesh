@@ -165,8 +165,8 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
 
     #[cfg(any(feature="cpp", feature="py"))]
     runtime.spawn(async move {
-        let networking = Networking::new(&cfg, receiver).unwrap();
-        networking.run().await;
+        let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
+        let _ = networking.run().await.expect("Failed to run networking");
     });
 
     #[cfg(target_family="wasm")]
