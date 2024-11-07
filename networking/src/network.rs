@@ -9,6 +9,7 @@ use serde_json;
 use std::sync::{Arc, Mutex};
 use libp2p_stream::{self as stream, IncomingStreams};
 use std::io::{self, Read, Write};
+use crate::{client, event};
 
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
@@ -25,8 +26,6 @@ use tokio::time::interval;
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
-
-use crate::{client, event};
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -289,7 +288,7 @@ impl Networking {
         let mut private_key = cfg.private_key.clone();
         let private_key_bytes = unsafe {private_key.as_bytes_mut()};
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
-        tracing::info!("Local peer id: {:?}", key.public().to_peer_id());
+        println!("Local peer id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
@@ -368,7 +367,7 @@ impl Networking {
                     match self.register_node() {
                         Ok(_) => {},
                         Err(e) => {
-                            tracing::error!("Failed to register node: {e}");
+                            tracing::warn!("Failed to register node: {e}");
                         }
                     }
                 }
@@ -398,8 +397,7 @@ impl Networking {
             )) => {
                 if ok.peers.is_empty() {
                     tracing::info!("Query finished with no closest peers");
-                } else {
-                    tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
+                    return;
                 }
                 tracing::info!("Query finished with closest peers: {:#?}", ok.peers);
                 ok.peers.iter().for_each(|peer| {
@@ -415,7 +413,7 @@ impl Networking {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                tracing::info!(
+                println!(
                     "Local node is listening on {:?}",
                     address.with(Protocol::P2p(local_peer_id))
                 );
@@ -597,7 +595,7 @@ async fn _send_message(mut controller: stream::Control, peer: PeerId, msg: Vec<u
     let stream = match controller.open_stream(peer, CHAT_PROTOCOL).await {
         Ok(stream) => stream,
         Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
-            tracing::info!(%peer, %error);
+            tracing::error!(%peer, %error);
             return;
         }
         Err(error) => {
@@ -644,7 +642,7 @@ async fn chat_protocol_handler(mut stream: IncomingStreams, mut event_sender: fu
                     .await;
             }
             Err(e) => {
-                tracing::warn!(%peer, "Echo failed: {e}");
+                tracing::warn!(%peer, "Receive failed: {e}");
                 continue;
             }
         };
