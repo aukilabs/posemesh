@@ -117,11 +117,13 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let runtime = tokio::runtime::Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?;
 
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
-    let networking = Networking::new(config, receiver)?;
     let client = client::new_client(sender);
 
     #[cfg(feature="cpp")]
-    runtime.spawn(networking.run());
+    runtime.spawn(async move {
+        let networking = Networking::new(config, receiver)?;
+        networking.run().await;
+    });
 
     #[cfg(target_family="wasm")]
     wasm_bindgen_futures::spawn_local(networking.run());
