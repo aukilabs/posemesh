@@ -1,3 +1,7 @@
+// #[cfg(feature="py")]
+// use pyo3::prelude::*;
+
+// #[cfg_attr(feature = "py", pyclass)]
 #[derive(Debug)]
 pub enum Event {
     NewNodeRegistered {
@@ -6,4 +10,6 @@ pub enum Event {
     MessageReceived {
         message: Vec<u8>,
     },
+    // #[cfg(feature="py")]
+    None {},
 }

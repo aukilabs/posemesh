@@ -19,9 +19,6 @@ use wasm_bindgen_futures::{future_to_promise, js_sys::{Error, Promise}};
 #[cfg(feature="py")]
 use pyo3::prelude::*;
 
-#[cfg(feature="py")]
-use pyo3::exceptions::PyValueError;
-
 // ******************************************
 // ** posemesh_networking_context_create() **
 // ******************************************
@@ -221,30 +218,8 @@ pub fn posemeshNetworkingContextSendMessage2(
 }
 
 #[cfg(feature="py")]
-#[pyfunction]
-pub fn start(mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
-    pyo3_log::init();
-    let cfg = network::NetworkingConfig {
-        port: port,
-        bootstrap_nodes: relay_nodes.clone(),
-        enable_relay_server: false,
-        enable_kdht: true,
-        enable_mdns: mdns,
-        relay_nodes: relay_nodes.clone(),
-        private_key: "".to_string(),
-        private_key_path: pkey_path.clone(),
-        name: name.clone(),
-        node_types: node_types.clone(),
-        node_capabilities: capabilities.clone(),
-    };
-    let ctx = context::context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(ctx)
-}
-
-#[cfg(feature="py")]
 #[pymodule]
-fn posemesh_networking(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Context>()?;
-    m.add_function(wrap_pyfunction!(start, m)?)?;
     Ok(())
 }

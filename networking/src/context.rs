@@ -18,6 +18,10 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(feature="py")]
 use pyo3::prelude::*;
+#[cfg(feature="py")]
+use pyo3::exceptions::PyValueError;
+#[cfg(feature="py")]
+use pyo3_asyncio::tokio::future_into_py;
 
 #[cfg(feature="cpp")]
 #[repr(C)]
@@ -45,22 +49,15 @@ impl Config {
     }
 }
 
-#[cfg(not(feature="py"))]
+#[cfg_attr(feature="py", pyclass)]
 pub struct Context {
-    #[cfg(feature="cpp")]
-    runtime: tokio::runtime::Runtime,
-    client: client::Client,
-    event_receiver: futures::channel::mpsc::Receiver<event::Event>,
-}
-
-#[cfg(feature="py")]
-#[pyclass]
-pub struct Context {
+    #[cfg(any(feature="cpp", feature="py"))]
     runtime: Arc<Runtime>,
     client: client::Client,
     event_receiver: futures::channel::mpsc::Receiver<event::Event>,
 }
 
+#[cfg_attr(feature="py", pymethods)]
 impl Context {
     #[cfg(any(feature="wasm", feature="cpp"))]
     pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
@@ -125,10 +122,25 @@ impl Context {
         Ok(Box::new(ctx))
     }
 
-    #[cfg(feature="rust")]
-    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
-        let mut sender = self.client.clone();
-        sender.send(msg, peer_id, protocol).await
+    #[cfg(feature="py")]
+    #[new]
+    pub fn new(mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Self> {
+        pyo3_log::init();
+        let cfg = NetworkingConfig {
+            port: port,
+            bootstrap_nodes: relay_nodes.clone(),
+            enable_relay_server: false,
+            enable_kdht: true,
+            enable_mdns: mdns,
+            relay_nodes: relay_nodes.clone(),
+            private_key: "".to_string(),
+            private_key_path: pkey_path.clone(),
+            name: name.clone(),
+            node_types: node_types.clone(),
+            node_capabilities: capabilities.clone(),
+        };
+        let ctx = context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(ctx)
     }
 
     #[cfg(feature="cpp")]
@@ -161,14 +173,25 @@ impl Context {
         });
     }
 
-    pub fn next_event(&mut self) -> Result<Option<event::Event>, Box<dyn Error>> {
-        let event = self.event_receiver.try_next();
-        match event {
-            Ok(Some(event)) => Ok(Some(event)),
-            Ok(None) => Ok(None),
-            Err(error) => Err(Box::new(error) as Box<dyn Error>),
-        }
+    #[cfg(feature="py")]
+    pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let mut sender = self.client.clone();
+
+        let fut = async move {
+            let result = sender.send(msg, peer_id, protocol).await;
+            result.map_err(|e| PyValueError::new_err(e.to_string()))
+        };
+        future_into_py(py, fut)
     }
+
+    // pub fn next_event(&mut self) -> Result<Option<event::Event>, Box<dyn Error>> {
+    //     let event = self.event_receiver.try_next();
+    //     match event {
+    //         Ok(Some(event)) => Ok(Some(event)),
+    //         Ok(None) => Ok(None),
+    //         Err(error) => Err(Box::new(error) as Box<dyn Error>),
+    //     }
+    // }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
