@@ -1,4 +1,5 @@
 use crate::client;
+use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
 
@@ -9,6 +10,8 @@ use libp2p::Multiaddr;
 
 #[cfg(any(feature="cpp", feature="py"))]
 use std::sync::Arc;
+#[cfg(any(feature="cpp", feature="py"))]
+use tokio::runtime::Runtime;
 
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
@@ -47,13 +50,15 @@ pub struct Context {
     #[cfg(feature="cpp")]
     runtime: tokio::runtime::Runtime,
     client: client::Client,
+    event_receiver: futures::channel::mpsc::Receiver<event::Event>,
 }
 
 #[cfg(feature="py")]
 #[pyclass]
 pub struct Context {
-    // runtime: Arc<tokio::runtime::Runtime>,
-    pub client: client::Client,
+    runtime: Arc<Runtime>,
+    client: client::Client,
+    event_receiver: futures::channel::mpsc::Receiver<event::Event>,
 }
 
 impl Context {
@@ -155,23 +160,33 @@ impl Context {
             }
         });
     }
+
+    pub fn next_event(&mut self) -> Result<Option<event::Event>, Box<dyn Error>> {
+        let event = self.event_receiver.try_next();
+        match event {
+            Ok(Some(event)) => Ok(Some(event)),
+            Ok(None) => Ok(None),
+            Err(error) => Err(Box::new(error) as Box<dyn Error>),
+        }
+    }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
-    #[cfg(feature="cpp")]
-    let runtime = tokio::runtime::Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+    #[cfg(any(feature="cpp", feature="py"))]
+    let runtime = Runtime::new()?;
 
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
 
     #[cfg(any(target_family="wasm", feature="rust"))]
-    let networking = Networking::new(&cfg, receiver)?;
+    let networking = Networking::new(&cfg, receiver, event_sender)?;
 
-    #[cfg(feature="cpp")]
+    #[cfg(any(feature="cpp", feature="py"))]
     runtime.spawn(async move {
-        let networking = Networking::new(&cfg, receiver).unwrap();
-        networking.run().await;
+        let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
+        let _ = networking.run().await.expect("Failed to run networking");
     });
 
     #[cfg(target_family="wasm")]
@@ -181,8 +196,9 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     tokio::spawn(networking.run());
 
     Ok(Context {
-        #[cfg(any(feature="cpp"))]
-        runtime,
+        #[cfg(any(feature="cpp", feature="py"))]
+        runtime: Arc::new(runtime),
         client,
+        event_receiver,
     })
 }

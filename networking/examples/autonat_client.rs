@@ -1,5 +1,5 @@
 use posemesh_networking::{context, network};
-use tokio::{self, select, signal, io::{self, AsyncBufReadExt}};
+use tokio::{runtime::Runtime, signal};
 
 /*
     * This is a simple client that registers with a relay server.
@@ -7,9 +7,8 @@ use tokio::{self, select, signal, io::{self, AsyncBufReadExt}};
 
     * Usage: cargo run --example autonat --features rust <port> <name> <bootstraps> [private_key_path]
     * Example: cargo run --example holepunch --features rust 0 relay_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
-    */
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+*/
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 {
         println!("Usage: {} <port> <name> <bootstraps> [private_key_path]", args[0]);
@@ -36,13 +35,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         node_capabilities: vec![],
         node_types: vec!["client".to_string()],
     };
-    let _c = context::context_create(cfg)?;
-
-    // Wait for the Ctrl+C signal
-    signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
-    println!("Ctrl+C received, shutting down.");
-
-    println!("Program terminated.");
+    
+    let runtime = Runtime::new()?;
+    runtime.block_on(async {
+        let _c = context::context_create(cfg).unwrap();
+        signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
+        println!("Ctrl+C received, shutting down.");
+    
+        println!("Program terminated.");
+    });
 
     Ok(())
 }

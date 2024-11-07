@@ -1,4 +1,4 @@
-use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, str::FromStr};
 use std::error::Error;
@@ -26,7 +26,7 @@ use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
-use crate::client;
+use crate::{client, event};
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -96,6 +96,7 @@ pub struct Networking {
     command_receiver: futures::channel::mpsc::Receiver<client::Command>,
     node: Node,
     node_regsiter_topic: IdentTopic,
+    event_sender: futures::channel::mpsc::Sender<event::Event>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -276,7 +277,7 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 }
 
 impl Networking {
-    pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>) -> Result<Self, Box<dyn Error>> {
+    pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>, event_sender: futures::channel::mpsc::Sender<event::Event>) -> Result<Self, Box<dyn Error>> {
         #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -340,22 +341,23 @@ impl Networking {
             command_receiver: command_receiver,
             node: node,
             node_regsiter_topic: topic,
+            event_sender: event_sender,
         })
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self) -> io::Result<()> {
         tracing::info!("Starting networking");
         
         #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
 
-        let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).unwrap(); // TODO: handle error
+        let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         #[cfg(target_family="wasm")]
         wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
 
         #[cfg(not(target_family="wasm"))]
-        tokio::spawn(chat_protocol_handler(chat_stream));
+        tokio::spawn(chat_protocol_handler(chat_stream, self.event_sender.clone()));
 
         #[cfg(not(target_family="wasm"))]
         loop {
@@ -381,6 +383,8 @@ impl Networking {
                 command = self.command_receiver.select_next_some() => self.handle_command(command).await,
             }
         };
+
+        Ok(())
     }
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
@@ -459,8 +463,9 @@ impl Networking {
                         if node.id == *self.swarm.local_peer_id() {
                             return;
                         }
-                        tracing::info!("Node {} joins the network", node.name);
-                        self.nodes_map.lock().unwrap().insert(node.id.clone(), node);
+                        println!("Node {} joins the network", node.name);
+                        // self.nodes_map.lock().unwrap().insert(node.id.clone(), node);
+                        self.event_sender.send(event::Event::NewNodeRegistered { node }).await.unwrap();
                     },
                     Err(e) => {
                         tracing::info!("Failed to deserialize node info: {}", e);
@@ -615,28 +620,27 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-async fn _receive_message(mut stream: Stream) -> io::Result<usize> {
-    let mut total = 0;
-
+async fn _receive_message(mut stream: Stream) -> io::Result<Vec<u8>> {
     let mut buf = [0u8; 100];
 
     loop {
         let read = stream.read(&mut buf).await?;
         if read == 0 {
-            return Ok(total);
+            return Ok(Vec::new());
         }
 
-        total += read;
-        // print the message as string
         tracing::info!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
+        return Ok(buf[..read].to_vec());
     }
 }
 
-async fn chat_protocol_handler(mut stream: IncomingStreams) {
+async fn chat_protocol_handler(mut stream: IncomingStreams, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
     while let Some((peer, stream)) = stream.next().await {
         match _receive_message(stream).await {
             Ok(n) => {
-                tracing::info!(%peer, "Echoed {n} bytes!");
+                let _ = event_sender
+                    .send(event::Event::MessageReceived { message: n })
+                    .await;
             }
             Err(e) => {
                 tracing::warn!(%peer, "Echo failed: {e}");
