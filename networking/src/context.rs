@@ -118,10 +118,14 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
 
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
     let client = client::new_client(sender);
+    let cfg = config.clone();
+
+    #[cfg(target_family="wasm")]
+    let networking = Networking::new(&cfg, receiver)?;
 
     #[cfg(feature="cpp")]
     runtime.spawn(async move {
-        let networking = Networking::new(config, receiver)?;
+        let networking = Networking::new(&cfg, receiver).unwrap();
         networking.run().await;
     });
 
