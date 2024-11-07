@@ -1,4 +1,5 @@
 use crate::client;
+use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
 
@@ -48,13 +49,15 @@ pub struct Context {
     #[cfg(feature="cpp")]
     runtime: Arc<tokio::runtime::Runtime>,
     client: client::Client,
+    event_receiver: futures::channel::mpsc::Receiver<event::Event>,
 }
 
 #[cfg(feature="py")]
 #[pyclass]
 pub struct Context {
-    // runtime: Arc<tokio::runtime::Runtime>,
+    pub runtime: tokio::runtime::Runtime,
     pub client: client::Client,
+    pub event_receiver: futures::channel::mpsc::Receiver<event::Event>,
 }
 
 impl Context {
@@ -137,17 +140,30 @@ impl Context {
             result
         })
     }
+
+    pub fn next_event(&mut self) -> Result<Option<event::Event>, Box<dyn Error>> {
+        let event = self.event_receiver.try_next();
+        match event {
+            Ok(Some(event)) => Ok(Some(event)),
+            Ok(None) => Ok(None),
+            Err(error) => Err(Box::new(error) as Box<dyn Error>),
+        }
+    }
 }
 
-pub fn init(config: &NetworkingConfig) -> Result<(client::Client, Networking), Box<dyn Error>> {
+pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
+    #[cfg(any(feature="cpp", feature="py"))]
+    let runtime = tokio::runtime::Runtime::new()?;
+
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
 
     #[cfg(target_family="wasm")]
     let networking = Networking::new(&cfg, receiver)?;
 
-    #[cfg(feature="cpp")]
+    #[cfg(any(feature="cpp", feature="py"))]
     runtime.spawn(async move {
         let networking = Networking::new(&cfg, receiver).unwrap();
         networking.run().await;
@@ -161,7 +177,10 @@ pub fn init(config: &NetworkingConfig) -> Result<(client::Client, Networking), B
 
     Ok(Context {
         #[cfg(any(feature="cpp"))]
-        runtime,
+        runtime: Arc::new(runtime),
+        #[cfg(any(feature="py"))]
+        runtime: runtime,
         client,
+        event_receiver,
     })
 }

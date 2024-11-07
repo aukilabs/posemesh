@@ -1,4 +1,5 @@
 mod client;
+mod event;
 pub mod context;
 pub mod network;
 
@@ -93,14 +94,14 @@ pub async extern "C" fn psm_posemesh_networking_send_message(context: *mut Conte
 
 #[cfg(feature="py")]
 #[pyfunction]
-pub fn start(py: Python, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
+pub fn start(py: Python, mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Context> {
     pyo3_log::init();
     let cfg = network::NetworkingConfig {
         port: port,
         bootstrap_nodes: relay_nodes.clone(),
         enable_relay_server: false,
         enable_kdht: true,
-        enable_mdns: false,
+        enable_mdns: mdns,
         relay_nodes: relay_nodes.clone(),
         private_key: "".to_string(),
         private_key_path: pkey_path.clone(),
@@ -109,14 +110,23 @@ pub fn start(py: Python, relay_nodes: Vec<String>, name: String, node_types: Vec
         node_capabilities: capabilities.clone(),
     };
     let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
-    pyo3_asyncio::tokio::future_into_py(py, async move {
-        let mut networking = network::Networking::new(&cfg, receiver).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        networking.run().await;
-        Ok(())
-    })?;
+    let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
 
-    Ok(Context{client: client::new_client(sender)})
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+    rt.spawn(async move {
+        let networking = network::Networking::new(&cfg, receiver, event_sender).unwrap();
+        networking.run().await.expect("Failed to run networking");
+    });
+    // pyo3_asyncio::tokio::future_into_py(py, async move {
+    //     let mut networking = network::Networking::new(&cfg, receiver, event_sender).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    //     networking.run().await.expect("Failed to run networking");
+    //     Ok(())
+    // })?;
+
+    Ok(Context{client: client::new_client(sender), event_receiver, runtime: rt})
 }
+
+
 
 #[cfg(feature="py")]
 #[pymodule]

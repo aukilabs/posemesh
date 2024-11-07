@@ -3,8 +3,8 @@ use tokio::{self, select};
 use tokio::io::{self, AsyncBufReadExt};
 use tokio::signal;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// #[tokio::main]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 {
         println!("Usage: {} <port> <name> <bootstraps> [private_key_path]", args[0]);
@@ -31,13 +31,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         node_capabilities: vec![],
         node_types: vec!["client".to_string()],
     };
-    let _c = context::context_create(cfg)?;
-
-    // Wait for the Ctrl+C signal
-    signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
-    println!("Ctrl+C received, shutting down.");
-
-    println!("Program terminated.");
+    
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(async {
+        let _c = context::context_create(cfg).unwrap();
+        signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
+        println!("Ctrl+C received, shutting down.");
+    
+        println!("Program terminated.");
+    });
 
     Ok(())
 }
