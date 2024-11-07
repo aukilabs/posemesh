@@ -354,7 +354,7 @@ impl Networking {
         let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         #[cfg(target_family="wasm")]
-        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream));
+        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream, self.event_sender.clone()));
 
         #[cfg(not(target_family="wasm"))]
         tokio::spawn(chat_protocol_handler(chat_stream, self.event_sender.clone()));

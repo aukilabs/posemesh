@@ -80,10 +80,10 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
 // TODO: String needs to change to c_char most likely
 #[cfg(feature="cpp")]
 #[no_mangle]
-pub async extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
+pub extern "C" fn psm_posemesh_networking_send_message(context: *mut Context, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(i32)) {
     assert!(!context.is_null(), "psm_posemesh_networking_send_message(): context is null");
     let context = unsafe { &mut *context };
-    match context.send(msg, peer_id, protocol).await {
+    match context.send(msg, peer_id, protocol) {
         Ok(context) => callback(0),
         Err(error) => {
             eprintln!("posemesh_networking_context_create(): {:?}", error);
