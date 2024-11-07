@@ -463,8 +463,8 @@ impl Networking {
                             return;
                         }
                         println!("Node {} joins the network", node.name);
-                        // self.nodes_map.lock().unwrap().insert(node.id.clone(), node);
-                        self.event_sender.send(event::Event::NewNodeRegistered { node }).await.unwrap();
+                        self.nodes_map.lock().unwrap().insert(node.id.clone(), node.clone());
+                        self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap();
                     },
                     Err(e) => {
                         tracing::info!("Failed to deserialize node info: {}", e);
