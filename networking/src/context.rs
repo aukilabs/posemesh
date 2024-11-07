@@ -190,10 +190,14 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     });
 
     #[cfg(target_family="wasm")]
-    wasm_bindgen_futures::spawn_local(networking.run());
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = networking.run().await.expect("Failed to run networking");
+    });
 
     #[cfg(any(feature="rust"))]
-    tokio::spawn(networking.run());
+    tokio::spawn(async move {
+        let _ = networking.run().await.expect("Failed to run networking");
+    });
 
     Ok(Context {
         #[cfg(any(feature="cpp", feature="py"))]
