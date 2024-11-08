@@ -67,6 +67,24 @@
     return reinterpret_cast<NSUInteger>(m_posemesh);
 }
 
+- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol {
+    NSAssert(m_posemesh, @"m_posemesh is null");
+    NSAssert(message, @"message is null");
+    NSAssert(peerId, @"peerId is null");
+    NSAssert(protocol, @"protocol is null");
+    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String]));
+}
+
+- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback {
+    NSAssert(m_posemesh, @"m_posemesh is null");
+    NSAssert(message, @"message is null");
+    NSAssert(peerId, @"peerId is null");
+    NSAssert(protocol, @"protocol is null");
+    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
+        callback(static_cast<BOOL>(status));
+    } : std::function<void(bool status)>{}));
+}
+
 - (void*)nativePosemesh {
     NSAssert(m_posemesh, @"m_posemesh is null");
     return m_posemesh;
