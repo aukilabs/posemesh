@@ -57,4 +57,18 @@ Posemesh& Posemesh::operator=(Posemesh&& posemesh) noexcept {
     return *this;
 }
 
+#if defined(__EMSCRIPTEN__)
+    #if defined(__wasm32__)
+        std::uint32_t Posemesh::__getContext() const noexcept {
+            return reinterpret_cast<std::uint32_t>(m_context);
+        }
+    #elif defined(__wasm64__)
+        std::uint64_t Posemesh::__getContext() const noexcept {
+            return reinterpret_cast<std::uint64_t>(m_context);
+        }
+    #else
+        #error "Architecture not supported."
+    #endif
+#endif
+
 }

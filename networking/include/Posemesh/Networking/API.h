@@ -73,21 +73,22 @@ extern "C" {
         assert(message_size > 0);
         assert(peer_id);
         assert(protocol);
-        return EM_ASM_INT({
+        EM_ASM({
             let callback = $5;
-            return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage2(
+            __internalPosemeshNetworking.posemeshNetworkingContextSendMessage2(
                 $0, $1, $2, $3, $4
             ).then(function(status) {
                 if (callback) {
                     dynCall('vi', callback, [status ? 1 : 0]);
                 }
             }).catch(function(error) {
-                console.error('psm_posemesh_networking_context_send_message(): ', error.message);
+                console.error('psm_posemesh_networking_context_send_message():', error.message);
                 if (callback) {
                     dynCall('vi', callback, [0]);
                 }
             });
         }, context, message, message_size, peer_id, protocol, callback);
+        return 1;
     }
 #endif
 

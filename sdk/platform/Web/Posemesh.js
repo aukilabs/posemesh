@@ -1,3 +1,9 @@
+__internalPosemeshAPI.builderFunctions.push(function() {
+    Posemesh.prototype.sendMessage = function(message, peerId, protocol) {
+        return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol);
+    };
+});
+
 var Posemesh = {
     mainWasmPath: null,
     networkingWasmPath: null,
