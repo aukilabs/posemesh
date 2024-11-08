@@ -72,25 +72,16 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
 
 #[cfg(feature="cpp")]
 type SendMessageReturnType = u8;
-#[cfg(feature="cpp")]
-type SendMessageString = *const c_char;
 
 #[cfg(feature="wasm")]
 type SendMessageReturnType = Promise;
-#[cfg(feature="wasm")]
-type SendMessageString = String;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
 fn posemesh_networking_context_send_message(
     context: *mut Context,
-    #[cfg(feature="cpp")]
-    message: *const c_void,
-    #[cfg(feature="wasm")]
     message: Vec<u8>,
-    #[cfg(feature="cpp")]
-    message_size: u32,
-    peer_id: SendMessageString,
-    protocol: SendMessageString,
+    peer_id: String,
+    protocol: String,
     #[cfg(feature="cpp")]
     callback: extern "C" fn(status: u8)
 ) -> SendMessageReturnType {
@@ -98,37 +89,6 @@ fn posemesh_networking_context_send_message(
         assert!(!context.is_null(), "posemesh_networking_context_send_message(): context is null");
         &mut *context
     };
-
-    #[cfg(feature="cpp")]
-    let message = unsafe {
-        assert!(!message.is_null(), "posemesh_networking_context_send_message(): message is null");
-        assert!(message_size != 0, "posemesh_networking_context_send_message(): message_size is zero");
-        slice::from_raw_parts(message as *const c_uchar, message_size as usize)
-    }.to_vec();
-
-    #[cfg(feature="cpp")]
-    let peer_id = match unsafe {
-        assert!(!peer_id.is_null(), "posemesh_networking_context_send_message(): peer_id is null");
-        CStr::from_ptr(peer_id)
-    }.to_str() {
-        Ok(peer_id) => peer_id,
-        Err(error) => {
-            eprintln!("posemesh_networking_context_send_message(): {:?}", error);
-            return 0;
-        }
-    }.to_string();
-
-    #[cfg(feature="cpp")]
-    let protocol = match unsafe {
-        assert!(!protocol.is_null(), "posemesh_networking_context_send_message(): protocol is null");
-        CStr::from_ptr(protocol)
-    }.to_str() {
-        Ok(protocol) => protocol,
-        Err(error) => {
-            eprintln!("posemesh_networking_context_send_message(): {:?}", error);
-            return 0;
-        }
-    }.to_string();
 
     #[cfg(feature="wasm")]
     return future_to_promise(async move {
@@ -148,6 +108,68 @@ fn posemesh_networking_context_send_message(
     }
 }
 
+#[cfg(any(feature="cpp", feature="wasm"))]
+fn posemesh_networking_context_send_message_2(
+    context: *mut Context,
+    message: *const c_void,
+    message_size: u32,
+    peer_id: *const c_char,
+    protocol: *const c_char,
+    #[cfg(feature="cpp")]
+    callback: extern "C" fn(status: u8)
+) -> SendMessageReturnType {
+    let message = unsafe {
+        assert!(!message.is_null(), "posemesh_networking_context_send_message_2(): message is null");
+        assert!(message_size != 0, "posemesh_networking_context_send_message_2(): message_size is zero");
+        slice::from_raw_parts(message as *const c_uchar, message_size as usize)
+    }.to_vec();
+
+    let peer_id = match unsafe {
+        assert!(!peer_id.is_null(), "posemesh_networking_context_send_message_2(): peer_id is null");
+        CStr::from_ptr(peer_id)
+    }.to_str() {
+        Ok(peer_id) => peer_id,
+        Err(error) => {
+            eprintln!("posemesh_networking_context_send_message_2(): {:?}", error);
+            
+            #[cfg(feature="wasm")]
+            return future_to_promise(async move {
+                Err(JsValue::from(Error::new(error.to_string().as_str())))
+            });
+
+            #[cfg(feature="cpp")]
+            return 0;
+        }
+    }.to_string();
+
+    let protocol = match unsafe {
+        assert!(!protocol.is_null(), "posemesh_networking_context_send_message_2(): protocol is null");
+        CStr::from_ptr(protocol)
+    }.to_str() {
+        Ok(protocol) => protocol,
+        Err(error) => {
+            eprintln!("posemesh_networking_context_send_message_2(): {:?}", error);
+
+            #[cfg(feature="wasm")]
+            return future_to_promise(async move {
+                Err(JsValue::from(Error::new(error.to_string().as_str())))
+            });
+
+            #[cfg(feature="cpp")]
+            return 0;
+        }
+    }.to_string();
+
+    return posemesh_networking_context_send_message(
+        context,
+        message,
+        peer_id,
+        protocol,
+        #[cfg(feature="cpp")]
+        callback
+    );
+}
+
 #[cfg(feature="cpp")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_context_send_message(
@@ -158,7 +180,7 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     protocol: *const c_char,
     callback: extern "C" fn(status: u8)
 ) -> u8 {
-    posemesh_networking_context_send_message(context, message, message_size, peer_id, protocol, callback)
+    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, callback)
 }
 
 #[cfg(feature="wasm")]
@@ -166,4 +188,17 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextSendMessage(context: *mut Context, message: Vec<u8>, peer_id: String, protocol: String) -> Promise {
     posemesh_networking_context_send_message(context, message, peer_id, protocol)
+}
+
+#[cfg(feature="wasm")]
+#[wasm_bindgen]
+#[allow(non_snake_case)]
+pub fn posemeshNetworkingContextSendMessage2(
+    context: *mut Context,
+    message: *const c_void,
+    message_size: u32,
+    peer_id: *const c_char,
+    protocol: *const c_char
+) -> Promise {
+    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol)
 }
