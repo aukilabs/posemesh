@@ -112,14 +112,21 @@ impl Context {
     }
 
     #[cfg(feature="cpp")]
-    pub fn send_with_callback(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, callback: extern "C" fn(status: u8)) {
+    pub fn send_with_callback(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, callback: *const extern "C" fn(status: u8)) {
         let mut sender = self.client.clone();
+        let callback = unsafe { callback.as_ref() };
         self.runtime.spawn(async move {
             match sender.send(msg, peer_id, protocol).await {
-                Ok(_) => { callback(1); },
+                Ok(_) => {
+                    if let Some(callback) = callback {
+                        callback(1);
+                    }
+                },
                 Err(error) => {
                     eprintln!("Context::send_with_callback(): {:?}", error);
-                    callback(0);
+                    if let Some(callback) = callback {
+                        callback(0);
+                    }
                 }
             }
         });

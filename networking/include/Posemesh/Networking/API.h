@@ -50,6 +50,47 @@ extern "C" {
     }
 #endif
 
+#if !defined(__EMSCRIPTEN__)
+    uint8_t psm_posemesh_networking_context_send_message(
+        psm_posemesh_networking_context_t* context,
+        const void* message,
+        uint32_t message_size,
+        const char* peer_id,
+        const char* protocol,
+        void (*callback)(uint8_t)
+    );
+#else
+    static uint8_t psm_posemesh_networking_context_send_message(
+        psm_posemesh_networking_context_t* context,
+        const void* message,
+        uint32_t message_size,
+        const char* peer_id,
+        const char* protocol,
+        void (*callback)(uint8_t)
+    ) {
+        assert(context);
+        assert(message);
+        assert(message_size > 0);
+        assert(peer_id);
+        assert(protocol);
+        return EM_ASM_INT({
+            let callback = $5;
+            return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage2(
+                $0, $1, $2, $3, $4
+            ).then(function(status) {
+                if (callback) {
+                    dynCall('vi', callback, [status ? 1 : 0]);
+                }
+            }).catch(function(error) {
+                console.error('psm_posemesh_networking_context_send_message(): ', error.message);
+                if (callback) {
+                    dynCall('vi', callback, [0]);
+                }
+            });
+        }, context, message, message_size, peer_id, protocol, callback);
+    }
+#endif
+
 #if defined(__cplusplus)
 }
 #endif

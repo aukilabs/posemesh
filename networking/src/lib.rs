@@ -83,7 +83,7 @@ fn posemesh_networking_context_send_message(
     peer_id: String,
     protocol: String,
     #[cfg(feature="cpp")]
-    callback: extern "C" fn(status: u8)
+    callback: *const extern "C" fn(status: u8)
 ) -> SendMessageReturnType {
     let context = unsafe {
         assert!(!context.is_null(), "posemesh_networking_context_send_message(): context is null");
@@ -116,7 +116,7 @@ fn posemesh_networking_context_send_message_2(
     peer_id: *const c_char,
     protocol: *const c_char,
     #[cfg(feature="cpp")]
-    callback: extern "C" fn(status: u8)
+    callback: *const extern "C" fn(status: u8)
 ) -> SendMessageReturnType {
     let message = unsafe {
         assert!(!message.is_null(), "posemesh_networking_context_send_message_2(): message is null");
@@ -178,7 +178,7 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     message_size: u32,
     peer_id: *const c_char,
     protocol: *const c_char,
-    callback: extern "C" fn(status: u8)
+    callback: *const extern "C" fn(status: u8)
 ) -> u8 {
     posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, callback)
 }
