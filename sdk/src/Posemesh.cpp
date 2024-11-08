@@ -90,7 +90,11 @@ bool Posemesh::sendMessage(
     return result;
 }
 
-#if defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__)
+    void* Posemesh::__getContext() const noexcept {
+        return m_context;
+    }
+#else
     #if defined(__wasm32__)
         std::uint32_t Posemesh::__getContext() const noexcept {
             return reinterpret_cast<std::uint32_t>(m_context);

@@ -78,8 +78,8 @@ extern "C" {
         EM_ASM({
             let user_data = $5;
             let callback = $6;
-            __internalPosemeshNetworking.posemeshNetworkingContextSendMessage2(
-                $0, $1, $2, $3, $4
+            __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(
+                $0, new Uint8Array(HEAPU8.buffer, $1, $2), UTF8ToString($3), UTF8ToString($4)
             ).then(function(status) {
                 if (callback) {
                     dynCall('vip', callback, [status ? 1 : 0, user_data]);

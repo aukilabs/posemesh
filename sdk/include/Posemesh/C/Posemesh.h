@@ -17,6 +17,15 @@ extern "C" {
 
 psm_posemesh_t* PSM_API psm_posemesh_create();
 psm_posemesh_t* PSM_API psm_posemesh_create_with_config(const psm_config_t* config);
+uint8_t PSM_API psm_posemesh_send_message(
+    const psm_posemesh_t* posemesh,
+    const void* message,
+    uint32_t message_size,
+    const char* peer_id,
+    const char* protocol,
+    void* user_data,
+    void (*callback)(uint8_t status, void* user_data)
+);
 void PSM_API psm_posemesh_destroy(psm_posemesh_t* posemesh);
 
 #if defined(__cplusplus)

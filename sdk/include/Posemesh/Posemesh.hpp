@@ -29,7 +29,9 @@ public:
         std::function<void(bool status)> callback = nullptr
     ) const;
 
-    #if defined(__EMSCRIPTEN__)
+    #if !defined(__EMSCRIPTEN__)
+        void* __getContext() const noexcept;
+    #else
         #if defined(__wasm32__)
             std::uint32_t __getContext() const noexcept;
         #elif defined(__wasm64__)
