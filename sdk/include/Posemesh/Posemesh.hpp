@@ -2,6 +2,8 @@
 #define __POSEMESH_POSEMESH_HPP__
 
 #include <cstdint>
+#include <functional>
+#include <string>
 
 #include "API.hpp"
 #include "Config.hpp"
@@ -18,6 +20,14 @@ public:
 
     Posemesh& operator=(const Posemesh& posemesh) = delete;
     Posemesh& PSM_API operator=(Posemesh&& posemesh) noexcept;
+
+    bool PSM_API sendMessage(
+        const void* message,
+        std::uint32_t messageSize,
+        const std::string& peerId,
+        const std::string& protocol,
+        std::function<void(bool status)> callback = nullptr
+    ) const;
 
     #if defined(__EMSCRIPTEN__)
         #if defined(__wasm32__)

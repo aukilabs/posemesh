@@ -57,6 +57,39 @@ Posemesh& Posemesh::operator=(Posemesh&& posemesh) noexcept {
     return *this;
 }
 
+bool Posemesh::sendMessage(
+    const void* message,
+    std::uint32_t messageSize,
+    const std::string& peerId,
+    const std::string& protocol,
+    std::function<void(bool status)> callback
+) const {
+    assert(m_context || !"Posemesh::sendMessage(): m_context is null");
+    assert(message || !"Posemesh::sendMessage(): message is null");
+    assert(messageSize != 0 || !"Posemesh::sendMessage(): messageSize is zero");
+    assert(!peerId.empty() || !"Posemesh::sendMessage(): peerId is empty");
+    assert(!protocol.empty() || !"Posemesh::sendMessage(): protocol is empty");
+    auto wrappedCallback = callback ? std::make_unique<std::function<void(bool status)>>(std::move(callback)) : std::unique_ptr<std::function<void(bool status)>>{};
+    const auto result = static_cast<bool>(psm_posemesh_networking_context_send_message(
+        static_cast<psm_posemesh_networking_context_t*>(m_context),
+        message,
+        messageSize,
+        peerId.c_str(),
+        protocol.c_str(),
+        wrappedCallback.get(),
+        wrappedCallback ? [](std::uint8_t status, void* userData) -> void {
+            const std::unique_ptr<std::function<void(bool status)>> wrappedCallback(static_cast<std::function<void(bool status)>*>(userData));
+            assert(wrappedCallback);
+            const auto& callback = *wrappedCallback;
+            assert(callback);
+            callback(static_cast<bool>(status));
+        } : nullptr
+    ));
+    if (result)
+        wrappedCallback.release();
+    return result;
+}
+
 #if defined(__EMSCRIPTEN__)
     #if defined(__wasm32__)
         std::uint32_t Posemesh::__getContext() const noexcept {

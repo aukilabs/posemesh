@@ -83,7 +83,9 @@ fn posemesh_networking_context_send_message(
     peer_id: String,
     protocol: String,
     #[cfg(feature="cpp")]
-    callback: *const extern "C" fn(status: u8)
+    user_data: *mut c_void,
+    #[cfg(feature="cpp")]
+    callback: *const extern "C" fn(status: u8, user_data: *mut c_void)
 ) -> SendMessageReturnType {
     let context = unsafe {
         assert!(!context.is_null(), "posemesh_networking_context_send_message(): context is null");
@@ -103,7 +105,7 @@ fn posemesh_networking_context_send_message(
 
     #[cfg(feature="cpp")]
     {
-        context.send_with_callback(message, peer_id, protocol, callback);
+        context.send_with_callback(message, peer_id, protocol, user_data, callback);
         return 1;
     }
 }
@@ -116,7 +118,9 @@ fn posemesh_networking_context_send_message_2(
     peer_id: *const c_char,
     protocol: *const c_char,
     #[cfg(feature="cpp")]
-    callback: *const extern "C" fn(status: u8)
+    user_data: *mut c_void,
+    #[cfg(feature="cpp")]
+    callback: *const extern "C" fn(status: u8, user_data: *mut c_void)
 ) -> SendMessageReturnType {
     let message = unsafe {
         assert!(!message.is_null(), "posemesh_networking_context_send_message_2(): message is null");
@@ -166,6 +170,8 @@ fn posemesh_networking_context_send_message_2(
         peer_id,
         protocol,
         #[cfg(feature="cpp")]
+        user_data,
+        #[cfg(feature="cpp")]
         callback
     );
 }
@@ -178,9 +184,10 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     message_size: u32,
     peer_id: *const c_char,
     protocol: *const c_char,
-    callback: *const extern "C" fn(status: u8)
+    user_data: *mut c_void,
+    callback: *const extern "C" fn(status: u8, user_data: *mut c_void)
 ) -> u8 {
-    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, callback)
+    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, user_data, callback)
 }
 
 #[cfg(feature="wasm")]
