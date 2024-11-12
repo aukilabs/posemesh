@@ -354,13 +354,8 @@ impl Networking {
         #[cfg(not(target_family="wasm"))]
         let mut node_register_interval = interval(Duration::from_secs(10));
 
-        let chat_stream = self.swarm.behaviour_mut().streams.new_control().accept(CHAT_PROTOCOL).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-        #[cfg(target_family="wasm")]
-        wasm_bindgen_futures::spawn_local(chat_protocol_handler(chat_stream, self.event_sender.clone()));
-
-        #[cfg(not(target_family="wasm"))]
-        tokio::spawn(chat_protocol_handler(chat_stream, self.event_sender.clone()));
+        // TODO: this should be done out of networking
+        self.add_stream_protocol(CHAT_PROTOCOL)?;
 
         #[cfg(not(target_family="wasm"))]
         loop {
@@ -593,26 +588,18 @@ impl Networking {
         self.swarm.behaviour_mut().gossipsub.publish(self.node_regsiter_topic.clone(), serialized)?;
         Ok(())
     }
-}
 
-async fn _send_message(mut controller: stream::Control, peer: PeerId, msg: Vec<u8>) {
-    let stream = match controller.open_stream(peer, CHAT_PROTOCOL).await {
-        Ok(stream) => stream,
-        Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
-            tracing::error!(%peer, %error);
-            return;
-        }
-        Err(error) => {
-            // Other errors may be temporary.
-            // In production, something like an exponential backoff / circuit-breaker may be more appropriate.
-            tracing::debug!(%peer, %error);
-            return;
-        }
-    };
+    fn add_stream_protocol(&mut self, protocol: StreamProtocol) -> io::Result<()> {
+        let proto = protocol.clone();
+        let incoming_stream = self.swarm.behaviour_mut().streams.new_control().accept(protocol).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-    if let Err(e) = send(stream, msg).await {
-        tracing::warn!(%peer, "Chat protocol failed: {e}");
-        return;
+        #[cfg(target_family="wasm")]
+        wasm_bindgen_futures::spawn_local(protocol_handler(incoming_stream, proto, self.event_sender.clone()));
+
+        #[cfg(not(target_family="wasm"))]
+        tokio::spawn(protocol_handler(incoming_stream, proto, self.event_sender.clone())); 
+
+        Ok(())
     }
 }
 
@@ -623,39 +610,15 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-async fn _receive_message(mut stream: Stream) -> io::Result<Vec<u8>> {
-    let mut buf = [0u8; 100];
-
-    loop {
-        let read = stream.read(&mut buf).await?;
-        if read == 0 {
-            return Ok("EOF".as_bytes().to_vec());
-        }
-
-        tracing::info!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
-        return Ok(buf[..read].to_vec());
-    }
-}
-
-async fn chat_protocol_handler(mut incoming_stream: IncomingStreams, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
+async fn protocol_handler(mut incoming_stream: IncomingStreams, protocol: StreamProtocol, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
     while let Some((peer, stream)) = incoming_stream.next().await {
+        let proto = protocol.clone();
         let _ = event_sender
             .send(event::Event::MessageReceived { 
                 stream,
-                protocol: CHAT_PROTOCOL,
+                protocol: proto,
                 peer,
              })
-            .await; 
-        // match _receive_message(stream).await {
-        //     Ok(n) => {
-        //         let _ = event_sender
-        //             .send(event::Event::MessageReceived { message: n })
-        //             .await;
-        //     }
-        //     Err(e) => {
-        //         tracing::warn!(%peer, "Receive failed: {e}");
-        //         continue;
-        //     }
-        // };
+            .await;
     }
 }
