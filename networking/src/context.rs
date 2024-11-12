@@ -118,22 +118,21 @@ impl Context {
         peer_id: String,
         protocol: String,
         user_data: *mut c_void,
-        callback: *const extern "C" fn(status: u8, user_data: *mut c_void)
+        callback: extern "C" fn(status: u8, user_data: *mut c_void)
     ) {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
-        let callback = unsafe { callback.as_ref() };
         self.runtime.spawn(async move {
             match sender.send(msg, peer_id, protocol).await {
                 Ok(_) => {
-                    if let Some(callback) = callback {
+                    if (callback as *const c_void) != std::ptr::null() {
                         let user_data = user_data_safe as *mut c_void;
                         callback(1, user_data);
                     }
                 },
                 Err(error) => {
                     eprintln!("Context::send_with_callback(): {:?}", error);
-                    if let Some(callback) = callback {
+                    if (callback as *const c_void) != std::ptr::null() {
                         let user_data = user_data_safe as *mut c_void;
                         callback(0, user_data);
                     }
