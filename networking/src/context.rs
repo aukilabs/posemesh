@@ -2,7 +2,9 @@ use crate::client;
 use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
-use futures::StreamExt;
+use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
+use futures::lock::Mutex;
+use std::sync::Arc;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::{c_char, c_void}};
@@ -11,10 +13,6 @@ use libp2p::Multiaddr;
 
 #[cfg(any(feature="cpp", feature="py"))]
 use tokio::runtime::Runtime;
-#[cfg(any(feature="cpp", feature="py"))]
-use tokio::sync::Mutex;
-#[cfg(any(feature="cpp", feature="py"))]
-use std::sync::Arc;
 #[cfg(feature="py")]
 use crate::event::{MessageReceivedEvent, NewNodeRegisteredEvent};
 
@@ -59,7 +57,7 @@ pub struct Context {
     #[cfg(any(feature="cpp", feature="py"))]
     runtime: Arc<Runtime>,
     client: client::Client,
-    receiver: Arc<Mutex<futures::channel::mpsc::Receiver<event::Event>>>,
+    receiver: Arc<Mutex<Receiver<event::Event>>>,
 }
 
 #[cfg_attr(feature="py", pymethods)]
@@ -178,6 +176,13 @@ impl Context {
         });
     }
 
+    // // TODO: not sure why pyo3_asyncio complains about this even feature gated
+    // #[cfg(feature="rust")]
+    // pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+    //     let mut sender = self.client.clone();
+    //     sender.send(msg, peer_id, protocol).await
+    // }
+
     #[cfg(feature="py")]
     pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
         let mut sender = self.client.clone();
@@ -215,12 +220,20 @@ impl Context {
     }
 }
 
+#[cfg(feature="rust")]
+impl Context {
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+        let mut sender = self.client.clone();
+        sender.send(msg, peer_id, protocol).await
+    }
+}
+
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
     #[cfg(any(feature="cpp", feature="py"))]
     let runtime = Runtime::new()?;
 
-    let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
-    let (event_sender, event_receiver) = futures::channel::mpsc::channel::<event::Event>(8);
+    let (sender, receiver) = channel::<client::Command>(8);
+    let (event_sender, event_receiver) = channel::<event::Event>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
 

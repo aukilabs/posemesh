@@ -93,7 +93,7 @@ const CHAT_PROTOCOL: StreamProtocol = StreamProtocol::new("/chat");
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
 pub struct Networking {
-    pub nodes_map: Arc<Mutex<HashMap<String, Node>>>,
+    nodes_map: Arc<Mutex<HashMap<String, Node>>>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
     command_receiver: futures::channel::mpsc::Receiver<client::Command>,

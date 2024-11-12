@@ -33,9 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         node_capabilities: vec![],
         node_types: vec!["relay".to_string()],
     };
-    let mut c = context::context_create(cfg)?;
-    
-    // Wait for the Ctrl+C signal
+    let _c = context::context_create(cfg)?;
+
     signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
     println!("Ctrl+C received, shutting down.");
 
