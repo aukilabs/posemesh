@@ -1,8 +1,13 @@
 use posemesh_networking::{context, network};
-use tokio::{self, select};
-use tokio::io::{self, AsyncBufReadExt};
-use tokio::signal;
+use tokio::{self, select, signal, io::{self, AsyncBufReadExt}};
 
+/*
+    * This is a simple client that registers with a relay server.
+    * Other clients can send messages to this client by sending messages to the relay server.
+
+    * Usage: cargo run --example autonat --features rust <port> <name> <bootstraps> [private_key_path]
+    * Example: cargo run --example holepunch --features rust 0 relay_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();

@@ -120,7 +120,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let client = client::new_client(sender);
     let cfg = config.clone();
 
-    #[cfg(target_family="wasm")]
+    #[cfg(any(target_family="wasm", feature="rust"))]
     let networking = Networking::new(&cfg, receiver)?;
 
     #[cfg(feature="cpp")]

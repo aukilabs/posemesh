@@ -1,7 +1,11 @@
 use posemesh_networking::{context, network};
-use tokio::{self, select};
-use tokio::io::{self, AsyncBufReadExt};
+use tokio::{self, select, io::{self, AsyncBufReadExt, BufReader}};
 
+/*
+    * This is a simple chat client that sends messages to a peer.
+    * Usage: cargo run --example holepunch --features rust <port> <name> <bootstraps> [private_key_path]
+    * Example: cargo run --example holepunch --features rust 0 rust_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+*/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -32,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut c = context::context_create(cfg)?;
 
-    let mut stdin = io::BufReader::new(io::stdin()).lines();
+    let mut stdin = BufReader::new(io::stdin()).lines();
 
     loop {
         select! {
