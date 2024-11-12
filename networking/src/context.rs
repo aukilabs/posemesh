@@ -2,6 +2,7 @@ use crate::client;
 use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
+use futures::StreamExt;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::{c_char, c_void}};
@@ -9,9 +10,13 @@ use std::{ffi::CStr, os::raw::{c_char, c_void}};
 use libp2p::Multiaddr;
 
 #[cfg(any(feature="cpp", feature="py"))]
-use std::sync::Arc;
-#[cfg(any(feature="cpp", feature="py"))]
 use tokio::runtime::Runtime;
+#[cfg(any(feature="cpp", feature="py"))]
+use tokio::sync::Mutex;
+#[cfg(any(feature="cpp", feature="py"))]
+use std::sync::Arc;
+#[cfg(feature="py")]
+use crate::event::{MessageReceivedEvent, NewNodeRegisteredEvent};
 
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
@@ -54,7 +59,7 @@ pub struct Context {
     #[cfg(any(feature="cpp", feature="py"))]
     runtime: Arc<Runtime>,
     client: client::Client,
-    event_receiver: futures::channel::mpsc::Receiver<event::Event>,
+    receiver: Arc<Mutex<futures::channel::mpsc::Receiver<event::Event>>>,
 }
 
 #[cfg_attr(feature="py", pymethods)]
@@ -184,14 +189,30 @@ impl Context {
         future_into_py(py, fut)
     }
 
-    // pub fn next_event(&mut self) -> Result<Option<event::Event>, Box<dyn Error>> {
-    //     let event = self.event_receiver.try_next();
-    //     match event {
-    //         Ok(Some(event)) => Ok(Some(event)),
-    //         Ok(None) => Ok(None),
-    //         Err(error) => Err(Box::new(error) as Box<dyn Error>),
-    //     }
-    // }
+    #[cfg(feature="py")]
+    pub fn poll<'a>(&mut self, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let receiver = self.receiver.clone();
+        let fut = async move {
+            let mut receiver = receiver.lock().await;
+            let event = receiver.next().await;
+            match event {
+                Some(event) => {
+                    match event {
+                        event::Event::NewNodeRegistered { node } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, NewNodeRegisteredEvent::new(node)).unwrap().into_py(py));
+                            Ok(py_message)
+                        }
+                        event::Event::MessageReceived { protocol, stream, peer } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, MessageReceivedEvent::new(protocol, peer, stream)).unwrap().into_py(py));
+                            Ok(py_message)
+                        }
+                    }
+                },
+                None => Ok(Python::with_gil(|py| py.None()))
+            }
+        };
+        future_into_py(py, fut)
+    }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
@@ -226,6 +247,6 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         #[cfg(any(feature="cpp", feature="py"))]
         runtime: Arc::new(runtime),
         client,
-        event_receiver,
+        receiver: Arc::new(Mutex::new(event_receiver)),
     })
 }

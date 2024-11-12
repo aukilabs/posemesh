@@ -1,5 +1,5 @@
 mod client;
-mod event;
+pub mod event;
 pub mod context;
 pub mod network;
 
@@ -220,6 +220,10 @@ pub fn posemeshNetworkingContextSendMessage2(
 #[cfg(feature="py")]
 #[pymodule]
 fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+    use event::{NewNodeRegisteredEvent,MessageReceivedEvent};
+
     m.add_class::<Context>()?;
+    m.add_class::<MessageReceivedEvent>()?;
+    m.add_class::<NewNodeRegisteredEvent>()?;
     Ok(())
 }

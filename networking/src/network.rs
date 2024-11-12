@@ -27,6 +27,9 @@ use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "py")]
+use pyo3::prelude::*;
+
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
 struct PosemeshBehaviour {
@@ -77,19 +80,20 @@ impl Default for NetworkingConfig {
     }
 }
 
+#[cfg_attr(feature = "py", pyclass(get_all))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Node {
-    id: PeerId,
-    name: String,
-    node_types: Vec<String>,   // Assuming node_types is a list of strings
-    capabilities: Vec<String>, // Assuming capabilities is a list of strings
+pub(crate) struct Node {
+    pub id: String,
+    pub name: String,
+    pub node_types: Vec<String>,   // Assuming node_types is a list of strings
+    pub capabilities: Vec<String>, // Assuming capabilities is a list of strings
 }
 
 const CHAT_PROTOCOL: StreamProtocol = StreamProtocol::new("/chat");
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
 pub struct Networking {
-    pub nodes_map: Arc<Mutex<HashMap<PeerId, Node>>>,
+    pub nodes_map: Arc<Mutex<HashMap<String, Node>>>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
     command_receiver: futures::channel::mpsc::Receiver<client::Command>,
@@ -276,7 +280,7 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 }
 
 impl Networking {
-    pub fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>, event_sender: futures::channel::mpsc::Sender<event::Event>) -> Result<Self, Box<dyn Error>> {
+    pub(crate) fn new(cfg: &NetworkingConfig, command_receiver: futures::channel::mpsc::Receiver<client::Command>, event_sender: futures::channel::mpsc::Sender<event::Event>) -> Result<Self, Box<dyn Error>> {
         #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -312,7 +316,7 @@ impl Networking {
             swarm.dial(maddr)?;
         }
         
-        let nodes_map: Arc<Mutex<HashMap<PeerId, Node>>> = Arc::new(Mutex::new(HashMap::new()));
+        let nodes_map: Arc<Mutex<HashMap<String, Node>>> = Arc::new(Mutex::new(HashMap::new()));
 
         #[cfg(not(target_family="wasm"))]
         let listeners = build_listeners(cfg.port);
@@ -322,7 +326,7 @@ impl Networking {
         }
 
         let node = Node{
-            id: key.public().to_peer_id(),
+            id: key.public().to_peer_id().to_string(),
             name: cfg.name.clone(),
             node_types: cfg.node_types.clone(),
             capabilities: cfg.node_capabilities.clone(),
@@ -459,7 +463,7 @@ impl Networking {
                         if self.nodes_map.lock().unwrap().contains_key(&node.id) {
                             return;
                         }
-                        if node.id == *self.swarm.local_peer_id() {
+                        if node.id == *self.swarm.local_peer_id().to_string() {
                             return;
                         }
                         println!("Node {} joins the network", node.name);
@@ -625,7 +629,7 @@ async fn _receive_message(mut stream: Stream) -> io::Result<Vec<u8>> {
     loop {
         let read = stream.read(&mut buf).await?;
         if read == 0 {
-            return Ok(Vec::new());
+            return Ok("EOF".as_bytes().to_vec());
         }
 
         tracing::info!("Received: {:?}", std::str::from_utf8(&buf[..read]).unwrap()); 
@@ -633,18 +637,25 @@ async fn _receive_message(mut stream: Stream) -> io::Result<Vec<u8>> {
     }
 }
 
-async fn chat_protocol_handler(mut stream: IncomingStreams, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
-    while let Some((peer, stream)) = stream.next().await {
-        match _receive_message(stream).await {
-            Ok(n) => {
-                let _ = event_sender
-                    .send(event::Event::MessageReceived { message: n })
-                    .await;
-            }
-            Err(e) => {
-                tracing::warn!(%peer, "Receive failed: {e}");
-                continue;
-            }
-        };
+async fn chat_protocol_handler(mut incoming_stream: IncomingStreams, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
+    while let Some((peer, stream)) = incoming_stream.next().await {
+        let _ = event_sender
+            .send(event::Event::MessageReceived { 
+                stream,
+                protocol: CHAT_PROTOCOL,
+                peer,
+             })
+            .await; 
+        // match _receive_message(stream).await {
+        //     Ok(n) => {
+        //         let _ = event_sender
+        //             .send(event::Event::MessageReceived { message: n })
+        //             .await;
+        //     }
+        //     Err(e) => {
+        //         tracing::warn!(%peer, "Receive failed: {e}");
+        //         continue;
+        //     }
+        // };
     }
 }

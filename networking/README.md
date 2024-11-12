@@ -40,7 +40,7 @@ There are also other scripts which can aid in the development and deployment pro
 
 - `Build-Apple.ps1` script builds all Apple platform and architecture combinations. It takes one parameter for build type which can be `Debug`, `Release` (default) or `Both`. Similarly to `Build-Library.ps1`, flag `-InstallNecessaryRustToolchainsAndTargets` can be specified to allow the underlying script calls to install the necessary Rust toolchains and targets if missing.
 
-- `. ./scripts/pybindgen.sh` generates python wrapper. You need to have python3 installed
+- `. ./scripts/pybindgen.sh` to generate rust binding for python.
 
 # Notes
 

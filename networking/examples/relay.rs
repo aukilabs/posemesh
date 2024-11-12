@@ -1,5 +1,5 @@
 use posemesh_networking::{context, network};
-use tokio::{self, signal, io::{self, AsyncBufReadExt}};
+use tokio::{self, signal};
 
 /*
     * This is a simple example of a relay node. It will connect to a set of bootstraps and relay messages between them.
@@ -40,6 +40,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Ctrl+C received, shutting down.");
 
     println!("Program terminated.");
-
     Ok(())
 }
