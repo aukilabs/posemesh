@@ -18,5 +18,6 @@ EMSCRIPTEN_BINDINGS(Posemesh) {
         .constructor(&std::make_shared<Posemesh>)
         .constructor(&std::make_shared<Posemesh, const Config&>)
         .function("equals(posemesh)", &equals)
+        .property("__context", &Posemesh::__getContext)
     ;
 }
