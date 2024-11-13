@@ -1,4 +1,5 @@
 mod client;
+pub mod event;
 pub mod context;
 pub mod network;
 
@@ -7,10 +8,16 @@ use context::{Config, Context};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::{c_char, c_uchar, CStr}, os::raw::c_void, slice};
 
+#[cfg(feature="py")]
+use context::Context;
+
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 #[cfg(target_family="wasm")]
 use wasm_bindgen_futures::{future_to_promise, js_sys::{Error, Promise}};
+
+#[cfg(feature="py")]
+use pyo3::prelude::*;
 
 // ******************************************
 // ** posemesh_networking_context_create() **
@@ -208,4 +215,15 @@ pub fn posemeshNetworkingContextSendMessage2(
     protocol: *const c_char
 ) -> Promise {
     posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol)
+}
+
+#[cfg(feature="py")]
+#[pymodule]
+fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+    use event::{NewNodeRegisteredEvent,MessageReceivedEvent};
+
+    m.add_class::<Context>()?;
+    m.add_class::<MessageReceivedEvent>()?;
+    m.add_class::<NewNodeRegisteredEvent>()?;
+    Ok(())
 }

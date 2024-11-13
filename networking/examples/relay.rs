@@ -1,5 +1,5 @@
 use posemesh_networking::{context, network};
-use tokio::{self, signal, io::{self, AsyncBufReadExt}};
+use tokio::{self, signal};
 
 /*
     * This is a simple example of a relay node. It will connect to a set of bootstraps and relay messages between them.
@@ -33,13 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         node_capabilities: vec![],
         node_types: vec!["relay".to_string()],
     };
-    let mut c = context::context_create(cfg)?;
-    
-    // Wait for the Ctrl+C signal
+    let _c = context::context_create(cfg)?;
+
     signal::ctrl_c().await.expect("Failed to listen for ctrl_c signal");
     println!("Ctrl+C received, shutting down.");
 
     println!("Program terminated.");
-
     Ok(())
 }

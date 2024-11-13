@@ -25,21 +25,9 @@ impl Client {
 
 #[derive(Debug)]
 pub enum Command {
-    // SendTo {
-    //     message: Vec<u8>,
-    //     to_addr: String,
-    //     protocol: String,
-    // },
     Send {
         message: Vec<u8>,
         peer_id: PeerId,
         protocol: StreamProtocol,
     },
-    // Publish {
-    //     message: String,
-    //     topic: String,
-    // },
-    // Subscribe {
-    //     topic: String,
-    // },
 }

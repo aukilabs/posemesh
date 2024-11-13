@@ -1,14 +1,30 @@
 use crate::client;
+use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
+use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
+use futures::lock::Mutex;
+use std::sync::Arc;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::{c_char, c_void}};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use libp2p::Multiaddr;
 
+#[cfg(any(feature="cpp", feature="py"))]
+use tokio::runtime::Runtime;
+#[cfg(feature="py")]
+use crate::event::{MessageReceivedEvent, NewNodeRegisteredEvent};
+
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature="py")]
+use pyo3::prelude::*;
+#[cfg(feature="py")]
+use pyo3::exceptions::PyValueError;
+#[cfg(feature="py")]
+use pyo3_asyncio::tokio::future_into_py;
 
 #[cfg(feature="cpp")]
 #[repr(C)]
@@ -36,12 +52,15 @@ impl Config {
     }
 }
 
+#[cfg_attr(feature="py", pyclass)]
 pub struct Context {
-    #[cfg(feature="cpp")]
-    runtime: tokio::runtime::Runtime,
+    #[cfg(any(feature="cpp", feature="py"))]
+    runtime: Arc<Runtime>,
     client: client::Client,
+    receiver: Arc<Mutex<Receiver<event::Event>>>,
 }
 
+#[cfg_attr(feature="py", pymethods)]
 impl Context {
     #[cfg(any(feature="wasm", feature="cpp"))]
     pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
@@ -106,9 +125,25 @@ impl Context {
         Ok(Box::new(ctx))
     }
 
-    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
-        let mut sender = self.client.clone();
-        sender.send(msg, peer_id, protocol).await
+    #[cfg(feature="py")]
+    #[new]
+    pub fn new(mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Self> {
+        pyo3_log::init();
+        let cfg = NetworkingConfig {
+            port: port,
+            bootstrap_nodes: relay_nodes.clone(),
+            enable_relay_server: false,
+            enable_kdht: true,
+            enable_mdns: mdns,
+            relay_nodes: relay_nodes.clone(),
+            private_key: "".to_string(),
+            private_key_path: pkey_path.clone(),
+            name: name.clone(),
+            node_types: node_types.clone(),
+            node_capabilities: capabilities.clone(),
+        };
+        let ctx = context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(ctx)
     }
 
     #[cfg(feature="cpp")]
@@ -140,34 +175,91 @@ impl Context {
             }
         });
     }
+
+    // // TODO: not sure why pyo3_asyncio complains about this even feature gated
+    // #[cfg(feature="rust")]
+    // pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+    //     let mut sender = self.client.clone();
+    //     sender.send(msg, peer_id, protocol).await
+    // }
+
+    #[cfg(feature="py")]
+    pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let mut sender = self.client.clone();
+
+        let fut = async move {
+            let result = sender.send(msg, peer_id, protocol).await;
+            result.map_err(|e| PyValueError::new_err(e.to_string()))
+        };
+        future_into_py(py, fut)
+    }
+
+    #[cfg(feature="py")]
+    pub fn poll<'a>(&mut self, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let receiver = self.receiver.clone();
+        let fut = async move {
+            let mut receiver = receiver.lock().await;
+            let event = receiver.next().await;
+            match event {
+                Some(event) => {
+                    match event {
+                        event::Event::NewNodeRegistered { node } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, NewNodeRegisteredEvent::new(node)).unwrap().into_py(py));
+                            Ok(py_message)
+                        }
+                        event::Event::MessageReceived { protocol, stream, peer } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, MessageReceivedEvent::new(protocol, peer, stream)).unwrap().into_py(py));
+                            Ok(py_message)
+                        }
+                    }
+                },
+                None => Ok(Python::with_gil(|py| py.None()))
+            }
+        };
+        future_into_py(py, fut)
+    }
+}
+
+#[cfg(any(feature="rust", target_family="wasm"))]
+impl Context {
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+        let mut sender = self.client.clone();
+        sender.send(msg, peer_id, protocol).await
+    }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
-    #[cfg(feature="cpp")]
-    let runtime = tokio::runtime::Runtime::new().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+    #[cfg(any(feature="cpp", feature="py"))]
+    let runtime = Runtime::new()?;
 
-    let (sender, receiver) = futures::channel::mpsc::channel::<client::Command>(8);
+    let (sender, receiver) = channel::<client::Command>(8);
+    let (event_sender, event_receiver) = channel::<event::Event>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
 
     #[cfg(any(target_family="wasm", feature="rust"))]
-    let networking = Networking::new(&cfg, receiver)?;
+    let networking = Networking::new(&cfg, receiver, event_sender)?;
 
-    #[cfg(feature="cpp")]
+    #[cfg(any(feature="cpp", feature="py"))]
     runtime.spawn(async move {
-        let networking = Networking::new(&cfg, receiver).unwrap();
-        networking.run().await;
+        let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
+        let _ = networking.run().await.expect("Failed to run networking");
     });
 
     #[cfg(target_family="wasm")]
-    wasm_bindgen_futures::spawn_local(networking.run());
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = networking.run().await.expect("Failed to run networking");
+    });
 
-    #[cfg(feature="rust")]
-    tokio::spawn(networking.run());
+    #[cfg(any(feature="rust"))]
+    tokio::spawn(async move {
+        let _ = networking.run().await.expect("Failed to run networking");
+    });
 
     Ok(Context {
-        #[cfg(feature="cpp")]
-        runtime: runtime,
-        client: client,
+        #[cfg(any(feature="cpp", feature="py"))]
+        runtime: Arc::new(runtime),
+        client,
+        receiver: Arc::new(Mutex::new(event_receiver)),
     })
 }
