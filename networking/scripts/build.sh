@@ -73,9 +73,8 @@ WASMTarget=""
 case "$Platform" in
     "macOS")
         if [[ "$(uname)" != "Darwin" ]]; then
-            
-            # echo "Error: Your machine needs to be running macOS to build for 'macOS' Platform." >&2
-            # exit 1
+            echo "Error: Your machine needs to be running macOS to build for 'macOS' Platform." >&2
+            exit 1
         fi
         if [[ -z "$Architecture" ]]; then
             echo "Error: Parameter '--architecture' or '-a' is not specified for 'macOS' Platform." >&2
