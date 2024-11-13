@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build
         run: |
           echo "Building for ${{ matrix.platform }} on ${{ matrix.architecture }}"
@@ -34,16 +34,24 @@ jobs:
             echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
             exit 0
           fi
-          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i
-      
-      - name: Build Examples
-        if : ${{ github.ref_name == github.event.repository.default_branch }}
-        run: |
-          echo "Building examples"
-          if [ ${{ matrix.architecture }} == "wasm32" ]; then
+          if [ ${{ matrix.architecture }} != "wasm32" ] && [ ${{ matrix.platform }} == "browser"]; then
             echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
             exit 0
           fi
+          if [ ${{ matrix.architecture }} == "wasm32" ] && [ ${{ matrix.platform }} == "browser" ]; then
+            cargo install wasm-pack
+          fi
+          cd networking
+          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i
+      
+      - name: Build Examples
+        run: |
+          echo "Building examples"
+          if [ ${{ matrix.architecture }} == "wasm32" ] || [ ${{ matrix.platform }} == "browser" ]; then
+            echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
+            exit 0
+          fi
+          cd networking
           bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i -e -f rust
 
 
