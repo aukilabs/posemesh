@@ -26,6 +26,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Chmod
+        run: |
+          chmod +x ./networking/scripts/build.sh
+
       - name: Build
         run: |
           echo "Building for ${{ matrix.platform }} on ${{ matrix.architecture }}"
