@@ -25,11 +25,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Chmod
-        run: |
-          chmod +x ./networking/scripts/build.sh
-
+        
       - name: Build
         run: |
           echo "Building for ${{ matrix.platform }} on ${{ matrix.architecture }}"
@@ -38,7 +34,7 @@ jobs:
             echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
             exit 0
           fi
-          ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i
+          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i
       
       - name: Build Examples
         if : ${{ github.ref_name == github.event.repository.default_branch }}
@@ -48,7 +44,7 @@ jobs:
             echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
             exit 0
           fi
-          ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i -e -f rust
+          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i -e -f rust
 
 
 
