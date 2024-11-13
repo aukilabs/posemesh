@@ -220,7 +220,7 @@ impl Context {
     }
 }
 
-#[cfg(feature="rust")]
+#[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
     pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
         let mut sender = self.client.clone();
