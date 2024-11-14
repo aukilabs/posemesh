@@ -25,4 +25,6 @@ NS_SWIFT_NAME(Config) PSM_API @interface PSMConfig : NSObject<NSCopying>
 - (void*)nativeConfig;
 #endif
 
++ (PSMConfig*)default NS_REFINED_FOR_SWIFT;
+
 @end

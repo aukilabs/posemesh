@@ -124,4 +124,17 @@
     return m_config;
 }
 
++ (PSMConfig*)default {
+    auto* nativeConfig = new(std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
+    if (!nativeConfig) {
+        return nil;
+    }
+    PSMConfig* config = [[PSMConfig alloc] initWithNativeConfig:nativeConfig];
+    if (!config) {
+        delete nativeConfig;
+        return nil;
+    }
+    return config;
+}
+
 @end

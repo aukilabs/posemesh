@@ -78,4 +78,10 @@ bool Config::setBootstraps(std::vector<std::string> bootstraps) noexcept {
     return true;
 }
 
+Config Config::createDefault() {
+    Config config;
+    // TODO: set config.m_bootstraps to well-known bootstraps
+    return config;
+}
+
 }

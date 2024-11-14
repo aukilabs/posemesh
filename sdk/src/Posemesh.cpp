@@ -5,7 +5,7 @@
 
 namespace psm {
 
-Posemesh::Posemesh() : Posemesh(Config { }) { } // TODO: impl with default settings
+Posemesh::Posemesh() : Posemesh(Config::createDefault()) { }
 
 Posemesh::Posemesh(const Config& config) {
     std::string bootstraps;

@@ -31,6 +31,8 @@ public:
 
     std::vector<std::string> PSM_API getBootstraps() const;
     bool PSM_API setBootstraps(std::vector<std::string> bootstraps) noexcept;
+
+    static Config PSM_API createDefault();
 private:
     #if !defined(__EMSCRIPTEN__)
         bool m_serveAsBootstrap;

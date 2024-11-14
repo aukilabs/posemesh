@@ -11,6 +11,10 @@ psm_config_t* psm_config_create() {
     return new(std::nothrow) psm::Config;
 }
 
+psm_config_t* psm_config_create_default() {
+    return new(std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
+}
+
 psm_config_t* psm_config_duplicate(const psm_config_t* config) {
     if (!config) {
         assert(!"psm_config_duplicate(): config is null");

@@ -22,4 +22,10 @@ extension Config {
             return __bootstraps()
         }
     }
+
+    public static var `default`: Config {
+        get {
+            return __default()
+        }
+    }
 }
