@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstring>
 #include <new>
 #include <Posemesh/C/Posemesh.h>
 #include <Posemesh/Networking/API.h>
@@ -56,6 +57,31 @@ uint8_t psm_posemesh_send_message(
         context,
         message,
         message_size,
+        peer_id,
+        protocol,
+        user_data,
+        callback
+    );
+}
+
+uint8_t psm_posemesh_send_string(
+    const psm_posemesh_t* posemesh,
+    const char* string,
+    uint8_t append_terminating_null_character,
+    const char* peer_id,
+    const char* protocol,
+    void* user_data,
+    void (*callback)(uint8_t status, void* user_data)
+) {
+    if (!string) {
+        assert(!"psm_posemesh_send_string(): string is null");
+        return 0;
+    }
+    const auto length = std::strlen(string);
+    return psm_posemesh_send_message(
+        posemesh,
+        string,
+        length + (append_terminating_null_character ? 1 : 0),
         peer_id,
         protocol,
         user_data,

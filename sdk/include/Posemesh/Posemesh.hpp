@@ -29,6 +29,14 @@ public:
         std::function<void(bool status)> callback = nullptr
     ) const;
 
+    bool PSM_API sendString(
+        const std::string& string,
+        bool appendTerminatingNullCharacter,
+        const std::string& peerId,
+        const std::string& protocol,
+        std::function<void(bool status)> callback = nullptr
+    ) const;
+
     #if !defined(__EMSCRIPTEN__)
         void* __getContext() const noexcept;
     #else

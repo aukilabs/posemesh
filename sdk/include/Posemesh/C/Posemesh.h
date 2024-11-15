@@ -26,6 +26,15 @@ uint8_t PSM_API psm_posemesh_send_message(
     void* user_data,
     void (*callback)(uint8_t status, void* user_data)
 );
+uint8_t PSM_API psm_posemesh_send_string(
+    const psm_posemesh_t* posemesh,
+    const char* string,
+    uint8_t append_terminating_null_character,
+    const char* peer_id,
+    const char* protocol,
+    void* user_data,
+    void (*callback)(uint8_t status, void* user_data)
+);
 void PSM_API psm_posemesh_destroy(psm_posemesh_t* posemesh);
 
 #if defined(__cplusplus)

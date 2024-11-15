@@ -90,6 +90,22 @@ bool Posemesh::sendMessage(
     return result;
 }
 
+bool Posemesh::sendString(
+    const std::string& string,
+    bool appendTerminatingNullCharacter,
+    const std::string& peerId,
+    const std::string& protocol,
+    std::function<void(bool status)> callback
+) const {
+    return sendMessage(
+        string.c_str(),
+        string.size() + (appendTerminatingNullCharacter ? 1 : 0),
+        peerId,
+        protocol,
+        callback
+    );
+}
+
 #if !defined(__EMSCRIPTEN__)
     void* Posemesh::__getContext() const noexcept {
         return m_context;
