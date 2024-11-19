@@ -32,6 +32,7 @@ pub struct Config {
     pub serve_as_bootstrap: u8,
     pub serve_as_relay: u8,
     pub bootstraps: *const c_char,
+    pub relays: *const c_char,
 }
 
 #[cfg(feature="wasm")]
@@ -39,15 +40,20 @@ pub struct Config {
 #[allow(non_snake_case)]
 pub struct Config {
     pub bootstraps: String,
+    pub relays: String,
 }
 
 #[cfg(feature="wasm")]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]
-    pub fn new(bootstraps: String) -> Self {
+    pub fn new(
+        bootstraps: String,
+        relays: String
+    ) -> Self {
         Self {
             bootstraps: bootstraps,
+            relays: relays,
         }
     }
 }
@@ -105,16 +111,36 @@ impl Context {
                 bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
             ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
 
+        // ************
+        // ** relays **
+        // ************
+
+        #[cfg(not(target_family="wasm"))]
+        let relays_raw = unsafe {
+            assert!(!config.relays.is_null(), "Context::new(): config.relays is null");
+            CStr::from_ptr(config.relays)
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+
+        #[cfg(target_family="wasm")]
+        let relays_raw = &config.relays;
+
+        let relays = relays_raw
+            .split(';')
+            .map(|relay| relay.trim())
+            .filter(|relay| !relay.is_empty())
+            .map(|relay|
+                relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+
         let _ = serve_as_bootstrap; // TODO: temp
-        let _ = bootstraps; // TODO: temp
 
         let cfg = &NetworkingConfig{
             port: 0,
-            bootstrap_nodes: vec![],
+            bootstrap_nodes: bootstraps.iter().map(|bootstrap| bootstrap.to_string()).collect(),
             enable_relay_server: serve_as_relay,
             enable_kdht: false,
             enable_mdns: false,
-            relay_nodes: vec![],
+            relay_nodes: relays.iter().map(|relay| relay.to_string()).collect(),
             private_key: "".to_string(),
             private_key_path: "".to_string(),
             name: "my_name".to_string(),

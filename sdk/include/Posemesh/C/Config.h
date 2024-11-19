@@ -34,6 +34,10 @@ const char* const* PSM_API psm_config_get_bootstraps(const psm_config_t* config,
 void PSM_API psm_config_get_bootstraps_free(const char* const* bootstraps);
 uint8_t PSM_API psm_config_set_bootstraps(psm_config_t* config, const char* const* bootstraps, uint32_t bootstraps_count);
 
+const char* const* PSM_API psm_config_get_relays(const psm_config_t* config, uint32_t* out_relays_count);
+void PSM_API psm_config_get_relays_free(const char* const* relays);
+uint8_t PSM_API psm_config_set_relays(psm_config_t* config, const char* const* relays, uint32_t relays_count);
+
 #if defined(__cplusplus)
 }
 #endif

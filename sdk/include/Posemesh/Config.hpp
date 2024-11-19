@@ -32,6 +32,9 @@ public:
     std::vector<std::string> PSM_API getBootstraps() const;
     bool PSM_API setBootstraps(std::vector<std::string> bootstraps) noexcept;
 
+    std::vector<std::string> PSM_API getRelays() const;
+    bool PSM_API setRelays(std::vector<std::string> relays) noexcept;
+
     static Config PSM_API createDefault();
 private:
     #if !defined(__EMSCRIPTEN__)
@@ -39,6 +42,7 @@ private:
         bool m_serveAsRelay;
     #endif
     std::vector<std::string> m_bootstraps;
+    std::vector<std::string> m_relays;
 };
 
 }
