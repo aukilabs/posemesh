@@ -122,4 +122,16 @@ if(EMSCRIPTEN)
             RENAME "Posemesh.js"
         )
     endif()
+    include(TransformTypeScriptDefinitions)
+    transform_typescript_definitions(
+        Posemesh_TransformedTypeScriptDefinitions
+        "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TransformedTypeScriptDefinitions.d.ts"
+        "${CMAKE_CURRENT_BINARY_DIR}/Posemesh.d.ts"
+    )
+    install(
+        FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_TransformedTypeScriptDefinitions.d.ts"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}"
+        RENAME "Posemesh.d.ts"
+    )
 endif()

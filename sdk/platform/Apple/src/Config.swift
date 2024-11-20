@@ -21,11 +21,17 @@ extension Config {
         get {
             return __bootstraps()
         }
+        set {
+            setBootstraps(newValue)
+        }
     }
 
     public var relays: [String] {
         get {
             return __relays()
+        }
+        set {
+            setRelays(newValue)
         }
     }
 
