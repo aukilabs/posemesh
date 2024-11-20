@@ -56,3 +56,28 @@ The features of libp2p that are used by the Posemesh SDK include:
 Communications between nodes always use peer-to-peer connections when possible, but the
 Posemesh SDK also supports using a relay server as a fallback when direct connections
 are not possible. The relay server is only used as a last resort.
+
+## How to build
+
+### Prerequisites
+
+* Rust - ([installation instructions](https://www.rust-lang.org/tools/install)) 
+* Powershell - (`brew install powershell`)
+
+### Step by step guide
+1. Check out submodules:
+```sh
+git submodule update --init --recursive
+```
+
+2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/networking#building)):
+```sh
+./networking/scripts/Build-Library.ps1 macOS ARM64 Debug
+```
+
+3. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+```sh
+./sdk/scripts/Build-Library.ps1 iOS ARM64 Debug
+```
+
+4. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
