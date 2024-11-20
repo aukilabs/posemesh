@@ -78,9 +78,34 @@ bool Config::setBootstraps(std::vector<std::string> bootstraps) noexcept {
     return true;
 }
 
+std::vector<std::string> Config::getRelays() const {
+    return m_relays;
+}
+
+bool Config::setRelays(std::vector<std::string> relays) noexcept {
+    const auto relaysCount = relays.size();
+    for (std::size_t i = 0; i < relaysCount; ++i) {
+        if (relays[i].find(';') != std::string::npos) {
+            std::cerr << "Config::setRelays(): relay at index " << i << " contains an illegal ';' character" << std::endl;
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i < relaysCount - 1; ++i) {
+        for (std::size_t j = i + 1; j < relaysCount; ++j) {
+            if (relays[i] == relays[j]) {
+                std::cerr << "Config::setRelays(): relay at index " << j << " is the same as relay at index " << i << std::endl;
+                return false;
+            }
+        }
+    }
+    m_relays = std::move(relays);
+    return true;
+}
+
 Config Config::createDefault() {
     Config config;
     // TODO: set config.m_bootstraps to well-known bootstraps
+    // TODO: set config.m_relays to well-known relays
     return config;
 }
 

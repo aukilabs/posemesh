@@ -119,6 +119,25 @@
     return static_cast<BOOL>(m_config->setBootstraps(std::move(bootstraps_vector)));
 }
 
+- (NSArray<NSString*>*)relays {
+    NSAssert(m_config, @"m_config is null");
+    const auto relays = m_config->getRelays();
+    NSMutableArray<NSString*>* array = [[NSMutableArray<NSString*> alloc] init];
+    for (const auto& relay : relays) {
+        [array addObject:[NSString stringWithUTF8String:relay.c_str()]];
+    }
+    return array;
+}
+
+- (BOOL)setRelays:(NSArray<NSString*>*)relays {
+    NSAssert(m_config, @"m_config is null");
+    std::vector<std::string> relays_vector;
+    for (NSString* relay in relays) {
+        relays_vector.emplace_back([relay UTF8String]);
+    }
+    return static_cast<BOOL>(m_config->setRelays(std::move(relays_vector)));
+}
+
 - (void*)nativeConfig {
     NSAssert(m_config, @"m_config is null");
     return m_config;

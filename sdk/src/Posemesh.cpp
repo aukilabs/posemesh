@@ -21,12 +21,26 @@ Posemesh::Posemesh(const Config& config) {
         }
         bootstraps = stream.str();
     }
+    std::string relays;
+    {
+        std::ostringstream stream;
+        bool first = true;
+        for (const auto& relay : config.getRelays()) {
+            if (first)
+                first = false;
+            else
+                stream << ';';
+            stream << relay;
+        }
+        relays = stream.str();
+    }
     const psm_posemesh_networking_config_t nativeConfig {
         #if !defined(__EMSCRIPTEN__)
             .serve_as_bootstrap = static_cast<uint8_t>(config.getServeAsBootstrap()),
             .serve_as_relay = static_cast<uint8_t>(config.getServeAsRelay()),
         #endif
-        .bootstraps = bootstraps.c_str()
+        .bootstraps = bootstraps.c_str(),
+        .relays = relays.c_str()
     };
     m_context = psm_posemesh_networking_context_create(&nativeConfig);
     assert(m_context || !"Posemesh::Posemesh(): failed to create the Posemesh Networking context");
@@ -88,6 +102,22 @@ bool Posemesh::sendMessage(
     if (result)
         wrappedCallback.release();
     return result;
+}
+
+bool Posemesh::sendString(
+    const std::string& string,
+    bool appendTerminatingNullCharacter,
+    const std::string& peerId,
+    const std::string& protocol,
+    std::function<void(bool status)> callback
+) const {
+    return sendMessage(
+        string.c_str(),
+        string.size() + (appendTerminatingNullCharacter ? 1 : 0),
+        peerId,
+        protocol,
+        callback
+    );
 }
 
 #if !defined(__EMSCRIPTEN__)

@@ -20,6 +20,8 @@ EMSCRIPTEN_BINDINGS(Config) {
         .function("equals(config)", &Config::operator==)
         .function("__getBootstraps()", &Config::getBootstraps)
         .function("__setBootstraps(bootstraps)", &Config::setBootstraps)
+        .function("__getRelays()", &Config::getRelays)
+        .function("__setRelays(relays)", &Config::setRelays)
         .class_function("createDefault", &createDefault, nonnull<ret_val>())
     ;
 }

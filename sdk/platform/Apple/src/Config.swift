@@ -23,6 +23,12 @@ extension Config {
         }
     }
 
+    public var relays: [String] {
+        get {
+            return __relays()
+        }
+    }
+
     public static var `default`: Config {
         get {
             return __default()

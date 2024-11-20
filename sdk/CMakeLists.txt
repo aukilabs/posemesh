@@ -50,6 +50,7 @@ add_platform_library(
 )
 
 if(APPLE)
+    set_apple_info(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/Info.plist.in" CONFIGURE @ONLY)
     add_platform_sources(
         Posemesh
         PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include"

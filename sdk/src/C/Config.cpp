@@ -136,4 +136,67 @@ uint8_t psm_config_set_bootstraps(psm_config_t* config, const char* const* boots
     return static_cast<uint8_t>(config->setBootstraps(std::move(bootstraps_vector)));
 }
 
+const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* out_relays_count) {
+    if (!config) {
+        assert(!"psm_config_get_relays(): config is null");
+        return nullptr;
+    }
+    const auto relays = config->getRelays();
+    if (relays.size() > std::numeric_limits<uint32_t>::max()) {
+        assert(!"psm_config_get_relays(): relays count overflow");
+        return nullptr;
+    }
+    const auto relays_count = static_cast<uint32_t>(relays.size());
+    auto buffer_size = (relays_count + 1) * sizeof(char*);
+    const auto prefix_offset = buffer_size;
+    for (const auto& relay : relays) {
+        buffer_size += relay.size() + 1;
+    }
+    char* buffer = new(std::nothrow) char[buffer_size];
+    char** prefix_ptr = reinterpret_cast<char**>(buffer);
+    char* content_ptr = buffer + prefix_offset;
+    for (const auto& relay : relays) {
+        *prefix_ptr = content_ptr;
+        prefix_ptr++;
+        std::memcpy(content_ptr, relay.data(), relay.size() + 1);
+        content_ptr += relay.size() + 1;
+    }
+    *prefix_ptr = nullptr;
+    if (out_relays_count) {
+        *out_relays_count = relays_count;
+    }
+    return reinterpret_cast<const char* const*>(buffer);
+}
+
+void psm_config_get_relays_free(const char* const* relays) {
+    delete[] const_cast<char*>(reinterpret_cast<const char*>(relays));
+}
+
+uint8_t psm_config_set_relays(psm_config_t* config, const char* const* relays, uint32_t relays_count) {
+    if (!config) {
+        assert(!"psm_config_set_relays(): config is null");
+        return 0;
+    }
+    std::vector<std::string> relays_vector;
+    if (relays) {
+        if (relays_count <= 0) {
+            relays_count = 0;
+            const auto* const* relays_ptr = relays;
+            while (*relays_ptr) {
+                relays_count++;
+                relays_ptr++;
+            }
+        }
+        for (uint32_t i = 0; i < relays_count; ++i) {
+            const char* relay = relays[i];
+            if (!relay) {
+                assert(!"psm_config_set_relays(): at least one of the relays is null");
+                return 0;
+            }
+            relays_vector.emplace_back(relay);
+        }
+    }
+    return static_cast<uint8_t>(config->setRelays(std::move(relays_vector)));
+}
+
 }

@@ -16,4 +16,22 @@ __internalPosemeshAPI.builderFunctions.push(function() {
             vectorString.delete();
         }
     };
+
+    Posemesh.Config.prototype.getRelays = function() {
+        let relays = this.__getRelays();
+        try {
+            return __internalPosemeshAPI.fromVectorString(relays);
+        } finally {
+            relays.delete();
+        }
+    };
+
+    Posemesh.Config.prototype.setRelays = function(relays) {
+        let vectorString = __internalPosemeshAPI.toVectorString(relays);
+        try {
+            return this.__setRelays(vectorString);
+        } finally {
+            vectorString.delete();
+        }
+    };
 });
