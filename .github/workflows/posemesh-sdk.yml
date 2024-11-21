@@ -19,7 +19,7 @@ jobs:
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
       - name: Build Posemesh Networking (all platforms)
-        run: pwsh ./networking/scripts/Build-Apple.ps1 Release
+        run: pwsh ./networking/scripts/Build-Apple.ps1 Release -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build Posemesh SDK (all platforms)
         run: pwsh ./sdk/scripts/Build-Apple.ps1 Release
