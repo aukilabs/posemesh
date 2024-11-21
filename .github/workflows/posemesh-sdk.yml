@@ -30,10 +30,17 @@ jobs:
           pwsh ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
           pwsh ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
           pwsh ./sdk/scripts/Bundle-XCFramework.ps1 Release
-          zip -r -y ./sdk/out-Apple-Release/Posemesh.zip ./sdk/out-Apple-Release/Posemesh.xcframework
+          cd ./sdk/out-Apple-Release
+          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
+
+      - name: Get Posemesh SDK version
+        run: |
+          POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
+          if [[ $? -ne 0 ]]; then echo 'Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
 
       - name: Upload Posemesh SDK
         uses: actions/upload-artifact@v4
         with:
-          name: Posemesh Apple
+          name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_id }}
           path: ./sdk/out-Apple-Release/Posemesh.zip
