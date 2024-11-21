@@ -17,3 +17,23 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - name: Build Posemesh Networking (all platforms)
+        run: pwsh ./networking/scripts/Build-Apple.ps1 Release
+
+      - name: Build Posemesh SDK (all platforms)
+        run: pwsh ./sdk/scripts/Build-Apple.ps1 Release
+
+      - name: Bundle Posemesh SDK
+        run: |
+          pwsh ./sdk/scripts/Bundle-Framework.ps1 macOS Release
+          pwsh ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
+          pwsh ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
+          pwsh ./sdk/scripts/Bundle-XCFramework.ps1 Release
+          zip -r -y out-Apple-Release/Posemesh.zip out-Apple-Release/Posemesh.xcframework
+
+      - name: Upload Posemesh SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Posemesh Apple
+          path: out-Apple-Release/Posemesh.zip
