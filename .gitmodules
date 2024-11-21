@@ -1,4 +1,4 @@
 [submodule "third-party/ios-cmake"]
 	path = third-party/ios-cmake
-	url = git@github.com:aukilabs/ios-cmake.git
+	url = https://github.com/aukilabs/ios-cmake.git
 	branch = release/v4.5.0
