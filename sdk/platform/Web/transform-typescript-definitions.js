@@ -9,6 +9,8 @@ if (args.length != 2) {
 }
 
 const [inputFilePath, outputFilePath] = args;
+let newLine = null;
+let tab = null;
 
 function fixConfig(content) {
     content = content.replaceAll('__getBootstraps(): VectorString;',                    'getBootstraps(): [string];');
@@ -22,6 +24,12 @@ function fixConfig(content) {
 function fixPosemesh(content) {
     content = content.replaceAll('new(_0: Config): Posemesh;', 'new(config: Config): Posemesh;');
     content = content.replace(/ *readonly\s+__context\s*:\s*number\s*; */g, '');
+    content = content.replaceAll(
+        'export interface Posemesh {',
+        'export interface Posemesh {' + newLine +
+        tab + 'sendMessage(message: Uint8Array, peerId: string, protocol: string): Promise<boolean>;' + newLine +
+        tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>'
+    );
     return content;
 }
 
@@ -49,7 +57,6 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
     }
 
     // New line
-    let newLine = null;
     if (content.includes('\r\n'))
         newLine = '\r\n';
     else if (content.includes('\r'))
@@ -58,7 +65,7 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
         newLine = '\n';
 
     // Tab
-    let tab = content.match(/^ +/);
+    tab = content.match(/^ +/);
     if (tab) {
         tab = tab[0];
         if (tab.length <= 0)
