@@ -8,7 +8,7 @@ jobs:
 
     steps:
       - name: Checkout repository with submodules
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -18,10 +18,10 @@ jobs:
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      - name: Build Posemesh Networking (all platforms)
+      - name: Build Posemesh Networking (all platforms and architectures)
         run: pwsh ./networking/scripts/Build-Apple.ps1 Release -InstallNecessaryRustToolchainsAndTargets
 
-      - name: Build Posemesh SDK (all platforms)
+      - name: Build Posemesh SDK (all platforms and architectures)
         run: pwsh ./sdk/scripts/Build-Apple.ps1 Release
 
       - name: Bundle Posemesh SDK
@@ -30,10 +30,10 @@ jobs:
           pwsh ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
           pwsh ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
           pwsh ./sdk/scripts/Bundle-XCFramework.ps1 Release
-          zip -r -y out-Apple-Release/Posemesh.zip out-Apple-Release/Posemesh.xcframework
+          zip -r -y ./sdk/out-Apple-Release/Posemesh.zip ./sdk/out-Apple-Release/Posemesh.xcframework
 
       - name: Upload Posemesh SDK
         uses: actions/upload-artifact@v4
         with:
           name: Posemesh Apple
-          path: out-Apple-Release/Posemesh.zip
+          path: ./sdk/out-Apple-Release/Posemesh.zip
