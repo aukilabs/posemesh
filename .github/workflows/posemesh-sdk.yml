@@ -1,0 +1,19 @@
+name: Posemesh SDK
+on: [push]
+
+jobs:
+  build_apple_sdk:
+    name: Build Apple SDK
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v1
+        with:
+          submodules: recursive
+
+      - name: Install PowerShell
+        run: brew install --cask powershell
+
+      - name: Install Rust
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
