@@ -12,6 +12,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: BREAK TODO TEMP
+        run: exit 1
+
       - name: Install PowerShell
         run: brew install --cask powershell
 
@@ -44,3 +47,59 @@ jobs:
         with:
           name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
           path: ./sdk/out-Apple-Release/Posemesh.zip
+
+  build_web_sdk:
+    name: Build Web SDK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Emscripten
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          git pull
+          ./emsdk install latest
+          ./emsdk activate latest
+          source ./emsdk_env.sh
+
+      - name: Install PowerShell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https software-properties-common
+          source /etc/os-release
+          wget -q https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Install Rust
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - name: Build Posemesh Networking
+        run: pwsh ./networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
+
+      - name: Build Posemesh SDK
+        run: pwsh ./sdk/scripts/Build-Library.ps1 Web WASM32 Release
+
+      - name: Bundle Posemesh SDK
+        run: |
+          cd ./sdk/out-Web-WASM32-Release
+          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
+
+      - name: Get Posemesh SDK version
+        run: |
+          POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
+          if [[ $? -ne 0 ]]; then echo 'Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
+
+      - name: Upload Posemesh SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Posemesh-Web-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
+          path: ./sdk/out-Web-WASM32-Release/Posemesh.zip
