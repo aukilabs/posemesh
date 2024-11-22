@@ -95,17 +95,23 @@ ForEach($PlatformFromList In $Platforms) {
                 Exit 1
             }
         }
-        $FrameworkAMD64Lib = "$FrameworkAMD64Path/Posemesh"
+        $LibSuffix = $Null
+        If($Platform -Eq 'iOS-Simulator') {
+            $LibSuffix = 'Posemesh'
+        } Else {
+            $LibSuffix = 'Versions/A/Posemesh'
+        }
+        $FrameworkAMD64Lib = "$FrameworkAMD64Path/$LibSuffix"
         If(-Not (Test-Path -Path $FrameworkAMD64Lib -PathType Leaf)) {
             Write-Error -Message "Apple framework for '$PlatformFromList' platform, 'AMD64' architecture and '$BuildTypeFromList' build type is invalid."
             Exit 1
         }
-        $FrameworkARM64Lib = "$FrameworkARM64Path/Posemesh"
+        $FrameworkARM64Lib = "$FrameworkARM64Path/$LibSuffix"
         If(-Not (Test-Path -Path $FrameworkARM64Lib -PathType Leaf)) {
             Write-Error -Message "Apple framework for '$PlatformFromList' platform, 'ARM64' architecture and '$BuildTypeFromList' build type is invalid."
             Exit 1
         }
-        $FrameworkBundleLib = "$FrameworkBundlePath/Posemesh"
+        $FrameworkBundleLib = "$FrameworkBundlePath/$LibSuffix"
         & cp -R $FrameworkAMD64Path $FrameworkBundlePath 2>&1 | Out-Null # Use native cp instead of Copy-Item command because we need to respect symlinks
         If($LastExitCode -Ne 0) {
             Write-Error -Message "Failed to copy '$FrameworkAMD64Path' directory over to '$FrameworkBundlePath' destination."
