@@ -23,6 +23,8 @@ Param(
     [String]$BuildType
 )
 
+$RequiredEmscriptenVersion = '3.1.69'
+
 If(-Not $Platform) {
     Write-Error -Message "Parameter '-Platform' is not specified."
     Exit 1
@@ -213,6 +215,23 @@ Try {
         $XcodeBuildCommand = (Get-Command -Name 'xcodebuild') 2> $Null
         If(-Not $XcodeBuildCommand) {
             Write-Error -Message "Could not find 'xcodebuild' command. Is Xcode installed on your machine?"
+            Exit 1
+        }
+    }
+    If($CMakeUseEmscripten) {
+        $EmSDKCommand = (Get-Command -Name 'emsdk') 2> $Null
+        If(-Not $EmSDKCommand) {
+            Write-Error -Message "Could not find 'emsdk' command. Is Emscripten installed on your machine?"
+            Exit 1
+        }
+        $SelectStringResult = (& $EmSDKCommand list) | Select-String -Pattern '([0-9]+\.[0-9]+\.[0-9]+)\s+INSTALLED'
+        If(-Not $SelectStringResult) {
+            Write-Error -Message 'Failed to determine Emscripten version.'
+            Exit 1
+        }
+        $EmscriptenVersion = $SelectStringResult.Matches[0].Groups[1].Value
+        If($EmscriptenVersion -Ne $RequiredEmscriptenVersion) {
+            Write-Error -Message "Required Emscripten version is $RequiredEmscriptenVersion but the installed version is $EmscriptenVersion. Please run the 'emsdk install $RequiredEmscriptenVersion && emsdk activate $RequiredEmscriptenVersion' command."
             Exit 1
         }
     }

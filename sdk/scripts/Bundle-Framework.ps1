@@ -106,12 +106,12 @@ ForEach($PlatformFromList In $Platforms) {
             Exit 1
         }
         $FrameworkBundleLib = "$FrameworkBundlePath/Posemesh"
-        & cp -R $FrameworkAMD64Path $FrameworkBundlePath 2>&1 | Out-Null
+        & cp -R $FrameworkAMD64Path $FrameworkBundlePath 2>&1 | Out-Null # Use native cp instead of Copy-Item command because we need to respect symlinks
         If($LastExitCode -Ne 0) {
             Write-Error -Message "Failed to copy '$FrameworkAMD64Path' directory over to '$FrameworkBundlePath' destination."
             Exit 1
         }
-        & cp -R $FrameworkARM64Path "$FrameworkBundlePath/.." 2>&1 | Out-Null
+        & cp -R $FrameworkARM64Path "$FrameworkBundlePath/.." 2>&1 | Out-Null # Use native cp instead of Copy-Item command because we need to respect symlinks
         If($LastExitCode -Ne 0) {
             Write-Error -Message "Failed to copy '$FrameworkARM64Path' directory over to '$FrameworkBundlePath' destination."
             Exit 1

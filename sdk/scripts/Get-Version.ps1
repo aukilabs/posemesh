@@ -18,7 +18,7 @@ Try {
         Write-Error -Message 'Failed to extract the declared Posemesh SDK version from CMakeLists.txt file.'
         Exit 1
     }
-    Write-Output $SelectStringResult.Matches.Groups[1].Value
+    Write-Output $SelectStringResult.Matches[0].Groups[1].Value
 } Finally {
     Pop-Location
 }
