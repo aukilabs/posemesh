@@ -65,7 +65,6 @@ jobs:
           git pull
           ./emsdk install 3.1.69
           ./emsdk activate 3.1.69
-          source ./emsdk_env.sh
 
       - name: Install PowerShell
         run: |
@@ -88,12 +87,9 @@ jobs:
         run: pwsh ./networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build Posemesh SDK
-        run: pwsh ./sdk/scripts/Build-Library.ps1 Web WASM32 Release
-
-      - name: Bundle Posemesh SDK
         run: |
-          cd ./sdk/out-Web-WASM32-Release
-          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
+          source ./emsdk/emsdk_env.sh
+          pwsh ./sdk/scripts/Build-Library.ps1 Web WASM32 Release
 
       - name: Get Posemesh SDK version
         run: |
@@ -105,4 +101,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Posemesh-Web-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
-          path: ./sdk/out-Web-WASM32-Release/Posemesh.zip
+          path: ./sdk/out-Web-WASM32-Release/*
