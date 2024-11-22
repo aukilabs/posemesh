@@ -30,6 +30,8 @@ jobs:
           pwsh ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
           pwsh ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
           pwsh ./sdk/scripts/Bundle-XCFramework.ps1 Release
+          cd ./sdk/out-Apple-Release
+          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
 
       - name: Get Posemesh SDK version
         run: |
@@ -41,7 +43,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
-          path: ./sdk/out-Apple-Release/Posemesh.xcframework
+          path: ./sdk/out-Apple-Release/Posemesh.zip
 
   build_web_sdk:
     name: Build Web SDK
