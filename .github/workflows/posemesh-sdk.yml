@@ -63,8 +63,8 @@ jobs:
           git clone https://github.com/emscripten-core/emsdk.git
           cd emsdk
           git pull
-          ./emsdk install latest
-          ./emsdk activate latest
+          ./emsdk install 3.1.69
+          ./emsdk activate 3.1.69
           source ./emsdk_env.sh
 
       - name: Install PowerShell
@@ -80,6 +80,9 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - name: Install WASM-Pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build Posemesh Networking
         run: pwsh ./networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
