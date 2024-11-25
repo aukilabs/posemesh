@@ -18,9 +18,13 @@
     <string>@CMAKE_PROJECT_VERSION_MAJOR@.@CMAKE_PROJECT_VERSION_MINOR@.@CMAKE_PROJECT_VERSION_PATCH@</string>
     <key>CFBundleVersion</key>
     <string>@CMAKE_PROJECT_VERSION_MAJOR@.@CMAKE_PROJECT_VERSION_MINOR@.@CMAKE_PROJECT_VERSION_PATCH@</string>
+    <key>com.aukilabs.posemesh.Version</key>
+    <string>@CMAKE_PROJECT_VERSION_MAJOR@.@CMAKE_PROJECT_VERSION_MINOR@.@CMAKE_PROJECT_VERSION_PATCH@</string>
+    <key>com.aukilabs.posemesh.CommitId</key>
+    <string>@POSEMESH_COMMIT_ID@</string>
     <key>CSResourcesFileMapped</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright (c) Auki Labs Limited 2024</string>
+    <string>Copyright (c) Auki Labs Limited @POSEMESH_COPYRIGHT_YEAR@</string>
 </dict>
 </plist>

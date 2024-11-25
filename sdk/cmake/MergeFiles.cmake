@@ -1,8 +1,14 @@
 function(MERGE_FILES NAME)
-    list(APPEND OPTION_KEYWORDS)
+    list(
+        APPEND OPTION_KEYWORDS
+            NEW_LINE_AFTER_PREPENDED_STRING
+            NEW_LINE_AFTER_APPENDED_STRING
+    )
     list(
         APPEND SINGLE_VALUE_KEYWORDS
             OUTPUT
+            PREPEND_STRING
+            APPEND_STRING
     )
     list(
         APPEND MULTI_VALUE_KEYWORDS
@@ -53,6 +59,21 @@ function(MERGE_FILES NAME)
         endif()
     endforeach()
 
+    if(DEFINED ARG_PREPEND_STRING)
+        if(ARG_NEW_LINE_AFTER_PREPENDED_STRING)
+            list(
+                APPEND COMMAND_ARGS
+                    COMMAND "${CMAKE_COMMAND}" -E echo "${ARG_PREPEND_STRING}" > "${OUTPUT_ABSOLUTE}"
+            )
+        else()
+            list(
+                APPEND COMMAND_ARGS
+                    COMMAND "${CMAKE_COMMAND}" -E echo_append "${ARG_PREPEND_STRING}" > "${OUTPUT_ABSOLUTE}"
+            )
+        endif()
+    elseif(ARG_NEW_LINE_AFTER_PREPENDED_STRING)
+        message(FATAL_ERROR "Specified 'NEW_LINE_AFTER_PREPENDED_STRING' option requires that the 'PREPEND_STRING' option parameter is given.")
+    endif()
     list(
         APPEND COMMAND_ARGS
             COMMAND "${CMAKE_COMMAND}" -E cat
@@ -76,12 +97,32 @@ function(MERGE_FILES NAME)
             list(APPEND DEPENDS_ARGS "${TARGET_OR_FILE}")
         endif()
     endforeach()
-    list(APPEND COMMAND_ARGS > "${OUTPUT_ABSOLUTE}")
+    if(DEFINED ARG_PREPEND_STRING)
+        list(APPEND COMMAND_ARGS >> "${OUTPUT_ABSOLUTE}")
+    else()
+        list(APPEND COMMAND_ARGS > "${OUTPUT_ABSOLUTE}")
+    endif()
+    if(DEFINED ARG_APPEND_STRING)
+        if(ARG_NEW_LINE_AFTER_APPENDED_STRING)
+            list(
+                APPEND COMMAND_ARGS
+                    COMMAND "${CMAKE_COMMAND}" -E echo "${ARG_APPEND_STRING}" >> "${OUTPUT_ABSOLUTE}"
+            )
+        else()
+            list(
+                APPEND COMMAND_ARGS
+                    COMMAND "${CMAKE_COMMAND}" -E echo_append "${ARG_APPEND_STRING}" >> "${OUTPUT_ABSOLUTE}"
+            )
+        endif()
+    elseif(ARG_NEW_LINE_AFTER_APPENDED_STRING)
+        message(FATAL_ERROR "Specified 'NEW_LINE_AFTER_APPENDED_STRING' option requires that the 'APPEND_STRING' option parameter is given.")
+    endif()
 
     add_custom_command(
         OUTPUT "${OUTPUT_ABSOLUTE}"
         ${COMMAND_ARGS}
         ${DEPENDS_ARGS}
+        VERBATIM
     )
 
     add_custom_target(
