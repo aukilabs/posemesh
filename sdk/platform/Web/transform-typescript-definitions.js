@@ -26,8 +26,8 @@ function fixPosemesh(content) {
     content = content.replace(/ *readonly\s+__context\s*:\s*number\s*; */g, '');
     content = content.replaceAll(
         'export interface Posemesh {',
-        'export interface Posemesh {' + newLine +
-        tab + 'initialize(): Promise<any>;' + newLine +
+        'export declare class Posemesh {' + newLine +
+        tab + 'static initialize(): Promise<any>;' + newLine +
         tab + 'sendMessage(message: Uint8Array, peerId: string, protocol: string): Promise<boolean>;' + newLine +
         tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>'
     );
