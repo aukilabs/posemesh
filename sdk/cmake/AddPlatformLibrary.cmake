@@ -133,6 +133,8 @@ function(ADD_PLATFORM_LIBRARY NAME)
         )
     else()
         add_library(${NAME} SHARED ${SOURCES})
+        find_package(OpenCV)
+        target_link_libraries(${NAME} PRIVATE ${OpenCV_LIBS})
     endif()
 
     if(DEFINED ARG_PUBLIC_HEADER_DIR)

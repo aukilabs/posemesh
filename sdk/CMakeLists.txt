@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.30.2 FATAL_ERROR)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+set(OpenCV_DIR "${CMAKE_CURRENT_LIST_DIR}/third-party/opencv/build/install/lib/cmake/opencv4")
+
 include(Platform)
 
 project(Posemesh VERSION 0.1.0 LANGUAGES ${PLATFORM_LANGUAGES})
