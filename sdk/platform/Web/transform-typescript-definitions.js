@@ -22,14 +22,17 @@ function fixConfig(content) {
 }
 
 function fixPosemesh(content) {
-    content = content.replaceAll('new(_0: Config): Posemesh;', 'new(config: Config): Posemesh;');
+    content = content.replaceAll('new(): Posemesh;', 'constructor();');
+    content = content.replaceAll('new(_0: Config): Posemesh;', 'constructor(config: Config);');
+    content = content.replaceAll('getVersion(): string;', 'static getVersion(): string;');
+    content = content.replaceAll('getCommitId(): string;', 'static getCommitId(): string;');
     content = content.replace(/ *readonly\s+__context\s*:\s*number\s*; */g, '');
     content = content.replaceAll(
         'export interface Posemesh {',
         'export declare class Posemesh {' + newLine +
         tab + 'static initialize(): Promise<typeof Posemesh>;' + newLine +
         tab + 'sendMessage(message: Uint8Array, peerId: string, protocol: string): Promise<boolean>;' + newLine +
-        tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>'
+        tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>;'
     );
     return content;
 }
