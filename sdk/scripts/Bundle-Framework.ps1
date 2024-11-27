@@ -79,7 +79,8 @@ ForEach($PlatformFromList In $Platforms) {
             Write-Error -Message "Apple framework for '$PlatformFromList' platform, 'ARM64' architecture and '$BuildTypeFromList' build type does not exist."
             Exit 1
         }
-        $FrameworkBundlePath = "$PSScriptRoot/../out-$PlatformFromList-$BuildTypeFromList/Posemesh.framework"
+        $FrameworkBundleParentPath = "$PSScriptRoot/../out-$PlatformFromList-$BuildTypeFromList"
+        $FrameworkBundlePath = "$FrameworkBundleParentPath/Posemesh.framework"
         If(Test-Path -Path $FrameworkBundlePath -PathType Container) {
             Remove-Item -Force -Recurse -Path $FrameworkBundlePath 2> $Null
             If(Test-Path -Path $FrameworkBundlePath -PathType Container) {
@@ -87,24 +88,37 @@ ForEach($PlatformFromList In $Platforms) {
                 Exit 1
             }
         }
-        $FrameworkAMD64Lib = "$FrameworkAMD64Path/Posemesh"
+        If(-Not (Test-Path -Path $FrameworkBundleParentPath -PathType Container)) {
+            New-Item -Path $FrameworkBundleParentPath -ItemType Directory 2>&1 | Out-Null
+            If(-Not (Test-Path -Path $FrameworkBundleParentPath -PathType Container)) {
+                Write-Error -Message "Failed to create '$FrameworkBundleParentPath' directory."
+                Exit 1
+            }
+        }
+        $LibSuffix = $Null
+        If($Platform -Eq 'iOS-Simulator') {
+            $LibSuffix = 'Posemesh'
+        } Else {
+            $LibSuffix = 'Versions/A/Posemesh'
+        }
+        $FrameworkAMD64Lib = "$FrameworkAMD64Path/$LibSuffix"
         If(-Not (Test-Path -Path $FrameworkAMD64Lib -PathType Leaf)) {
             Write-Error -Message "Apple framework for '$PlatformFromList' platform, 'AMD64' architecture and '$BuildTypeFromList' build type is invalid."
             Exit 1
         }
-        $FrameworkARM64Lib = "$FrameworkARM64Path/Posemesh"
+        $FrameworkARM64Lib = "$FrameworkARM64Path/$LibSuffix"
         If(-Not (Test-Path -Path $FrameworkARM64Lib -PathType Leaf)) {
             Write-Error -Message "Apple framework for '$PlatformFromList' platform, 'ARM64' architecture and '$BuildTypeFromList' build type is invalid."
             Exit 1
         }
-        $FrameworkBundleLib = "$FrameworkBundlePath/Posemesh"
-        $CopyItemResult = $(Copy-Item -Path $FrameworkAMD64Path -Destination $FrameworkBundlePath -Recurse -Force) 2>&1
-        If($CopyItemResult) {
+        $FrameworkBundleLib = "$FrameworkBundlePath/$LibSuffix"
+        & cp -R $FrameworkAMD64Path $FrameworkBundlePath 2>&1 | Out-Null # Use native cp instead of Copy-Item command because we need to respect symlinks
+        If($LastExitCode -Ne 0) {
             Write-Error -Message "Failed to copy '$FrameworkAMD64Path' directory over to '$FrameworkBundlePath' destination."
             Exit 1
         }
-        $CopyItemResult = $(Copy-Item -Path $FrameworkARM64Path -Destination "$FrameworkBundlePath/.." -Recurse -Force) 2>&1
-        If($CopyItemResult) {
+        & cp -R $FrameworkARM64Path "$FrameworkBundlePath/.." 2>&1 | Out-Null # Use native cp instead of Copy-Item command because we need to respect symlinks
+        If($LastExitCode -Ne 0) {
             Write-Error -Message "Failed to copy '$FrameworkARM64Path' directory over to '$FrameworkBundlePath' destination."
             Exit 1
         }

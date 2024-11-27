@@ -48,6 +48,9 @@ public:
             #error "Architecture not supported."
         #endif
     #endif
+
+    static std::string PSM_API getVersion();
+    static std::string PSM_API getCommitId();
 private:
     void* m_context;
 };

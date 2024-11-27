@@ -25,4 +25,7 @@ NS_SWIFT_NAME(Posemesh) PSM_API @interface PSMPosemesh : NSObject
 - (void*)nativePosemesh;
 #endif
 
++ (NSString*)getVersion;
++ (NSString*)getCommitId;
+
 @end

@@ -93,4 +93,12 @@ void psm_posemesh_destroy(psm_posemesh_t* posemesh) {
     delete posemesh;
 }
 
+const char* psm_posemesh_get_version() {
+    return POSEMESH_VERSION;
+}
+
+const char* psm_posemesh_get_commit_id() {
+    return POSEMESH_COMMIT_ID;
+}
+
 }

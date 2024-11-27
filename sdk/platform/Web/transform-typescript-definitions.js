@@ -2,13 +2,13 @@ const fs = require('fs');
 
 const args = process.argv.slice(2);
 
-if (args.length != 2) {
+if (args.length < 2 || args.length > 4) {
     console.error('Invalid usage.');
     process.exit(1);
     return;
 }
 
-const [inputFilePath, outputFilePath] = args;
+const [inputFilePath, outputFilePath, version, commitId] = args;
 let newLine = null;
 let tab = null;
 
@@ -22,13 +22,17 @@ function fixConfig(content) {
 }
 
 function fixPosemesh(content) {
-    content = content.replaceAll('new(_0: Config): Posemesh;', 'new(config: Config): Posemesh;');
+    content = content.replaceAll('new(): Posemesh;', 'constructor();');
+    content = content.replaceAll('new(_0: Config): Posemesh;', 'constructor(config: Config);');
+    content = content.replaceAll('getVersion(): string;', 'static getVersion(): string;');
+    content = content.replaceAll('getCommitId(): string;', 'static getCommitId(): string;');
     content = content.replace(/ *readonly\s+__context\s*:\s*number\s*; */g, '');
     content = content.replaceAll(
         'export interface Posemesh {',
-        'export interface Posemesh {' + newLine +
+        'export declare class Posemesh {' + newLine +
+        tab + 'static initialize(): Promise<typeof Posemesh>;' + newLine +
         tab + 'sendMessage(message: Uint8Array, peerId: string, protocol: string): Promise<boolean>;' + newLine +
-        tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>'
+        tab + 'sendString(string: string, appendTerminatingNullCharacter: boolean, peerId: string, protocol: string): Promise<boolean>;'
     );
     return content;
 }
@@ -105,6 +109,18 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
         content = content.replaceAll(newLine + newLine, newLine);
     content = content.replaceAll('}' + newLine, '}' + newLine + newLine);
     content = content + newLine;
+
+    // Stamp
+    let stamp = '/* Copyright (c) Auki Labs Limited 2024';
+    const year = new Date().getFullYear();
+    if (year !== 2024)
+        stamp += '-' + year.toString();
+    if (version)
+        stamp += ', ' + version;
+    if (commitId)
+        stamp += ', ' + commitId;
+    stamp += ' */'
+    content = stamp + newLine + newLine + content;
 
     fs.writeFile(outputFilePath, content, 'utf8', (error) => {
         if (error) {
