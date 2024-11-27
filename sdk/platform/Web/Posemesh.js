@@ -33,10 +33,18 @@ var Posemesh = {
             }
             let networkingPromise = networkingWasmPath ? __internalPosemeshNetworking(networkingWasmPath) : __internalPosemeshNetworking();
             networkingPromise.then(() => {
+                if (!__internalPosemeshAPI.verifyNetworkingCommitId()) {
+                    reject(new Error('Posemesh Networking WebAssembly file version does not match the Posemesh JavaScript file version.'));
+                    return;
+                }
                 let mainPromise = mainWasmPath ? __internalPosemesh({
                     locateFile: () => mainWasmPath,
                 }) : __internalPosemesh();
                 mainPromise.then(mainModule => {
+                    if (!__internalPosemeshAPI.verifySDKCommitId(mainModule)) {
+                        reject(new Error('Posemesh SDK WebAssembly file version does not match the Posemesh JavaScript file version.'));
+                        return;
+                    }
                     Posemesh = mainModule.Posemesh;
                     Posemesh.__mainModule = mainModule;
                     Posemesh.Config = mainModule.Config;

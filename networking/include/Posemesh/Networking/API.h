@@ -24,6 +24,26 @@ extern "C" {
 #endif
 
 #if !defined(__EMSCRIPTEN__)
+    void psm_posemesh_networking_get_commit_id(char* buffer, unsigned int* size);
+#else
+    static void psm_posemesh_networking_get_commit_id(char* buffer, unsigned int* size) {
+        assert(buffer);
+        assert(size);
+        EM_ASM({
+            let buffer = $0;
+            let size = $1;
+            let maxSize = HEAPU32[size >> 2];
+            if (maxSize == 0)
+                return;
+            let commitId = __internalPosemeshNetworking.posemeshNetworkingGetCommitId();
+            let copySize = maxSize > 1 ? Math.min(lengthBytesUTF8(commitId), maxSize - 1) : 0;
+            stringToUTF8(commitId, buffer, copySize + 1);
+            HEAPU32[size >> 2] = copySize + 1;
+        }, buffer, size);
+    }
+#endif
+
+#if !defined(__EMSCRIPTEN__)
     psm_posemesh_networking_context_t* psm_posemesh_networking_context_create(const psm_posemesh_networking_config_t* config);
 #else
     static psm_posemesh_networking_context_t* psm_posemesh_networking_context_create(const psm_posemesh_networking_config_t* config) {
@@ -85,21 +105,21 @@ extern "C" {
         EM_ASM({
             let context = $0;
             let message = $1;
-            let message_size = $2;
-            let peer_id = UTF8ToString($3);
+            let messageSize = $2;
+            let peerId = UTF8ToString($3);
             let protocol = UTF8ToString($4);
-            let user_data = $5;
+            let userData = $5;
             let callback = $6;
             __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(
-                context, new Uint8Array(HEAPU8.buffer, message, message_size), peer_id, protocol
+                context, new Uint8Array(HEAPU8.buffer, message, messageSize), peerId, protocol
             ).then(function(status) {
                 if (callback) {
-                    dynCall('vip', callback, [status ? 1 : 0, user_data]);
+                    dynCall('vip', callback, [status ? 1 : 0, userData]);
                 }
             }).catch(function(error) {
                 console.error('psm_posemesh_networking_context_send_message():', error.message);
                 if (callback) {
-                    dynCall('vip', callback, [0, user_data]);
+                    dynCall('vip', callback, [0, userData]);
                 }
             });
         }, context, message, message_size, peer_id, protocol, user_data, callback);

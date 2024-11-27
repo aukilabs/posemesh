@@ -6,7 +6,7 @@ pub mod network;
 #[cfg(any(feature="cpp", feature="wasm"))]
 use context::{Config, Context};
 #[cfg(any(feature="cpp", feature="wasm"))]
-use std::{ffi::{c_char, c_uchar, CStr}, os::raw::c_void, slice};
+use std::{ffi::{c_char, c_uchar, c_uint, CStr}, os::raw::c_void, slice};
 
 #[cfg(feature="py")]
 use context::Context;
@@ -18,6 +18,43 @@ use wasm_bindgen_futures::{future_to_promise, js_sys::{Error, Promise}};
 
 #[cfg(feature="py")]
 use pyo3::prelude::*;
+
+// *****************************************
+// ** posemesh_networking_get_commit_id() **
+// *****************************************
+
+#[cfg(any(feature="cpp", feature="wasm"))]
+fn posemesh_networking_get_commit_id() -> String {
+    return env!("COMMIT_ID").to_string();
+}
+
+#[cfg(feature="cpp")]
+#[no_mangle]
+pub extern "C" fn psm_posemesh_networking_get_commit_id(buffer: *mut c_char, size: *mut c_uint) {
+    assert!(!buffer.is_null(), "psm_posemesh_networking_get_commit_id(): buffer is null");
+    assert!(!size.is_null(), "psm_posemesh_networking_get_commit_id(): size is null");
+    let max_size = unsafe { *size };
+    if max_size == 0 {
+        return;
+    }
+    let commit_id = posemesh_networking_get_commit_id();
+    let commit_id_bytes = commit_id.as_bytes();
+    let copy_size = if max_size > 1 {
+        std::cmp::min(commit_id_bytes.len(), (max_size - 1) as usize)
+    } else { 0 };
+    unsafe {
+        std::ptr::copy_nonoverlapping(commit_id_bytes.as_ptr(), buffer as *mut u8, copy_size);
+        *buffer.add(copy_size) = 0;
+        *size = (copy_size + 1) as c_uint;
+    };
+}
+
+#[cfg(feature="wasm")]
+#[wasm_bindgen]
+#[allow(non_snake_case)]
+pub fn posemeshNetworkingGetCommitId() -> String {
+    posemesh_networking_get_commit_id()
+}
 
 // ******************************************
 // ** posemesh_networking_context_create() **

@@ -138,4 +138,12 @@ bool Posemesh::sendString(
     #endif
 #endif
 
+std::string Posemesh::getVersion() {
+    return POSEMESH_VERSION;
+}
+
+std::string Posemesh::getCommitId() {
+    return POSEMESH_COMMIT_ID;
+}
+
 }

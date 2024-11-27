@@ -113,4 +113,12 @@
     return m_posemesh;
 }
 
++ (NSString*)getVersion {
+    return [NSString stringWithUTF8String: POSEMESH_VERSION];
+}
+
++ (NSString*)getCommitId {
+    return [NSString stringWithUTF8String: POSEMESH_COMMIT_ID];
+}
+
 @end

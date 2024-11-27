@@ -59,6 +59,13 @@ add_platform_library(
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
+target_compile_definitions(
+    Posemesh
+    PRIVATE
+        POSEMESH_VERSION="${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}"
+        POSEMESH_COMMIT_ID="${POSEMESH_COMMIT_ID}"
+)
+
 if(APPLE)
     set_apple_info(Posemesh "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/Info.plist.in" CONFIGURE @ONLY)
     add_platform_sources(
@@ -100,6 +107,11 @@ include(LinkNetworkingLibrary)
 link_networking_library(Posemesh)
 
 if(EMSCRIPTEN)
+    configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/platform/Web/VerifyCommitId.js.in"
+        "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
+        @ONLY
+    )
     include(MergeFiles)
     merge_files(
         Posemesh_Merged
@@ -112,6 +124,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
     )
     if(USE_BABEL_JS)
         include(TranspileMinifyJavaScript)

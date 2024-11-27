@@ -37,6 +37,9 @@ uint8_t PSM_API psm_posemesh_send_string(
 );
 void PSM_API psm_posemesh_destroy(psm_posemesh_t* posemesh);
 
+const char* PSM_API psm_posemesh_get_version();
+const char* PSM_API psm_posemesh_get_commit_id();
+
 #if defined(__cplusplus)
 }
 #endif

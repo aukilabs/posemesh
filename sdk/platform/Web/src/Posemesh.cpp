@@ -19,5 +19,7 @@ EMSCRIPTEN_BINDINGS(Posemesh) {
         .constructor(&std::make_shared<Posemesh, const Config&>)
         .function("equals(posemesh)", &equals)
         .property("__context", &Posemesh::__getContext)
+        .class_function("getVersion()", &Posemesh::getVersion)
+        .class_function("getCommitId()", &Posemesh::getCommitId)
     ;
 }
