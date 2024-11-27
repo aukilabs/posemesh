@@ -13,6 +13,7 @@ let newLine = null;
 let tab = null;
 
 function fixConfig(content) {
+    content = content.replaceAll('Config: {', 'static Config: {');
     content = content.replaceAll('__getBootstraps(): VectorString;',                    'getBootstraps(): [string];');
     content = content.replaceAll('__getRelays(): VectorString;',                        'getRelays(): [string];');
     content = content.replaceAll('__setBootstraps(bootstraps: VectorString): boolean;', 'setBootstraps(bootstraps: [string]): boolean;');
