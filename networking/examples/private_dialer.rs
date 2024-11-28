@@ -10,16 +10,13 @@ use tokio::{self, select, io::{self, AsyncBufReadExt, BufReader}};
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 {
-        println!("Usage: {} <port> <name> <bootstraps> [private_key_path]", args[0]);
+        println!("Usage: {} <port> <name> <bootstraps>", args[0]);
         return Ok(());
     }
     let port = args[1].parse::<u16>().unwrap();
     let name = args[2].clone();
     let bootstraps = args[3].split(",").map(|s| s.to_string()).collect::<Vec<String>>();
-    let mut private_key_path = format!("./volume/{}/pkey", name);
-    if args.len() == 5 {
-        private_key_path = args[4].clone();
-    }
+    let private_key_path = format!("./volume/{}/pkey", name);
 
     let cfg = &network::NetworkingConfig{
         port: port,
@@ -46,8 +43,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 if s.len() == 2 {
                     let dest_peer = s[0].to_string();
                     let msg = s[1].to_string();
-                    let _ = c.send(msg.as_bytes().to_vec(), dest_peer.clone(), "/chat".to_string())
-                    .await?;
+                    match c.send(msg.as_bytes().to_vec(), dest_peer.clone(), "/chat".to_string()).await {
+                        Ok(_) => {
+                            println!("Sent message to {}: {:?}", dest_peer, msg);
+                        }
+                        Err(e) => {
+                            eprintln!("Error sending message: {:?}", e);
+                        }
+                    }
                 }
             }
         }
