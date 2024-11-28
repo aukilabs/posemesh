@@ -45,11 +45,11 @@ path = "examples/relay.rs"
 required-features = ["rust"]
 
 [[example]]
-name = "autonat"
-path = "examples/autonat_client.rs"
+name = "receiver"
+path = "examples/private_receiver.rs"
 required-features = ["rust"]
 
 [[example]]
-name = "holepunch"
+name = "sender"
 path = "examples/private_dialer.rs"
 required-features = ["rust"]

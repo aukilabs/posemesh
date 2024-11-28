@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use pyo3_asyncio::tokio::future_into_py;
 
 #[derive(Debug)]
-pub(crate) enum Event {
+pub enum Event {
     NewNodeRegistered {
         node: crate::network::Node,
     },

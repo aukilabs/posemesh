@@ -2,7 +2,7 @@ use crate::client;
 use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
-use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
+use futures::channel::mpsc::{Receiver, channel};
 use futures::lock::Mutex;
 use std::sync::Arc;
 
@@ -202,13 +202,6 @@ impl Context {
         });
     }
 
-    // // TODO: not sure why pyo3_asyncio complains about this even feature gated
-    // #[cfg(feature="rust")]
-    // pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
-    //     let mut sender = self.client.clone();
-    //     sender.send(msg, peer_id, protocol).await
-    // }
-
     #[cfg(feature="py")]
     pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
         let mut sender = self.client.clone();
@@ -248,13 +241,18 @@ impl Context {
 
 #[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
-    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol).await
     }
+
+    pub async fn poll(&mut self) -> Option<event::Event> {
+        let mut receiver = self.receiver.lock().await;
+        receiver.next().await
+    }
 }
 
-pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
+pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error + Send + Sync>> {
     #[cfg(any(feature="cpp", feature="py"))]
     let runtime = Runtime::new()?;
 
@@ -267,9 +265,11 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let networking = Networking::new(&cfg, receiver, event_sender)?;
 
     #[cfg(any(feature="cpp", feature="py"))]
-    runtime.spawn(async move {
+    runtime.block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
-        let _ = networking.run().await.expect("Failed to run networking");
+        runtime.spawn(async move {
+            let _ = networking.run().await.expect("Failed to run networking");
+        });
     });
 
     #[cfg(target_family="wasm")]
@@ -277,7 +277,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(any(feature="rust"))]
+    #[cfg(feature="rust")]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });
