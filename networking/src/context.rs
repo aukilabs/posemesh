@@ -2,7 +2,7 @@ use crate::client;
 use crate::event;
 use crate::network::{Networking, NetworkingConfig};
 use std::error::Error;
-use futures::channel::mpsc::{Receiver, channel};
+use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
 use futures::lock::Mutex;
 use std::sync::Arc;
 
@@ -69,7 +69,7 @@ pub struct Context {
 #[cfg_attr(feature="py", pymethods)]
 impl Context {
     #[cfg(any(feature="wasm", feature="cpp"))]
-    pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
+    pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error + Send + Sync>> {
         // ************************
         // ** serve_as_bootstrap **
         // ************************
@@ -98,7 +98,7 @@ impl Context {
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
-        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+        }.to_str().map_err(|error| Box::new(error))?;
 
         #[cfg(target_family="wasm")]
         let bootstraps_raw = &config.bootstraps;
@@ -108,8 +108,8 @@ impl Context {
             .map(|bootstrap| bootstrap.trim())
             .filter(|bootstrap| !bootstrap.is_empty())
             .map(|bootstrap|
-                bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
-            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+                bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error + Send + Sync>>>()?;
 
         // ************
         // ** relays **
@@ -119,7 +119,7 @@ impl Context {
         let relays_raw = unsafe {
             assert!(!config.relays.is_null(), "Context::new(): config.relays is null");
             CStr::from_ptr(config.relays)
-        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)?;
 
         #[cfg(target_family="wasm")]
         let relays_raw = &config.relays;
@@ -129,8 +129,8 @@ impl Context {
             .map(|relay| relay.trim())
             .filter(|relay| !relay.is_empty())
             .map(|relay|
-                relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
-            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+                relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error + Send + Sync>>>()?;
 
         let _ = serve_as_bootstrap; // TODO: temp
 

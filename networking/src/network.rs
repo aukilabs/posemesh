@@ -1,5 +1,5 @@
-use futures::{AsyncWriteExt, SinkExt, StreamExt, channel::mpsc};
-use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, dial_opts::DialOpts, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use futures::{channel::{mpsc, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
+use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, str::FromStr, error::Error, time::Duration, io::{self, Read, Write}, sync::{Arc, Mutex}};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
@@ -514,6 +514,7 @@ impl Networking {
                     self.swarm.add_external_address(observed_addr.clone());
                 }
 
+                // TODO: Only add the non local address to the DHT
                 self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                     for addr in listen_addrs {
                         dht.add_address(&peer_id, addr.clone());
@@ -529,35 +530,14 @@ impl Networking {
 
     async fn handle_command(&mut self, command: client::Command) {
         match command {
-            client::Command::Send { message, peer_id, protocol, response: feedback } => {
-                let mut ctrl = self.swarm.behaviour_mut().streams.new_control();
-                tokio::spawn(async move {
-                    let stream = match ctrl.open_stream(peer_id, protocol).await {
-                        Ok(stream) => stream,
-                        Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
-                            if let Err(send_err) = feedback.send(Err(Box::new(error))) {
-                                tracing::error!("Failed to send feedback: {:?}", send_err);
-                            }
-                            return;
-                        }
-                        Err(error) => {
-                            if let Err(send_err) = feedback.send(Err(Box::new(error))) {
-                                tracing::error!("Failed to send feedback: {:?}", send_err);
-                            }
-                            return;
-                        }
-                    };
-                    tracing::debug!("start sending message to {peer_id}");
-                    if let Err(e) = send(stream, message).await {
-                        if let Err(send_err) = feedback.send(Err(Box::new(e))) {
-                            tracing::error!("Failed to send feedback: {:?}", send_err);
-                        }
-                        return;
-                    }
-                    if let Err(send_err) = feedback.send(Ok(())) {
-                        tracing::error!("Failed to send feedback: {:?}", send_err);
-                    }
-                });
+            client::Command::Send { message, peer_id, protocol, response } => {
+                let ctrl = self.swarm.behaviour_mut().streams.new_control();
+
+                #[cfg(target_family="wasm")]
+                wasm_bindgen_futures::spawn_local(stream(ctrl, peer_id, protocol, message, response));
+
+                #[cfg(not(target_family="wasm"))]
+                tokio::spawn(stream(ctrl, peer_id, protocol, message, response));
             },
 
         }
@@ -588,6 +568,33 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     stream.close().await?;
 
     Ok(())
+}
+
+async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, response: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+    let stream = match ctrl.open_stream(peer_id, protocol).await {
+        Ok(stream) => stream,
+        Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
+            if let Err(send_err) = response.send(Err(Box::new(error))) {
+                tracing::error!("Failed to send feedback: {:?}", send_err);
+            }
+            return;
+        }
+        Err(error) => {
+            if let Err(send_err) = response.send(Err(Box::new(error))) {
+                tracing::error!("Failed to send feedback: {:?}", send_err);
+            }
+            return;
+        }
+    };
+    if let Err(e) = send(stream, message).await {
+        if let Err(send_err) = response.send(Err(Box::new(e))) {
+            tracing::error!("Failed to send feedback: {:?}", send_err);
+        }
+        return;
+    }
+    if let Err(send_err) = response.send(Ok(())) {
+        tracing::error!("Failed to send feedback: {:?}", send_err);
+    }
 }
 
 async fn protocol_handler(mut incoming_stream: IncomingStreams, protocol: StreamProtocol, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {

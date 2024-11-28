@@ -1,4 +1,3 @@
-use futures::AsyncReadExt;
 use libp2p::{PeerId, Stream, StreamProtocol};
 #[cfg(feature="py")]
 use std::sync::Arc;
@@ -8,6 +7,8 @@ use tokio::sync::Mutex;
 use pyo3::prelude::*;
 #[cfg(feature="py")]
 use pyo3_asyncio::tokio::future_into_py;
+#[cfg(feature="py")]
+use futures::AsyncReadExt;
 
 #[derive(Debug)]
 pub enum Event {
