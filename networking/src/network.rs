@@ -1,6 +1,6 @@
 use futures::{channel::{mpsc, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap, str::FromStr, error::Error, time::Duration, io::{self, Read, Write}, sync::{Arc, Mutex}};
+use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::{Arc, Mutex, MutexGuard}, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -96,6 +96,7 @@ pub struct Networking {
     node: Node,
     node_regsiter_topic: IdentTopic,
     event_sender: mpsc::Sender<event::Event>,
+    find_peer_requests: Arc<Mutex<HashMap<PeerId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -335,6 +336,7 @@ impl Networking {
             node: node,
             node_regsiter_topic: topic,
             event_sender: event_sender,
+            find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
         };
 
         nt.add_stream_protocol(CHAT_PROTOCOL)?;
@@ -379,6 +381,46 @@ impl Networking {
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
         match event {
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
+                kad::Event::OutboundQueryProgressed {
+                    result: kad::QueryResult::GetClosestPeers(Ok(GetClosestPeersOk { key, peers, .. })),
+                    step: ProgressStep { count, last },
+                    ..
+                }
+            )) => {
+                let peer_id_res = PeerId::from_bytes(key.as_slice());
+                if peer_id_res.is_err() {
+                    tracing::error!("Failed to convert key to peer id");
+                    return;
+                }
+                let peer_id = peer_id_res.unwrap();
+                tracing::info!("GetClosestPeersOk Got {:?} peer(s) for {:#}, count {:?}, last {:?}", peers.len(), peer_id, count, last);
+                for peer in peers {
+                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer.peer_id);
+                    for addr in peer.addrs {
+                        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                            dht.add_address(&peer.peer_id, addr.clone());
+                        });
+                    }
+                }
+                match self.find_peer_requests.lock() {
+                    Ok(mut find_peer_requests) => {
+                        if find_peer_requests.contains_key(&peer_id) {
+                            let sender = find_peer_requests.remove(&peer_id);
+                            if sender.is_none() {
+                                return;
+                            }
+                            let _ = sender.unwrap().send(Ok(()));
+                            return;
+                        } else if last {
+                            tracing::error!("Failed to find peer: {peer_id}");
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to lock find peer requests: {e}");
+                    }
+                }
+            }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::Bootstrap(Ok(_)),
@@ -532,14 +574,22 @@ impl Networking {
         match command {
             client::Command::Send { message, peer_id, protocol, response } => {
                 let ctrl = self.swarm.behaviour_mut().streams.new_control();
+                let (sender, mut receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
 
+                if !Swarm::is_connected(&self.swarm, &peer_id) {
+                    self.find_peer(peer_id, sender);
+                } else {
+                    receiver.close();
+                }
                 #[cfg(target_family="wasm")]
-                wasm_bindgen_futures::spawn_local(stream(ctrl, peer_id, protocol, message, response));
+                wasm_bindgen_futures::spawn_local(stream(ctrl, peer_id, protocol, message, response, receiver));
 
                 #[cfg(not(target_family="wasm"))]
-                tokio::spawn(stream(ctrl, peer_id, protocol, message, response));
+                tokio::spawn(stream(ctrl, peer_id, protocol, message, response, receiver));
             },
-
+            client::Command::Find { peer_id, response } => {
+                self.find_peer(peer_id, response);
+            }
         }
     }
 
@@ -561,6 +611,20 @@ impl Networking {
 
         Ok(())
     }
+
+    fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+        let find_peer_requests_lock = self.find_peer_requests.try_lock();
+        if let Err(e) = find_peer_requests_lock {
+            tracing::error!("Failed to obtain lock {}", e);
+            let _ = sender.send(Err(Box::new(io::Error::new(io::ErrorKind::Other, "failed to obtain lock"))));
+            return;
+        }
+        // TODO: add timeout to the query
+        find_peer_requests_lock.unwrap().insert(peer_id, sender);
+        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+            dht.get_closest_peers(peer_id.clone());
+        });
+    }
 }
 
 async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
@@ -570,29 +634,33 @@ async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, response: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
+    if let Ok(Err(e)) = find_response.await {
+        tracing::error!("{}", e);
+    }
+    
     let stream = match ctrl.open_stream(peer_id, protocol).await {
         Ok(stream) => stream,
         Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
-            if let Err(send_err) = response.send(Err(Box::new(error))) {
+            if let Err(send_err) = send_response.send(Err(Box::new(error))) {
                 tracing::error!("Failed to send feedback: {:?}", send_err);
             }
             return;
         }
         Err(error) => {
-            if let Err(send_err) = response.send(Err(Box::new(error))) {
+            if let Err(send_err) = send_response.send(Err(Box::new(error))) {
                 tracing::error!("Failed to send feedback: {:?}", send_err);
             }
             return;
         }
     };
     if let Err(e) = send(stream, message).await {
-        if let Err(send_err) = response.send(Err(Box::new(e))) {
+        if let Err(send_err) = send_response.send(Err(Box::new(e))) {
             tracing::error!("Failed to send feedback: {:?}", send_err);
         }
         return;
     }
-    if let Err(send_err) = response.send(Ok(())) {
+    if let Err(send_err) = send_response.send(Ok(())) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
     }
 }
