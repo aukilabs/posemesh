@@ -235,7 +235,9 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
 
     #[cfg(not(target_family="wasm"))]
     if cfg.enable_relay_server {
-        let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
+        let mut cfg = libp2p::relay::Config::default();
+        cfg.max_circuit_bytes = 0;
+        let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), cfg);
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
     } else {
@@ -474,6 +476,9 @@ impl Networking {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Sent { peer_id, .. })) => {
                 tracing::info!("Sent identify info to {peer_id:?}")
             },
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Pushed { peer_id, info, .. })) => {
+                tracing::info!("Pushed identify info to {peer_id:?}: {info:?}")
+            },
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
                 tested_addr,
@@ -512,12 +517,23 @@ impl Networking {
                 tracing::info!("New external address candidate: {address}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(
-                libp2p::relay::client::Event::ReservationReqAccepted { .. },
+                libp2p::relay::client::Event::ReservationReqAccepted { relay_peer_id, .. },
             )) => {
                 tracing::info!("Relay accepted our reservation request");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
                 tracing::info!("Relay Client: {event:?}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Relay(libp2p::relay::Event::ReservationReqAccepted { src_peer_id, renewed })) => {
+                if renewed {
+                    tracing::info!("Relay accepted our reservation renewal request from {src_peer_id}");
+                } else {
+                    // add the address to the DHT
+                    // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                    //     dht.add_address(&src_peer_id, self.swarm.
+                    tracing::info!("Relay accepted our reservation request from {src_peer_id}");
+                }
+                tracing::info!("Relay: {event:?}");
             }
             #[cfg(not(target_family="wasm"))]
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, ..})) => {
@@ -536,11 +552,19 @@ impl Networking {
                         self.swarm.add_external_address(observed_addr.clone());
                     }
 
+                    // only add the address to the DHT if it is a p2p-circuit address
                     for addr in listen_addrs {
-                        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                            dht.add_address(peer_id, addr.clone());
-                        });
+                        if addr.iter().any(|p| matches!(p, Protocol::P2pCircuit)) {
+                            self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                                dht.add_address(peer_id, addr.clone());
+                            });
+                        }
                     }
+                    // for addr in listen_addrs {
+                    //     self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                    //         dht.add_address(peer_id, addr.clone());
+                    //     });
+                    // }
 
                     #[cfg(target_family="wasm")]
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
