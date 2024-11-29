@@ -138,7 +138,7 @@ impl Context {
             port: 0,
             bootstrap_nodes: bootstraps.iter().map(|bootstrap| bootstrap.to_string()).collect(),
             enable_relay_server: serve_as_relay,
-            enable_kdht: false,
+            enable_kdht: true,
             enable_mdns: false,
             relay_nodes: relays.iter().map(|relay| relay.to_string()).collect(),
             private_key: "".to_string(),
