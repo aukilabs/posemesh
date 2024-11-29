@@ -1,6 +1,6 @@
-use libp2p::{swarm::DialError, PeerId, StreamProtocol};
-use std::{error::Error, io};
-use futures::{channel::{mpsc::{self}, oneshot}, SinkExt};
+use libp2p::{PeerId, StreamProtocol};
+use std::error::Error;
+use futures::{channel::{mpsc, oneshot}, SinkExt};
 use std::str::FromStr;
 
 #[derive(Clone)]
