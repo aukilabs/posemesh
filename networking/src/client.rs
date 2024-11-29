@@ -1,6 +1,6 @@
-use libp2p::{swarm::DialError, PeerId, StreamProtocol};
-use std::{error::Error, io};
-use futures::{channel::{mpsc::{self}, oneshot}, SinkExt};
+use libp2p::{PeerId, StreamProtocol};
+use std::error::Error;
+use futures::{channel::{mpsc, oneshot}, SinkExt};
 use std::str::FromStr;
 
 #[derive(Clone)]
@@ -17,7 +17,6 @@ impl Client {
         let (sender, receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
         let peer_id = PeerId::from_str(&peer_id).map_err(|e| Box::new(e))?;
         let pro = StreamProtocol::try_from_owned(protocol).map_err(|e| Box::new(e))?; 
-        println!("Sending message to peer: {:?}", peer_id);
         self.sender
             .send(Command::Send { message, peer_id, protocol: pro, response: sender })
             .await
@@ -39,10 +38,24 @@ impl Client {
             .await
             .map_err(|e| Box::new(e))?;
         
-        match receiver.await {
-            Ok(result) => result,
-            Err(e) => Err(Box::new(e)),
+        if let Ok(Err(e)) = receiver.await {
+            return Err(e);
         }
+        Ok(())
+    }
+
+    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
+        let pro = StreamProtocol::try_from_owned(protocol).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        self.sender
+            .send(Command::SetStreamHandler { protocol: pro, sender })
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+
+        if let Ok(Err(e)) = receiver.await {
+            return Err(e);
+        }
+        Ok(())
     }
 }
 
@@ -57,5 +70,9 @@ pub enum Command {
     Find {
         peer_id: PeerId,
         response: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>,
+    },
+    SetStreamHandler {
+        protocol: StreamProtocol,
+        sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>,
     }
 }
