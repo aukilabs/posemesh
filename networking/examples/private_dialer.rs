@@ -51,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             eprintln!("Error sending message: {:?}", e);
                         }
                     }
+
+                    c.send(msg.as_bytes().to_vec(), dest_peer.clone(), "/undefined".to_string()).await.expect_err("Expected error");
                 }
             }
         }

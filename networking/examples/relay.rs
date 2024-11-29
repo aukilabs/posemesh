@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         node_types: vec!["relay".to_string()],
     };
     let mut c = context::context_create(cfg)?;
-
+    c.set_stream_handler("/chat".to_string()).await.unwrap();
+    
     loop {
         select! {
             _ = signal::ctrl_c() => {

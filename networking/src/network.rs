@@ -85,7 +85,6 @@ pub struct Node {
     pub capabilities: Vec<String>, // Assuming capabilities is a list of strings
 }
 
-const CHAT_PROTOCOL: StreamProtocol = StreamProtocol::new("/chat");
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
 pub struct Networking {
@@ -339,8 +338,6 @@ impl Networking {
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
         };
 
-        nt.add_stream_protocol(CHAT_PROTOCOL)?;
-
         Ok(nt)
     }
 
@@ -590,6 +587,9 @@ impl Networking {
             client::Command::Find { peer_id, response } => {
                 self.find_peer(peer_id, response);
             }
+            client::Command::SetStreamHandler { protocol, sender } => {
+                self.add_stream_protocol(protocol, sender);
+            }
         }
     }
 
@@ -599,17 +599,22 @@ impl Networking {
         Ok(())
     }
 
-    fn add_stream_protocol(&mut self, protocol: StreamProtocol) -> io::Result<()> {
+    fn add_stream_protocol(&mut self, protocol: StreamProtocol, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
         let proto = protocol.clone();
-        let incoming_stream = self.swarm.behaviour_mut().streams.new_control().accept(protocol).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let protocol_ctrl = self.swarm.behaviour_mut().streams.new_control().accept(protocol);
+        if protocol_ctrl.is_err() {
+            let _ = sender.send(Err(Box::new(protocol_ctrl.err().unwrap())));
+            return;
+        }
+        let incoming_stream = protocol_ctrl.unwrap();
 
         #[cfg(target_family="wasm")]
         wasm_bindgen_futures::spawn_local(protocol_handler(incoming_stream, proto, self.event_sender.clone()));
 
         #[cfg(not(target_family="wasm"))]
-        tokio::spawn(protocol_handler(incoming_stream, proto, self.event_sender.clone())); 
+        tokio::spawn(protocol_handler(incoming_stream, proto, self.event_sender.clone()));
 
-        Ok(())
+        let _ = sender.send(Ok(()));
     }
 
     fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {

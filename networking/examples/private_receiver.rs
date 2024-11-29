@@ -37,6 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = Runtime::new()?;
     runtime.block_on(async {
         let mut c = context::context_create(cfg).unwrap();
+        c.set_stream_handler("/chat".to_string()).await.unwrap();
 
         loop {
             select! {

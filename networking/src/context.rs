@@ -202,6 +202,30 @@ impl Context {
         });
     }
 
+    #[cfg(feature="cpp")]
+    pub fn set_stream_handler(
+        &mut self,
+        protocol: String,
+        callback: extern "C" fn(status: u8)
+    ) {
+        let mut sender = self.client.clone();
+        self.runtime.spawn(async move {
+            match sender.set_stream_handler(protocol).await {
+                Ok(_) => {
+                    if (callback as *const c_void) != std::ptr::null() {
+                        callback(1);
+                    }
+                },
+                Err(error) => {
+                    eprintln!("Context::send_with_callback(): {:?}", error);
+                    if (callback as *const c_void) != std::ptr::null() {
+                        callback(0);
+                    }
+                }
+            }
+        });
+    }
+
     #[cfg(feature="py")]
     pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
         let mut sender = self.client.clone();
@@ -237,6 +261,17 @@ impl Context {
         };
         future_into_py(py, fut)
     }
+
+    #[cfg(feature="py")]
+    pub fn set_stream_handler<'a>(&mut self, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let mut sender = self.client.clone();
+
+        let fut = async move {
+            let result = sender.set_stream_handler(protocol).await;
+            result.map_err(|e| PyValueError::new_err(e.to_string()))
+        };
+        future_into_py(py, fut)
+    }
 }
 
 #[cfg(any(feature="rust", target_family="wasm"))]
@@ -249,6 +284,11 @@ impl Context {
     pub async fn poll(&mut self) -> Option<event::Event> {
         let mut receiver = self.receiver.lock().await;
         receiver.next().await
+    }
+
+    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut sender = self.client.clone();
+        sender.set_stream_handler(protocol).await
     }
 }
 
