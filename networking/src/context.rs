@@ -69,7 +69,7 @@ pub struct Context {
 #[cfg_attr(feature="py", pymethods)]
 impl Context {
     #[cfg(any(feature="wasm", feature="cpp"))]
-    pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error>> {
+    pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error + Send + Sync>> {
         // ************************
         // ** serve_as_bootstrap **
         // ************************
@@ -98,7 +98,7 @@ impl Context {
         let bootstraps_raw = unsafe {
             assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
             CStr::from_ptr(config.bootstraps)
-        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+        }.to_str().map_err(|error| Box::new(error))?;
 
         #[cfg(target_family="wasm")]
         let bootstraps_raw = &config.bootstraps;
@@ -108,8 +108,8 @@ impl Context {
             .map(|bootstrap| bootstrap.trim())
             .filter(|bootstrap| !bootstrap.is_empty())
             .map(|bootstrap|
-                bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
-            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+                bootstrap.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error + Send + Sync>>>()?;
 
         // ************
         // ** relays **
@@ -119,7 +119,7 @@ impl Context {
         let relays_raw = unsafe {
             assert!(!config.relays.is_null(), "Context::new(): config.relays is null");
             CStr::from_ptr(config.relays)
-        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error>)?;
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)?;
 
         #[cfg(target_family="wasm")]
         let relays_raw = &config.relays;
@@ -129,8 +129,8 @@ impl Context {
             .map(|relay| relay.trim())
             .filter(|relay| !relay.is_empty())
             .map(|relay|
-                relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error>)
-            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error>>>()?;
+                relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)
+            ).collect::<Result<Vec<Multiaddr>, Box<dyn Error + Send + Sync>>>()?;
 
         let _ = serve_as_bootstrap; // TODO: temp
 
@@ -138,7 +138,7 @@ impl Context {
             port: 0,
             bootstrap_nodes: bootstraps.iter().map(|bootstrap| bootstrap.to_string()).collect(),
             enable_relay_server: serve_as_relay,
-            enable_kdht: false,
+            enable_kdht: true,
             enable_mdns: false,
             relay_nodes: relays.iter().map(|relay| relay.to_string()).collect(),
             private_key: "".to_string(),
@@ -202,12 +202,29 @@ impl Context {
         });
     }
 
-    // // TODO: not sure why pyo3_asyncio complains about this even feature gated
-    // #[cfg(feature="rust")]
-    // pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
-    //     let mut sender = self.client.clone();
-    //     sender.send(msg, peer_id, protocol).await
-    // }
+    #[cfg(feature="cpp")]
+    pub fn set_stream_handler(
+        &mut self,
+        protocol: String,
+        callback: extern "C" fn(status: u8)
+    ) {
+        let mut sender = self.client.clone();
+        self.runtime.spawn(async move {
+            match sender.set_stream_handler(protocol).await {
+                Ok(_) => {
+                    if (callback as *const c_void) != std::ptr::null() {
+                        callback(1);
+                    }
+                },
+                Err(error) => {
+                    eprintln!("Context::send_with_callback(): {:?}", error);
+                    if (callback as *const c_void) != std::ptr::null() {
+                        callback(0);
+                    }
+                }
+            }
+        });
+    }
 
     #[cfg(feature="py")]
     pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
@@ -244,17 +261,38 @@ impl Context {
         };
         future_into_py(py, fut)
     }
+
+    #[cfg(feature="py")]
+    pub fn set_stream_handler<'a>(&mut self, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
+        let mut sender = self.client.clone();
+
+        let fut = async move {
+            let result = sender.set_stream_handler(protocol).await;
+            result.map_err(|e| PyValueError::new_err(e.to_string()))
+        };
+        future_into_py(py, fut)
+    }
 }
 
 #[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
-    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error>> {
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol).await
     }
+
+    pub async fn poll(&mut self) -> Option<event::Event> {
+        let mut receiver = self.receiver.lock().await;
+        receiver.next().await
+    }
+
+    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut sender = self.client.clone();
+        sender.set_stream_handler(protocol).await
+    }
 }
 
-pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error>> {
+pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error + Send + Sync>> {
     #[cfg(any(feature="cpp", feature="py"))]
     let runtime = Runtime::new()?;
 
@@ -267,9 +305,11 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let networking = Networking::new(&cfg, receiver, event_sender)?;
 
     #[cfg(any(feature="cpp", feature="py"))]
-    runtime.spawn(async move {
+    runtime.block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
-        let _ = networking.run().await.expect("Failed to run networking");
+        runtime.spawn(async move {
+            let _ = networking.run().await.expect("Failed to run networking");
+        });
     });
 
     #[cfg(target_family="wasm")]
@@ -277,7 +317,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(any(feature="rust"))]
+    #[cfg(feature="rust")]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });
