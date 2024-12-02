@@ -25,6 +25,30 @@ If (-Not $Architecture) {
     Exit 1
 }
 
+function ConvertTo-Framework {
+    # Re-pack the .framework as a normal static library
+    param (
+        [String]$SourcePath,
+        [String]$DestinationPath
+    )
+
+    $headersPath = Join-Path $SourcePath "Headers"
+    $opencv2Path = Join-Path $SourcePath "opencv2"
+
+    if (-Not (Test-Path $DestinationPath)) {
+        New-Item -ItemType Directory -Path $DestinationPath | Out-Null
+    }
+
+    $opencv2Dest = Join-Path $DestinationPath "opencv2.a"
+    Copy-Item -Path $opencv2Path -Destination $opencv2Dest -Recurse -Force
+
+    $headersDest = Join-Path $DestinationPath "opencv2"
+    if (-Not (Test-Path $headersDest)) {
+        New-Item -ItemType Directory -Path $headersDest | Out-Null
+    }
+    Copy-Item -Path (Join-Path $headersPath "*") -Destination $headersDest -Recurse -Force
+}
+
 function Build-iOS {
     # Python virtual environment required to build on a M1 Mac
     # https://github.com/opencv/opencv/issues/21926#issuecomment-1184684648
@@ -33,24 +57,18 @@ function Build-iOS {
     $env:PATH = "$env:VIRTUAL_ENV/bin" + [System.IO.Path]::PathSeparator + $env:PATH
     python ../opencv/platforms/ios/build_framework.py ios --iphoneos_archs $Architecture --build_only_specified_archs
 
-    # Re-pack the framework as a normal static library
-    $sourcePath = "../opencv/ios/opencv2.framework/Versions/A"
-    $destinationPath = "../opencv/opencv-static-lib"
-    $headersPath = Join-Path $sourcePath "Headers"
-    $opencv2Path = Join-Path $sourcePath "opencv2"
+    ConvertTo-Framework -SourcePath "../opencv/ios/opencv2.framework/Versions/A" -DestinationPath "../opencv/opencv-static-lib"
+}
 
-    if (-Not (Test-Path $destinationPath)) {
-        New-Item -ItemType Directory -Path $destinationPath | Out-Null
-    }
+function Build-iOS-Simulator {
+    # Python virtual environment required to build on a M1 Mac
+    # https://github.com/opencv/opencv/issues/21926#issuecomment-1184684648
+    python3 -m venv .venv
+    $env:VIRTUAL_ENV = (Resolve-Path ./.venv).Path
+    $env:PATH = "$env:VIRTUAL_ENV/bin" + [System.IO.Path]::PathSeparator + $env:PATH
+    python ../opencv/platforms/ios/build_framework.py iphonesimulator --iphonesimulator_archs $Architecture --build_only_specified_archs
 
-    $opencv2Dest = Join-Path $destinationPath "opencv2.a"
-    Copy-Item -Path $opencv2Path -Destination $opencv2Dest -Recurse -Force
-
-    $headersDest = Join-Path $destinationPath "opencv2"
-    if (-Not (Test-Path $headersDest)) {
-        New-Item -ItemType Directory -Path $headersDest | Out-Null
-    }
-    Copy-Item -Path (Join-Path $headersPath "*") -Destination $headersDest -Recurse -Force
+    ConvertTo-Framework -SourcePath "../opencv/iphonesimulator/opencv2.framework/Versions/A" -DestinationPath "../opencv/opencv-static-lib-simulator"
 }
 
 function Build-MacOS {
@@ -82,6 +100,9 @@ Push-Location -Path "opencv/"
 
 if ($Platform -eq "iOS") {
     Build-iOS
+}
+if ($Platform -eq "iOS-Simulator") {
+    Build-iOS-Simulator
 }
 ElseIf ($Platform -eq "macOS") {
     Build-MacOS
