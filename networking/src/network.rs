@@ -1,5 +1,5 @@
 use futures::{channel::{mpsc, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::{Arc, Mutex, MutexGuard}, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,7 @@ pub struct Networking {
     node: Node,
     node_regsiter_topic: IdentTopic,
     event_sender: mpsc::Sender<event::Event>,
-    find_peer_requests: Arc<Mutex<HashMap<PeerId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
+    find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -380,6 +380,7 @@ impl Networking {
         match event {
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
+                    id,
                     result: kad::QueryResult::GetClosestPeers(Ok(GetClosestPeersOk { key, peers, .. })),
                     step: ProgressStep { count, last },
                     ..
@@ -402,8 +403,8 @@ impl Networking {
                 }
                 match self.find_peer_requests.lock() {
                     Ok(mut find_peer_requests) => {
-                        if find_peer_requests.contains_key(&peer_id) {
-                            let sender = find_peer_requests.remove(&peer_id);
+                        if find_peer_requests.contains_key(&id) {
+                            let sender = find_peer_requests.remove(&id);
                             if sender.is_none() {
                                 return;
                             }
@@ -625,9 +626,9 @@ impl Networking {
             return;
         }
         // TODO: add timeout to the query
-        find_peer_requests_lock.unwrap().insert(peer_id, sender);
         self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-            dht.get_closest_peers(peer_id.clone());
+            let q = dht.get_closest_peers(peer_id.clone());
+            find_peer_requests_lock.unwrap().insert(q, sender);
         });
     }
 }
