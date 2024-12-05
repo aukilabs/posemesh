@@ -1,8 +1,9 @@
 {
     "devDependencies": {
-        "@babel/cli": "^7.25.9",
-        "@babel/core": "^7.26.0",
-        "@babel/preset-env": "^7.26.0",
-        "babel-minify": "^0.5.2"
+        "@babel/cli": "7.25.9",
+        "@babel/core": "7.26.0",
+        "@babel/preset-env": "7.26.0",
+        "@babel/traverse": "7.25.9",
+        "babel-minify": "0.5.2"
     }
 }
