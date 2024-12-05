@@ -28,30 +28,6 @@ If(-Not $Platform) {
     Exit 1
 }
 
-function ConvertTo-Framework {
-    # Re-pack the .framework as a normal static library
-    param (
-        [String]$SourcePath,
-        [String]$DestinationPath
-    )
-
-    $headersPath = Join-Path $SourcePath "Headers"
-    $opencv2Path = Join-Path $SourcePath "opencv2"
-
-    if (-Not (Test-Path $DestinationPath)) {
-        New-Item -ItemType Directory -Path $DestinationPath | Out-Null
-    }
-
-    $opencv2Dest = Join-Path $DestinationPath "opencv2.a"
-    Copy-Item -Path $opencv2Path -Destination $opencv2Dest -Recurse -Force
-
-    $headersDest = Join-Path $DestinationPath "opencv2"
-    if (-Not (Test-Path $headersDest)) {
-        New-Item -ItemType Directory -Path $headersDest | Out-Null
-    }
-    Copy-Item -Path (Join-Path $headersPath "*") -Destination $headersDest -Recurse -Force
-}
-
 $UseCMakeDirectly = $False
 $CMakeGenerator = $Null
 $CMakeConfigureArgs = $Null
@@ -149,7 +125,7 @@ Switch($Platform) {
             Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Web' platform."
             Exit 1
         }
-        # TODO
+        # TODO: Implement Web build
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -190,7 +166,7 @@ If(-Not $CMakeCommand) {
 }
 
 $XcodeBuildCommand = $Null
-If(($UseCMakeDirectly -And ($CMakeGenerator -Eq 'Xcode')) -Or $UseBuildPythonScript) {
+If(($UseCMakeDirectly -And ($CMakeGenerator -Eq 'Xcode')) -Or ($UseBuildPythonScript -And ($Platform -Match '^macOS|Mac-Catalyst|iOS|iOS-Simulator$'))) {
     $XcodeBuildCommand = (Get-Command -Name 'xcodebuild') 2> $Null
     If(-Not $XcodeBuildCommand) {
         Write-Error -Message "Could not find 'xcodebuild' command. Is Xcode installed on your machine?"
@@ -251,7 +227,76 @@ If($BuildPythonScriptBuildTypeFlag -Eq $Null) {
     Exit 1
 }
 
-$PushLocationResult = (Push-Location -Path "$PSScriptRoot/../../third-party" -PassThru) 2> $Null
+Function Unpack-Framework {
+    Param(
+        [Parameter(Position = 0, Mandatory = $True)]
+        [String]$FrameworkPath,
+
+        [Parameter(Position = 1, Mandatory = $True)]
+        [String]$OutputPath
+    )
+
+    If(-Not (Test-Path -Path $FrameworkPath -PathType Container)) {
+        Write-Error -Message "Directory '$FrameworkPath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $OutputPath -PathType Container)) {
+        Write-Error -Message "Directory '$OutputPath' does not exist."
+        Exit 1
+    }
+
+    $HeadersFrameworkPath = "$FrameworkPath/Headers"
+    $ArchiveFrameworkPath = "$FrameworkPath/opencv2"
+    If(-Not (Test-Path -Path $HeadersFrameworkPath -PathType Container)) {
+        Write-Error -Message "Directory '$HeadersFrameworkPath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $ArchiveFrameworkPath -PathType Leaf)) {
+        Write-Error -Message "File '$ArchiveFrameworkPath' does not exist."
+        Exit 1
+    }
+
+    $IncludeOutputPath = "$OutputPath/include"
+    $LibraryOutputPath = "$OutputPath/lib"
+    If(Test-Path -Path $IncludeOutputPath -PathType Container) {
+        Remove-Item -Force -Recurse -Path $IncludeOutputPath 2> $Null
+        If(Test-Path -Path $IncludeOutputPath -PathType Container) {
+            Write-Error -Message "Failed to remove '$IncludeOutputPath' directory."
+            Exit 1
+        }
+    }
+    If(Test-Path -Path $LibraryOutputPath -PathType Container) {
+        Remove-Item -Force -Recurse -Path $LibraryOutputPath 2> $Null
+        If(Test-Path -Path $LibraryOutputPath -PathType Container) {
+            Write-Error -Message "Failed to remove '$LibraryOutputPath' directory."
+            Exit 1
+        }
+    }
+    $NewItemResult = (New-Item -Path $IncludeOutputPath -ItemType Directory) 2> $Null
+    If(-Not $NewItemResult) {
+        Write-Error -Message "Failed to create '$IncludeOutputPath' directory."
+        Exit 1
+    }
+    $NewItemResult = (New-Item -Path $LibraryOutputPath -ItemType Directory) 2> $Null
+    If(-Not $NewItemResult) {
+        Write-Error -Message "Failed to create '$LibraryOutputPath' directory."
+        Exit 1
+    }
+
+    $CopyItemResult = $(Copy-Item -Path $HeadersFrameworkPath -Destination "$IncludeOutputPath/opencv2" -Recurse) 2>&1
+    If($CopyItemResult) {
+        Write-Error -Message "Failed to copy '$HeadersFrameworkPath' directory over to '$IncludeOutputPath/opencv2' destination."
+        Exit 1
+    }
+
+    $CopyItemResult = $(Copy-Item -Path $ArchiveFrameworkPath -Destination "$LibraryOutputPath/libopencv2.a") 2>&1
+    If($CopyItemResult) {
+        Write-Error -Message "Failed to copy '$ArchiveFrameworkPath' file over to '$LibraryOutputPath/libopencv2.a' destination."
+        Exit 1
+    }
+}
+
+$PushLocationResult = (Push-Location -Path "$PSScriptRoot/.." -PassThru) 2> $Null
 If(-Not $PushLocationResult) {
     Write-Error -Message 'Failed to push the required working directory.'
     Exit 1
@@ -297,6 +342,10 @@ Try {
         }
     } ElseIf($UseBuildPythonScript) {
         & $Python3Command -m venv "$BuildDirectoryName/.venv"
+        If($LastExitCode -Ne 0) {
+            Write-Error -Message 'Failed to set up Python virtual environment.'
+            Exit 1
+        }
         $VirtualEnvBackup = $env:VIRTUAL_ENV
         $PathBackup = $env:PATH
         Try {
@@ -312,6 +361,11 @@ Try {
                 Exit 1
             }
             & $Python3CommandFromVEnv $BuildPythonScriptFile $BuildDirectoryName $BuildPythonScriptArgs @($BuildPythonScriptBuildTypeFlag | Where-Object { $_ })
+            If($LastExitCode -Ne 0) {
+                Write-Error -Message 'Failed to build OpenCV library.'
+                Exit 1
+            }
+            Unpack-Framework "$BuildDirectoryName/opencv2.framework" $OutDirectoryName
         } Finally {
             $env:VIRTUAL_ENV = $VirtualEnvBackup
             $env:PATH = $PathBackup
