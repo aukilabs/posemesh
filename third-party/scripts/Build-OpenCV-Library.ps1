@@ -23,6 +23,8 @@ Param(
     [String]$BuildType
 )
 
+$RequiredEmscriptenVersion = '3.1.69'
+
 If(-Not $Platform) {
     Write-Error -Message "Parameter '-Platform' is not specified."
     Exit 1
@@ -34,6 +36,7 @@ $CMakeConfigureArgs = $Null
 $UseBuildPythonScript = $False
 $BuildPythonScriptFile = $Null
 $BuildPythonScriptArgs = $Null
+$InvokeWithEmscripten = $False
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -125,7 +128,10 @@ Switch($Platform) {
             Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Web' platform."
             Exit 1
         }
-        # TODO: Implement Web build
+        $UseBuildPythonScript = $True
+        $BuildPythonScriptFile = 'opencv/platforms/js/build_js.py'
+        $BuildPythonScriptArgs = @()
+        $InvokeWithEmscripten = $True
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -179,6 +185,39 @@ If($UseBuildPythonScript) {
     $Python3Command = (Get-Command -Name 'python3') 2> $Null
     If(-Not $Python3Command) {
         Write-Error -Message "Could not find 'python3' command. Is Python installed on your machine?"
+        Exit 1
+    }
+}
+
+$EmSDKCommand = $Null
+$EmMakeCommand = $Null
+$EmCMakeCommand = $Null
+If($InvokeWithEmscripten) {
+    $EmSDKCommand = (Get-Command -Name 'emsdk') 2> $Null
+    If(-Not $EmSDKCommand) {
+        Write-Error -Message "Could not find 'emsdk' command. Is Emscripten installed on your machine?"
+        Exit 1
+    }
+    $SelectStringResult = (& $EmSDKCommand list) | Select-String -Pattern '([0-9]+\.[0-9]+\.[0-9]+)\s+INSTALLED'
+    If(-Not $SelectStringResult) {
+        Write-Error -Message 'Failed to determine Emscripten version.'
+        Exit 1
+    }
+    $EmscriptenVersion = $SelectStringResult.Matches[0].Groups[1].Value
+    If($EmscriptenVersion -Ne $RequiredEmscriptenVersion) {
+        Write-Error -Message "Required Emscripten version is $RequiredEmscriptenVersion but the installed version is $EmscriptenVersion. Please run the 'emsdk install $RequiredEmscriptenVersion && emsdk activate $RequiredEmscriptenVersion' command."
+        Exit 1
+    }
+
+    $EmCMakeCommand = (Get-Command -Name 'emcmake') 2> $Null
+    If(-Not $EmCMakeCommand) {
+        Write-Error -Message "Could not find 'emcmake' command. Is Emscripten installed on your machine?"
+        Exit 1
+    }
+
+    $EmMakeCommand = (Get-Command -Name 'emmake') 2> $Null
+    If(-Not $EmMakeCommand) {
+        Write-Error -Message "Could not find 'emmake' command. Is Emscripten installed on your machine?"
         Exit 1
     }
 }
@@ -325,12 +364,20 @@ Try {
         If($CMakeGenerator -Ne '') {
             $CMakeGeneratorFlags = @('-G', $CMakeGenerator)
         }
-        & $CMakeCommand $CMakeGeneratorFlags $CMakeConfigureArgs @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S opencv
+        If($InvokeWithEmscripten) {
+            & $EmCMakeCommand $CMakeCommand $CMakeGeneratorFlags $CMakeConfigureArgs @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S opencv
+        } Else {
+            & $CMakeCommand $CMakeGeneratorFlags $CMakeConfigureArgs @($CMakeBuildTypeFlagForConfiguring | Where-Object { $_ }) "-DCMAKE_INSTALL_PREFIX=$OutDirectoryName" -B $BuildDirectoryName -S opencv
+        }
         If($LastExitCode -Ne 0) {
             Write-Error -Message 'Failed to configure CMake project.'
             Exit 1
         }
-        & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        If($InvokeWithEmscripten) {
+            & $EmMakeCommand $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        } Else {
+            & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        }
         If($LastExitCode -Ne 0) {
             Write-Error -Message 'Failed to build OpenCV library.'
             Exit 1
@@ -360,12 +407,18 @@ Try {
                 Write-Error -Message "Could not find 'python3' command in Python virtual environment."
                 Exit 1
             }
-            & $Python3CommandFromVEnv $BuildPythonScriptFile $BuildDirectoryName $BuildPythonScriptArgs @($BuildPythonScriptBuildTypeFlag | Where-Object { $_ })
+            If($InvokeWithEmscripten) {
+                & $EmCMakeCommand $Python3CommandFromVEnv $BuildPythonScriptFile $BuildDirectoryName $BuildPythonScriptArgs @($BuildPythonScriptBuildTypeFlag | Where-Object { $_ })
+            } Else {
+                & $Python3CommandFromVEnv $BuildPythonScriptFile $BuildDirectoryName $BuildPythonScriptArgs @($BuildPythonScriptBuildTypeFlag | Where-Object { $_ })
+            }
             If($LastExitCode -Ne 0) {
                 Write-Error -Message 'Failed to build OpenCV library.'
                 Exit 1
             }
-            Unpack-Framework "$BuildDirectoryName/opencv2.framework" $OutDirectoryName
+            If($BuildPythonScriptFile -Like '*framework*') {
+                Unpack-Framework "$BuildDirectoryName/opencv2.framework" $OutDirectoryName
+            }
         } Finally {
             $env:VIRTUAL_ENV = $VirtualEnvBackup
             $env:PATH = $PathBackup
