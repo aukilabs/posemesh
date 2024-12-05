@@ -335,6 +335,104 @@ Function Unpack-Framework {
     }
 }
 
+Function Install-Library {
+    Param(
+        [Parameter(Position = 0, Mandatory = $True)]
+        [String]$BuildPath,
+
+        [Parameter(Position = 1, Mandatory = $True)]
+        [String]$OutputPath
+    )
+
+    If(-Not (Test-Path -Path $BuildPath -PathType Container)) {
+        Write-Error -Message "Directory '$BuildPath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $OutputPath -PathType Container)) {
+        Write-Error -Message "Directory '$OutputPath' does not exist."
+        Exit 1
+    }
+
+    $OpenCV2SourcePath = 'opencv/include/opencv2'
+    $ModulesSourcePath = 'opencv/modules'
+    If(-Not (Test-Path -Path $OpenCV2SourcePath -PathType Container)) {
+        Write-Error -Message "Directory '$OpenCV2SourcePath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $ModulesSourcePath -PathType Container)) {
+        Write-Error -Message "Directory '$ModulesSourcePath' does not exist."
+        Exit 1
+    }
+
+    $OpenCV2BuildPath = "$BuildPath/opencv2"
+    $ModulesBuildPath = "$BuildPath/modules"
+    $LibraryBuildPath = "$BuildPath/lib"
+    If(-Not (Test-Path -Path $OpenCV2BuildPath -PathType Container)) {
+        Write-Error -Message "Directory '$OpenCV2BuildPath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $ModulesBuildPath -PathType Container)) {
+        Write-Error -Message "Directory '$ModulesBuildPath' does not exist."
+        Exit 1
+    }
+    If(-Not (Test-Path -Path $LibraryBuildPath -PathType Container)) {
+        Write-Error -Message "Directory '$LibraryBuildPath' does not exist."
+        Exit 1
+    }
+
+    $IncludeOutputPath = "$OutputPath/include"
+    $LibraryOutputPath = "$OutputPath/lib"
+    If(Test-Path -Path $IncludeOutputPath -PathType Container) {
+        Remove-Item -Force -Recurse -Path $IncludeOutputPath 2> $Null
+        If(Test-Path -Path $IncludeOutputPath -PathType Container) {
+            Write-Error -Message "Failed to remove '$IncludeOutputPath' directory."
+            Exit 1
+        }
+    }
+    If(Test-Path -Path $LibraryOutputPath -PathType Container) {
+        Remove-Item -Force -Recurse -Path $LibraryOutputPath 2> $Null
+        If(Test-Path -Path $LibraryOutputPath -PathType Container) {
+            Write-Error -Message "Failed to remove '$LibraryOutputPath' directory."
+            Exit 1
+        }
+    }
+    $NewItemResult = (New-Item -Path $IncludeOutputPath -ItemType Directory) 2> $Null
+    If(-Not $NewItemResult) {
+        Write-Error -Message "Failed to create '$IncludeOutputPath' directory."
+        Exit 1
+    }
+
+    $CopyItemResult = $(Copy-Item -Path $OpenCV2SourcePath -Destination $IncludeOutputPath -Recurse) 2>&1
+    If($CopyItemResult) {
+        Write-Error -Message "Failed to copy '$OpenCV2SourcePath' directory over to '$IncludeOutputPath' destination."
+        Exit 1
+    }
+    $ModulesSource = Get-ChildItem -Path $ModulesSourcePath -Directory
+    ForEach($ModuleSource In $ModulesSource) {
+        $ModulePath = $ModuleSource.FullName + '/include/opencv2'
+        If(-Not (Test-Path -Path $ModulePath -PathType Container)) {
+            Continue
+        }
+        $CopyItemResult = $(Copy-Item -Path $ModulePath -Destination $IncludeOutputPath -Recurse -Force) 2>&1
+        If($CopyItemResult) {
+            Write-Error -Message "Failed to copy '$ModulePath' directory over to '$IncludeOutputPath' destination."
+            Exit 1
+        }
+    }
+
+    $CopyItemResult = $(Copy-Item -Path $OpenCV2BuildPath -Destination $IncludeOutputPath -Recurse -Force) 2>&1
+    If($CopyItemResult) {
+        Write-Error -Message "Failed to copy '$OpenCV2BuildPath' directory over to '$IncludeOutputPath' destination."
+        Exit 1
+    }
+
+    $CopyItemResult = $(Copy-Item -Path $LibraryBuildPath -Destination $LibraryOutputPath -Recurse) 2>&1
+    If($CopyItemResult) {
+        Write-Error -Message "Failed to copy '$LibraryBuildPath' directory over to '$LibraryOutputPath' destination."
+        Exit 1
+    }
+}
+
 $PushLocationResult = (Push-Location -Path "$PSScriptRoot/.." -PassThru) 2> $Null
 If(-Not $PushLocationResult) {
     Write-Error -Message 'Failed to push the required working directory.'
@@ -418,6 +516,8 @@ Try {
             }
             If($BuildPythonScriptFile -Like '*framework*') {
                 Unpack-Framework "$BuildDirectoryName/opencv2.framework" $OutDirectoryName
+            } ElseIf($BuildPythonScriptFile -Like '*js*') {
+                Install-Library $BuildDirectoryName $OutDirectoryName
             }
         } Finally {
             $env:VIRTUAL_ENV = $VirtualEnvBackup
