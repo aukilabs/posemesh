@@ -21,6 +21,8 @@ NS_SWIFT_NAME(Posemesh) PSM_API @interface PSMPosemesh : NSObject
 - (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol;
 - (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback;
 
+- (void)pnpSolveForObjectPoints:(float *)objectPoints imagePoints:(float *)imagePoints cameraMatrix:(float *)cameraMatrix transformationResult:(float *)transformationResult;
+
 #if defined(POSEMESH_BUILD)
 - (void*)nativePosemesh;
 #endif

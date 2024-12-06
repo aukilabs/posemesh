@@ -22,6 +22,9 @@ function(LINK_OPENCV_LIBRARY NAME)
             ${OPENCV_INCLUDE_DIRECTORY}
     )
 
+    target_link_libraries(${NAME} PRIVATE "-framework Accelerate")
+    target_link_libraries(${NAME} PRIVATE "-framework OpenCL")
+
     if(EMSCRIPTEN)
         set(OPENCV_CALIB3D_LIBRARY "${OPENCV_LIBRARY_DIRECTORY}/libopencv_calib3d.a")
         if(NOT EXISTS "${OPENCV_CALIB3D_LIBRARY}" OR IS_DIRECTORY "${OPENCV_CALIB3D_LIBRARY}")
