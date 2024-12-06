@@ -21,6 +21,9 @@ jobs:
       - name: Build Posemesh Networking (all platforms and architectures)
         run: pwsh ./networking/scripts/Build-Apple.ps1 Release -InstallNecessaryRustToolchainsAndTargets
 
+      - name: Build OpenCV (all platforms and architectures)
+        run: pwsh ./third-party/scripts/Build-OpenCV-Apple.ps1 Release
+
       - name: Build Posemesh SDK (all platforms and architectures)
         run: pwsh ./sdk/scripts/Build-Apple.ps1 Release
 
@@ -82,6 +85,11 @@ jobs:
 
       - name: Build Posemesh Networking
         run: pwsh ./networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
+
+      - name: Build OpenCV
+        run: |
+          source ./emsdk/emsdk_env.sh
+          pwsh ./third-party/scripts/Build-OpenCV-Library.ps1 Web WASM32 Release
 
       - name: Build Posemesh SDK
         run: |

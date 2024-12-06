@@ -106,6 +106,9 @@ target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 include(LinkNetworkingLibrary)
 link_networking_library(Posemesh)
 
+include(LinkOpenCVLibrary)
+link_opencv_library(Posemesh)
+
 if(EMSCRIPTEN)
     configure_file(
         "${CMAKE_CURRENT_LIST_DIR}/platform/Web/VerifyCommitId.js.in"
