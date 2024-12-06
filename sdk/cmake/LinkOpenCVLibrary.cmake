@@ -83,8 +83,10 @@ function(LINK_OPENCV_LIBRARY NAME)
                 "${OPENCV_VIDEO_LIBRARY}"
         )
     else()
-        target_link_libraries(${NAME} PRIVATE "-framework Accelerate")
-        target_link_libraries(${NAME} PRIVATE "-framework OpenCL")
+        if(APPLE)
+            target_link_libraries(${NAME} PRIVATE "-framework Accelerate")
+            target_link_libraries(${NAME} PRIVATE "-framework OpenCL")
+        endif()
 
         set(OPENCV_LIBRARY "${OPENCV_LIBRARY_DIRECTORY}/libopencv2.a")
         if(NOT EXISTS "${OPENCV_LIBRARY}" OR IS_DIRECTORY "${OPENCV_LIBRARY}")
