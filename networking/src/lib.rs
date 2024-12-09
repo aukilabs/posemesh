@@ -129,7 +129,7 @@ fn posemesh_networking_context_send_message(
     #[cfg(feature="cpp")]
     user_data: *mut c_void,
     #[cfg(feature="cpp")]
-    callback: extern "C" fn(status: u8, user_data: *mut c_void)
+    callback: *const c_void
 ) -> SendMessageReturnType {
     let context = unsafe {
         assert!(!context.is_null(), "posemesh_networking_context_send_message(): context is null");
@@ -164,7 +164,7 @@ fn posemesh_networking_context_send_message_2(
     #[cfg(feature="cpp")]
     user_data: *mut c_void,
     #[cfg(feature="cpp")]
-    callback: extern "C" fn(status: u8, user_data: *mut c_void)
+    callback: *const c_void
 ) -> SendMessageReturnType {
     let message = unsafe {
         assert!(!message.is_null(), "posemesh_networking_context_send_message_2(): message is null");
@@ -229,7 +229,7 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     peer_id: *const c_char,
     protocol: *const c_char,
     user_data: *mut c_void,
-    callback: extern "C" fn(status: u8, user_data: *mut c_void)
+    callback: *const c_void
 ) -> u8 {
     posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, user_data, callback)
 }
