@@ -3,6 +3,7 @@
 #include <Posemesh/Posemesh.hpp>
 #include <sstream>
 #include <opencv2/calib3d.hpp>
+#include <opencv2/opencv.hpp>
 
 namespace psm {
 
@@ -105,58 +106,12 @@ bool Posemesh::sendMessage(
     return result;
 }
 
-bool Posemesh::sendString(
-    const std::string& string,
-    bool appendTerminatingNullCharacter,
-    const std::string& peerId,
-    const std::string& protocol,
-    std::function<void(bool status)> callback
-) const {
-    return sendMessage(
-        string.c_str(),
-        string.size() + (appendTerminatingNullCharacter ? 1 : 0),
-        peerId,
-        protocol,
-        callback
-    );
-}
-    
-void PopulateTransformationMatrix(float *transformationResult, cv::Mat rotation, cv::Mat translation) {
-    cv::Mat rotationMatrix = cv::Mat::zeros(3, 3, CV_32F);
-    cv::Rodrigues(rotation, rotationMatrix);
-
-    transformationResult[0] = rotationMatrix.at<float>(0);
-    transformationResult[1] = rotationMatrix.at<float>(1);
-    transformationResult[2] = rotationMatrix.at<float>(2);
-    transformationResult[3] = translation.at<float>(0);
-
-    transformationResult[4] = rotationMatrix.at<float>(3);
-    transformationResult[5] = rotationMatrix.at<float>(4);
-    transformationResult[6] = rotationMatrix.at<float>(5);
-    transformationResult[7] = translation.at<float>(1);
-    
-    transformationResult[8] = rotationMatrix.at<float>(6);
-    transformationResult[9] = rotationMatrix.at<float>(7);
-    transformationResult[10] = rotationMatrix.at<float>(9);
-    transformationResult[11] = translation.at<float>(2);
-    
-    transformationResult[12] = 0;
-    transformationResult[13] = 0;
-    transformationResult[14] = 0;
-    transformationResult[15] = 1;
-
-    // Convert from OpenCV to OpenGL camera coordinate system by negating rows 2 & 3.
-    // Short explanation here -- https://stackoverflow.com/a/59305821.
-    for (int i = 4; i < 12; i++) {
-        transformationResult[i] *= -1;
-    }
-}
-
-void Posemesh::pnpSolve(
+void Posemesh::pnpSolveDirect(
     const float *objectPoints,
     const float *imagePoints,
     const float *cameraMatrix,
-    float *transformationResult) {
+    float *outR,
+    float *outT) {
     std::vector<cv::Point3f> cvObjectPoints;
     for (int i = 0; i < 12; i += 3)
     {
@@ -196,7 +151,17 @@ void Posemesh::pnpSolve(
         std::cout << "OpenCV exception caught: " << e.what() << std::endl;
     }
 
-    PopulateTransformationMatrix(transformationResult, rvec, tvec);
+    cv::Mat R = cv::Mat::zeros(3, 3, CV_32F);
+    cv::Rodrigues(rvec, R);
+
+    for (int i = 0; i < 9; i++)
+    {
+        outR[i] = R.at<float>(i);
+    }
+
+    outT[0] = tvec.at<float>(0);
+    outT[1] = tvec.at<float>(1);
+    outT[2] = tvec.at<float>(2);
 }
 
 #if !defined(__EMSCRIPTEN__)

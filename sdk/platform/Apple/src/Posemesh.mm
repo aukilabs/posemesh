@@ -108,9 +108,9 @@
     } : std::function<void(bool status)>{}));
 }
 
-- (void)pnpSolveForObjectPoints:(float *)objectPoints imagePoints:(float *)imagePoints cameraMatrix:(float *)cameraMatrix transformationResult:(float *)transformationResult {
+- (void)pnpSolveForObjectPoints:(float *)objectPoints imagePoints:(float *)imagePoints cameraMatrix:(float *)cameraMatrix outR:(float *)outR outT:(float *)outT {
     NSAssert(m_posemesh, @"m_posemesh is null");
-    m_posemesh->pnpSolve(objectPoints, imagePoints, cameraMatrix, transformationResult);
+    m_posemesh->pnpSolveDirect(objectPoints, imagePoints, cameraMatrix, outR, outT);
 }
 
 - (void*)nativePosemesh {
