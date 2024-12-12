@@ -75,9 +75,14 @@ git submodule update --init --recursive
 ./networking/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-3. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+3. Build OpenCV
 ```sh
-./sdk/scripts/Build-Library.ps1 iOS ARM64 Debug
+./third-party/scripts/Build-OpenCV-Library.ps1 macOS ARM64 Debug
 ```
 
-4. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
+4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+```sh
+./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
+```
+
+5. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
