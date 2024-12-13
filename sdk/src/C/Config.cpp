@@ -199,4 +199,75 @@ uint8_t psm_config_set_relays(psm_config_t* config, const char* const* relays, u
     return static_cast<uint8_t>(config->setRelays(std::move(relays_vector)));
 }
 
+const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* out_private_key_size) {
+    if (!config) {
+        assert(!"psm_config_get_private_key(): config is null");
+        if (out_private_key_size) {
+            *out_private_key_size = 0;
+        }
+        return nullptr;
+    }
+
+    const auto private_key = config->getPrivateKey();
+    if (private_key.empty()) {
+        if (out_private_key_size) {
+            *out_private_key_size = 0;
+        }
+        return nullptr;
+    }
+
+    auto* result = new(std::nothrow) std::uint8_t[private_key.size()];
+    std::memcpy(result, private_key.data(), private_key.size());
+    if (out_private_key_size) {
+        *out_private_key_size = private_key.size();
+    }
+    return result;
+}
+
+void psm_config_get_private_key_free(const uint8_t* private_key) {
+    delete[] const_cast<uint8_t*>(private_key);
+}
+
+void psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key, uint32_t private_key_size) {
+    if (!config) {
+        assert(!"psm_config_set_private_key(): config is null");
+        return;
+    }
+    if (!private_key && private_key_size != 0) {
+        assert(!"psm_config_set_private_key(): private_key is null and private_key_size is non-zero");
+        return;
+    }
+    config->setPrivateKey(std::vector<std::uint8_t>{private_key, private_key + private_key_size});
+}
+
+#if !defined(__EMSCRIPTEN__)
+    const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config) {
+        if (!config) {
+            assert(!"psm_config_get_private_key_path(): config is null");
+            return nullptr;
+        }
+
+        const auto private_key_path = config->getPrivateKeyPath();
+        if (private_key_path.empty()) {
+            return nullptr;
+        }
+
+        auto* result = new(std::nothrow) char[private_key_path.size() + 1];
+        std::memcpy(result, private_key_path.c_str(), private_key_path.size() + 1);
+        return result;
+    }
+
+    void psm_config_get_private_key_path_free(const char* private_key_path) {
+        delete[] const_cast<char*>(private_key_path);
+    }
+
+    void PSM_API psm_config_set_private_key_path(psm_config_t* config, const char* private_key_path) {
+        if (!config) {
+            assert(!"psm_config_set_private_key_path(): config is null");
+            return;
+        }
+        config->setPrivateKeyPath(private_key_path ? std::string{private_key_path} : std::string{});
+    }
+#endif
+
 }

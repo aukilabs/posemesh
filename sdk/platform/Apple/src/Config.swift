@@ -35,6 +35,24 @@ extension Config {
         }
     }
 
+    public var privateKey: Data {
+        get {
+            return __privateKey()
+        }
+        set {
+            __setPrivateKey(newValue)
+        }
+    }
+
+    public var privateKeyPath: String {
+        get {
+            return __privateKeyPath()
+        }
+        set {
+            __setPrivateKeyPath(newValue)
+        }
+    }
+
     public static var `default`: Config {
         get {
             return __default()

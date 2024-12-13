@@ -22,6 +22,8 @@ EMSCRIPTEN_BINDINGS(Config) {
         .function("__setBootstraps(bootstraps)", &Config::setBootstraps)
         .function("__getRelays()", &Config::getRelays)
         .function("__setRelays(relays)", &Config::setRelays)
+        .function("__getPrivateKey()", &Config::getPrivateKey)
+        .function("__setPrivateKey(privateKey)", &Config::setPrivateKey)
         .class_function("createDefault", &createDefault, nonnull<ret_val>())
     ;
 }

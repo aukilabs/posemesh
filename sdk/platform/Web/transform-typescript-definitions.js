@@ -16,9 +16,16 @@ function fixConfig(content) {
     content = content.replaceAll('Config: {', 'static Config: {');
     content = content.replaceAll('__getBootstraps(): VectorString;',                    'getBootstraps(): [string];');
     content = content.replaceAll('__getRelays(): VectorString;',                        'getRelays(): [string];');
+    content = content.replaceAll('__getPrivateKey(): VectorUint8;',                     'getPrivateKey(): Uint8Array;');
     content = content.replaceAll('__setBootstraps(bootstraps: VectorString): boolean;', 'setBootstraps(bootstraps: [string]): boolean;');
     content = content.replaceAll('__setRelays(relays: VectorString): boolean;',         'setRelays(relays: [string]): boolean;');
+    content = content.replaceAll('__setPrivateKey(privateKey: VectorUint8): void;',     'setPrivateKey(privateKey: Uint8Array): void;');
     content = content.replaceAll('new(_0: Config): Config;',                            'new(config: Config): Config;');
+    content = content.replaceAll('export interface Config {',                           `export interface Config {${newLine}` +
+                                                                                        `${tab}bootstraps: [string];${newLine}` +
+                                                                                        `${tab}relays: [string];${newLine}` +
+                                                                                        `${tab}privateKey: Uint8Array;${newLine}`
+    );
     return content;
 }
 
@@ -41,6 +48,10 @@ function fixPosemesh(content) {
 function validate(content) {
     if (content.includes('VectorString')) {
         console.error('Validation failed: Output contains \'VectorString\' string.');
+        return false;
+    }
+    if (content.includes('VectorUint8')) {
+        console.error('Validation failed: Output contains \'VectorUint8\' string.');
         return false;
     }
     if (content.includes('__')) {
@@ -85,6 +96,7 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
     content = content.replace(/interface\s+WasmModule\s*\{[\s\S]*?\}/gm, '');
     content = content.replace(/type\s+EmbindString\s*=[\s\S]*?;/gm, '');
     content = content.replace(/export\s+interface\s+VectorString\s*\{[\s\S]*?\}/gm, '');
+    content = content.replace(/export\s+interface\s+VectorUint8\s*\{[\s\S]*?\}/gm, '');
 
     // Suffixes
     content = content.replace(/export\s+type\s+MainModule\s*=[\s\S]*?;/gm, '');
@@ -95,6 +107,7 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
     // Constructors
     let constructors = embindModuleContent;
     constructors = constructors.replace(/ *VectorString\s*:\s*\{[\s\S]*?\}\s*; */gm, '');
+    constructors = constructors.replace(/ *VectorUint8\s*:\s*\{[\s\S]*?\}\s*; */gm, '');
     const posemeshConstructors = ('>>>' + constructors.match(/ *Posemesh\s*:\s*\{([\s\S]*?)\}\s*; */m)[1].replace(/^[\r\n]+|[\r\n]+$/g, '')).replaceAll(newLine, newLine + '>>>').replaceAll('>>>' + tab, '>>>').replaceAll('>>>', '');
     constructors = constructors.replace(/ *Posemesh\s*:\s*\{[\s\S]*?\}\s*; */gm, '');
     constructors = constructors + posemeshConstructors;

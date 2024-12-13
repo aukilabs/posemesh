@@ -34,13 +34,22 @@ Posemesh::Posemesh(const Config& config) {
         }
         relays = stream.str();
     }
+    const auto privateKey = config.getPrivateKey();
+    #if !defined(__EMSCRIPTEN__)
+        const auto privateKeyPath = config.getPrivateKeyPath();
+    #endif
     const psm_posemesh_networking_config_t nativeConfig {
         #if !defined(__EMSCRIPTEN__)
             .serve_as_bootstrap = static_cast<uint8_t>(config.getServeAsBootstrap()),
             .serve_as_relay = static_cast<uint8_t>(config.getServeAsRelay()),
         #endif
         .bootstraps = bootstraps.c_str(),
-        .relays = relays.c_str()
+        .relays = relays.c_str(),
+        .private_key = privateKey.data(),
+        .private_key_size = static_cast<std::uint32_t>(privateKey.size()),
+        #if !defined(__EMSCRIPTEN__)
+            .private_key_path = privateKeyPath.c_str()
+        #endif
     };
     m_context = psm_posemesh_networking_context_create(&nativeConfig);
     assert(m_context || !"Posemesh::Posemesh(): failed to create the Posemesh Networking context");
