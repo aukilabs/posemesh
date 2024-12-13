@@ -1,6 +1,10 @@
 #include <iostream>
 #include <Posemesh/Config.hpp>
 
+#if defined(__APPLE__)
+#    include "../platform/Apple/src/Util.hpp"
+#endif
+
 namespace psm {
 
 Config::Config() {
@@ -124,6 +128,15 @@ Config Config::createDefault() {
     Config config;
     // TODO: set config.m_bootstraps to well-known bootstraps
     // TODO: set config.m_relays to well-known relays
+    #if defined(__APPLE__)
+        config.m_privateKeyPath = util::getAppSupportDirectoryPath();
+        if (!config.m_privateKeyPath.empty()) {
+            if (config.m_privateKeyPath.back() != '/') {
+                config.m_privateKeyPath += "/";
+            }
+            config.m_privateKeyPath += "posemesh_private_key.dat";
+        }
+    #endif
     return config;
 }
 

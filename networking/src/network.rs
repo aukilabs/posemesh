@@ -142,9 +142,10 @@ fn parse_or_create_keypair(
     }
 
     #[cfg(not(target_family="wasm"))]
-    return keypair_file(private_key_path);
+    if !private_key_path.is_empty() {
+        return keypair_file(private_key_path);
+    }
 
-    #[cfg(target_family="wasm")]
     return libp2p::identity::Keypair::generate_ed25519();
 }
 

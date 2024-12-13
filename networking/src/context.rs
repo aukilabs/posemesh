@@ -219,7 +219,7 @@ impl Context {
     ) {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
-        if (callback.is_null()) {
+        if callback.is_null() {
             self.runtime.spawn(async move {
                 match sender.send(msg, peer_id, protocol).await {
                     Ok(_) => { },
