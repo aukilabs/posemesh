@@ -2,6 +2,8 @@
 #include <Posemesh/Networking/API.h>
 #include <Posemesh/Posemesh.hpp>
 #include <sstream>
+#include <opencv2/calib3d.hpp>
+#include <opencv2/opencv.hpp>
 
 namespace psm {
 
@@ -118,6 +120,64 @@ bool Posemesh::sendString(
         protocol,
         callback
     );
+}
+
+void Posemesh::pnpSolveDirect(
+    const float *objectPoints,
+    const float *imagePoints,
+    const float *cameraMatrix,
+    float *outR,
+    float *outT) {
+    std::vector<cv::Point3f> cvObjectPoints;
+    for (int i = 0; i < 12; i += 3)
+    {
+        cvObjectPoints.push_back(cv::Point3f(objectPoints[i + 0],
+                                             objectPoints[i + 1],
+                                             objectPoints[i + 2]));
+    }
+
+    std::vector<cv::Point2f> cvImagePoints;
+    for (int i = 0; i < 8; i += 2)
+    {
+        cvImagePoints.push_back(cv::Point2f(imagePoints[i], imagePoints[i + 1]));
+    }
+
+    cv::Mat cvCameraMatrix = cv::Mat::zeros(3, 3, CV_32F);
+    for (int i = 0; i < 9; i++) {
+        cvCameraMatrix.at<float>(i) = cameraMatrix[i];
+    }
+
+    cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_32F);
+    cv::Mat rvec = cv::Mat::zeros(3, 1, CV_32F);
+    cv::Mat tvec = cv::Mat::zeros(3, 1, CV_32F);
+
+    try
+    {
+        cv::solvePnP(cvObjectPoints,
+                     cvImagePoints,
+                     cvCameraMatrix,
+                     distCoeffs,
+                     rvec,
+                     tvec,
+                     false,
+                     cv::SOLVEPNP_IPPE_SQUARE);
+    }
+    catch (cv::Exception &e)
+    {
+        std::cout << "OpenCV exception caught: " << e.what() << std::endl;
+    }
+
+    cv::Mat R = cv::Mat::zeros(3, 3, CV_32F);
+    cv::Rodrigues(rvec, R);
+
+    for (int i = 0; i < 9; i++)
+    {
+        outR[i] = R.at<float>(i);
+    }
+
+    outT[0] = tvec.at<float>(0);
+    outT[1] = tvec.at<float>(1);
+    outT[2] = tvec.at<float>(2);
 }
 
 #if !defined(__EMSCRIPTEN__)

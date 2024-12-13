@@ -83,6 +83,13 @@ function(LINK_OPENCV_LIBRARY NAME)
                 "${OPENCV_VIDEO_LIBRARY}"
         )
     else()
+        if(APPLE)
+            target_link_libraries(${NAME} PRIVATE "-framework Accelerate")
+            if(PLATFORM MATCHES "MAC")
+                target_link_libraries(${NAME} PRIVATE "-framework OpenCL")
+            endif()
+        endif()
+
         set(OPENCV_LIBRARY "${OPENCV_LIBRARY_DIRECTORY}/libopencv2.a")
         if(NOT EXISTS "${OPENCV_LIBRARY}" OR IS_DIRECTORY "${OPENCV_LIBRARY}")
             message(FATAL_ERROR "OpenCV library is not built for targeted platform, architecture and configuration (build type): Archive file is missing.")
