@@ -1,5 +1,6 @@
 #import <Posemesh/Config.h>
 
+#include <cstdint>
 #include <new>
 #include <Posemesh/Config.hpp>
 
@@ -136,6 +137,28 @@
         relays_vector.emplace_back([relay UTF8String]);
     }
     return static_cast<BOOL>(m_config->setRelays(std::move(relays_vector)));
+}
+
+- (NSData*)privateKey {
+    NSAssert(m_config, @"m_config is null");
+    const auto privateKey = m_config->getPrivateKey();
+    return [[NSData alloc] initWithBytes:privateKey.data() length:privateKey.size()];
+}
+
+- (void)setPrivateKey:(NSData*)privateKey {
+    NSAssert(m_config, @"m_config is null");
+    const auto* privateKeyData = static_cast<const std::uint8_t*>([privateKey bytes]);
+    m_config->setPrivateKey(std::vector<std::uint8_t>{privateKeyData, privateKeyData + [privateKey length]});
+}
+
+- (NSString*)privateKeyPath {
+    NSAssert(m_config, @"m_config is null");
+    return [NSString stringWithUTF8String:m_config->getPrivateKeyPath().c_str()];
+}
+
+- (void)setPrivateKeyPath:(NSString*)privateKeyPath {
+    NSAssert(m_config, @"m_config is null");
+    m_config->setPrivateKeyPath([privateKeyPath UTF8String]);
 }
 
 - (void*)nativeConfig {

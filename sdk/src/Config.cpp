@@ -102,6 +102,24 @@ bool Config::setRelays(std::vector<std::string> relays) noexcept {
     return true;
 }
 
+std::vector<std::uint8_t> Config::getPrivateKey() const {
+    return m_privateKey;
+}
+
+void Config::setPrivateKey(std::vector<std::uint8_t> privateKey) noexcept {
+    m_privateKey = std::move(privateKey);
+}
+
+#if !defined(__EMSCRIPTEN__)
+    std::string Config::getPrivateKeyPath() const {
+        return m_privateKeyPath;
+    }
+
+    void Config::setPrivateKeyPath(std::string privateKeyPath) noexcept {
+        m_privateKeyPath = std::move(privateKeyPath);
+    }
+#endif
+
 Config Config::createDefault() {
     Config config;
     // TODO: set config.m_bootstraps to well-known bootstraps

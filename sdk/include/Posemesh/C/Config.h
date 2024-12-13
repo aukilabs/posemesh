@@ -38,6 +38,16 @@ const char* const* PSM_API psm_config_get_relays(const psm_config_t* config, uin
 void PSM_API psm_config_get_relays_free(const char* const* relays);
 uint8_t PSM_API psm_config_set_relays(psm_config_t* config, const char* const* relays, uint32_t relays_count);
 
+const uint8_t* PSM_API psm_config_get_private_key(const psm_config_t* config, uint32_t* out_private_key_size);
+void PSM_API psm_config_get_private_key_free(const uint8_t* private_key);
+void PSM_API psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key, uint32_t private_key_size);
+
+#if !defined(__EMSCRIPTEN__)
+    const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config);
+    void PSM_API psm_config_get_private_key_path_free(const char* private_key_path);
+    void PSM_API psm_config_set_private_key_path(psm_config_t* config, const char* private_key_path);
+#endif
+
 #if defined(__cplusplus)
 }
 #endif

@@ -50,7 +50,7 @@ pub struct NetworkingConfig {
     pub bootstrap_nodes: Vec<String>,
     pub relay_nodes: Vec<String>,
     pub enable_mdns: bool,
-    pub private_key: String,
+    pub private_key: Vec<u8>,
     pub private_key_path: String,
     pub enable_kdht: bool,
     pub name: String,
@@ -67,7 +67,7 @@ impl Default for NetworkingConfig {
             enable_kdht: false,
             enable_mdns: true,
             relay_nodes: vec![],
-            private_key: "".to_string(),
+            private_key: vec![],
             private_key_path: "./volume/pkey".to_string(),
             name: "c++ server".to_string(), // placeholder
             node_capabilities: vec![], // placeholder
@@ -298,7 +298,7 @@ impl Networking {
         tracing_wasm::set_as_global_default();
 
         let mut private_key = cfg.private_key.clone();
-        let private_key_bytes = unsafe {private_key.as_bytes_mut()};
+        let mut private_key_bytes = &mut private_key;
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
         println!("Local peer id: {:?}", key.public().to_peer_id());
 
