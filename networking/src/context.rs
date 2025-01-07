@@ -198,7 +198,7 @@ impl Context {
             enable_kdht: true,
             enable_mdns: mdns,
             relay_nodes: relay_nodes.clone(),
-            private_key: "".to_string(),
+            private_key: vec![],
             private_key_path: pkey_path.clone(),
             name: name.clone(),
             node_types: node_types.clone(),
