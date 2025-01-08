@@ -313,7 +313,14 @@ impl Networking {
         let listeners = build_listeners(cfg.port);
         #[cfg(not(target_family="wasm"))]
         for addr in listeners.iter() {
-            swarm.listen_on(addr.clone())?;
+            match swarm.listen_on(addr.clone()) {
+                Ok(_) => {},
+                Err(e) => {
+                    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                    eprintln!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
+                    return Err(Box::new(e));
+                }
+            }
         }
 
         let node = Node{
