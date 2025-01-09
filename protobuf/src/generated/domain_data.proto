@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package domain_data;
+
+message DomainDataMetadata {
+    string name = 1;
+    string data_type = 2;
+    uint32 size = 3;
+    optional string id = 4;
+    map<string, string> metadata = 5;
+}
