@@ -86,3 +86,7 @@ git submodule update --init --recursive
 ```
 
 5. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
+
+# Apple entitlements
+
+To use the networking features on Apple platforms, it may be required to set the `com.apple.security.network.server` entitlement to `YES`.

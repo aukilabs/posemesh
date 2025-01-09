@@ -7,7 +7,7 @@ use futures::lock::Mutex;
 use std::sync::Arc;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
-use std::{ffi::CStr, os::raw::{c_char, c_void}};
+use std::{ffi::CStr, os::raw::{c_char, c_uchar, c_void}};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use libp2p::Multiaddr;
 
@@ -33,6 +33,9 @@ pub struct Config {
     pub serve_as_relay: u8,
     pub bootstraps: *const c_char,
     pub relays: *const c_char,
+    pub private_key: *const c_uchar,
+    pub private_key_size: u32,
+    pub private_key_path: *const c_char,
 }
 
 #[cfg(feature="wasm")]
@@ -41,6 +44,7 @@ pub struct Config {
 pub struct Config {
     pub bootstraps: String,
     pub relays: String,
+    pub privateKey: Vec<u8>,
 }
 
 #[cfg(feature="wasm")]
@@ -49,11 +53,13 @@ impl Config {
     #[wasm_bindgen(constructor)]
     pub fn new(
         bootstraps: String,
-        relays: String
+        relays: String,
+        private_key: Vec<u8>
     ) -> Self {
         Self {
             bootstraps: bootstraps,
             relays: relays,
+            privateKey: private_key,
         }
     }
 }
@@ -132,6 +138,36 @@ impl Context {
                 relay.parse::<Multiaddr>().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)
             ).collect::<Result<Vec<Multiaddr>, Box<dyn Error + Send + Sync>>>()?;
 
+        // *****************
+        // ** private_key **
+        // *****************
+
+        #[cfg(not(target_family="wasm"))]
+        let private_key = unsafe {
+            if config.private_key.is_null() {
+                assert!((config.private_key_size as usize) == 0, "Context::new(): config.private_key is null and config.private_key_size is non-zero");
+                vec![]
+            } else {
+                core::slice::from_raw_parts(config.private_key, config.private_key_size as usize).to_vec()
+            }
+        };
+
+        #[cfg(target_family="wasm")]
+        let private_key = config.privateKey.clone();
+
+        // **********************
+        // ** private_key_path **
+        // **********************
+
+        #[cfg(not(target_family="wasm"))]
+        let private_key_path = unsafe {
+            assert!(!config.private_key_path.is_null(), "Context::new(): config.private_key_path is null");
+            CStr::from_ptr(config.private_key_path)
+        }.to_str().map_err(|error| Box::new(error) as Box<dyn Error + Send + Sync>)?.to_string();
+
+        #[cfg(target_family="wasm")]
+        let private_key_path = "".to_string();
+
         let _ = serve_as_bootstrap; // TODO: temp
 
         let cfg = &NetworkingConfig{
@@ -141,8 +177,8 @@ impl Context {
             enable_kdht: true,
             enable_mdns: false,
             relay_nodes: relays.iter().map(|relay| relay.to_string()).collect(),
-            private_key: "".to_string(),
-            private_key_path: "".to_string(),
+            private_key: private_key,
+            private_key_path: private_key_path,
             name: "my_name".to_string(),
             node_types: vec![],
             node_capabilities: vec![],
@@ -162,7 +198,7 @@ impl Context {
             enable_kdht: true,
             enable_mdns: mdns,
             relay_nodes: relay_nodes.clone(),
-            private_key: "".to_string(),
+            private_key: vec![],
             private_key_path: pkey_path.clone(),
             name: name.clone(),
             node_types: node_types.clone(),
@@ -183,7 +219,7 @@ impl Context {
     ) {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
-        if (callback.is_null()) {
+        if callback.is_null() {
             self.runtime.spawn(async move {
                 match sender.send(msg, peer_id, protocol).await {
                     Ok(_) => { },

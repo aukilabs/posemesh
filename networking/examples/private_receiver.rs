@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: bootstraps.clone(),
-        private_key: "".to_string(),
+        private_key: vec![],
         private_key_path: private_key_path,
         name: name,
         node_capabilities: vec![],

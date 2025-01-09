@@ -15,6 +15,11 @@ typedef struct {
     #endif
     const char* bootstraps;
     const char* relays;
+    const uint8_t* private_key;
+    uint32_t private_key_size;
+    #if !defined(__EMSCRIPTEN__)
+        const char* private_key_path;
+    #endif
 } psm_posemesh_networking_config_t;
 
 typedef struct psm_posemesh_networking_context psm_posemesh_networking_context_t;
@@ -52,16 +57,23 @@ extern "C" {
         assert(bootstraps);
         const char* const relays = config->relays;
         assert(relays);
+        const uint8_t* const private_key = config->private_key;
+        const uint32_t private_key_size = config->private_key_size;
+        assert(private_key || private_key_size == 0);
         void* context = EM_ASM_PTR({
             let bootstraps = UTF8ToString($0);
             let relays = UTF8ToString($1);
-            let config = new __internalPosemeshNetworking.Config(bootstraps, relays);
+            let privateKey = $2;
+            let privateKeySize = $3;
+            let config = new __internalPosemeshNetworking.Config(
+                bootstraps, relays, new Uint8Array(HEAPU8.buffer, privateKey, privateKeySize)
+            );
             try {
                 return __internalPosemeshNetworking.posemeshNetworkingContextCreate(config);
             } finally {
                 config.free();
             }
-        }, bootstraps, relays);
+        }, bootstraps, relays, private_key, private_key_size);
         return (psm_posemesh_networking_context_t*)context;
     }
 #endif
