@@ -180,8 +180,6 @@ impl Context {
             private_key: private_key,
             private_key_path: private_key_path,
             name: "my_name".to_string(),
-            node_types: vec![],
-            node_capabilities: vec![],
         };
         let ctx = context_create(cfg)?;
         Ok(Box::new(ctx))
@@ -201,8 +199,6 @@ impl Context {
             private_key: vec![],
             private_key_path: pkey_path.clone(),
             name: name.clone(),
-            node_types: node_types.clone(),
-            node_capabilities: capabilities.clone(),
         };
         let ctx = context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(ctx)
