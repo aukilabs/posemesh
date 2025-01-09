@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 futures = "0.3.30"
 lazy_static = "1.5.0"
-libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374" }
+libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 rand = "0.8.5"
@@ -22,12 +22,13 @@ tokio = { version = "1.40.0", features = ["full"] }
 libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = ["tokio"] }
 
 [target.'cfg(target_family="wasm")'.dependencies]
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374", features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay" ] }
-libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", rev = "eee1374" }
+libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm", features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay" ] }
+libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 tracing-wasm = "0.2.1"
 wasm-bindgen = "0.2.90"
 wasm-bindgen-futures = "0.4.42"
 serde-wasm-bindgen = "0.6.5"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
 
 [features]
 default = []

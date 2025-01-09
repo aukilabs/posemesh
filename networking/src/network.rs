@@ -606,6 +606,18 @@ impl Networking {
             client::Command::SetStreamHandler { protocol, sender } => {
                 self.add_stream_protocol(protocol, sender);
             }
+            client::Command::Subscribe { topic, resp } => {
+                self.subscribe(topic, resp);
+            }
+            client::Command::Publish { topic, message, sender } => {
+                let t = IdentTopic::new(topic);
+                let res = self.swarm.behaviour_mut().gossipsub.publish(t, message);
+                if res.is_err() {
+                    let _ = sender.send(Err(Box::new(res.err().unwrap())));
+                    return;
+                }
+                let _ = sender.send(Ok(()));
+            }
         }
     }
 
@@ -668,19 +680,12 @@ impl Networking {
     }
 }
 
-async fn send(mut stream: Stream, msg: Vec<u8>) -> io::Result<()> {
-    stream.write_all(&msg).await?;
-    stream.close().await?;
-
-    Ok(())
-}
-
-async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
+async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
     if let Ok(Err(e)) = find_response.await {
         tracing::error!("{}", e);
     }
-    
-    let stream = match ctrl.open_stream(peer_id, protocol).await {
+
+    let mut stream = match ctrl.open_stream(peer_id, protocol).await {
         Ok(stream) => stream,
         Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
             if let Err(send_err) = send_response.send(Err(Box::new(error))) {
@@ -695,13 +700,22 @@ async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProt
             return;
         }
     };
-    if let Err(e) = send(stream, message).await {
-        if let Err(send_err) = send_response.send(Err(Box::new(e))) {
-            tracing::error!("Failed to send feedback: {:?}", send_err);
+    if message.len() != 0 {
+        if let Err(e) = stream.write_all(&message).await {
+            if let Err(send_err) = send_response.send(Err(Box::new(e))) {
+                tracing::error!("Failed to send feedback: {:?}", send_err);
+            }
+            return;
         }
-        return;
+        if let Err(e) = stream.flush().await {
+            if let Err(send_err) = send_response.send(Err(Box::new(e))) {
+                tracing::error!("Failed to send feedback: {:?}", send_err);
+            }
+            return;
+        }
     }
-    if let Err(send_err) = send_response.send(Ok(())) {
+    
+    if let Err(send_err) = send_response.send(Ok(stream)) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
     }
 }
@@ -710,8 +724,8 @@ async fn protocol_handler(mut incoming_stream: IncomingStreams, protocol: Stream
     while let Some((peer, stream)) = incoming_stream.next().await {
         let proto = protocol.clone();
         let _ = event_sender
-            .send(event::Event::MessageReceived { 
-                stream,
+            .send(event::Event::StreamMessageReceivedEvent { 
+                msg_reader: stream,
                 protocol: proto,
                 peer,
              })
