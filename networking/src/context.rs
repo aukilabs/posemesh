@@ -228,6 +228,9 @@ impl Context {
                     Ok(_) => { },
                     Err(error) => {
                         eprintln!("Context::send_with_callback(): {:?}", error);
+
+                        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                        eprintln!("Failed to send message: Apple platforms require 'com.apple.security.network.client' entitlement set to YES.");
                     }
                 }
             });
@@ -241,6 +244,10 @@ impl Context {
                     },
                     Err(error) => {
                         eprintln!("Context::send_with_callback(): {:?}", error);
+
+                        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                        eprintln!("Failed to send message: Apple platforms require 'com.apple.security.network.client' entitlement set to YES.");
+
                         let user_data = user_data_safe as *mut c_void;
                         callback(0, user_data);
                     }
