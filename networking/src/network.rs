@@ -50,7 +50,7 @@ pub struct NetworkingConfig {
     pub bootstrap_nodes: Vec<String>,
     pub relay_nodes: Vec<String>,
     pub enable_mdns: bool,
-    pub private_key: String,
+    pub private_key: Vec<u8>,
     pub private_key_path: String,
     pub enable_kdht: bool,
     pub name: String,
@@ -67,7 +67,7 @@ impl Default for NetworkingConfig {
             enable_kdht: false,
             enable_mdns: true,
             relay_nodes: vec![],
-            private_key: "".to_string(),
+            private_key: vec![],
             private_key_path: "./volume/pkey".to_string(),
             name: "c++ server".to_string(), // placeholder
             node_capabilities: vec![], // placeholder
@@ -142,9 +142,10 @@ fn parse_or_create_keypair(
     }
 
     #[cfg(not(target_family="wasm"))]
-    return keypair_file(private_key_path);
+    if !private_key_path.is_empty() {
+        return keypair_file(private_key_path);
+    }
 
-    #[cfg(target_family="wasm")]
     return libp2p::identity::Keypair::generate_ed25519();
 }
 
@@ -298,7 +299,7 @@ impl Networking {
         tracing_wasm::set_as_global_default();
 
         let mut private_key = cfg.private_key.clone();
-        let private_key_bytes = unsafe {private_key.as_bytes_mut()};
+        let mut private_key_bytes = &mut private_key;
         let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
         println!("Local peer id: {:?}", key.public().to_peer_id());
 
@@ -312,7 +313,14 @@ impl Networking {
         let listeners = build_listeners(cfg.port);
         #[cfg(not(target_family="wasm"))]
         for addr in listeners.iter() {
-            swarm.listen_on(addr.clone())?;
+            match swarm.listen_on(addr.clone()) {
+                Ok(_) => {},
+                Err(e) => {
+                    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                    eprintln!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
+                    return Err(Box::new(e));
+                }
+            }
         }
 
         let node = Node{

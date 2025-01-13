@@ -1,6 +1,7 @@
 #ifndef __POSEMESH_CONFIG_HPP__
 #define __POSEMESH_CONFIG_HPP__
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,14 @@ public:
     std::vector<std::string> PSM_API getRelays() const;
     bool PSM_API setRelays(std::vector<std::string> relays) noexcept;
 
+    std::vector<std::uint8_t> PSM_API getPrivateKey() const;
+    void PSM_API setPrivateKey(std::vector<std::uint8_t> privateKey) noexcept;
+
+    #if !defined(__EMSCRIPTEN__)
+        std::string PSM_API getPrivateKeyPath() const;
+        void PSM_API setPrivateKeyPath(std::string privateKeyPath) noexcept;
+    #endif
+
     static Config PSM_API createDefault();
 private:
     #if !defined(__EMSCRIPTEN__)
@@ -43,6 +52,10 @@ private:
     #endif
     std::vector<std::string> m_bootstraps;
     std::vector<std::string> m_relays;
+    std::vector<std::uint8_t> m_privateKey;
+    #if !defined(__EMSCRIPTEN__)
+        std::string m_privateKeyPath;
+    #endif
 };
 
 }

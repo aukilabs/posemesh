@@ -1,6 +1,10 @@
 #include <iostream>
 #include <Posemesh/Config.hpp>
 
+#if defined(__APPLE__)
+#    include "../platform/Apple/src/Util.hpp"
+#endif
+
 namespace psm {
 
 Config::Config() {
@@ -102,10 +106,37 @@ bool Config::setRelays(std::vector<std::string> relays) noexcept {
     return true;
 }
 
+std::vector<std::uint8_t> Config::getPrivateKey() const {
+    return m_privateKey;
+}
+
+void Config::setPrivateKey(std::vector<std::uint8_t> privateKey) noexcept {
+    m_privateKey = std::move(privateKey);
+}
+
+#if !defined(__EMSCRIPTEN__)
+    std::string Config::getPrivateKeyPath() const {
+        return m_privateKeyPath;
+    }
+
+    void Config::setPrivateKeyPath(std::string privateKeyPath) noexcept {
+        m_privateKeyPath = std::move(privateKeyPath);
+    }
+#endif
+
 Config Config::createDefault() {
     Config config;
     // TODO: set config.m_bootstraps to well-known bootstraps
     // TODO: set config.m_relays to well-known relays
+    #if defined(__APPLE__)
+        config.m_privateKeyPath = util::getAppSupportDirectoryPath();
+        if (!config.m_privateKeyPath.empty()) {
+            if (config.m_privateKeyPath.back() != '/') {
+                config.m_privateKeyPath += "/";
+            }
+            config.m_privateKeyPath += "posemesh_private_key.dat";
+        }
+    #endif
     return config;
 }
 

@@ -17,6 +17,15 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
+    Object.defineProperty(Posemesh.Config.prototype, 'bootstraps', {
+        get: Posemesh.Config.prototype.getBootstraps,
+        set: function(bootstraps) {
+            this.setBootstraps(bootstraps);
+        },
+        enumerable: true,
+        configurable: false
+    });
+
     Posemesh.Config.prototype.getRelays = function() {
         let relays = this.__getRelays();
         try {
@@ -34,4 +43,38 @@ __internalPosemeshAPI.builderFunctions.push(function() {
             vectorString.delete();
         }
     };
+
+    Object.defineProperty(Posemesh.Config.prototype, 'relays', {
+        get: Posemesh.Config.prototype.getRelays,
+        set: function(relays) {
+            this.setRelays(relays);
+        },
+        enumerable: true,
+        configurable: false
+    });
+
+    Posemesh.Config.prototype.getPrivateKey = function() {
+        let privateKey = this.__getPrivateKey();
+        try {
+            return __internalPosemeshAPI.fromVectorUint8(privateKey);
+        } finally {
+            privateKey.delete();
+        }
+    };
+
+    Posemesh.Config.prototype.setPrivateKey = function(privateKey) {
+        let vectorUint8 = __internalPosemeshAPI.toVectorUint8(privateKey);
+        try {
+            this.__setPrivateKey(vectorUint8);
+        } finally {
+            vectorUint8.delete();
+        }
+    };
+
+    Object.defineProperty(Posemesh.Config.prototype, 'privateKey', {
+        get: Posemesh.Config.prototype.getPrivateKey,
+        set: Posemesh.Config.prototype.setPrivateKey,
+        enumerable: true,
+        configurable: false
+    });
 });
