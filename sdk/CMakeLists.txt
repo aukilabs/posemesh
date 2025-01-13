@@ -113,7 +113,7 @@ include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
 
 include(AddGLMHeaders)
-add_glm_headers()
+add_glm_headers(Posemesh)
 
 if(EMSCRIPTEN)
     configure_file(
