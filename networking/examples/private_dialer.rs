@@ -28,8 +28,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         private_key: vec![],
         private_key_path: private_key_path,
         name: name,
-        node_capabilities: vec![],
-        node_types: vec!["client".to_string()],
     };
     let mut c = context::context_create(cfg)?;
 
@@ -52,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         }
                     }
 
-                    c.send(msg.as_bytes().to_vec(), dest_peer.clone(), "/undefined".to_string()).await.expect_err("Expected error");
+                    c.send(msg.as_bytes().to_vec(), dest_peer.clone(), "/undefined".to_string(), 0).await.expect_err("Expected error");
                 }
             }
         }

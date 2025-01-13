@@ -89,4 +89,4 @@ git submodule update --init --recursive
 
 # Apple entitlements
 
-To use the networking features on Apple platforms, it may be required to set the `com.apple.security.network.server` entitlement to `YES`.
+To use the networking features on Apple platforms, it may be required to set both the `com.apple.security.network.client` and `com.apple.security.network.server` entitlements to `YES`.

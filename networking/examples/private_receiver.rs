@@ -30,8 +30,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         private_key: vec![],
         private_key_path: private_key_path,
         name: name,
-        node_capabilities: vec![],
-        node_types: vec!["client".to_string()],
+        // node_capabilities: vec![],
+        // node_types: vec!["client".to_string()],
     };
     
     let runtime = Runtime::new()?;

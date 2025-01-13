@@ -128,6 +128,7 @@ fn posemesh_networking_context_send_message(
     protocol: String,
     #[cfg(feature="cpp")]
     user_data: *mut c_void,
+    timeout: u32,
     #[cfg(feature="cpp")]
     callback: *const c_void
 ) -> SendMessageReturnType {
@@ -138,7 +139,7 @@ fn posemesh_networking_context_send_message(
 
     #[cfg(feature="wasm")]
     return future_to_promise(async move {
-        match context.send(message, peer_id, protocol).await {
+        match context.send(message, peer_id, protocol, timeout).await {
             Ok(_) => { Ok(JsValue::from(true)) },
             Err(error) => {
                 eprintln!("posemesh_networking_context_send_message(): {:?}", error);
@@ -149,7 +150,7 @@ fn posemesh_networking_context_send_message(
 
     #[cfg(feature="cpp")]
     {
-        context.send_with_callback(message, peer_id, protocol, user_data, callback);
+        context.send_with_callback(message, peer_id, protocol, user_data, timeout, callback);
         return 1;
     }
 }
@@ -163,6 +164,7 @@ fn posemesh_networking_context_send_message_2(
     protocol: *const c_char,
     #[cfg(feature="cpp")]
     user_data: *mut c_void,
+    timeout: u32,
     #[cfg(feature="cpp")]
     callback: *const c_void
 ) -> SendMessageReturnType {
@@ -215,6 +217,7 @@ fn posemesh_networking_context_send_message_2(
         protocol,
         #[cfg(feature="cpp")]
         user_data,
+        timeout,
         #[cfg(feature="cpp")]
         callback
     );
@@ -229,16 +232,17 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     peer_id: *const c_char,
     protocol: *const c_char,
     user_data: *mut c_void,
+    timeout: u32,
     callback: *const c_void
 ) -> u8 {
-    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, user_data, callback)
+    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, user_data, timeout, callback)
 }
 
 #[cfg(feature="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
-pub fn posemeshNetworkingContextSendMessage(context: *mut Context, message: Vec<u8>, peer_id: String, protocol: String) -> Promise {
-    posemesh_networking_context_send_message(context, message, peer_id, protocol)
+pub fn posemeshNetworkingContextSendMessage(context: *mut Context, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Promise {
+    posemesh_networking_context_send_message(context, message, peer_id, protocol, timeout)
 }
 
 #[cfg(feature="wasm")]
@@ -249,18 +253,20 @@ pub fn posemeshNetworkingContextSendMessage2(
     message: *const c_void,
     message_size: u32,
     peer_id: *const c_char,
-    protocol: *const c_char
+    protocol: *const c_char,
+    timeout: u32
 ) -> Promise {
-    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol)
+    posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, timeout)
 }
 
 #[cfg(feature="py")]
 #[pymodule]
 fn posemesh_networking(_: Python<'_>, m: &PyModule) -> PyResult<()> {
-    use event::{NewNodeRegisteredEvent,MessageReceivedEvent};
+    use event::{NewNodeRegisteredEvent,PyStream, PubSubMessageReceivedEvent};
 
     m.add_class::<Context>()?;
-    m.add_class::<MessageReceivedEvent>()?;
+    m.add_class::<PyStream>()?;
     m.add_class::<NewNodeRegisteredEvent>()?;
+    m.add_class::<PubSubMessageReceivedEvent>()?;
     Ok(())
 }
