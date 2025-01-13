@@ -1,6 +1,6 @@
 __internalPosemeshAPI.builderFunctions.push(function() {
     Posemesh.prototype.sendMessage = function(message, peerId, protocol) {
-        return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol);
+        return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol, 0);
     };
 
     Posemesh.prototype.sendString = function(string, appendTerminatingNullCharacter, peerId, protocol) {
@@ -11,7 +11,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
             newMessage.set(0, message.length);
             message = newMessage;
         }
-        return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol);
+        return __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol, 0);
     };
 });
 
