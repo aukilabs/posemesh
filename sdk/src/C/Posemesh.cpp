@@ -60,6 +60,7 @@ uint8_t psm_posemesh_send_message(
         peer_id,
         protocol,
         user_data,
+        0,
         callback
     );
 }

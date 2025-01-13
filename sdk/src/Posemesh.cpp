@@ -100,6 +100,7 @@ bool Posemesh::sendMessage(
         peerId.c_str(),
         protocol.c_str(),
         wrappedCallback.get(),
+        0,
         wrappedCallback ? [](std::uint8_t status, void* userData) -> void {
             const std::unique_ptr<std::function<void(bool status)>> wrappedCallback(static_cast<std::function<void(bool status)>*>(userData));
             assert(wrappedCallback);
