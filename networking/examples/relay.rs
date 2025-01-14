@@ -46,10 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 match e {
                     Some(e) => {
                         match e {
-                            event::Event::StreamMessageReceivedEvent { peer, msg_reader, .. } => {
+                            event::Event::StreamMessageReceivedEvent { peer, mut msg_reader, .. } => {
                                 let mut buf = Vec::new();
-                                let mut s = msg_reader;
-                                s.read_to_end(&mut buf).await?;
+                                msg_reader.read_to_end(&mut buf).await?;
                                 println!("Received message from {}: {:?}", peer, String::from_utf8_lossy(&buf));
                             }
                             _ => {}
