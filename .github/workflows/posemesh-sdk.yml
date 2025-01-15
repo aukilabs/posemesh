@@ -39,7 +39,7 @@ jobs:
       - name: Get Posemesh SDK version
         run: |
           POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
-          if [[ $? -ne 0 ]]; then echo 'Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          if [[ $? -ne 0 ]]; then echo '::error file=sdk/scripts/Get-Version.ps1::Get-Version.ps1 script failed.' 1>&2; exit 1; fi
           echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
 
       - name: Upload Posemesh SDK
@@ -99,7 +99,7 @@ jobs:
       - name: Get Posemesh SDK version
         run: |
           POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
-          if [[ $? -ne 0 ]]; then echo 'Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          if [[ $? -ne 0 ]]; then echo '::error file=sdk/scripts/Get-Version.ps1::Get-Version.ps1 script failed.' 1>&2; exit 1; fi
           echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
 
       - name: Upload Posemesh SDK
@@ -130,4 +130,4 @@ jobs:
       - name: Check code style
         run: |
           pwsh ./sdk/scripts/Format-Code.ps1
-          if [[ -n $(git status --porcelain) ]]; then echo 'Some of the source code files are not correctly formatted:' 1>&2; git status --porcelain | cut -c3- 1>&2; exit 1; fi
+          if [[ -n $(git status --porcelain) ]]; then echo '::error::Some of the source code files are not correctly formatted.' 1>&2; git status --porcelain | awk '{print \"::error file=\" $2 \"::\" $2 \" source code file is not correctly formatted.\"}' 1>&2; exit 1; fi
