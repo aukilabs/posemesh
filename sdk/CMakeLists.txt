@@ -17,6 +17,12 @@ endif()
 include(GetCommitId)
 get_commit_id(POSEMESH_COMMIT_ID)
 
+option(ENABLE_CODE_FORMAT_TARGET "Enable PosemeshCodeFormat target that uses Clang-Format to apply the source code formatting style" ON)
+
+if(ENABLE_CODE_FORMAT_TARGET)
+    find_package(ClangFormat REQUIRED)
+endif()
+
 if(APPLE)
     option(USE_APPLE_UMBRELLA_HEADER "Use Objective-C to Swift umbrella header on Apple platforms" ON)
     option(USE_APPLE_BRIDGING_HEADER "Use Objective-C to Swift bridging header on Apple platforms" OFF)
@@ -165,4 +171,8 @@ if(EMSCRIPTEN)
         DESTINATION "${CMAKE_INSTALL_PREFIX}"
         RENAME "Posemesh.d.ts"
     )
+endif()
+
+if(ENABLE_CODE_FORMAT_TARGET)
+    add_clang_format_target(PosemeshCodeFormat Posemesh)
 endif()
