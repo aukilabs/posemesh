@@ -37,6 +37,13 @@ public:
         std::function<void(bool status)> callback = nullptr
     ) const;
 
+    void PSM_API pnpSolveDirect(
+        const float *objectPoints,
+        const float *imagePoints,
+        const float *cameraMatrix,
+        float *outR,
+        float *outT);
+
     #if !defined(__EMSCRIPTEN__)
         void* __getContext() const noexcept;
     #else
