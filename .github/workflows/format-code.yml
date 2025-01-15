@@ -1,0 +1,43 @@
+name: Format Code
+on: [workflow_dispatch]
+
+jobs:
+  format_sdk_code:
+    name: Format SDK Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Verify commit
+        run: |
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          if [ "$CURRENT_COMMIT" != "${{ github.sha }}" ]; then echo '::error::Commit is either outdated or does not exist.' 1>&2; exit 1; fi
+
+      - name: Install PowerShell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https software-properties-common
+          source /etc/os-release
+          wget -q https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Format SDK code
+        run: |
+          pwsh ./sdk/scripts/Format-Code.ps1
+          if [[ -z $(git status --porcelain) ]]; then echo '::error::No source code file was formatted.' 1>&2; exit 1; fi
+
+      - name: Push formatting changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "chore: format SDK code"
+          git push origin ${{ github.head_ref }}
+          if [[ $? -ne 0 ]]; then echo '::error::Failed to push Git commit.' 1>&2; exit 1; fi
