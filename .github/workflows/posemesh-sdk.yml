@@ -130,4 +130,4 @@ jobs:
       - name: Check code style
         run: |
           pwsh ./sdk/scripts/Format-Code.ps1
-          if [[ -n $(git status --porcelain) ]]; then echo '::error::Some of the source code files are not correctly formatted.' 1>&2; git status --porcelain | awk '{print \"::error file=\" $2 \"::\" $2 \" source code file is not correctly formatted.\"}' 1>&2; exit 1; fi
+          if [[ -n $(git status --porcelain) ]]; then echo '::error::Some of the source code files are not correctly formatted.' 1>&2; git status --porcelain | awk '{print "::error file=" $2 "::" $2 " source code file is not correctly formatted."}' 1>&2; exit 1; fi
