@@ -48,6 +48,11 @@ jobs:
           name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
           path: ./sdk/out-Apple-Release/Posemesh.zip
 
+      - name: Check code style
+        run: |
+          cmake --build ./sdk/build-macOS-ARM64-Release --target PosemeshCodeFormat --config Release
+          if [[ -n $(git status --porcelain) ]]; then echo 'Some of the source code files are not correctly formatted:' 1>&2; git status --porcelain | cut -c3- 1>&2; exit 1; fi
+
   build_web_sdk:
     name: Build Web SDK
     runs-on: ubuntu-latest
@@ -107,3 +112,8 @@ jobs:
         with:
           name: Posemesh-Web-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
           path: ./sdk/out-Web-WASM32-Release/*
+
+      - name: Check code style
+        run: |
+          cmake --build ./sdk/build-Web-WASM32-Release --target PosemeshCodeFormat --config Release
+          if [[ -n $(git status --porcelain) ]]; then echo 'Some of the source code files are not correctly formatted:' 1>&2; git status --porcelain | cut -c3- 1>&2; exit 1; fi
