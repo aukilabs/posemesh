@@ -17,11 +17,7 @@ endif()
 include(GetCommitId)
 get_commit_id(POSEMESH_COMMIT_ID)
 
-option(ENABLE_CODE_FORMAT_TARGET "Enable PosemeshCodeFormat target that uses Clang-Format to apply the source code formatting style" ON)
-
-if(ENABLE_CODE_FORMAT_TARGET)
-    find_package(ClangFormat REQUIRED)
-endif()
+find_package(ClangFormat)
 
 if(APPLE)
     option(USE_APPLE_UMBRELLA_HEADER "Use Objective-C to Swift umbrella header on Apple platforms" ON)
@@ -173,6 +169,6 @@ if(EMSCRIPTEN)
     )
 endif()
 
-if(ENABLE_CODE_FORMAT_TARGET)
+if(CLANG_FORMAT_FOUND)
     add_clang_format_target(PosemeshCodeFormat Posemesh)
 endif()

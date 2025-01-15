@@ -48,11 +48,6 @@ jobs:
           name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
           path: ./sdk/out-Apple-Release/Posemesh.zip
 
-      - name: Check code style
-        run: |
-          cmake --build ./sdk/build-macOS-ARM64-Release --target PosemeshCodeFormat --config Release
-          if [[ -n $(git status --porcelain) ]]; then echo 'Some of the source code files are not correctly formatted:' 1>&2; git status --porcelain | cut -c3- 1>&2; exit 1; fi
-
   build_web_sdk:
     name: Build Web SDK
     runs-on: ubuntu-latest
@@ -113,7 +108,26 @@ jobs:
           name: Posemesh-Web-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
           path: ./sdk/out-Web-WASM32-Release/*
 
+  check_code_style:
+    name: Check Code Style
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PowerShell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https software-properties-common
+          source /etc/os-release
+          wget -q https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
       - name: Check code style
         run: |
-          cmake --build ./sdk/build-Web-WASM32-Release --target PosemeshCodeFormat --config Release
+          pwsh ./sdk/scripts/Format-Code.ps1
           if [[ -n $(git status --porcelain) ]]; then echo 'Some of the source code files are not correctly formatted:' 1>&2; git status --porcelain | cut -c3- 1>&2; exit 1; fi
