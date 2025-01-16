@@ -1,5 +1,7 @@
 name: Format Code
 on: [workflow_dispatch]
+permissions:
+  contents: write
 
 jobs:
   format_sdk_code:

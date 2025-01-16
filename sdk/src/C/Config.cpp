@@ -1,29 +1,33 @@
+#include <Posemesh/C/Config.h>
+#include <Posemesh/Config.hpp>
 #include <cassert>
 #include <cstring>
 #include <limits>
 #include <new>
-#include <Posemesh/C/Config.h>
-#include <Posemesh/Config.hpp>
 
 extern "C" {
 
-psm_config_t* psm_config_create() {
-    return new(std::nothrow) psm::Config;
+psm_config_t* psm_config_create()
+{
+    return new (std::nothrow) psm::Config;
 }
 
-psm_config_t* psm_config_create_default() {
-    return new(std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
+psm_config_t* psm_config_create_default()
+{
+    return new (std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
 }
 
-psm_config_t* psm_config_duplicate(const psm_config_t* config) {
+psm_config_t* psm_config_duplicate(const psm_config_t* config)
+{
     if (!config) {
         assert(!"psm_config_duplicate(): config is null");
         return nullptr;
     }
-    return new(std::nothrow) psm::Config(*config);
+    return new (std::nothrow) psm::Config(*config);
 }
 
-uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t* other_config) {
+uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t* other_config)
+{
     if (!config) {
         assert(!"psm_config_equals(): config is null");
         return 0;
@@ -35,45 +39,51 @@ uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t
     return static_cast<uint8_t>(config->operator==(*other_config));
 }
 
-void psm_config_destroy(psm_config_t* config) {
+void psm_config_destroy(psm_config_t* config)
+{
     delete config;
 }
 
 #if !defined(__EMSCRIPTEN__)
-    uint8_t psm_config_get_serve_as_bootstrap(const psm_config_t* config) {
-        if (!config) {
-            assert(!"psm_config_get_serve_as_bootstrap(): config is null");
-            return 0;
-        }
-        return static_cast<uint8_t>(config->getServeAsBootstrap());
+uint8_t psm_config_get_serve_as_bootstrap(const psm_config_t* config)
+{
+    if (!config) {
+        assert(!"psm_config_get_serve_as_bootstrap(): config is null");
+        return 0;
     }
+    return static_cast<uint8_t>(config->getServeAsBootstrap());
+}
 
-    void psm_config_set_serve_as_bootstrap(psm_config_t* config, uint8_t serve_as_bootstrap) {
-        if (!config) {
-            assert(!"psm_config_set_serve_as_bootstrap(): config is null");
-            return;
-        }
-        config->setServeAsBootstrap(static_cast<bool>(serve_as_bootstrap));
+void psm_config_set_serve_as_bootstrap(psm_config_t* config, uint8_t serve_as_bootstrap)
+{
+    if (!config) {
+        assert(!"psm_config_set_serve_as_bootstrap(): config is null");
+        return;
     }
+    config->setServeAsBootstrap(static_cast<bool>(serve_as_bootstrap));
+}
 
-    uint8_t psm_config_get_serve_as_relay(const psm_config_t* config) {
-        if (!config) {
-            assert(!"psm_config_get_serve_as_relay(): config is null");
-            return 0;
-        }
-        return static_cast<uint8_t>(config->getServeAsRelay());
+uint8_t psm_config_get_serve_as_relay(const psm_config_t* config)
+{
+    if (!config) {
+        assert(!"psm_config_get_serve_as_relay(): config is null");
+        return 0;
     }
+    return static_cast<uint8_t>(config->getServeAsRelay());
+}
 
-    void psm_config_set_serve_as_relay(psm_config_t* config, uint8_t serve_as_relay) {
-        if (!config) {
-            assert(!"psm_config_set_serve_as_relay(): config is null");
-            return;
-        }
-        config->setServeAsRelay(static_cast<bool>(serve_as_relay));
+void psm_config_set_serve_as_relay(psm_config_t* config, uint8_t serve_as_relay)
+{
+    if (!config) {
+        assert(!"psm_config_set_serve_as_relay(): config is null");
+        return;
     }
+    config->setServeAsRelay(static_cast<bool>(serve_as_relay));
+}
 #endif
 
-const char* const* psm_config_get_bootstraps(const psm_config_t* config, uint32_t* out_bootstraps_count) {
+const char* const* psm_config_get_bootstraps(const psm_config_t* config, uint32_t* out_bootstraps_count)
+{
     if (!config) {
         assert(!"psm_config_get_bootstraps(): config is null");
         return nullptr;
@@ -89,7 +99,7 @@ const char* const* psm_config_get_bootstraps(const psm_config_t* config, uint32_
     for (const auto& bootstrap : bootstraps) {
         buffer_size += bootstrap.size() + 1;
     }
-    char* buffer = new(std::nothrow) char[buffer_size];
+    char* buffer = new (std::nothrow) char[buffer_size];
     char** prefix_ptr = reinterpret_cast<char**>(buffer);
     char* content_ptr = buffer + prefix_offset;
     for (const auto& bootstrap : bootstraps) {
@@ -105,11 +115,13 @@ const char* const* psm_config_get_bootstraps(const psm_config_t* config, uint32_
     return reinterpret_cast<const char* const*>(buffer);
 }
 
-void psm_config_get_bootstraps_free(const char* const* bootstraps) {
+void psm_config_get_bootstraps_free(const char* const* bootstraps)
+{
     delete[] const_cast<char*>(reinterpret_cast<const char*>(bootstraps));
 }
 
-uint8_t psm_config_set_bootstraps(psm_config_t* config, const char* const* bootstraps, uint32_t bootstraps_count) {
+uint8_t psm_config_set_bootstraps(psm_config_t* config, const char* const* bootstraps, uint32_t bootstraps_count)
+{
     if (!config) {
         assert(!"psm_config_set_bootstraps(): config is null");
         return 0;
@@ -136,7 +148,8 @@ uint8_t psm_config_set_bootstraps(psm_config_t* config, const char* const* boots
     return static_cast<uint8_t>(config->setBootstraps(std::move(bootstraps_vector)));
 }
 
-const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* out_relays_count) {
+const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* out_relays_count)
+{
     if (!config) {
         assert(!"psm_config_get_relays(): config is null");
         return nullptr;
@@ -152,7 +165,7 @@ const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* o
     for (const auto& relay : relays) {
         buffer_size += relay.size() + 1;
     }
-    char* buffer = new(std::nothrow) char[buffer_size];
+    char* buffer = new (std::nothrow) char[buffer_size];
     char** prefix_ptr = reinterpret_cast<char**>(buffer);
     char* content_ptr = buffer + prefix_offset;
     for (const auto& relay : relays) {
@@ -168,11 +181,13 @@ const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* o
     return reinterpret_cast<const char* const*>(buffer);
 }
 
-void psm_config_get_relays_free(const char* const* relays) {
+void psm_config_get_relays_free(const char* const* relays)
+{
     delete[] const_cast<char*>(reinterpret_cast<const char*>(relays));
 }
 
-uint8_t psm_config_set_relays(psm_config_t* config, const char* const* relays, uint32_t relays_count) {
+uint8_t psm_config_set_relays(psm_config_t* config, const char* const* relays, uint32_t relays_count)
+{
     if (!config) {
         assert(!"psm_config_set_relays(): config is null");
         return 0;
@@ -199,7 +214,8 @@ uint8_t psm_config_set_relays(psm_config_t* config, const char* const* relays, u
     return static_cast<uint8_t>(config->setRelays(std::move(relays_vector)));
 }
 
-const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* out_private_key_size) {
+const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* out_private_key_size)
+{
     if (!config) {
         assert(!"psm_config_get_private_key(): config is null");
         if (out_private_key_size) {
@@ -216,7 +232,7 @@ const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* 
         return nullptr;
     }
 
-    auto* result = new(std::nothrow) std::uint8_t[private_key.size()];
+    auto* result = new (std::nothrow) std::uint8_t[private_key.size()];
     std::memcpy(result, private_key.data(), private_key.size());
     if (out_private_key_size) {
         *out_private_key_size = private_key.size();
@@ -224,11 +240,13 @@ const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* 
     return result;
 }
 
-void psm_config_get_private_key_free(const uint8_t* private_key) {
+void psm_config_get_private_key_free(const uint8_t* private_key)
+{
     delete[] const_cast<uint8_t*>(private_key);
 }
 
-void psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key, uint32_t private_key_size) {
+void psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key, uint32_t private_key_size)
+{
     if (!config) {
         assert(!"psm_config_set_private_key(): config is null");
         return;
@@ -237,37 +255,39 @@ void psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key
         assert(!"psm_config_set_private_key(): private_key is null and private_key_size is non-zero");
         return;
     }
-    config->setPrivateKey(std::vector<std::uint8_t>{private_key, private_key + private_key_size});
+    config->setPrivateKey(std::vector<std::uint8_t> { private_key, private_key + private_key_size });
 }
 
 #if !defined(__EMSCRIPTEN__)
-    const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config) {
-        if (!config) {
-            assert(!"psm_config_get_private_key_path(): config is null");
-            return nullptr;
-        }
-
-        const auto private_key_path = config->getPrivateKeyPath();
-        if (private_key_path.empty()) {
-            return nullptr;
-        }
-
-        auto* result = new(std::nothrow) char[private_key_path.size() + 1];
-        std::memcpy(result, private_key_path.c_str(), private_key_path.size() + 1);
-        return result;
+const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config)
+{
+    if (!config) {
+        assert(!"psm_config_get_private_key_path(): config is null");
+        return nullptr;
     }
 
-    void psm_config_get_private_key_path_free(const char* private_key_path) {
-        delete[] const_cast<char*>(private_key_path);
+    const auto private_key_path = config->getPrivateKeyPath();
+    if (private_key_path.empty()) {
+        return nullptr;
     }
 
-    void PSM_API psm_config_set_private_key_path(psm_config_t* config, const char* private_key_path) {
-        if (!config) {
-            assert(!"psm_config_set_private_key_path(): config is null");
-            return;
-        }
-        config->setPrivateKeyPath(private_key_path ? std::string{private_key_path} : std::string{});
+    auto* result = new (std::nothrow) char[private_key_path.size() + 1];
+    std::memcpy(result, private_key_path.c_str(), private_key_path.size() + 1);
+    return result;
+}
+
+void psm_config_get_private_key_path_free(const char* private_key_path)
+{
+    delete[] const_cast<char*>(private_key_path);
+}
+
+void PSM_API psm_config_set_private_key_path(psm_config_t* config, const char* private_key_path)
+{
+    if (!config) {
+        assert(!"psm_config_set_private_key_path(): config is null");
+        return;
     }
+    config->setPrivateKeyPath(private_key_path ? std::string { private_key_path } : std::string {});
+}
 #endif
-
 }
