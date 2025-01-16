@@ -26,31 +26,30 @@ public:
         std::uint32_t messageSize,
         const std::string& peerId,
         const std::string& protocol,
-        std::function<void(bool status)> callback = nullptr
-    ) const;
+        std::function<void(bool status)> callback = nullptr) const;
 
     bool PSM_API sendString(
         const std::string& string,
         bool appendTerminatingNullCharacter,
         const std::string& peerId,
         const std::string& protocol,
-        std::function<void(bool status)> callback = nullptr
-    ) const;
+        std::function<void(bool status)> callback = nullptr) const;
 
-    #if !defined(__EMSCRIPTEN__)
-        void* __getContext() const noexcept;
-    #else
-        #if defined(__wasm32__)
-            std::uint32_t __getContext() const noexcept;
-        #elif defined(__wasm64__)
-            std::uint64_t __getContext() const noexcept;
-        #else
-            #error "Architecture not supported."
-        #endif
-    #endif
+#if !defined(__EMSCRIPTEN__)
+    void* __getContext() const noexcept;
+#else
+#if defined(__wasm32__)
+    std::uint32_t __getContext() const noexcept;
+#elif defined(__wasm64__)
+    std::uint64_t __getContext() const noexcept;
+#else
+#error "Architecture not supported."
+#endif
+#endif
 
     static std::string PSM_API getVersion();
     static std::string PSM_API getCommitId();
+
 private:
     void* m_context;
 };

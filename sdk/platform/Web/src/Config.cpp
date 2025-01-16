@@ -1,17 +1,19 @@
+#include <Posemesh/Config.hpp>
 #include <emscripten/bind.h>
 #include <memory>
-#include <Posemesh/Config.hpp>
 
 using namespace emscripten;
 using namespace psm;
 
 namespace {
-    std::shared_ptr<Config> createDefault() {
-        return std::make_shared<Config>(std::move(Config::createDefault()));
-    }
+std::shared_ptr<Config> createDefault()
+{
+    return std::make_shared<Config>(std::move(Config::createDefault()));
+}
 }
 
-EMSCRIPTEN_BINDINGS(Config) {
+EMSCRIPTEN_BINDINGS(Config)
+{
     class_<Config>("Config")
         .smart_ptr<std::shared_ptr<Config>>("Config")
         .constructor(&std::make_shared<Config>)
@@ -24,6 +26,5 @@ EMSCRIPTEN_BINDINGS(Config) {
         .function("__setRelays(relays)", &Config::setRelays)
         .function("__getPrivateKey()", &Config::getPrivateKey)
         .function("__setPrivateKey(privateKey)", &Config::setPrivateKey)
-        .class_function("createDefault", &createDefault, nonnull<ret_val>())
-    ;
+        .class_function("createDefault", &createDefault, nonnull<ret_val>());
 }

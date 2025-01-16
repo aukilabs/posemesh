@@ -1,15 +1,16 @@
 #import <Posemesh/Posemesh.h>
 
+#include <Posemesh/Posemesh.hpp>
 #include <cstring>
 #include <new>
-#include <Posemesh/Posemesh.hpp>
 
 @implementation PSMPosemesh {
     psm::Posemesh* m_posemesh;
 }
 
-- (instancetype)init {
-    auto* posemesh = new(std::nothrow) psm::Posemesh;
+- (instancetype)init
+{
+    auto* posemesh = new (std::nothrow) psm::Posemesh;
     if (!posemesh) {
         return nil;
     }
@@ -21,10 +22,11 @@
     return self;
 }
 
-- (instancetype)initWithConfig:(PSMConfig*)config {
+- (instancetype)initWithConfig:(PSMConfig*)config
+{
     NSAssert(config, @"config is null");
     NSAssert([config nativeConfig], @"[config nativeConfig] is null");
-    auto* posemesh = new(std::nothrow) psm::Posemesh(*static_cast<psm::Config*>([config nativeConfig]));
+    auto* posemesh = new (std::nothrow) psm::Posemesh(*static_cast<psm::Config*>([config nativeConfig]));
     if (!posemesh) {
         return nil;
     }
@@ -36,7 +38,8 @@
     return self;
 }
 
-- (instancetype)initWithNativePosemesh:(psm::Posemesh*)posemesh {
+- (instancetype)initWithNativePosemesh:(psm::Posemesh*)posemesh
+{
     NSAssert(posemesh, @"posemesh is null");
     self = [super init];
     if (!self) {
@@ -46,13 +49,15 @@
     return self;
 }
 
-- (void)dealloc {
+- (void)dealloc
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     delete m_posemesh;
     m_posemesh = nullptr;
 }
 
-- (BOOL)isEqual:(id)object {
+- (BOOL)isEqual:(id)object
+{
     if (self == object)
         return YES;
     if (![object isKindOfClass:[PSMPosemesh class]])
@@ -63,12 +68,14 @@
     return m_posemesh == posemesh->m_posemesh;
 }
 
-- (NSUInteger)hash {
+- (NSUInteger)hash
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     return reinterpret_cast<NSUInteger>(m_posemesh);
 }
 
-- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol {
+- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     NSAssert(message, @"message is null");
     NSAssert(peerId, @"peerId is null");
@@ -76,17 +83,20 @@
     return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String]));
 }
 
-- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback {
+- (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     NSAssert(message, @"message is null");
     NSAssert(peerId, @"peerId is null");
     NSAssert(protocol, @"protocol is null");
     return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
         callback(static_cast<BOOL>(status));
-    } : std::function<void(bool status)>{}));
+    }
+                                                                                                                                             : std::function<void(bool status)> {}));
 }
 
-- (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol {
+- (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     NSAssert(string, @"string is null");
     NSAssert(peerId, @"peerId is null");
@@ -96,7 +106,8 @@
     return static_cast<BOOL>(m_posemesh->sendMessage(message, length + (appendTerminatingNullCharacter ? 1 : 0), [peerId UTF8String], [protocol UTF8String]));
 }
 
-- (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback {
+- (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     NSAssert(string, @"string is null");
     NSAssert(peerId, @"peerId is null");
@@ -105,20 +116,24 @@
     const std::size_t length = std::strlen(message);
     return static_cast<BOOL>(m_posemesh->sendMessage(message, length + (appendTerminatingNullCharacter ? 1 : 0), [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
         callback(static_cast<BOOL>(status));
-    } : std::function<void(bool status)>{}));
+    }
+                                                                                                                                                                      : std::function<void(bool status)> {}));
 }
 
-- (void*)nativePosemesh {
+- (void*)nativePosemesh
+{
     NSAssert(m_posemesh, @"m_posemesh is null");
     return m_posemesh;
 }
 
-+ (NSString*)getVersion {
-    return [NSString stringWithUTF8String: POSEMESH_VERSION];
++ (NSString*)getVersion
+{
+    return [NSString stringWithUTF8String:POSEMESH_VERSION];
 }
 
-+ (NSString*)getCommitId {
-    return [NSString stringWithUTF8String: POSEMESH_COMMIT_ID];
++ (NSString*)getCommitId
+{
+    return [NSString stringWithUTF8String:POSEMESH_COMMIT_ID];
 }
 
 @end

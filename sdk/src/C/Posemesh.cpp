@@ -1,22 +1,24 @@
-#include <cassert>
-#include <cstring>
-#include <new>
 #include <Posemesh/C/Posemesh.h>
 #include <Posemesh/Networking/API.h>
 #include <Posemesh/Posemesh.hpp>
+#include <cassert>
+#include <cstring>
+#include <new>
 
 extern "C" {
 
-psm_posemesh_t* psm_posemesh_create() {
-    return new(std::nothrow) psm::Posemesh;
+psm_posemesh_t* psm_posemesh_create()
+{
+    return new (std::nothrow) psm::Posemesh;
 }
 
-psm_posemesh_t* psm_posemesh_create_with_config(const psm_config_t* config) {
+psm_posemesh_t* psm_posemesh_create_with_config(const psm_config_t* config)
+{
     if (!config) {
         assert(!"psm_posemesh_create_with_config(): config is null");
         return nullptr;
     }
-    return new(std::nothrow) psm::Posemesh(*config);
+    return new (std::nothrow) psm::Posemesh(*config);
 }
 
 uint8_t psm_posemesh_send_message(
@@ -26,8 +28,8 @@ uint8_t psm_posemesh_send_message(
     const char* peer_id,
     const char* protocol,
     void* user_data,
-    void (*callback)(uint8_t status, void* user_data)
-) {
+    void (*callback)(uint8_t status, void* user_data))
+{
     if (!posemesh) {
         assert(!"psm_posemesh_send_message(): posemesh is null");
         return 0;
@@ -61,8 +63,7 @@ uint8_t psm_posemesh_send_message(
         protocol,
         user_data,
         0,
-        callback
-    );
+        callback);
 }
 
 uint8_t psm_posemesh_send_string(
@@ -72,8 +73,8 @@ uint8_t psm_posemesh_send_string(
     const char* peer_id,
     const char* protocol,
     void* user_data,
-    void (*callback)(uint8_t status, void* user_data)
-) {
+    void (*callback)(uint8_t status, void* user_data))
+{
     if (!string) {
         assert(!"psm_posemesh_send_string(): string is null");
         return 0;
@@ -86,20 +87,21 @@ uint8_t psm_posemesh_send_string(
         peer_id,
         protocol,
         user_data,
-        callback
-    );
+        callback);
 }
 
-void psm_posemesh_destroy(psm_posemesh_t* posemesh) {
+void psm_posemesh_destroy(psm_posemesh_t* posemesh)
+{
     delete posemesh;
 }
 
-const char* psm_posemesh_get_version() {
+const char* psm_posemesh_get_version()
+{
     return POSEMESH_VERSION;
 }
 
-const char* psm_posemesh_get_commit_id() {
+const char* psm_posemesh_get_commit_id()
+{
     return POSEMESH_COMMIT_ID;
 }
-
 }

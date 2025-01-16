@@ -4,7 +4,8 @@
 
 namespace psm::util {
 
-std::string getAppSupportDirectoryPath() {
+std::string getAppSupportDirectoryPath()
+{
     NSArray<NSURL*>* result = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask];
     if (!result || [result count] < 1) {
         return {};
