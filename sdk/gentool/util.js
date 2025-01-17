@@ -101,6 +101,94 @@ function getHeaderGuardName(interfaceJson) {
   return getName('headerGuardName', interfaceJson);
 }
 
+let defaultPropNameLangToTransformationMap = {};
+defaultPropNameLangToTransformationMap[Language.CXX] = 'm_%';
+defaultPropNameLangToTransformationMap[Language.C] = '%'; // don't care
+defaultPropNameLangToTransformationMap[Language.ObjC] = '%'; // don't care
+defaultPropNameLangToTransformationMap[Language.Swift] = '%';
+defaultPropNameLangToTransformationMap[Language.JS] = '%';
+
+function getPropertyName(propertyJson, language, nameLangToTransformationMap = defaultPropNameLangToTransformationMap) {
+  return getLangTransformedName('name', propertyJson, language, nameLangToTransformationMap);
+}
+
+function getFloatType(language) {
+  switch (language) {
+    case Language.CXX:
+    case Language.C:
+    case Language.ObjC:
+      return 'float';
+    case Language.Swift:
+      return 'Float';
+    case Language.JS:
+      return 'number';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getPropertyType(propertyJson, language) {
+  const key = 'type';
+  if (typeof propertyJson[key] === 'undefined') {
+    throw new Error(`Missing '${key}' key.`);
+  }
+  if (typeof propertyJson[key] !== 'string') {
+    throw new Error(`Invalid '${key}' key type.`);
+  }
+  switch (propertyJson[key]) {
+    case 'float':
+      return getFloatType(language);
+    default:
+      throw new Error(`Unknown type: ${propertyJson[key]}`);
+  }
+}
+
+function isPrimitiveType(type) {
+  switch (type) {
+    case 'float':
+      return true;
+    default:
+      return false;
+  }
+}
+
+let defaultPropGetterNameLangToTransformationMap = {};
+defaultPropGetterNameLangToTransformationMap[Language.CXX] = 'get%';
+defaultPropGetterNameLangToTransformationMap[Language.C] = 'get_%';
+defaultPropGetterNameLangToTransformationMap[Language.ObjC] = '%';
+defaultPropGetterNameLangToTransformationMap[Language.Swift] = 'get%'; // don't care
+defaultPropGetterNameLangToTransformationMap[Language.JS] = 'get%'; // don't care
+
+function getPropertyGetterName(propertyJson, language, nameLangToTransformationMap = defaultPropGetterNameLangToTransformationMap) {
+  return getLangTransformedName('getterName', propertyJson, language, nameLangToTransformationMap);
+}
+
+let defaultPropSetterNameLangToTransformationMap = {};
+defaultPropSetterNameLangToTransformationMap[Language.CXX] = 'set%';
+defaultPropSetterNameLangToTransformationMap[Language.C] = 'set_%';
+defaultPropSetterNameLangToTransformationMap[Language.ObjC] = 'set%';
+defaultPropSetterNameLangToTransformationMap[Language.Swift] = 'set%'; // don't care
+defaultPropSetterNameLangToTransformationMap[Language.JS] = 'set%'; // don't care
+
+function getPropertySetterName(propertyJson, language, nameLangToTransformationMap = defaultPropSetterNameLangToTransformationMap) {
+  return getLangTransformedName('setterName', propertyJson, language, nameLangToTransformationMap);
+}
+
+let defaultPropSetterArgNameLangToTransformationMap = {};
+defaultPropSetterArgNameLangToTransformationMap[Language.CXX] = '%';
+defaultPropSetterArgNameLangToTransformationMap[Language.C] = '%';
+defaultPropSetterArgNameLangToTransformationMap[Language.ObjC] = '%';
+defaultPropSetterArgNameLangToTransformationMap[Language.Swift] = '%'; // don't care
+defaultPropSetterArgNameLangToTransformationMap[Language.JS] = '%'; // don't care
+
+function getPropertySetterArgName(propertyJson, language, nameLangToTransformationMap = defaultPropSetterArgNameLangToTransformationMap) {
+  return getLangTransformedName('setterArgName', propertyJson, language, nameLangToTransformationMap);
+}
+
+function getProperties(interfaceJson) {
+  return interfaceJson.properties;
+}
+
 // name must be in camel snake case
 function convertNameStyle(name, nameStyle) {
   if (name.length === 0) {
@@ -261,6 +349,7 @@ function fillAliases(interfaceJson, nameLangToStyleMap = defaultClassNameLangToS
   for (const aliasJson of interfaceJson[nameKey]) {
     fillClassName(aliasJson, nameLangToStyleMap);
   }
+  interfaceJson[nameKeyGen] = false;
 }
 
 function fillHeaderGuardName(interfaceJson) {
@@ -269,18 +358,151 @@ function fillHeaderGuardName(interfaceJson) {
   if (typeof interfaceJson[nameKey] === 'undefined') {
     interfaceJson[nameKey] = getStyleName('name', interfaceJson, NameStyle.UPPER_CASE);
     interfaceJson[nameKeyGen] = true;
-  } else if (typeof json[nameKey] === 'string') {
-    const headerGuardName = json[nameKey];
+  } else if (typeof interfaceJson[nameKey] === 'string') {
+    const headerGuardName = interfaceJson[nameKey];
     if (headerGuardName.length === 0) {
       throw new Error(`Empty '${nameKey}' key.`);
     }
     if (!/^[a-zA-Z0-9_]*$/.test(headerGuardName)) {
       throw new Error(`Invalid '${nameKey}' key value.`);
     }
-    json[nameKeyGen] = false;
+    interfaceJson[nameKeyGen] = false;
   } else {
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
+}
+
+let defaultPropNameLangToStyleMap = {};
+defaultPropNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultPropNameLangToStyleMap[Language.C] = NameStyle.lower_case; // don't care
+defaultPropNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack; // don't care
+defaultPropNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultPropNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+let defaultGetterNameLangToStyleMap = {};
+defaultGetterNameLangToStyleMap[Language.CXX] = NameStyle.CamelCase;
+defaultGetterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultGetterNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultGetterNameLangToStyleMap[Language.Swift] = NameStyle.CamelCase; // don't care
+defaultGetterNameLangToStyleMap[Language.JS] = NameStyle.CamelCase; // don't care
+
+let defaultSetterNameLangToStyleMap = {};
+defaultSetterNameLangToStyleMap[Language.CXX] = NameStyle.CamelCase;
+defaultSetterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultSetterNameLangToStyleMap[Language.ObjC] = NameStyle.CamelCase;
+defaultSetterNameLangToStyleMap[Language.Swift] = NameStyle.CamelCase; // don't care
+defaultSetterNameLangToStyleMap[Language.JS] = NameStyle.CamelCase; // don't care
+
+let defaultSetterArgNameLangToStyleMap = {};
+defaultSetterArgNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultSetterArgNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultSetterArgNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultSetterArgNameLangToStyleMap[Language.Swift] = NameStyle.camelBack; // don't care
+defaultSetterArgNameLangToStyleMap[Language.JS] = NameStyle.camelBack; // don't care
+
+function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
+  fillName('name', propertyJson, nameLangToStyleMap);
+
+  if (typeof propertyJson.hasGetter === 'undefined') {
+    propertyJson.hasGetter = true;
+    propertyJson['hasGetter.gen'] = true;
+  } else if (typeof propertyJson.hasGetter !== 'boolean') {
+    throw new Error(`Invalid 'hasGetter' key type.`);
+  } else {
+    propertyJson['hasGetter.gen'] = false;
+  }
+
+  if (typeof propertyJson.getterConst === 'undefined') {
+    propertyJson.getterConst = true;
+    propertyJson['getterConst.gen'] = true;
+  } else if (typeof propertyJson.getterConst !== 'boolean') {
+    throw new Error(`Invalid 'getterConst' key type.`);
+  } else {
+    propertyJson['getterConst.gen'] = false;
+  }
+
+  if (typeof propertyJson.getterNoexcept === 'undefined') {
+    propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
+    propertyJson['getterNoexcept.gen'] = true;
+  } else if (typeof propertyJson.getterNoexcept !== 'boolean') {
+    throw new Error(`Invalid 'getterNoexcept' key type.`);
+  } else {
+    propertyJson['getterNoexcept.gen'] = false;
+  }
+
+  if (typeof propertyJson.getterName === 'undefined') {
+    propertyJson.getterName = propertyJson.name;
+    propertyJson['getterName.gen'] = true;
+  } else if (typeof propertyJson.getterName !== 'string') {
+    throw new Error(`Invalid 'getterName' key type.`);
+  } else {
+    propertyJson['getterName.gen'] = false;
+  }
+  fillName('getterName', propertyJson, getterNameLangToStyleMap);
+
+  if (typeof propertyJson.hasSetter === 'undefined') {
+    propertyJson.hasSetter = true;
+    propertyJson['hasSetter.gen'] = true;
+  } else if (typeof propertyJson.hasSetter !== 'boolean') {
+    throw new Error(`Invalid 'hasSetter' key type.`);
+  } else {
+    propertyJson['hasSetter.gen'] = false;
+  }
+
+  if (typeof propertyJson.setterConst === 'undefined') {
+    propertyJson.setterConst = false;
+    propertyJson['setterConst.gen'] = true;
+  } else if (typeof propertyJson.setterConst !== 'boolean') {
+    throw new Error(`Invalid 'setterConst' key type.`);
+  } else {
+    propertyJson['setterConst.gen'] = false;
+  }
+
+  if (typeof propertyJson.setterNoexcept === 'undefined') {
+    propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
+    propertyJson['setterNoexcept.gen'] = true;
+  } else if (typeof propertyJson.setterNoexcept !== 'boolean') {
+    throw new Error(`Invalid 'setterNoexcept' key type.`);
+  } else {
+    propertyJson['setterNoexcept.gen'] = false;
+  }
+
+  if (typeof propertyJson.setterName === 'undefined') {
+    propertyJson.setterName = propertyJson.name;
+    propertyJson['setterName.gen'] = true;
+  } else if (typeof propertyJson.setterName !== 'string') {
+    throw new Error(`Invalid 'setterName' key type.`);
+  } else {
+    propertyJson['setterName.gen'] = false;
+  }
+  fillName('setterName', propertyJson, setterNameLangToStyleMap);
+
+  if (typeof propertyJson.setterArgName === 'undefined') {
+    propertyJson.setterArgName = propertyJson.name;
+    propertyJson['setterArgName.gen'] = true;
+  } else if (typeof propertyJson.setterArgName !== 'string') {
+    throw new Error(`Invalid 'setterArgName' key type.`);
+  } else {
+    propertyJson['setterArgName.gen'] = false;
+  }
+  fillName('setterArgName', propertyJson, setterArgNameLangToStyleMap);
+}
+
+function fillProperties(interfaceJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
+  const nameKey = 'properties';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = [];
+    interfaceJson[nameKeyGen] = true;
+    return;
+  }
+  if (!Array.isArray(interfaceJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  for (const propertyJson of interfaceJson[nameKey]) {
+    fillProperty(propertyJson, nameLangToStyleMap, getterNameLangToStyleMap, setterNameLangToStyleMap, setterArgNameLangToStyleMap);
+  }
+  interfaceJson[nameKeyGen] = false;
 }
 
 module.exports = {
@@ -308,10 +530,28 @@ module.exports = {
   getLangClassName,
   getLangAliases,
   getHeaderGuardName,
+  defaultPropNameLangToTransformationMap,
+  getPropertyName,
+  getFloatType,
+  getPropertyType,
+  isPrimitiveType,
+  defaultPropGetterNameLangToTransformationMap,
+  getPropertyGetterName,
+  defaultPropSetterNameLangToTransformationMap,
+  getPropertySetterName,
+  defaultPropSetterArgNameLangToTransformationMap,
+  getPropertySetterArgName,
+  getProperties,
   convertNameStyle,
   defaultClassNameLangToStyleMap,
   fillName,
   fillClassName,
   fillAliases,
-  fillHeaderGuardName
+  fillHeaderGuardName,
+  defaultPropNameLangToStyleMap,
+  defaultGetterNameLangToStyleMap,
+  defaultSetterNameLangToStyleMap,
+  defaultSetterArgNameLangToStyleMap,
+  fillProperty,
+  fillProperties
 };

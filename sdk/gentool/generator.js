@@ -22,6 +22,7 @@ function generate() {
       util.fillClassName(interfaceJson);
       util.fillAliases(interfaceJson);
       util.fillHeaderGuardName(interfaceJson);
+      util.fillProperties(interfaceJson);
       generateInterface(interfaceName, interfaceJson);
       console.log(`Generated '${interfaceFileName}' interface code.`);
     } catch (error) {

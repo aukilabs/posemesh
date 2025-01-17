@@ -4,5 +4,19 @@
     {"name": "Vec3f"},
     {"name": "Vector3"},
     {"name": "Vec3"}
+  ],
+  "properties": [
+    {
+      "name": "X",
+      "type": "float"
+    },
+    {
+      "name": "Y",
+      "type": "float"
+    },
+    {
+      "name": "Z",
+      "type": "float"
+    }
   ]
 }
