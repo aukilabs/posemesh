@@ -1,0 +1,8 @@
+{
+  "name": "Vector3f",
+  "aliases": [
+    {"name": "Vec3f"},
+    {"name": "Vector3"},
+    {"name": "Vec3"}
+  ]
+}
