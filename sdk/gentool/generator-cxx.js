@@ -29,15 +29,17 @@ function generateHeader(interfaceName, interfaceJson) {
       const getterConstExt = propertyJson.getterConst ? ' const' : '';
       const getterNoexceptExt = propertyJson.getterNoexcept ? ' noexcept' : '';
       const getterName = util.getPropertyGetterName(propertyJson, util.CXX);
-      const getter = `    ${propType} PSM_API ${getterName}()${getterConstExt}${getterNoexceptExt};\n`;
+      const getterType = util.getPropertyTypeForGetter(propertyJson, util.CXX);
+      const getter = `    ${getterType} PSM_API ${getterName}()${getterConstExt}${getterNoexceptExt};\n`;
       publicMethods += getter;
     }
     if (propertyJson.hasSetter) {
       const setterConstExt = propertyJson.setterConst ? ' const' : '';
       const setterNoexceptExt = propertyJson.setterNoexcept ? ' noexcept' : '';
       const setterName = util.getPropertySetterName(propertyJson, util.CXX);
+      const setterType = util.getPropertyTypeForSetter(propertyJson, util.CXX);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.CXX);
-      const setter = `    void PSM_API ${setterName}(${propType} ${setterArgName})${setterConstExt}${setterNoexceptExt};\n`;
+      const setter = `    void PSM_API ${setterName}(${setterType} ${setterArgName})${setterConstExt}${setterNoexceptExt};\n`;
       publicMethods += setter;
     }
   }

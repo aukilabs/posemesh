@@ -143,6 +143,38 @@ function getPropertyType(propertyJson, language) {
   }
 }
 
+function getPropertyTypeForGetter(propertyJson, language) {
+  const key = 'type';
+  if (typeof propertyJson[key] === 'undefined') {
+    throw new Error(`Missing '${key}' key.`);
+  }
+  if (typeof propertyJson[key] !== 'string') {
+    throw new Error(`Invalid '${key}' key type.`);
+  }
+  switch (propertyJson[key]) {
+    case 'float':
+      return getFloatType(language);
+    default:
+      throw new Error(`Unknown type: ${propertyJson[key]}`);
+  }
+}
+
+function getPropertyTypeForSetter(propertyJson, language) {
+  const key = 'type';
+  if (typeof propertyJson[key] === 'undefined') {
+    throw new Error(`Missing '${key}' key.`);
+  }
+  if (typeof propertyJson[key] !== 'string') {
+    throw new Error(`Invalid '${key}' key type.`);
+  }
+  switch (propertyJson[key]) {
+    case 'float':
+      return getFloatType(language);
+    default:
+      throw new Error(`Unknown type: ${propertyJson[key]}`);
+  }
+}
+
 function isPrimitiveType(type) {
   switch (type) {
     case 'float':
@@ -534,6 +566,8 @@ module.exports = {
   getPropertyName,
   getFloatType,
   getPropertyType,
+  getPropertyTypeForGetter,
+  getPropertyTypeForSetter,
   isPrimitiveType,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
