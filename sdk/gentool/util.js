@@ -34,6 +34,19 @@ const LanguagePretty = {
   javaScript: Language.JS
 };
 
+const MethodMode = {
+  regular: 'regular',
+  virtual: 'virtual',
+  pureVirtual: 'pureVirtual',
+  override: 'override'
+};
+
+const Visibility = {
+  public: 'public',
+  protected: 'protected',
+  private: 'private'
+};
+
 function getName(key, json) {
   if (typeof json[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -173,6 +186,34 @@ function getPropertyTypeForSetter(propertyJson, language) {
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
+}
+
+function getPropertyGetterMode(propertyJson) {
+  return propertyJson.getterMode;
+}
+
+function getPropertySetterMode(propertyJson) {
+  return propertyJson.setterMode;
+}
+
+function getPropertyGetterCustom(propertyJson) {
+  return propertyJson.getterCustom;
+}
+
+function getPropertySetterCustom(propertyJson) {
+  return propertyJson.setterCustom;
+}
+
+function getPropertyGetterVisibility(propertyJson) {
+  return propertyJson.getterVisibility;
+}
+
+function getPropertySetterVisibility(propertyJson) {
+  return propertyJson.setterVisibility;
+}
+
+function getPropertyHasMemberVar(propertyJson) {
+  return propertyJson.hasMemberVar;
 }
 
 function isPrimitiveType(type) {
@@ -472,6 +513,54 @@ function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToSt
   }
   fillName('getterName', propertyJson, getterNameLangToStyleMap);
 
+  if (typeof propertyJson.getterMode === 'undefined') {
+    propertyJson.getterMode = MethodMode.regular; // TODO: perhaps determine from base class(es)
+    propertyJson['getterMode.gen'] = true;
+  } else if (typeof propertyJson.getterMode !== 'string') {
+    throw new Error(`Invalid 'getterMode' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(MethodMode)) {
+      if (propertyJson.getterMode === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'getterMode' value: ${propertyJson.getterMode}`);
+    }
+    propertyJson['getterMode.gen'] = false;
+  }
+
+  if (typeof propertyJson.getterCustom === 'undefined') {
+    const getterMode = getPropertyGetterMode(propertyJson);
+    propertyJson.getterCustom = getterMode === MethodMode.pureVirtual;
+    propertyJson['getterCustom.gen'] = true;
+  } else if (typeof propertyJson.getterCustom !== 'boolean') {
+    throw new Error(`Invalid 'getterCustom' key type.`);
+  } else {
+    propertyJson['getterCustom.gen'] = false;
+  }
+
+  if (typeof propertyJson.getterVisibility === 'undefined') {
+    propertyJson.getterVisibility = Visibility.public; // TODO: perhaps determine from base class(es)
+    propertyJson['getterVisibility.gen'] = true;
+  } else if (typeof propertyJson.getterVisibility !== 'string') {
+    throw new Error(`Invalid 'getterVisibility' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(MethodMode)) {
+      if (propertyJson.getterVisibility === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'getterVisibility' value: ${propertyJson.getterVisibility}`);
+    }
+    propertyJson['getterVisibility.gen'] = false;
+  }
+
   if (typeof propertyJson.hasSetter === 'undefined') {
     propertyJson.hasSetter = true;
     propertyJson['hasSetter.gen'] = true;
@@ -518,6 +607,65 @@ function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToSt
     propertyJson['setterArgName.gen'] = false;
   }
   fillName('setterArgName', propertyJson, setterArgNameLangToStyleMap);
+
+  if (typeof propertyJson.setterMode === 'undefined') {
+    propertyJson.setterMode = MethodMode.regular; // TODO: perhaps determine from base class(es)
+    propertyJson['setterMode.gen'] = true;
+  } else if (typeof propertyJson.setterMode !== 'string') {
+    throw new Error(`Invalid 'setterMode' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(MethodMode)) {
+      if (propertyJson.setterMode === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'setterMode' value: ${propertyJson.setterMode}`);
+    }
+    propertyJson['setterMode.gen'] = false;
+  }
+
+  if (typeof propertyJson.setterCustom === 'undefined') {
+    const setterMode = getPropertySetterMode(propertyJson);
+    propertyJson.setterCustom = setterMode === MethodMode.pureVirtual;
+    propertyJson['setterCustom.gen'] = true;
+  } else if (typeof propertyJson.setterCustom !== 'boolean') {
+    throw new Error(`Invalid 'setterCustom' key type.`);
+  } else {
+    propertyJson['setterCustom.gen'] = false;
+  }
+
+  if (typeof propertyJson.setterVisibility === 'undefined') {
+    propertyJson.setterVisibility = Visibility.public; // TODO: perhaps determine from base class(es)
+    propertyJson['setterVisibility.gen'] = true;
+  } else if (typeof propertyJson.setterVisibility !== 'string') {
+    throw new Error(`Invalid 'setterVisibility' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(MethodMode)) {
+      if (propertyJson.setterVisibility === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'setterVisibility' value: ${propertyJson.setterVisibility}`);
+    }
+    propertyJson['setterVisibility.gen'] = false;
+  }
+
+  if (typeof propertyJson.hasMemberVar === 'undefined') {
+    const getterCustom = getPropertyGetterCustom(propertyJson);
+    const setterCustom = getPropertySetterCustom(propertyJson);
+    propertyJson.hasMemberVar = !getterCustom || !setterCustom;
+    propertyJson['hasMemberVar.gen'] = true;
+  } else if (typeof propertyJson.hasMemberVar !== 'boolean') {
+    throw new Error(`Invalid 'hasMemberVar' key type.`);
+  } else {
+    propertyJson['hasMemberVar.gen'] = false;
+  }
 }
 
 function fillProperties(interfaceJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
@@ -554,6 +702,8 @@ module.exports = {
   Swift: Language.Swift,
   JS: Language.JS,
   LanguagePretty,
+  MethodMode,
+  Visibility,
   getName,
   getStyleName,
   getLangName,
@@ -568,6 +718,13 @@ module.exports = {
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
+  getPropertyGetterMode,
+  getPropertySetterMode,
+  getPropertyGetterCustom,
+  getPropertySetterCustom,
+  getPropertyGetterVisibility,
+  getPropertySetterVisibility,
+  getPropertyHasMemberVar,
   isPrimitiveType,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
