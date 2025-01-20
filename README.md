@@ -16,6 +16,16 @@ The posemesh is an open protocol built by the community. It is currently managed
 
 **- Discuss:** We encourage discussions about this project to happen on the [posemesh community Discord server](https://discord.gg/aukiverse).
 
+### Conventions
+- Coding: [WebKit code style guidelines](https://webkit.org/code-style-guidelines/) (`.clang-format` file in root of the project, can be used by IDEs e.g. in Visual Studio Code if the `C_Cpp: Clang_format_style` setting is set to `file`).
+- Commits: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
+- Branch naming:
+    - **feature/** - for development or changes of features/functionality
+    - **bug/** - for fixing a bug, a good idea is to name it from a bug number or title of a bug report
+    - **chore/** - for cleaning/refactoring
+    - **hotfix/** - for hotfixes without bug tickets
+- Changelog: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
 ## Contact:
 
 For any questions or support, please open an issue, or reach out to Auki Labs via [Discord](https://discord.gg/aukiverse) or [email](mailto:contact@aukilabs.com).
