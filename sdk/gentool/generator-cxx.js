@@ -19,14 +19,13 @@ function generateHeader(interfaceName, interfaceJson) {
   code += '\n';
   code += `class ${name} {\n`;
 
-  let publicMethods = '', publicFuncs = '', publicMembVars = '', publicStatVars = '';
-  let protectedMethods = '', protectedFuncs = '', protectedMembVars = '', protectedStatVars = '';
-  let privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '';
+  let publicCtors = '', publicMethods = '', publicFuncs = '', publicMembVars = '', publicStatVars = '';
+  let protectedCtors = '', protectedMethods = '', protectedFuncs = '', protectedMembVars = '', protectedStatVars = '';
+  let privateCtors = '', privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '';
 
-  publicMethods += `    PSM_API ${name}(const ${name}& source);\n`;
-  publicMethods += `    PSM_API ${name}(${name}&& source);\n`;
-  publicMethods += `    PSM_API ~${name}();\n`;
-  publicMethods += '\n';
+  publicCtors += `    PSM_API ${name}(const ${name}& source);\n`;
+  publicCtors += `    PSM_API ${name}(${name}&& source);\n`;
+  publicCtors += `    PSM_API ~${name}();\n`;
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
@@ -116,8 +115,14 @@ function generateHeader(interfaceName, interfaceJson) {
     }
   }
 
-  let public = publicMethods, protected = protectedMethods, private = privateMethods;
+  let public = publicCtors, protected = protectedCtors, private = privateCtors;
 
+  if (publicMethods.length > 0) {
+    if (public.length > 0) {
+      public += '\n';
+    }
+    public += publicMethods;
+  }
   if (publicFuncs.length > 0) {
     if (public.length > 0) {
       public += '\n';
@@ -137,6 +142,12 @@ function generateHeader(interfaceName, interfaceJson) {
     public += publicStatVars;
   }
 
+  if (protectedMethods.length > 0) {
+    if (protected.length > 0) {
+      protected += '\n';
+    }
+    protected += protectedMethods;
+  }
   if (protectedFuncs.length > 0) {
     if (protected.length > 0) {
       protected += '\n';
@@ -156,6 +167,12 @@ function generateHeader(interfaceName, interfaceJson) {
     protected += protectedStatVars;
   }
 
+  if (privateMethods.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateMethods;
+  }
   if (privateFuncs.length > 0) {
     if (private.length > 0) {
       private += '\n';
@@ -230,16 +247,16 @@ function generateSource(interfaceName, interfaceJson) {
   code += 'namespace psm {\n';
   code += '\n';
 
-  let publicMethods = '', publicFuncs = '', publicStatVars = '';
-  let protectedMethods = '', protectedFuncs = '', protectedStatVars = '';
-  let privateMethods = '', privateFuncs = '', privateStatVars = '';
+  let publicCtors = '', publicMethods = '', publicFuncs = '', publicStatVars = '';
+  let protectedCtors = '', protectedMethods = '', protectedFuncs = '', protectedStatVars = '';
+  let privateCtors = '', privateMethods = '', privateFuncs = '', privateStatVars = '';
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propType = util.getPropertyType(propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propStatic) {
-      privateStatVars += `${propType} ${name}::${propName}{};\n`;
+      privateStatVars += `${propType} ${name}::${propName} {};\n`;
     }
     const hasGetter = propertyJson.hasGetter;
     const getterCustom = propertyJson.getterCustom;
@@ -332,8 +349,14 @@ function generateSource(interfaceName, interfaceJson) {
     }
   }
 
-  let public = publicMethods, protected = protectedMethods, private = privateMethods;
+  let public = publicCtors, protected = protectedCtors, private = privateCtors;
 
+  if (publicMethods.length > 0) {
+    if (public.length > 0) {
+      public += '\n';
+    }
+    public += publicMethods;
+  }
   if (publicFuncs.length > 0) {
     if (public.length > 0) {
       public += '\n';
@@ -347,6 +370,12 @@ function generateSource(interfaceName, interfaceJson) {
     public += publicStatVars;
   }
 
+  if (protectedMethods.length > 0) {
+    if (protected.length > 0) {
+      protected += '\n';
+    }
+    protected += protectedMethods;
+  }
   if (protectedFuncs.length > 0) {
     if (protected.length > 0) {
       protected += '\n';
@@ -360,6 +389,12 @@ function generateSource(interfaceName, interfaceJson) {
     protected += protectedStatVars;
   }
 
+  if (privateMethods.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateMethods;
+  }
   if (privateFuncs.length > 0) {
     if (private.length > 0) {
       private += '\n';
