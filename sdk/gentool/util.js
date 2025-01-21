@@ -216,6 +216,10 @@ function getPropertyHasMemberVar(propertyJson) {
   return propertyJson.hasMemberVar;
 }
 
+function getPropertyStatic(propertyJson) {
+  return propertyJson.static;
+}
+
 function isPrimitiveType(type) {
   switch (type) {
     case 'float':
@@ -476,6 +480,15 @@ defaultSetterArgNameLangToStyleMap[Language.JS] = NameStyle.camelBack; // don't 
 function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
   fillName('name', propertyJson, nameLangToStyleMap);
 
+  if (typeof propertyJson.static === 'undefined') {
+    propertyJson.static = false;
+    propertyJson['static.gen'] = true;
+  } else if (typeof propertyJson.static !== 'boolean') {
+    throw new Error(`Invalid 'static' key type.`);
+  } else {
+    propertyJson['static.gen'] = false;
+  }
+
   if (typeof propertyJson.hasGetter === 'undefined') {
     propertyJson.hasGetter = true;
     propertyJson['hasGetter.gen'] = true;
@@ -486,7 +499,8 @@ function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToSt
   }
 
   if (typeof propertyJson.getterConst === 'undefined') {
-    propertyJson.getterConst = true;
+    const propStatic = getPropertyStatic(propertyJson);
+    propertyJson.getterConst = !propStatic;
     propertyJson['getterConst.gen'] = true;
   } else if (typeof propertyJson.getterConst !== 'boolean') {
     throw new Error(`Invalid 'getterConst' key type.`);
@@ -725,6 +739,7 @@ module.exports = {
   getPropertyGetterVisibility,
   getPropertySetterVisibility,
   getPropertyHasMemberVar,
+  getPropertyStatic,
   isPrimitiveType,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
