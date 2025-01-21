@@ -98,6 +98,14 @@ function getLangClassName(interfaceJson, language, nameLangToTransformationMap =
   return getLangTransformedName('name', interfaceJson, language, nameLangToTransformationMap);
 }
 
+function getClassStatic(interfaceJson) {
+  return interfaceJson.static;
+}
+
+function getClassFinal(interfaceJson) {
+  return interfaceJson.final;
+}
+
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
   if (typeof interfaceJson.aliases === 'undefined') {
     throw new Error(`Missing 'aliases' key.`);
@@ -140,6 +148,46 @@ function getFloatType(language) {
   }
 }
 
+function getDoubleType(language) {
+  switch (language) {
+    case Language.CXX:
+    case Language.C:
+    case Language.ObjC:
+      return 'double';
+    case Language.Swift:
+      return 'Double';
+    case Language.JS:
+      return 'number';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getIntType(signed, bits, language) {
+  switch (bits) {
+    case '8':
+    case '16':
+    case '32':
+    case '64':
+      break;
+    default:
+      throw new Error(`Invalid integer bits: ${bits}`);
+  }
+  switch (language) {
+    case Language.CXX:
+      return `std::${signed ? '' : 'u'}int${bits}_t`;
+    case Language.C:
+    case Language.ObjC:
+      return `${signed ? '' : 'u'}int${bits}_t`;
+    case Language.Swift:
+      return `${signed ? '' : 'U'}Int${bits}`;
+    case Language.JS:
+      return 'number';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
 function getPropertyType(propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -148,9 +196,17 @@ function getPropertyType(propertyJson, language) {
   if (typeof propertyJson[key] !== 'string') {
     throw new Error(`Invalid '${key}' key type.`);
   }
+  if (propertyJson[key].startsWith('int')) {
+    return getIntType(true, propertyJson[key].substring(3), language);
+  }
+  if (propertyJson[key].startsWith('uint')) {
+    return getIntType(false, propertyJson[key].substring(4), language);
+  }
   switch (propertyJson[key]) {
     case 'float':
       return getFloatType(language);
+    case 'double':
+      return getDoubleType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -164,9 +220,17 @@ function getPropertyTypeForGetter(propertyJson, language) {
   if (typeof propertyJson[key] !== 'string') {
     throw new Error(`Invalid '${key}' key type.`);
   }
+  if (propertyJson[key].startsWith('int')) {
+    return getIntType(true, propertyJson[key].substring(3), language);
+  }
+  if (propertyJson[key].startsWith('uint')) {
+    return getIntType(false, propertyJson[key].substring(4), language);
+  }
   switch (propertyJson[key]) {
     case 'float':
       return getFloatType(language);
+    case 'double':
+      return getDoubleType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -180,9 +244,17 @@ function getPropertyTypeForSetter(propertyJson, language) {
   if (typeof propertyJson[key] !== 'string') {
     throw new Error(`Invalid '${key}' key type.`);
   }
+  if (propertyJson[key].startsWith('int')) {
+    return getIntType(true, propertyJson[key].substring(3), language);
+  }
+  if (propertyJson[key].startsWith('uint')) {
+    return getIntType(false, propertyJson[key].substring(4), language);
+  }
   switch (propertyJson[key]) {
     case 'float':
       return getFloatType(language);
+    case 'double':
+      return getDoubleType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -220,9 +292,17 @@ function getPropertyStatic(propertyJson) {
   return propertyJson.static;
 }
 
+function isIntType(type) {
+  return type.startsWith('int') || type.startsWith('uint');
+}
+
 function isPrimitiveType(type) {
+  if (isIntType(type)) {
+    return true;
+  }
   switch (type) {
     case 'float':
+    case 'double':
       return true;
     default:
       return false;
@@ -412,6 +492,29 @@ function fillClassName(interfaceJson, nameLangToStyleMap = defaultClassNameLangT
   fillName('name', interfaceJson, nameLangToStyleMap);
 }
 
+function fillClassStatic(interfaceJson) {
+  if (typeof interfaceJson.static === 'undefined') {
+    interfaceJson.static = false;
+    interfaceJson['static.gen'] = true;
+  } else if (typeof interfaceJson.static !== 'boolean') {
+    throw new Error(`Invalid 'static' key type.`);
+  } else {
+    interfaceJson['static.gen'] = false;
+  }
+}
+
+function fillClassFinal(interfaceJson) {
+  if (typeof interfaceJson.final === 'undefined') {
+    const classStatic = getClassStatic(interfaceJson);
+    interfaceJson.final = classStatic;
+    interfaceJson['final.gen'] = true;
+  } else if (typeof interfaceJson.final !== 'boolean') {
+    throw new Error(`Invalid 'final' key type.`);
+  } else {
+    interfaceJson['final.gen'] = false;
+  }
+}
+
 function fillAliases(interfaceJson, nameLangToStyleMap = defaultClassNameLangToStyleMap) {
   const nameKey = 'aliases';
   const nameKeyGen = `${nameKey}.gen`;
@@ -477,11 +580,12 @@ defaultSetterArgNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
 defaultSetterArgNameLangToStyleMap[Language.Swift] = NameStyle.camelBack; // don't care
 defaultSetterArgNameLangToStyleMap[Language.JS] = NameStyle.camelBack; // don't care
 
-function fillProperty(propertyJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
+function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
   fillName('name', propertyJson, nameLangToStyleMap);
 
   if (typeof propertyJson.static === 'undefined') {
-    propertyJson.static = false;
+    const classStatic = getClassStatic(interfaceJson);
+    propertyJson.static = classStatic;
     propertyJson['static.gen'] = true;
   } else if (typeof propertyJson.static !== 'boolean') {
     throw new Error(`Invalid 'static' key type.`);
@@ -694,7 +798,7 @@ function fillProperties(interfaceJson, nameLangToStyleMap = defaultPropNameLangT
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
   for (const propertyJson of interfaceJson[nameKey]) {
-    fillProperty(propertyJson, nameLangToStyleMap, getterNameLangToStyleMap, setterNameLangToStyleMap, setterArgNameLangToStyleMap);
+    fillProperty(interfaceJson, propertyJson, nameLangToStyleMap, getterNameLangToStyleMap, setterNameLangToStyleMap, setterArgNameLangToStyleMap);
   }
   interfaceJson[nameKeyGen] = false;
 }
@@ -724,11 +828,15 @@ module.exports = {
   defaultClassNameLangToTransformationMap,
   getLangTransformedName,
   getLangClassName,
+  getClassStatic,
+  getClassFinal,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
   getPropertyName,
   getFloatType,
+  getDoubleType,
+  getIntType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
@@ -740,6 +848,7 @@ module.exports = {
   getPropertySetterVisibility,
   getPropertyHasMemberVar,
   getPropertyStatic,
+  isIntType,
   isPrimitiveType,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
@@ -752,6 +861,8 @@ module.exports = {
   defaultClassNameLangToStyleMap,
   fillName,
   fillClassName,
+  fillClassStatic,
+  fillClassFinal,
   fillAliases,
   fillHeaderGuardName,
   defaultPropNameLangToStyleMap,

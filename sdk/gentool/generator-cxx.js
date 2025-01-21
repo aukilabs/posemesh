@@ -4,6 +4,9 @@ const util = require('./util');
 
 function generateHeader(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.CXX);
+  const classStatic = util.getClassStatic(interfaceJson);
+  const classFinal = util.getClassFinal(interfaceJson);
+  const classFinalExt = classFinal ? ' final' : '';
   const aliases = util.getLangAliases(interfaceJson, util.CXX);
   const headerGuardName = util.getHeaderGuardName(interfaceJson);
   const headerGuard = `__POSEMESH_${headerGuardName}_HPP__`;
@@ -17,18 +20,26 @@ function generateHeader(interfaceName, interfaceJson) {
   code += '%INCLUDES%\n';
   code += 'namespace psm {\n';
   code += '\n';
-  code += `class ${name} {\n`;
+  code += `class ${name}${classFinalExt} {\n`;
 
   let publicCtors = '', publicMethods = '', publicFuncs = '', publicMembVars = '', publicStatVars = '';
   let protectedCtors = '', protectedMethods = '', protectedFuncs = '', protectedMembVars = '', protectedStatVars = '';
   let privateCtors = '', privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '';
 
-  publicCtors += `    PSM_API ${name}(const ${name}& source);\n`;
-  publicCtors += `    PSM_API ${name}(${name}&& source);\n`;
-  publicCtors += `    PSM_API ~${name}();\n`;
+  publicCtors += `    PSM_API ${name}(const ${name}& source);\n`; // TODO: figure out
+  publicCtors += `    PSM_API ${name}(${name}&& source);\n`; // TODO: figure out
+  publicCtors += `    PSM_API ~${name}();\n`; // TODO: figure out
+
+  if (classStatic) {
+    privateCtors += `    ${name}() = delete;\n`; // TODO: figure out
+  }
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
+    const propTypeRaw = propertyJson.type;
+    if (util.isIntType(propTypeRaw)) {
+      includesFirst.add('#include <cstdint>');
+    }
     const propType = util.getPropertyType(propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
     const propStaticPfx = propStatic ? 'static ' : '';
@@ -239,6 +250,7 @@ function generateHeader(interfaceName, interfaceJson) {
 
 function generateSource(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.CXX);
+  const classStatic = util.getClassStatic(interfaceJson);
 
   let includesFirst = new Set([`#include <Posemesh/${interfaceName}.hpp>`]), includesSecond = new Set([]);
 

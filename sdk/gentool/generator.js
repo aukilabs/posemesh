@@ -20,6 +20,8 @@ function generate() {
     try {
       const interfaceJson = JSON.parse(interfaceFileContent);
       util.fillClassName(interfaceJson);
+      util.fillClassStatic(interfaceJson);
+      util.fillClassFinal(interfaceJson);
       util.fillAliases(interfaceJson);
       util.fillHeaderGuardName(interfaceJson);
       util.fillProperties(interfaceJson);
