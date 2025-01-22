@@ -26,12 +26,93 @@ function generateHeader(interfaceName, interfaceJson) {
   let protectedCtors = '', protectedMethods = '', protectedFuncs = '', protectedMembVars = '', protectedStatVars = '';
   let privateCtors = '', privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '';
 
-  publicCtors += `    PSM_API ${name}(const ${name}& source);\n`; // TODO: figure out
-  publicCtors += `    PSM_API ${name}(${name}&& source);\n`; // TODO: figure out
-  publicCtors += `    PSM_API ~${name}();\n`; // TODO: figure out
+  const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
+  const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
+  const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
+  const pCtorNoexcept = util.getConstructorNoexcept(parameterlessConstructor);
+  const pCtorNoexceptExt = pCtorNoexcept ? ' noexcept' : '';
+  let pCtor = undefined;
+  switch (pCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+    case util.ConstructorDefinition.default:
+      pCtor = `    PSM_API ${name}()${pCtorNoexceptExt};\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      pCtor = `    ${name}()${pCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof pCtor !== 'undefined') {
+    switch (pCtorVisibility) {
+      case util.Visibility.public:
+        publicCtors += pCtor;
+        break;
+      case util.Visibility.protected:
+        protectedCtors += pCtor;
+        break;
+      case util.Visibility.private:
+        privateCtors += pCtor;
+        break;
+    }
+  }
 
-  if (classStatic) {
-    privateCtors += `    ${name}() = delete;\n`; // TODO: figure out
+  const copyConstructor = util.getClassCopyConstructor(interfaceJson);
+  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+  const cCtorNoexcept = util.getConstructorNoexcept(copyConstructor);
+  const cCtorNoexceptExt = cCtorNoexcept ? ' noexcept' : '';
+  const cCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.CXX);
+  let cCtor = undefined;
+  switch (cCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+    case util.ConstructorDefinition.default:
+      cCtor = `    PSM_API ${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt};\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      cCtor = `    ${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof cCtor !== 'undefined') {
+    switch (cCtorVisibility) {
+      case util.Visibility.public:
+        publicCtors += cCtor;
+        break;
+      case util.Visibility.protected:
+        protectedCtors += cCtor;
+        break;
+      case util.Visibility.private:
+        privateCtors += cCtor;
+        break;
+    }
+  }
+
+  const moveConstructor = util.getClassMoveConstructor(interfaceJson);
+  const mCtorDefinition = util.getConstructorDefinition(moveConstructor);
+  const mCtorVisibility = util.getConstructorVisibility(moveConstructor);
+  const mCtorNoexcept = util.getConstructorNoexcept(moveConstructor);
+  const mCtorNoexceptExt = mCtorNoexcept ? ' noexcept' : '';
+  const mCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(moveConstructor, util.CXX);
+  let mCtor = undefined;
+  switch (mCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+    case util.ConstructorDefinition.default:
+      mCtor = `    PSM_API ${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt};\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      mCtor = `    ${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof mCtor !== 'undefined') {
+    switch (mCtorVisibility) {
+      case util.Visibility.public:
+        publicCtors += mCtor;
+        break;
+      case util.Visibility.protected:
+        protectedCtors += mCtor;
+        break;
+      case util.Visibility.private:
+        privateCtors += mCtor;
+        break;
+    }
   }
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
@@ -263,12 +344,117 @@ function generateSource(interfaceName, interfaceJson) {
   let protectedCtors = '', protectedMethods = '', protectedFuncs = '', protectedStatVars = '';
   let privateCtors = '', privateMethods = '', privateFuncs = '', privateStatVars = '';
 
+  const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
+  const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
+  const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
+  const pCtorNoexcept = util.getConstructorNoexcept(parameterlessConstructor);
+  const pCtorNoexceptExt = pCtorNoexcept ? ' noexcept' : '';
+  let pCtor = undefined;
+  switch (pCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+      pCtor = `${name}::${name}()${pCtorNoexceptExt} {}\n`;
+      break;
+    case util.ConstructorDefinition.default:
+      pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      pCtor = `${name}::${name}()${pCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof pCtor !== 'undefined') {
+    switch (pCtorVisibility) {
+      case util.Visibility.public:
+        if (publicCtors.length > 0) { publicCtors += '\n'; }
+        publicCtors += pCtor;
+        break;
+      case util.Visibility.protected:
+        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+        protectedCtors += pCtor;
+        break;
+      case util.Visibility.private:
+        if (privateCtors.length > 0) { privateCtors += '\n'; }
+        privateCtors += pCtor;
+        break;
+    }
+  }
+
+  const copyConstructor = util.getClassCopyConstructor(interfaceJson);
+  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+  const cCtorNoexcept = util.getConstructorNoexcept(copyConstructor);
+  const cCtorNoexceptExt = cCtorNoexcept ? ' noexcept' : '';
+  const cCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.CXX);
+  let cCtor = undefined;
+  switch (cCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} {}\n`;
+      break;
+    case util.ConstructorDefinition.default:
+      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = default;\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof cCtor !== 'undefined') {
+    switch (cCtorVisibility) {
+      case util.Visibility.public:
+        if (publicCtors.length > 0) { publicCtors += '\n'; }
+        publicCtors += cCtor;
+        break;
+      case util.Visibility.protected:
+        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+        protectedCtors += cCtor;
+        break;
+      case util.Visibility.private:
+        if (privateCtors.length > 0) { privateCtors += '\n'; }
+        privateCtors += cCtor;
+        break;
+    }
+  }
+
+  const moveConstructor = util.getClassMoveConstructor(interfaceJson);
+  const mCtorDefinition = util.getConstructorDefinition(moveConstructor);
+  const mCtorVisibility = util.getConstructorVisibility(moveConstructor);
+  const mCtorNoexcept = util.getConstructorNoexcept(moveConstructor);
+  const mCtorNoexceptExt = mCtorNoexcept ? ' noexcept' : '';
+  const mCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(moveConstructor, util.CXX);
+  let mCtor = undefined;
+  switch (mCtorDefinition) {
+    case util.ConstructorDefinition.defined:
+      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} {}\n`;
+      break;
+    case util.ConstructorDefinition.default:
+      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = default;\n`;
+      break;
+    case util.ConstructorDefinition.deleted:
+      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = delete;\n`;
+      break;
+  }
+  if (typeof mCtor !== 'undefined') {
+    switch (mCtorVisibility) {
+      case util.Visibility.public:
+        if (publicCtors.length > 0) { publicCtors += '\n'; }
+        publicCtors += mCtor;
+        break;
+      case util.Visibility.protected:
+        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+        protectedCtors += mCtor;
+        break;
+      case util.Visibility.private:
+        if (privateCtors.length > 0) { privateCtors += '\n'; }
+        privateCtors += mCtor;
+        break;
+    }
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propType = util.getPropertyType(propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
+    const propDefaultValue = util.getPropertyDefaultValue(propertyJson);
     if (propStatic) {
-      privateStatVars += `${propType} ${name}::${propName} {};\n`;
+      privateStatVars += `${propType} ${name}::${propName} {${propDefaultValue}};\n`;
     }
     const hasGetter = propertyJson.hasGetter;
     const getterCustom = propertyJson.getterCustom;

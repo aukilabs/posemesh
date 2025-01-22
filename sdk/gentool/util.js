@@ -47,6 +47,13 @@ const Visibility = {
   private: 'private'
 };
 
+const ConstructorDefinition = {
+  defined: 'defined',
+  default: 'default',
+  deleted: 'deleted',
+  omitted: 'omitted'
+};
+
 function getName(key, json) {
   if (typeof json[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -104,6 +111,49 @@ function getClassStatic(interfaceJson) {
 
 function getClassFinal(interfaceJson) {
   return interfaceJson.final;
+}
+
+function getClassCopyable(interfaceJson) {
+  return interfaceJson.copyable;
+}
+
+function getClassMovable(interfaceJson) {
+  return interfaceJson.movable;
+}
+
+function getClassParameterlessConstructor(interfaceJson) {
+  return interfaceJson.parameterlessConstructor;
+}
+
+function getClassCopyConstructor(interfaceJson) {
+  return interfaceJson.copyConstructor;
+}
+
+function getClassMoveConstructor(interfaceJson) {
+  return interfaceJson.moveConstructor;
+}
+
+function getConstructorDefinition(constructorJson) {
+  return constructorJson.definition;
+}
+
+function getConstructorVisibility(constructorJson) {
+  return constructorJson.visibility;
+}
+
+function getConstructorNoexcept(constructorJson) {
+  return constructorJson.noexcept;
+}
+
+let defaultFuncArgNameLangToTransformationMap = {};
+defaultFuncArgNameLangToTransformationMap[Language.CXX] = '%';
+defaultFuncArgNameLangToTransformationMap[Language.C] = '%';
+defaultFuncArgNameLangToTransformationMap[Language.ObjC] = '%';
+defaultFuncArgNameLangToTransformationMap[Language.Swift] = '%';
+defaultFuncArgNameLangToTransformationMap[Language.JS] = '%';
+
+function getCopyOrMoveConstructorMainArgName(constructorJson, language, funcArgNameLangToTransformationMap = defaultFuncArgNameLangToTransformationMap) {
+  return getLangTransformedName('mainArgName', constructorJson, language, funcArgNameLangToTransformationMap);
 }
 
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
@@ -286,6 +336,10 @@ function getPropertySetterVisibility(propertyJson) {
 
 function getPropertyHasMemberVar(propertyJson) {
   return propertyJson.hasMemberVar;
+}
+
+function getPropertyDefaultValue(propertyJson) {
+  return propertyJson.defaultValue;
 }
 
 function getPropertyStatic(propertyJson) {
@@ -667,7 +721,7 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     throw new Error(`Invalid 'getterVisibility' key type.`);
   } else {
     let found = false;
-    for (const [key, value] of Object.entries(MethodMode)) {
+    for (const [key, value] of Object.entries(Visibility)) {
       if (propertyJson.getterVisibility === value) {
         found = true;
         break;
@@ -762,7 +816,7 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     throw new Error(`Invalid 'setterVisibility' key type.`);
   } else {
     let found = false;
-    for (const [key, value] of Object.entries(MethodMode)) {
+    for (const [key, value] of Object.entries(Visibility)) {
       if (propertyJson.setterVisibility === value) {
         found = true;
         break;
@@ -784,6 +838,15 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
   } else {
     propertyJson['hasMemberVar.gen'] = false;
   }
+
+  if (typeof propertyJson.defaultValue === 'undefined') {
+    propertyJson.defaultValue = '';
+    propertyJson['defaultValue.gen'] = true;
+  } else if (typeof propertyJson.defaultValue !== 'string') {
+    throw new Error(`Invalid 'defaultValue' key type.`);
+  } else {
+    propertyJson['defaultValue.gen'] = false;
+  }
 }
 
 function fillProperties(interfaceJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
@@ -801,6 +864,166 @@ function fillProperties(interfaceJson, nameLangToStyleMap = defaultPropNameLangT
     fillProperty(interfaceJson, propertyJson, nameLangToStyleMap, getterNameLangToStyleMap, setterNameLangToStyleMap, setterArgNameLangToStyleMap);
   }
   interfaceJson[nameKeyGen] = false;
+}
+
+function fillCopyable(interfaceJson) {
+  if (typeof interfaceJson.copyable === 'undefined') {
+    interfaceJson.copyable = !getClassStatic(interfaceJson);
+    interfaceJson['copyable.gen'] = true;
+  } else if (typeof interfaceJson.copyable !== 'boolean') {
+    throw new Error(`Invalid 'copyable' key type.`);
+  } else {
+    interfaceJson['copyable.gen'] = false;
+  }
+}
+
+function fillMovable(interfaceJson) {
+  if (typeof interfaceJson.movable === 'undefined') {
+    interfaceJson.movable = !getClassStatic(interfaceJson);
+    interfaceJson['movable.gen'] = true;
+  } else if (typeof interfaceJson.movable !== 'boolean') {
+    throw new Error(`Invalid 'movable' key type.`);
+  } else {
+    interfaceJson['movable.gen'] = false;
+  }
+}
+
+function fillConstructorDefinition(constructorJson, defaultIfNotSet) {
+  if (typeof constructorJson.definition === 'undefined') {
+    constructorJson.definition = defaultIfNotSet;
+    constructorJson['definition.gen'] = true;
+  } else if (typeof constructorJson.definition !== 'string') {
+    throw new Error(`Invalid 'definition' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(ConstructorDefinition)) {
+      if (constructorJson.definition === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'definition' value: ${constructorJson.definition}`);
+    }
+    constructorJson['definition.gen'] = false;
+  }
+}
+
+function fillConstructorVisibility(constructorJson, defaultIfNotSet) {
+  if (typeof constructorJson.visibility === 'undefined') {
+    constructorJson.visibility = defaultIfNotSet;
+    constructorJson['visibility.gen'] = true;
+  } else if (typeof constructorJson.visibility !== 'string') {
+    throw new Error(`Invalid 'visibility' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(Visibility)) {
+      if (constructorJson.visibility === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'visibility' value: ${constructorJson.visibility}`);
+    }
+    constructorJson['visibility.gen'] = false;
+  }
+}
+
+function fillConstructorNoexcept(constructorJson, defaultIfNotSet) {
+  if (typeof constructorJson.noexcept === 'undefined') {
+    constructorJson.noexcept = defaultIfNotSet;
+    constructorJson['noexcept.gen'] = true;
+  } else if (typeof constructorJson.noexcept !== 'boolean') {
+    throw new Error(`Invalid 'noexcept' key type.`);
+  } else {
+    constructorJson['noexcept.gen'] = false;
+  }
+}
+
+let defaultFuncArgNameLangToStyleMap = {};
+defaultFuncArgNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultFuncArgNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultFuncArgNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultFuncArgNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultFuncArgNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+function fillCopyOrMoveConstructorMainArgName(interfaceJson, constructorJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
+  if (typeof constructorJson.mainArgName === 'undefined') {
+    constructorJson.mainArgName = interfaceJson.name;
+    constructorJson['mainArgName.gen'] = true;
+  } else if (typeof constructorJson.mainArgName !== 'string') {
+    throw new Error(`Invalid 'mainArgName' key type.`);
+  } else {
+    constructorJson['mainArgName.gen'] = false;
+  }
+  fillName('mainArgName', constructorJson, funcArgNameLangToStyleMap);
+}
+
+function fillParameterlessConstructor(interfaceJson) {
+  const nameKey = 'parameterlessConstructor';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = {};
+    interfaceJson[nameKeyGen] = true;
+  } else {
+    interfaceJson[nameKeyGen] = false;
+  }
+  if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  const classStatic = getClassStatic(interfaceJson);
+  fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.deleted : ConstructorDefinition.default);
+  fillConstructorVisibility(interfaceJson[nameKey], classStatic ? Visibility.private : Visibility.public);
+  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+}
+
+function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
+  const nameKey = 'copyConstructor';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = {};
+    interfaceJson[nameKeyGen] = true;
+  } else {
+    interfaceJson[nameKeyGen] = false;
+  }
+  if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  const classStatic = getClassStatic(interfaceJson);
+  const classCopyable = getClassCopyable(interfaceJson);
+  if (classCopyable) {
+    fillConstructorDefinition(interfaceJson[nameKey], ConstructorDefinition.default);
+  } else {
+    fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.omitted : ConstructorDefinition.deleted);
+  }
+  fillConstructorVisibility(interfaceJson[nameKey], Visibility.public);
+  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
+}
+
+function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
+  const nameKey = 'moveConstructor';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = {};
+    interfaceJson[nameKeyGen] = true;
+  } else {
+    interfaceJson[nameKeyGen] = false;
+  }
+  if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  const classStatic = getClassStatic(interfaceJson);
+  const classMovable = getClassMovable(interfaceJson);
+  if (classMovable) {
+    fillConstructorDefinition(interfaceJson[nameKey], ConstructorDefinition.default);
+  } else {
+    fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.omitted : ConstructorDefinition.deleted);
+  }
+  fillConstructorVisibility(interfaceJson[nameKey], Visibility.public);
+  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
 }
 
 module.exports = {
@@ -822,6 +1045,7 @@ module.exports = {
   LanguagePretty,
   MethodMode,
   Visibility,
+  ConstructorDefinition,
   getName,
   getStyleName,
   getLangName,
@@ -830,6 +1054,16 @@ module.exports = {
   getLangClassName,
   getClassStatic,
   getClassFinal,
+  getClassCopyable,
+  getClassMovable,
+  getClassParameterlessConstructor,
+  getClassCopyConstructor,
+  getClassMoveConstructor,
+  getConstructorDefinition,
+  getConstructorVisibility,
+  getConstructorNoexcept,
+  defaultFuncArgNameLangToTransformationMap,
+  getCopyOrMoveConstructorMainArgName,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
@@ -847,6 +1081,7 @@ module.exports = {
   getPropertyGetterVisibility,
   getPropertySetterVisibility,
   getPropertyHasMemberVar,
+  getPropertyDefaultValue,
   getPropertyStatic,
   isIntType,
   isPrimitiveType,
@@ -870,5 +1105,15 @@ module.exports = {
   defaultSetterNameLangToStyleMap,
   defaultSetterArgNameLangToStyleMap,
   fillProperty,
-  fillProperties
+  fillProperties,
+  fillCopyable,
+  fillMovable,
+  fillConstructorDefinition,
+  fillConstructorVisibility,
+  fillConstructorNoexcept,
+  defaultFuncArgNameLangToStyleMap,
+  fillCopyOrMoveConstructorMainArgName,
+  fillParameterlessConstructor,
+  fillCopyConstructor,
+  fillMoveConstructor
 };
