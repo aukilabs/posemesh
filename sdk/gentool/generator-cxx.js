@@ -352,7 +352,7 @@ function generateSource(interfaceName, interfaceJson) {
   let pCtor = undefined;
   switch (pCtorDefinition) {
     case util.ConstructorDefinition.defined:
-      pCtor = `${name}::${name}()${pCtorNoexceptExt} {}\n`;
+      pCtor = `${name}::${name}()${pCtorNoexceptExt} { }\n`;
       break;
     case util.ConstructorDefinition.default:
       pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
@@ -387,7 +387,7 @@ function generateSource(interfaceName, interfaceJson) {
   let cCtor = undefined;
   switch (cCtorDefinition) {
     case util.ConstructorDefinition.defined:
-      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} {}\n`;
+      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} { }\n`;
       break;
     case util.ConstructorDefinition.default:
       cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = default;\n`;
@@ -422,7 +422,7 @@ function generateSource(interfaceName, interfaceJson) {
   let mCtor = undefined;
   switch (mCtorDefinition) {
     case util.ConstructorDefinition.defined:
-      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} {}\n`;
+      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} { }\n`;
       break;
     case util.ConstructorDefinition.default:
       mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = default;\n`;
