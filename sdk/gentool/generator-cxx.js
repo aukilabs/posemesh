@@ -357,9 +357,6 @@ function generateSource(interfaceName, interfaceJson) {
     case util.ConstructorDefinition.default:
       pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
       break;
-    case util.ConstructorDefinition.deleted:
-      pCtor = `${name}::${name}()${pCtorNoexceptExt} = delete;\n`;
-      break;
   }
   if (typeof pCtor !== 'undefined') {
     switch (pCtorVisibility) {
@@ -392,9 +389,6 @@ function generateSource(interfaceName, interfaceJson) {
     case util.ConstructorDefinition.default:
       cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = default;\n`;
       break;
-    case util.ConstructorDefinition.deleted:
-      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = delete;\n`;
-      break;
   }
   if (typeof cCtor !== 'undefined') {
     switch (cCtorVisibility) {
@@ -426,9 +420,6 @@ function generateSource(interfaceName, interfaceJson) {
       break;
     case util.ConstructorDefinition.default:
       mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = default;\n`;
-      break;
-    case util.ConstructorDefinition.deleted:
-      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = delete;\n`;
       break;
   }
   if (typeof mCtor !== 'undefined') {
