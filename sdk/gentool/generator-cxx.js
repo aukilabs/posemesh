@@ -454,7 +454,8 @@ function generateSource(interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     const propDefaultValue = util.getPropertyDefaultValue(propertyJson);
     if (propStatic) {
-      privateStatVars += `${propType} ${name}::${propName} {${propDefaultValue}};\n`;
+      const propDefaultValueSpaced = propDefaultValue.length > 0 ? ` ${propDefaultValue} ` : '';
+      privateStatVars += `${propType} ${name}::${propName} {${propDefaultValueSpaced}};\n`;
     }
     const hasGetter = propertyJson.hasGetter;
     const getterCustom = propertyJson.getterCustom;
