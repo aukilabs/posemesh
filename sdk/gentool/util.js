@@ -156,6 +156,10 @@ function getCopyOrMoveConstructorMainArgName(constructorJson, language, funcArgN
   return getLangTransformedName('mainArgName', constructorJson, language, funcArgNameLangToTransformationMap);
 }
 
+function getConstructorInitializedProperties(constructorJson) {
+  return constructorJson.initializedProperties;
+}
+
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
   if (typeof interfaceJson.aliases === 'undefined') {
     throw new Error(`Missing 'aliases' key.`);
@@ -360,6 +364,20 @@ function isPrimitiveType(type) {
       return true;
     default:
       return false;
+  }
+}
+
+function getTypeImplicitDefaultValue(type) {
+  if (isIntType(type)) {
+    return '0';
+  }
+  switch (type) {
+    case 'float':
+      return '0.0f';
+    case 'double':
+      return '0.0';
+    default:
+      return '';
   }
 }
 
@@ -960,6 +978,85 @@ function fillCopyOrMoveConstructorMainArgName(interfaceJson, constructorJson, fu
   fillName('mainArgName', constructorJson, funcArgNameLangToStyleMap);
 }
 
+function fillConstructorInitializedProperties(interfaceJson, constructorJson) {
+  const nameKey = 'initializedProperties';
+  const nameKeyGen = `${nameKey}.gen`;
+  let result = {
+    canBeNoexcept: true,
+    canBeDefault: true
+  };
+  if (typeof constructorJson[nameKey] === 'undefined') {
+    constructorJson[nameKey] = [];
+    constructorJson[nameKeyGen] = true;
+    for (const propertyJson of getProperties(interfaceJson)) {
+      if (!getPropertyStatic(propertyJson) && getPropertyHasMemberVar(propertyJson)) {
+        const type = propertyJson.type;
+        if (!isPrimitiveType(type)) {
+          result.canBeNoexcept = false;
+        }
+        const defaultValue = getPropertyDefaultValue(propertyJson);
+        const value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+        const obj = {
+          name: propertyJson.name,
+          'name.gen': true,
+          value: value,
+          'value.gen': true
+        };
+        constructorJson[nameKey].push(obj);
+      }
+    }
+  } else if (!Array.isArray(constructorJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  } else {
+    constructorJson[nameKeyGen] = false;
+    for (const initializedPropertyJson of constructorJson[nameKey]) {
+      const name = initializedPropertyJson.name;
+      initializedPropertyJson['name.gen'] = false;
+      if (typeof name === 'undefined') {
+        throw new Error(`Missing 'name' key.`);
+      } else if (typeof name !== 'string') {
+        throw new Error(`Invalid 'name' key type.`);
+      }
+      let foundPropertyJson = undefined;
+      for (const propertyJson of getProperties(interfaceJson)) {
+        if (propertyJson.name === name) {
+          foundPropertyJson = propertyJson;
+          break;
+        }
+      }
+      if (foundPropertyJson === undefined) {
+        throw new Error(`Property '${name}' does not exist.`);
+      }
+      if (getPropertyStatic(foundPropertyJson)) {
+        throw new Error(`Property '${name}' is static.`);
+      }
+      if (!getPropertyHasMemberVar(foundPropertyJson)) {
+        throw new Error(`Property '${name}' does not have a member variable.`);
+      }
+      const type = foundPropertyJson.type;
+      if (!isPrimitiveType(type)) {
+        result.canBeNoexcept = false;
+      }
+      if (typeof initializedPropertyJson.value === 'undefined') {
+        const defaultValue = getPropertyDefaultValue(foundPropertyJson);
+        const value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+        initializedPropertyJson.value = value;
+        initializedPropertyJson['value.gen'] = true;
+      } else if (typeof initializedPropertyJson.value !== 'string') {
+        throw new Error(`Invalid 'value' key type.`);
+      } else {
+        initializedPropertyJson['value.gen'] = false;
+      }
+    }
+  }
+  for (const initializedPropertyJson of constructorJson[nameKey]) {
+    if (initializedPropertyJson.value.length > 0) {
+      result.canBeDefault = false;
+    }
+  }
+  return result;
+}
+
 function fillParameterlessConstructor(interfaceJson) {
   const nameKey = 'parameterlessConstructor';
   const nameKeyGen = `${nameKey}.gen`;
@@ -972,10 +1069,17 @@ function fillParameterlessConstructor(interfaceJson) {
   if (typeof interfaceJson[nameKey] !== 'object') {
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
+  const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
-  fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.deleted : ConstructorDefinition.default);
+  const canBeDefault = fcipResult.canBeDefault;
+  fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.deleted : (canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined));
   fillConstructorVisibility(interfaceJson[nameKey], classStatic ? Visibility.private : Visibility.public);
-  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  const canBeNoexcept = fcipResult.canBeNoexcept;
+  if (canBeNoexcept) {
+    fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  } else {
+    fillConstructorNoexcept(interfaceJson[nameKey], false);
+  }
 }
 
 function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
@@ -1064,6 +1168,7 @@ module.exports = {
   getConstructorNoexcept,
   defaultFuncArgNameLangToTransformationMap,
   getCopyOrMoveConstructorMainArgName,
+  getConstructorInitializedProperties,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
@@ -1085,6 +1190,7 @@ module.exports = {
   getPropertyStatic,
   isIntType,
   isPrimitiveType,
+  getTypeImplicitDefaultValue,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
   defaultPropSetterNameLangToTransformationMap,
@@ -1113,6 +1219,7 @@ module.exports = {
   fillConstructorNoexcept,
   defaultFuncArgNameLangToStyleMap,
   fillCopyOrMoveConstructorMainArgName,
+  fillConstructorInitializedProperties,
   fillParameterlessConstructor,
   fillCopyConstructor,
   fillMoveConstructor

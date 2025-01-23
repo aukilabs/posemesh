@@ -352,7 +352,33 @@ function generateSource(interfaceName, interfaceJson) {
   let pCtor = undefined;
   switch (pCtorDefinition) {
     case util.ConstructorDefinition.defined:
-      pCtor = `${name}::${name}()${pCtorNoexceptExt} { }\n`;
+      {
+        let membInitExt = '';
+        for (const initProp of util.getConstructorInitializedProperties(parameterlessConstructor)) {
+          const initPropName = initProp.name;
+          const initPropValue = initProp.value;
+          if (initPropValue.length > 0) {
+            let foundProperty = undefined;
+            for (const prop of util.getProperties(interfaceJson)) {
+              if (prop.name === initPropName) {
+                foundProperty = prop;
+                break;
+              }
+            }
+            const propName = util.getPropertyName(foundProperty, util.CXX);
+            if (membInitExt.length > 0) {
+              membInitExt += `\n    , ${propName}(${initPropValue})`;
+            } else {
+              membInitExt += `\n    : ${propName}(${initPropValue})`;
+            }
+          }
+        }
+        let bodyExt = ' { }';
+        if (membInitExt) {
+          bodyExt = '\n{\n}';
+        }
+        pCtor = `${name}::${name}()${pCtorNoexceptExt}${membInitExt}${bodyExt}\n`;
+      }
       break;
     case util.ConstructorDefinition.default:
       pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
