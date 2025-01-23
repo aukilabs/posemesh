@@ -345,123 +345,288 @@ function generateSource(interfaceName, interfaceJson) {
   let privateCtors = '', privateMethods = '', privateFuncs = '', privateStatVars = '';
 
   const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
-  const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
-  const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
-  const pCtorNoexcept = util.getConstructorNoexcept(parameterlessConstructor);
-  const pCtorNoexceptExt = pCtorNoexcept ? ' noexcept' : '';
-  let pCtor = undefined;
-  switch (pCtorDefinition) {
-    case util.ConstructorDefinition.defined:
-      {
-        let membInitExt = '';
-        for (const initProp of util.getConstructorInitializedProperties(parameterlessConstructor)) {
-          const initPropName = initProp.name;
-          const initPropValue = initProp.value;
-          if (initPropValue.length > 0) {
-            let foundProperty = undefined;
-            for (const prop of util.getProperties(interfaceJson)) {
-              if (prop.name === initPropName) {
-                foundProperty = prop;
-                break;
+  const pCtorCustom = util.getConstructorCustom(parameterlessConstructor);
+  if (!pCtorCustom) {
+    const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
+    const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
+    const pCtorNoexcept = util.getConstructorNoexcept(parameterlessConstructor);
+    const pCtorNoexceptExt = pCtorNoexcept ? ' noexcept' : '';
+    let pCtor = undefined;
+    switch (pCtorDefinition) {
+      case util.ConstructorDefinition.defined:
+        {
+          let membInitExt = '';
+          let initializeInBodyCode = [];
+          for (const initProp of util.getConstructorInitializedProperties(parameterlessConstructor)) {
+            const initPropName = initProp.name;
+            const initPropValue = initProp.value;
+            if (initPropValue.length > 0) {
+              let foundProperty = undefined;
+              for (const prop of util.getProperties(interfaceJson)) {
+                if (prop.name === initPropName) {
+                  foundProperty = prop;
+                  break;
+                }
+              }
+              const propName = util.getPropertyName(foundProperty, util.CXX);
+              if (initProp.initializeInBody) {
+                initializeInBodyCode.push(`${propName} = ${initPropValue};`);
+              } else {
+                if (membInitExt.length > 0) {
+                  membInitExt += `\n    , ${propName}(${initPropValue})`;
+                } else {
+                  membInitExt += `\n    : ${propName}(${initPropValue})`;
+                }
+              }
+              if (new RegExp('\\bstd\s*::\s*move\\b').test(initPropValue)) {
+                includesFirst.add('#include <utility>');
               }
             }
-            const propName = util.getPropertyName(foundProperty, util.CXX);
-            if (membInitExt.length > 0) {
-              membInitExt += `\n    , ${propName}(${initPropValue})`;
-            } else {
-              membInitExt += `\n    : ${propName}(${initPropValue})`;
-            }
           }
+          let bodyExt = ' { }';
+          const codeFront = util.getConstructorCodeFront(parameterlessConstructor);
+          const codeBack = util.getConstructorCodeBack(parameterlessConstructor);
+          if (codeFront.length > 0 || initializeInBodyCode.length > 0 || codeBack.length > 0) {
+            bodyExt = '\n{';
+            for (const line of codeFront) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of initializeInBodyCode) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of codeBack) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            bodyExt += '\n}';
+          } else if (membInitExt) {
+            bodyExt = '\n{\n}';
+          }
+          pCtor = `${name}::${name}()${pCtorNoexceptExt}${membInitExt}${bodyExt}\n`;
         }
-        let bodyExt = ' { }';
-        if (membInitExt) {
-          bodyExt = '\n{\n}';
-        }
-        pCtor = `${name}::${name}()${pCtorNoexceptExt}${membInitExt}${bodyExt}\n`;
+        break;
+      case util.ConstructorDefinition.default:
+        pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
+        break;
+    }
+    if (typeof pCtor !== 'undefined') {
+      switch (pCtorVisibility) {
+        case util.Visibility.public:
+          if (publicCtors.length > 0) { publicCtors += '\n'; }
+          publicCtors += pCtor;
+          break;
+        case util.Visibility.protected:
+          if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+          protectedCtors += pCtor;
+          break;
+        case util.Visibility.private:
+          if (privateCtors.length > 0) { privateCtors += '\n'; }
+          privateCtors += pCtor;
+          break;
       }
-      break;
-    case util.ConstructorDefinition.default:
-      pCtor = `${name}::${name}()${pCtorNoexceptExt} = default;\n`;
-      break;
-  }
-  if (typeof pCtor !== 'undefined') {
-    switch (pCtorVisibility) {
-      case util.Visibility.public:
-        if (publicCtors.length > 0) { publicCtors += '\n'; }
-        publicCtors += pCtor;
-        break;
-      case util.Visibility.protected:
-        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
-        protectedCtors += pCtor;
-        break;
-      case util.Visibility.private:
-        if (privateCtors.length > 0) { privateCtors += '\n'; }
-        privateCtors += pCtor;
-        break;
     }
   }
 
   const copyConstructor = util.getClassCopyConstructor(interfaceJson);
-  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
-  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
-  const cCtorNoexcept = util.getConstructorNoexcept(copyConstructor);
-  const cCtorNoexceptExt = cCtorNoexcept ? ' noexcept' : '';
-  const cCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.CXX);
-  let cCtor = undefined;
-  switch (cCtorDefinition) {
-    case util.ConstructorDefinition.defined:
-      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} { }\n`;
-      break;
-    case util.ConstructorDefinition.default:
-      cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = default;\n`;
-      break;
-  }
-  if (typeof cCtor !== 'undefined') {
-    switch (cCtorVisibility) {
-      case util.Visibility.public:
-        if (publicCtors.length > 0) { publicCtors += '\n'; }
-        publicCtors += cCtor;
+  const cCtorCustom = util.getConstructorCustom(copyConstructor);
+  if (!cCtorCustom) {
+    const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+    const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+    const cCtorNoexcept = util.getConstructorNoexcept(copyConstructor);
+    const cCtorNoexceptExt = cCtorNoexcept ? ' noexcept' : '';
+    const cCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.CXX);
+    let cCtor = undefined;
+    switch (cCtorDefinition) {
+      case util.ConstructorDefinition.defined:
+        {
+          let membInitExt = '';
+          let initializeInBodyCode = [];
+          for (const initProp of util.getConstructorInitializedProperties(copyConstructor)) {
+            const initPropName = initProp.name;
+            const initPropValue = initProp.value;
+            if (initPropValue.length > 0) {
+              let foundProperty = undefined;
+              for (const prop of util.getProperties(interfaceJson)) {
+                if (prop.name === initPropName) {
+                  foundProperty = prop;
+                  break;
+                }
+              }
+              const propName = util.getPropertyName(foundProperty, util.CXX);
+              const initPropValueEval = initPropValue.replaceAll(initProp.valuePlaceholder, `${cCtorMainArgName}.${propName}`);
+              if (initProp.initializeInBody) {
+                initializeInBodyCode.push(`${propName} = ${initPropValueEval};`);
+              } else {
+                if (membInitExt.length > 0) {
+                  membInitExt += `\n    , ${propName}(${initPropValueEval})`;
+                } else {
+                  membInitExt += `\n    : ${propName}(${initPropValueEval})`;
+                }
+              }
+              if (new RegExp('\\bstd\s*::\s*move\\b').test(initPropValueEval)) {
+                includesFirst.add('#include <utility>');
+              }
+            }
+          }
+          let bodyExt = ' { }';
+          const codeFront = util.getConstructorCodeFront(copyConstructor);
+          const codeBack = util.getConstructorCodeBack(copyConstructor);
+          if (codeFront.length > 0 || initializeInBodyCode.length > 0 || codeBack.length > 0) {
+            bodyExt = '\n{';
+            for (const line of codeFront) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of initializeInBodyCode) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of codeBack) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            bodyExt += '\n}';
+          } else if (membInitExt) {
+            bodyExt = '\n{\n}';
+          }
+          cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt}${membInitExt}${bodyExt}\n`;
+        }
         break;
-      case util.Visibility.protected:
-        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
-        protectedCtors += cCtor;
+      case util.ConstructorDefinition.default:
+        cCtor = `${name}::${name}(const ${name}& ${cCtorMainArgName})${cCtorNoexceptExt} = default;\n`;
         break;
-      case util.Visibility.private:
-        if (privateCtors.length > 0) { privateCtors += '\n'; }
-        privateCtors += cCtor;
-        break;
+    }
+    if (typeof cCtor !== 'undefined') {
+      switch (cCtorVisibility) {
+        case util.Visibility.public:
+          if (publicCtors.length > 0) { publicCtors += '\n'; }
+          publicCtors += cCtor;
+          break;
+        case util.Visibility.protected:
+          if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+          protectedCtors += cCtor;
+          break;
+        case util.Visibility.private:
+          if (privateCtors.length > 0) { privateCtors += '\n'; }
+          privateCtors += cCtor;
+          break;
+      }
     }
   }
 
   const moveConstructor = util.getClassMoveConstructor(interfaceJson);
-  const mCtorDefinition = util.getConstructorDefinition(moveConstructor);
-  const mCtorVisibility = util.getConstructorVisibility(moveConstructor);
-  const mCtorNoexcept = util.getConstructorNoexcept(moveConstructor);
-  const mCtorNoexceptExt = mCtorNoexcept ? ' noexcept' : '';
-  const mCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(moveConstructor, util.CXX);
-  let mCtor = undefined;
-  switch (mCtorDefinition) {
-    case util.ConstructorDefinition.defined:
-      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} { }\n`;
-      break;
-    case util.ConstructorDefinition.default:
-      mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = default;\n`;
-      break;
-  }
-  if (typeof mCtor !== 'undefined') {
-    switch (mCtorVisibility) {
-      case util.Visibility.public:
-        if (publicCtors.length > 0) { publicCtors += '\n'; }
-        publicCtors += mCtor;
+  const mCtorCustom = util.getConstructorCustom(moveConstructor);
+  if (!mCtorCustom) {
+    const mCtorDefinition = util.getConstructorDefinition(moveConstructor);
+    const mCtorVisibility = util.getConstructorVisibility(moveConstructor);
+    const mCtorNoexcept = util.getConstructorNoexcept(moveConstructor);
+    const mCtorNoexceptExt = mCtorNoexcept ? ' noexcept' : '';
+    const mCtorMainArgName = util.getCopyOrMoveConstructorMainArgName(moveConstructor, util.CXX);
+    let mCtor = undefined;
+    switch (mCtorDefinition) {
+      case util.ConstructorDefinition.defined:
+        {
+          let membInitExt = '';
+          let initializeInBodyCode = [];
+          for (const initProp of util.getConstructorInitializedProperties(moveConstructor)) {
+            const initPropName = initProp.name;
+            const initPropValue = initProp.value;
+            if (initPropValue.length > 0) {
+              let foundProperty = undefined;
+              for (const prop of util.getProperties(interfaceJson)) {
+                if (prop.name === initPropName) {
+                  foundProperty = prop;
+                  break;
+                }
+              }
+              const propName = util.getPropertyName(foundProperty, util.CXX);
+              const initPropValueEval = initPropValue.replaceAll(initProp.valuePlaceholder, `${mCtorMainArgName}.${propName}`);
+              if (initProp.initializeInBody) {
+                initializeInBodyCode.push(`${propName} = ${initPropValueEval};`);
+              } else {
+                if (membInitExt.length > 0) {
+                  membInitExt += `\n    , ${propName}(${initPropValueEval})`;
+                } else {
+                  membInitExt += `\n    : ${propName}(${initPropValueEval})`;
+                }
+              }
+              if (new RegExp('\\bstd\s*::\s*move\\b').test(initPropValueEval)) {
+                includesFirst.add('#include <utility>');
+              }
+            }
+          }
+          let bodyExt = ' { }';
+          const codeFront = util.getConstructorCodeFront(moveConstructor);
+          const codeBack = util.getConstructorCodeBack(moveConstructor);
+          if (codeFront.length > 0 || initializeInBodyCode.length > 0 || codeBack.length > 0) {
+            bodyExt = '\n{';
+            for (const line of codeFront) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of initializeInBodyCode) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            for (const line of codeBack) {
+              if (line.length > 0) {
+                bodyExt += `\n    ${line}`;
+              } else {
+                bodyExt += '\n';
+              }
+            }
+            bodyExt += '\n}';
+          } else if (membInitExt) {
+            bodyExt = '\n{\n}';
+          }
+          mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt}${membInitExt}${bodyExt}\n`;
+        }
         break;
-      case util.Visibility.protected:
-        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
-        protectedCtors += mCtor;
+      case util.ConstructorDefinition.default:
+        mCtor = `${name}::${name}(${name}&& ${mCtorMainArgName})${mCtorNoexceptExt} = default;\n`;
         break;
-      case util.Visibility.private:
-        if (privateCtors.length > 0) { privateCtors += '\n'; }
-        privateCtors += mCtor;
-        break;
+    }
+    if (typeof mCtor !== 'undefined') {
+      switch (mCtorVisibility) {
+        case util.Visibility.public:
+          if (publicCtors.length > 0) { publicCtors += '\n'; }
+          publicCtors += mCtor;
+          break;
+        case util.Visibility.protected:
+          if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+          protectedCtors += mCtor;
+          break;
+        case util.Visibility.private:
+          if (privateCtors.length > 0) { privateCtors += '\n'; }
+          privateCtors += mCtor;
+          break;
+      }
     }
   }
 

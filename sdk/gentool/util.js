@@ -160,6 +160,18 @@ function getConstructorInitializedProperties(constructorJson) {
   return constructorJson.initializedProperties;
 }
 
+function getConstructorCodeFront(constructorJson) {
+  return constructorJson.codeFront;
+}
+
+function getConstructorCodeBack(constructorJson) {
+  return constructorJson.codeBack;
+}
+
+function getConstructorCustom(constructorJson) {
+  return constructorJson.custom;
+}
+
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
   if (typeof interfaceJson.aliases === 'undefined') {
     throw new Error(`Missing 'aliases' key.`);
@@ -378,6 +390,32 @@ function getTypeImplicitDefaultValue(type) {
       return '0.0';
     default:
       return '';
+  }
+}
+
+function getTypeMembVarCopyOp(type, membVar) {
+  if (isIntType(type)) {
+    return membVar;
+  }
+  switch (type) {
+    case 'float':
+    case 'double':
+      return membVar;
+    default:
+      return membVar;
+  }
+}
+
+function getTypeMembVarMoveOp(type, membVar) {
+  if (isIntType(type)) {
+    return membVar;
+  }
+  switch (type) {
+    case 'float':
+    case 'double':
+      return membVar;
+    default:
+      return `std::move(${membVar})`;
   }
 }
 
@@ -978,7 +1016,13 @@ function fillCopyOrMoveConstructorMainArgName(interfaceJson, constructorJson, fu
   fillName('mainArgName', constructorJson, funcArgNameLangToStyleMap);
 }
 
-function fillConstructorInitializedProperties(interfaceJson, constructorJson) {
+const FillConstructorInitializedPropertiesType = {
+  parameterlessConstructor: 1,
+  copyConstructor: 2,
+  moveConstructor: 3
+};
+
+function fillConstructorInitializedProperties(interfaceJson, constructorJson, fillConstructorInitializedPropertiesType) {
   const nameKey = 'initializedProperties';
   const nameKeyGen = `${nameKey}.gen`;
   let result = {
@@ -994,13 +1038,32 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson) {
         if (!isPrimitiveType(type)) {
           result.canBeNoexcept = false;
         }
-        const defaultValue = getPropertyDefaultValue(propertyJson);
-        const value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+        let value = undefined;
+        switch (fillConstructorInitializedPropertiesType) {
+          case FillConstructorInitializedPropertiesType.parameterlessConstructor:
+            {
+              const defaultValue = getPropertyDefaultValue(propertyJson);
+              value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+            }
+            break;
+          case FillConstructorInitializedPropertiesType.copyConstructor:
+            value = getTypeMembVarCopyOp(type, '@');
+            break;
+          case FillConstructorInitializedPropertiesType.moveConstructor:
+            value = getTypeMembVarMoveOp(type, '@');
+            break;
+          default:
+            throw new Error(`Unhandled 'FillConstructorInitializedPropertiesType' value: ${fillConstructorInitializedPropertiesType}`);
+        }
         const obj = {
           name: propertyJson.name,
           'name.gen': true,
           value: value,
-          'value.gen': true
+          'value.gen': true,
+          valuePlaceholder: '@',
+          'valuePlaceholder.gen': true,
+          initializeInBody: false,
+          'initializeInBody.gen': true
         };
         constructorJson[nameKey].push(obj);
       }
@@ -1037,9 +1100,40 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson) {
       if (!isPrimitiveType(type)) {
         result.canBeNoexcept = false;
       }
+      if (typeof initializedPropertyJson.valuePlaceholder === 'undefined') {
+        initializedPropertyJson['valuePlaceholder'] = '@';
+        initializedPropertyJson['valuePlaceholder.gen'] = true;
+      } else if (typeof initializedPropertyJson.valuePlaceholder !== 'string') {
+        throw new Error(`Invalid 'valuePlaceholder' key type.`);
+      } else {
+        initializedPropertyJson['valuePlaceholder.gen'] = false;
+      }
+      if (typeof initializedPropertyJson.initializeInBody === 'undefined') {
+        initializedPropertyJson['initializeInBody'] = false;
+        initializedPropertyJson['initializeInBody.gen'] = true;
+      } else if (typeof initializedPropertyJson.initializeInBody !== 'boolean') {
+        throw new Error(`Invalid 'initializeInBody' key type.`);
+      } else {
+        initializedPropertyJson['initializeInBody.gen'] = false;
+      }
       if (typeof initializedPropertyJson.value === 'undefined') {
-        const defaultValue = getPropertyDefaultValue(foundPropertyJson);
-        const value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+        let value = undefined;
+        switch (fillConstructorInitializedPropertiesType) {
+          case FillConstructorInitializedPropertiesType.parameterlessConstructor:
+            {
+              const defaultValue = getPropertyDefaultValue(foundPropertyJson);
+              value = defaultValue.length > 0 ? defaultValue : getTypeImplicitDefaultValue(type);
+            }
+            break;
+          case FillConstructorInitializedPropertiesType.copyConstructor:
+            value = getTypeMembVarCopyOp(type, initializedPropertyJson.valuePlaceholder);
+            break;
+          case FillConstructorInitializedPropertiesType.moveConstructor:
+            value = getTypeMembVarMoveOp(type, initializedPropertyJson.valuePlaceholder);
+            break;
+          default:
+            throw new Error(`Unhandled 'FillConstructorInitializedPropertiesType' value: ${fillConstructorInitializedPropertiesType}`);
+        }
         initializedPropertyJson.value = value;
         initializedPropertyJson['value.gen'] = true;
       } else if (typeof initializedPropertyJson.value !== 'string') {
@@ -1050,11 +1144,83 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson) {
     }
   }
   for (const initializedPropertyJson of constructorJson[nameKey]) {
-    if (initializedPropertyJson.value.length > 0) {
-      result.canBeDefault = false;
+    let foundPropertyJson = undefined;
+    for (const propertyJson of getProperties(interfaceJson)) {
+      if (propertyJson.name === initializedPropertyJson.name) {
+        foundPropertyJson = propertyJson;
+        break;
+      }
+    }
+    switch (fillConstructorInitializedPropertiesType) {
+      case FillConstructorInitializedPropertiesType.parameterlessConstructor:
+        if (initializedPropertyJson.value.length > 0) {
+          result.canBeDefault = false;
+        }
+        break;
+      case FillConstructorInitializedPropertiesType.copyConstructor:
+        if (initializedPropertyJson.value.length > 0 && initializedPropertyJson.value !== getTypeMembVarCopyOp(foundPropertyJson.type, initializedPropertyJson.valuePlaceholder)) {
+          result.canBeDefault = false;
+        }
+        break;
+      case FillConstructorInitializedPropertiesType.moveConstructor:
+        if (initializedPropertyJson.value.length > 0 && initializedPropertyJson.value !== getTypeMembVarMoveOp(foundPropertyJson.type, initializedPropertyJson.valuePlaceholder)) {
+          result.canBeDefault = false;
+        }
+        break;
+      default:
+        throw new Error(`Unhandled 'FillConstructorInitializedPropertiesType' value: ${fillConstructorInitializedPropertiesType}`);
     }
   }
   return result;
+}
+
+function fillConstructorCodeGeneric(nameKey, constructorJson) {
+  const nameKeyGen = `${nameKey}.gen`;
+  let result = {
+    canBeDefault: true
+  };
+  if (typeof constructorJson[nameKey] === 'undefined') {
+    constructorJson[nameKey] = [];
+    constructorJson[nameKeyGen] = true;
+  } else if (!Array.isArray(constructorJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  } else {
+    for (const line of constructorJson[nameKey]) {
+      result.canBeDefault = false;
+      if (typeof line !== 'string') {
+        throw new Error(`Invalid '${nameKey}' key type.`);
+      }
+    }
+    constructorJson[nameKeyGen] = false;
+  }
+  return result;
+}
+
+function fillConstructorCodeFront(constructorJson) {
+  return fillConstructorCodeGeneric('codeFront', constructorJson);
+}
+
+function fillConstructorCodeBack(constructorJson) {
+  return fillConstructorCodeGeneric('codeBack', constructorJson);
+}
+
+function fillConstructorCode(constructorJson) {
+  const resultFront = fillConstructorCodeFront(constructorJson);
+  const resultBack = fillConstructorCodeBack(constructorJson);
+  return {
+    canBeDefault: resultFront.canBeDefault && resultBack.canBeDefault
+  };
+}
+
+function fillConstructorCustom(constructorJson) {
+  if (typeof constructorJson.custom === 'undefined') {
+    constructorJson.custom = false;
+    constructorJson['custom.gen'] = true;
+  } else if (typeof constructorJson.custom !== 'boolean') {
+    throw new Error(`Invalid 'custom' key type.`);
+  } else {
+    constructorJson['custom.gen'] = false;
+  }
 }
 
 function fillParameterlessConstructor(interfaceJson) {
@@ -1069,9 +1235,10 @@ function fillParameterlessConstructor(interfaceJson) {
   if (typeof interfaceJson[nameKey] !== 'object') {
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
-  const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey]);
+  const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey], FillConstructorInitializedPropertiesType.parameterlessConstructor);
+  const fccResult = fillConstructorCode(interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
-  const canBeDefault = fcipResult.canBeDefault;
+  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault;
   fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.deleted : (canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined));
   fillConstructorVisibility(interfaceJson[nameKey], classStatic ? Visibility.private : Visibility.public);
   const canBeNoexcept = fcipResult.canBeNoexcept;
@@ -1080,6 +1247,7 @@ function fillParameterlessConstructor(interfaceJson) {
   } else {
     fillConstructorNoexcept(interfaceJson[nameKey], false);
   }
+  fillConstructorCustom(interfaceJson[nameKey]);
 }
 
 function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
@@ -1094,16 +1262,25 @@ function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
   if (typeof interfaceJson[nameKey] !== 'object') {
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
+  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
+  const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey], FillConstructorInitializedPropertiesType.copyConstructor);
+  const fccResult = fillConstructorCode(interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
   const classCopyable = getClassCopyable(interfaceJson);
+  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault;
   if (classCopyable) {
-    fillConstructorDefinition(interfaceJson[nameKey], ConstructorDefinition.default);
+    fillConstructorDefinition(interfaceJson[nameKey], canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined);
   } else {
     fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.omitted : ConstructorDefinition.deleted);
   }
   fillConstructorVisibility(interfaceJson[nameKey], Visibility.public);
-  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
-  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
+  const canBeNoexcept = fcipResult.canBeNoexcept;
+  if (canBeNoexcept) {
+    fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  } else {
+    fillConstructorNoexcept(interfaceJson[nameKey], false);
+  }
+  fillConstructorCustom(interfaceJson[nameKey]);
 }
 
 function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
@@ -1118,16 +1295,25 @@ function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
   if (typeof interfaceJson[nameKey] !== 'object') {
     throw new Error(`Invalid '${nameKey}' key type.`);
   }
+  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
+  const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey], FillConstructorInitializedPropertiesType.moveConstructor);
+  const fccResult = fillConstructorCode(interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
   const classMovable = getClassMovable(interfaceJson);
+  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault;
   if (classMovable) {
-    fillConstructorDefinition(interfaceJson[nameKey], ConstructorDefinition.default);
+    fillConstructorDefinition(interfaceJson[nameKey], canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined);
   } else {
     fillConstructorDefinition(interfaceJson[nameKey], classStatic ? ConstructorDefinition.omitted : ConstructorDefinition.deleted);
   }
   fillConstructorVisibility(interfaceJson[nameKey], Visibility.public);
-  fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
-  fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
+  const canBeNoexcept = fcipResult.canBeNoexcept;
+  if (canBeNoexcept) {
+    fillConstructorNoexcept(interfaceJson[nameKey], getConstructorDefinition(interfaceJson[nameKey]) !== ConstructorDefinition.deleted);
+  } else {
+    fillConstructorNoexcept(interfaceJson[nameKey], false);
+  }
+  fillConstructorCustom(interfaceJson[nameKey]);
 }
 
 module.exports = {
@@ -1169,6 +1355,9 @@ module.exports = {
   defaultFuncArgNameLangToTransformationMap,
   getCopyOrMoveConstructorMainArgName,
   getConstructorInitializedProperties,
+  getConstructorCodeFront,
+  getConstructorCodeBack,
+  getConstructorCustom,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
@@ -1191,6 +1380,8 @@ module.exports = {
   isIntType,
   isPrimitiveType,
   getTypeImplicitDefaultValue,
+  getTypeMembVarCopyOp,
+  getTypeMembVarMoveOp,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
   defaultPropSetterNameLangToTransformationMap,
@@ -1219,7 +1410,13 @@ module.exports = {
   fillConstructorNoexcept,
   defaultFuncArgNameLangToStyleMap,
   fillCopyOrMoveConstructorMainArgName,
+  FillConstructorInitializedPropertiesType,
   fillConstructorInitializedProperties,
+  fillConstructorCodeGeneric,
+  fillConstructorCodeFront,
+  fillConstructorCodeBack,
+  fillConstructorCode,
+  fillConstructorCustom,
   fillParameterlessConstructor,
   fillCopyConstructor,
   fillMoveConstructor
