@@ -54,6 +54,12 @@ const ConstructorDefinition = {
   omitted: 'omitted'
 };
 
+const DestructorDefinition = {
+  defined: 'defined',
+  default: 'default',
+  omitted: 'omitted'
+};
+
 function getName(key, json) {
   if (typeof json[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -182,6 +188,26 @@ function getConstructorCustom(constructorJson) {
 
 function getConstructorCustomOperator(constructorJson) {
   return constructorJson.customOperator;
+}
+
+function getDestructorVirtual(destructorJson) {
+  return destructorJson.virtual;
+}
+
+function getDestructorCode(destructorJson) {
+  return destructorJson.code;
+}
+
+function getDestructorDefinition(destructorJson) {
+  return destructorJson.definition;
+}
+
+function getDestructorVisibility(destructorJson) {
+  return destructorJson.visibility;
+}
+
+function getDestructorCustom(destructorJson) {
+  return destructorJson.custom;
 }
 
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
@@ -1369,6 +1395,93 @@ function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
   fillConstructorCustomOperator(interfaceJson[nameKey]);
 }
 
+function fillDestructorVirtual(interfaceJson, destructorJson) {
+  if (typeof destructorJson.virtual === 'undefined') {
+    destructorJson.virtual = false; // TODO: perhaps determine from derived class(es)
+    destructorJson['virtual.gen'] = true;
+  } else if (typeof destructorJson.virtual !== 'boolean') {
+    throw new Error(`Invalid 'virtual' key type.`);
+  } else {
+    destructorJson['virtual.gen'] = false;
+  }
+}
+
+function fillDestructorCode(destructorJson) {
+  fillConstructorCodeGeneric('code', destructorJson);
+}
+
+function fillDestructorDefinition(destructorJson, defaultIfNotSet) {
+  if (typeof destructorJson.definition === 'undefined') {
+    destructorJson.definition = defaultIfNotSet;
+    destructorJson['definition.gen'] = true;
+  } else if (typeof destructorJson.definition !== 'string') {
+    throw new Error(`Invalid 'definition' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(DestructorDefinition)) {
+      if (destructorJson.definition === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'definition' value: ${destructorJson.definition}`);
+    }
+    destructorJson['definition.gen'] = false;
+  }
+}
+
+function fillDestructorVisibility(destructorJson, defaultIfNotSet) {
+  if (typeof destructorJson.visibility === 'undefined') {
+    destructorJson.visibility = defaultIfNotSet;
+    destructorJson['visibility.gen'] = true;
+  } else if (typeof destructorJson.visibility !== 'string') {
+    throw new Error(`Invalid 'visibility' key type.`);
+  } else {
+    let found = false;
+    for (const [key, value] of Object.entries(Visibility)) {
+      if (destructorJson.visibility === value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error(`Unknown 'visibility' value: ${destructorJson.visibility}`);
+    }
+    destructorJson['visibility.gen'] = false;
+  }
+}
+
+function fillDestructorCustom(destructorJson) {
+  if (typeof destructorJson.custom === 'undefined') {
+    destructorJson.custom = false;
+    destructorJson['custom.gen'] = true;
+  } else if (typeof destructorJson.custom !== 'boolean') {
+    throw new Error(`Invalid 'custom' key type.`);
+  } else {
+    destructorJson['custom.gen'] = false;
+  }
+}
+
+function fillDestructor(interfaceJson) {
+  const nameKey = 'destructor';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = {};
+    interfaceJson[nameKeyGen] = true;
+  } else {
+    interfaceJson[nameKeyGen] = false;
+  }
+  if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  fillDestructorVirtual(interfaceJson, interfaceJson[nameKey]);
+  fillDestructorCode(interfaceJson[nameKey]);
+  fillDestructorDefinition(interfaceJson[nameKey], interfaceJson[nameKey].code.length > 0 ? DestructorDefinition.defined : DestructorDefinition.default);
+  fillDestructorVisibility(interfaceJson[nameKey], Visibility.public);
+  fillDestructorCustom(interfaceJson[nameKey]);
+}
+
 module.exports = {
   NameStyle,
   lower_case: NameStyle.lower_case,
@@ -1389,6 +1502,7 @@ module.exports = {
   MethodMode,
   Visibility,
   ConstructorDefinition,
+  DestructorDefinition,
   getName,
   getStyleName,
   getLangName,
@@ -1414,6 +1528,11 @@ module.exports = {
   getConstructorOperatorCodeBack,
   getConstructorCustom,
   getConstructorCustomOperator,
+  getDestructorVirtual,
+  getDestructorCode,
+  getDestructorDefinition,
+  getDestructorVisibility,
+  getDestructorCustom,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
@@ -1479,5 +1598,11 @@ module.exports = {
   fillConstructorCustomOperator,
   fillParameterlessConstructor,
   fillCopyConstructor,
-  fillMoveConstructor
+  fillMoveConstructor,
+  fillDestructorVirtual,
+  fillDestructorCode,
+  fillDestructorDefinition,
+  fillDestructorVisibility,
+  fillDestructorCustom,
+  fillDestructor
 };

@@ -145,6 +145,32 @@ function generateHeader(interfaceName, interfaceJson) {
     }
   }
 
+  const destructor = interfaceJson.destructor;
+  const dtorVirtual = util.getDestructorVirtual(destructor);
+  const dtorVirtualPfx = dtorVirtual ? 'virtual ' : '';
+  const dtorDefinition = util.getDestructorDefinition(destructor);
+  const dtorVisibility = util.getDestructorVisibility(destructor);
+  let dtor = undefined;
+  switch (dtorDefinition) {
+    case util.DestructorDefinition.defined:
+    case util.DestructorDefinition.default:
+      dtor = `    ${dtorVirtualPfx}PSM_API ~${name}();\n`;
+      break;
+  }
+  if (typeof dtor !== 'undefined') {
+    switch (dtorVisibility) {
+      case util.Visibility.public:
+        publicCtors += dtor;
+        break;
+      case util.Visibility.protected:
+        protectedCtors += dtor;
+        break;
+      case util.Visibility.private:
+        privateCtors += dtor;
+        break;
+    }
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propTypeRaw = propertyJson.type;
@@ -789,6 +815,48 @@ function generateSource(interfaceName, interfaceJson) {
           privateOperators += mAsOp;
           break;
       }
+    }
+  }
+
+  const destructor = interfaceJson.destructor;
+  const dtorCode = util.getDestructorCode(destructor);
+  const dtorDefinition = util.getDestructorDefinition(destructor);
+  const dtorVisibility = util.getDestructorVisibility(destructor);
+  const dtorCustom = util.getDestructorCustom(destructor);
+  let dtor = undefined;
+  if (!dtorCustom) {
+    switch (dtorDefinition) {
+      case util.DestructorDefinition.defined:
+        dtor = `${name}::~${name}()\n`;
+        dtor += '{\n';
+        for (const line of dtorCode) {
+          if (line.length > 0) {
+            dtor += `    ${line}\n`;
+          } else {
+            dtor += '\n';
+          }
+        }
+        dtor += '}\n';
+        break;
+      case util.DestructorDefinition.default:
+        dtor = `${name}::~${name}() = default;\n`;
+        break;
+    }
+  }
+  if (typeof dtor !== 'undefined') {
+    switch (dtorVisibility) {
+      case util.Visibility.public:
+        if (publicCtors.length > 0) { publicCtors += '\n'; }
+        publicCtors += dtor;
+        break;
+      case util.Visibility.protected:
+        if (protectedCtors.length > 0) { protectedCtors += '\n'; }
+        protectedCtors += dtor;
+        break;
+      case util.Visibility.private:
+        if (privateCtors.length > 0) { privateCtors += '\n'; }
+        privateCtors += dtor;
+        break;
     }
   }
 
