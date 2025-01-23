@@ -3,6 +3,42 @@ const generateInterfaceCXX = require('./generator-cxx');
 const path = require('path');
 const util = require('./util');
 
+function validateInterfaceRecursive(path, interfaceName, json) {
+  if (Array.isArray(json)) {
+    let index = 0;
+    for (const element of json) {
+      validateInterfaceRecursive(`${path}[${index}]`, interfaceName, element);
+      index++;
+    }
+  } else if (typeof json === 'object') {
+    for (const key in json) {
+      if (key.endsWith('.gen')) {
+        continue;
+      }
+      let keyPath = path;
+      if (keyPath.length > 0) {
+        keyPath += '.';
+      }
+      if (key.includes('.')) {
+        keyPath += '`' + key + '`';
+      } else {
+        keyPath += key;
+      }
+      if (typeof json[`${key}.gen`] !== 'boolean') {
+        console.warn(`Unknown key '${keyPath}' in '${interfaceName}.json' interface JSON.`);
+      }
+      validateInterfaceRecursive(keyPath, interfaceName, json[key]);
+    }
+  }
+}
+
+function validateInterface(interfaceName, interfaceJson) {
+  if (typeof interfaceJson !== 'object') {
+    throw new Error(`Invalid '${interfaceName}.json' interface JSON.`);
+  }
+  validateInterfaceRecursive('', interfaceName, interfaceJson);
+}
+
 function generateInterface(interfaceName, interfaceJson) {
   generateInterfaceCXX(interfaceName, interfaceJson);
 }
@@ -10,6 +46,7 @@ function generateInterface(interfaceName, interfaceJson) {
 function generate() {
   const interfaceDirPath = path.resolve(__dirname, '..', 'interface');
   const interfaceFileNames = fs.readdirSync(interfaceDirPath, 'utf8');
+  let interfaces = {};
   for (const interfaceFileName of interfaceFileNames) {
     if (!interfaceFileName.toLowerCase().endsWith('.json')) {
       continue;
@@ -30,10 +67,19 @@ function generate() {
       util.fillParameterlessConstructor(interfaceJson);
       util.fillCopyConstructor(interfaceJson);
       util.fillMoveConstructor(interfaceJson);
-      generateInterface(interfaceName, interfaceJson);
-      console.log(`Generated '${interfaceFileName}' interface code.`);
+      interfaces[interfaceName] = interfaceJson;
+      validateInterface(interfaceName, interfaceJson);
     } catch (error) {
-      console.log(`Failed to generate '${interfaceFileName}' interface code:\n`, error);
+      console.error(`Failed to fill '${interfaceFileName}' interface JSON:\n`, error);
+    }
+  }
+  for (const interfaceName in interfaces) {
+    const interfaceJson = interfaces[interfaceName];
+    try {
+      generateInterface(interfaceName, interfaceJson);
+      console.log(`Generated '${interfaceName}.json' interface code.`);
+    } catch (error) {
+      console.error(`Failed to generate '${interfaceName}.json' interface code:\n`, error);
     }
   }
 }

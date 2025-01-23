@@ -570,6 +570,9 @@ defaultClassNameLangToStyleMap[Language.JS] = NameStyle.CamelCase;
 
 function fillName(key, json, nameLangToStyleMap) {
   const name = getName(key, json);
+  if (typeof json[`${key}.gen`] === 'undefined') {
+    json[`${key}.gen`] = false;
+  }
   for (const [styleKey, styleValue] of Object.entries(NameStylePretty)) {
     const nameKey = `${key}.style.${styleKey}`;
     const nameKeyGen = `${nameKey}.gen`;
@@ -704,6 +707,13 @@ defaultSetterArgNameLangToStyleMap[Language.JS] = NameStyle.camelBack; // don't 
 
 function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultPropNameLangToStyleMap, getterNameLangToStyleMap = defaultGetterNameLangToStyleMap, setterNameLangToStyleMap = defaultSetterNameLangToStyleMap, setterArgNameLangToStyleMap = defaultSetterArgNameLangToStyleMap) {
   fillName('name', propertyJson, nameLangToStyleMap);
+
+  if (typeof propertyJson.type === 'undefined') {
+    throw new Error(`Missing 'type' key.`);
+  } else if (typeof propertyJson.type !== 'string') {
+    throw new Error(`Invalid 'type' key type.`);
+  }
+  propertyJson['type.gen'] = false;
 
   if (typeof propertyJson.static === 'undefined') {
     const classStatic = getClassStatic(interfaceJson);
