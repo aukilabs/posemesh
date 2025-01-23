@@ -168,8 +168,20 @@ function getConstructorCodeBack(constructorJson) {
   return constructorJson.codeBack;
 }
 
+function getConstructorOperatorCodeFront(constructorJson) {
+  return constructorJson.operatorCodeFront;
+}
+
+function getConstructorOperatorCodeBack(constructorJson) {
+  return constructorJson.operatorCodeBack;
+}
+
 function getConstructorCustom(constructorJson) {
   return constructorJson.custom;
+}
+
+function getConstructorCustomOperator(constructorJson) {
+  return constructorJson.customOperator;
 }
 
 function getLangAliases(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
@@ -1174,13 +1186,13 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson, fi
   return result;
 }
 
-function fillConstructorCodeGeneric(nameKey, constructorJson) {
+function fillConstructorCodeGeneric(nameKey, constructorJson, defaultCode = []) {
   const nameKeyGen = `${nameKey}.gen`;
   let result = {
     canBeDefault: true
   };
   if (typeof constructorJson[nameKey] === 'undefined') {
-    constructorJson[nameKey] = [];
+    constructorJson[nameKey] = defaultCode;
     constructorJson[nameKeyGen] = true;
   } else if (!Array.isArray(constructorJson[nameKey])) {
     throw new Error(`Invalid '${nameKey}' key type.`);
@@ -1212,6 +1224,22 @@ function fillConstructorCode(constructorJson) {
   };
 }
 
+function fillConstructorOperatorCodeFront(constructorJson) {
+  return fillConstructorCodeGeneric('operatorCodeFront', constructorJson, constructorJson['codeFront']);
+}
+
+function fillConstructorOperatorCodeBack(constructorJson) {
+  return fillConstructorCodeGeneric('operatorCodeBack', constructorJson, constructorJson['codeBack']);
+}
+
+function fillConstructorOperatorCode(constructorJson) {
+  const resultFront = fillConstructorOperatorCodeFront(constructorJson);
+  const resultBack = fillConstructorOperatorCodeBack(constructorJson);
+  return {
+    canBeDefault: resultFront.canBeDefault && resultBack.canBeDefault
+  };
+}
+
 function fillConstructorCustom(constructorJson) {
   if (typeof constructorJson.custom === 'undefined') {
     constructorJson.custom = false;
@@ -1220,6 +1248,17 @@ function fillConstructorCustom(constructorJson) {
     throw new Error(`Invalid 'custom' key type.`);
   } else {
     constructorJson['custom.gen'] = false;
+  }
+}
+
+function fillConstructorCustomOperator(constructorJson) {
+  if (typeof constructorJson.customOperator === 'undefined') {
+    constructorJson.customOperator = constructorJson.custom;
+    constructorJson['customOperator.gen'] = true;
+  } else if (typeof constructorJson.customOperator !== 'boolean') {
+    throw new Error(`Invalid 'customOperator' key type.`);
+  } else {
+    constructorJson['customOperator.gen'] = false;
   }
 }
 
@@ -1265,9 +1304,10 @@ function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
   fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
   const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey], FillConstructorInitializedPropertiesType.copyConstructor);
   const fccResult = fillConstructorCode(interfaceJson[nameKey]);
+  const fcocResult = fillConstructorOperatorCode(interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
   const classCopyable = getClassCopyable(interfaceJson);
-  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault;
+  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault && fcocResult.canBeDefault;
   if (classCopyable) {
     fillConstructorDefinition(interfaceJson[nameKey], canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined);
   } else {
@@ -1281,6 +1321,7 @@ function fillCopyConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
     fillConstructorNoexcept(interfaceJson[nameKey], false);
   }
   fillConstructorCustom(interfaceJson[nameKey]);
+  fillConstructorCustomOperator(interfaceJson[nameKey]);
 }
 
 function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultFuncArgNameLangToStyleMap) {
@@ -1298,9 +1339,10 @@ function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
   fillCopyOrMoveConstructorMainArgName(interfaceJson, interfaceJson[nameKey], funcArgNameLangToStyleMap);
   const fcipResult = fillConstructorInitializedProperties(interfaceJson, interfaceJson[nameKey], FillConstructorInitializedPropertiesType.moveConstructor);
   const fccResult = fillConstructorCode(interfaceJson[nameKey]);
+  const fcocResult = fillConstructorOperatorCode(interfaceJson[nameKey]);
   const classStatic = getClassStatic(interfaceJson);
   const classMovable = getClassMovable(interfaceJson);
-  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault;
+  const canBeDefault = fcipResult.canBeDefault && fccResult.canBeDefault && fcocResult.canBeDefault;
   if (classMovable) {
     fillConstructorDefinition(interfaceJson[nameKey], canBeDefault ? ConstructorDefinition.default : ConstructorDefinition.defined);
   } else {
@@ -1314,6 +1356,7 @@ function fillMoveConstructor(interfaceJson, funcArgNameLangToStyleMap = defaultF
     fillConstructorNoexcept(interfaceJson[nameKey], false);
   }
   fillConstructorCustom(interfaceJson[nameKey]);
+  fillConstructorCustomOperator(interfaceJson[nameKey]);
 }
 
 module.exports = {
@@ -1357,7 +1400,10 @@ module.exports = {
   getConstructorInitializedProperties,
   getConstructorCodeFront,
   getConstructorCodeBack,
+  getConstructorOperatorCodeFront,
+  getConstructorOperatorCodeBack,
   getConstructorCustom,
+  getConstructorCustomOperator,
   getLangAliases,
   getHeaderGuardName,
   defaultPropNameLangToTransformationMap,
@@ -1416,7 +1462,11 @@ module.exports = {
   fillConstructorCodeFront,
   fillConstructorCodeBack,
   fillConstructorCode,
+  fillConstructorOperatorCodeFront,
+  fillConstructorOperatorCodeBack,
+  fillConstructorOperatorCode,
   fillConstructorCustom,
+  fillConstructorCustomOperator,
   fillParameterlessConstructor,
   fillCopyConstructor,
   fillMoveConstructor
