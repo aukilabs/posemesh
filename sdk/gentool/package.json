@@ -1,0 +1,11 @@
+{
+  "name": "gentool",
+  "version": "0.1.0",
+  "main": "generator.js",
+  "scripts": {
+    "generate": "node generator.js"
+  },
+  "author": "aukilabs",
+  "license": "UNLICENSED",
+  "description": "Generator Tool"
+}
