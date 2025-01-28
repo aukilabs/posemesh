@@ -105,6 +105,14 @@
 
 ### Destructor JSON options
 
+| Name         | Required | Type                   | Description |
+|--------------|----------|------------------------|-------------|
+| `virtual`    |          | *boolean*              | Determine wether the destructor is virtual or not. Default is `false`. |
+| `code`       |          | *string[]*             | Destructor code lines placed in the destructor body. Default is an empty array. |
+| `definition` |          | *DestructorDefinition* | Determine which destructor definition mode to use. See [possible options](#destructor-definitions). Inferred from `code` option. |
+| `visibility` |          | *Visibility*           | Visibility of the destructor. See possible [visibilities](#visibilities). Default is `public`. |
+| `custom`     |          | *boolean*              | Determine whether the destructor will have a custom implementation or not. Default is `false`. |
+
 ### Naming conventions
 
 | Naming convention key   | Example |
