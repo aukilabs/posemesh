@@ -171,6 +171,13 @@ function generateHeader(interfaceName, interfaceJson) {
     }
   }
 
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    publicOperators += `    bool PSM_API operator==(const ${name}& ${argName}) const noexcept;\n`;
+    publicOperators += `    bool PSM_API operator!=(const ${name}& ${argName}) const noexcept;\n`;
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propTypeRaw = propertyJson.type;
@@ -857,6 +864,67 @@ function generateSource(interfaceName, interfaceJson) {
         if (privateCtors.length > 0) { privateCtors += '\n'; }
         privateCtors += dtor;
         break;
+    }
+  }
+
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    let eqOp = undefined, neOp = undefined;
+
+    if (!equalityOperator.custom) {
+      eqOp = `bool ${name}::operator==(const ${name}& ${argName}) const noexcept\n`;
+      eqOp += `{\n`;
+      if (equalityOperator.comparePointers) {
+        eqOp += `    return this == &${argName};\n`;
+      } else {
+        for (const comparedPropertyJson of equalityOperator.comparedProperties) {
+          const name = comparedPropertyJson.name;
+          const useGetter = comparedPropertyJson.useGetter;
+          const comparator = comparedPropertyJson.comparator;
+          const comparatorClassInstancePlaceholder = comparedPropertyJson.comparatorClassInstancePlaceholder;
+          const comparatorPropertyPlaceholder = comparedPropertyJson.comparatorPropertyPlaceholder;
+
+          let foundPropertyJson = undefined;
+          for (const propertyJson of util.getProperties(interfaceJson)) {
+            if (propertyJson.name === name) {
+              foundPropertyJson = propertyJson;
+              break;
+            }
+          }
+
+          let line = comparator.replaceAll(comparatorClassInstancePlaceholder, argName);
+          if (useGetter) {
+            const getterName = util.getPropertyGetterName(foundPropertyJson, util.CXX);
+            line = line.replaceAll(comparatorPropertyPlaceholder, `${getterName}()`);
+          } else {
+            const propName = util.getPropertyName(foundPropertyJson, util.CXX);
+            line = line.replaceAll(comparatorPropertyPlaceholder, `${propName}`);
+          }
+
+          eqOp += `    if (!(${line})) {\n`;
+          eqOp += `        return false;\n`;
+          eqOp += `    }\n`;
+        }
+        eqOp += `    return true;\n`;
+      }
+      eqOp += `}\n`;
+    }
+
+    if (!equalityOperator.customInequality) {
+      neOp = `bool ${name}::operator!=(const ${name}& ${argName}) const noexcept\n`;
+      neOp += `{\n`;
+      neOp += `    return !(*this == ${argName});\n`;
+      neOp += `}\n`;
+    }
+
+    if (typeof eqOp !== 'undefined') {
+      if (publicOperators.length > 0) { publicOperators += '\n'; }
+      publicOperators += eqOp;
+    }
+    if (typeof neOp !== 'undefined') {
+      if (publicOperators.length > 0) { publicOperators += '\n'; }
+      publicOperators += neOp;
     }
   }
 

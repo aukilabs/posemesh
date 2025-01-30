@@ -18,6 +18,7 @@
 | `copyConstructor`          |          | *CopyConstructor*          | Options for the copy constructor and operator. See [definition](#copyconstructor-json-options). |
 | `moveConstructor`          |          | *MoveConstructor*          | Options for the move constructor and operator. See [definition](#moveconstructor-json-options). |
 | `destructor`               |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
+| `equalityOperator`         |          | *EqualityOperator*         | Options for the equality operator. See [definition](#equalityoperator-json-options). |
 
 ### Alias JSON options
 
@@ -49,6 +50,7 @@
 | `setterVisibility` |          | *Visibility* | Visibility of the property setter. See possible [visibilities](#visibilities). Default is `public`. |
 | `hasMemberVar`     |          | *boolean*    | Determine whether the property will have a member variable or not. Inferred from `getterCustom` and `setterCustom` options. |
 | `defaultValue`     |          | *string*     | Default member variable initialized value either set via a constructor or via a static member initialization if the class is static. Default is empty string. |
+| `partOfIdentity`   |          | *boolean*    | Determine whether the property is considered to be a part of identity of the class instance or not. If set to `true` the property will be used in the equality, inequality and hash operators. Inferred from `static` option. |
 
 ### ParameterlessConstructor JSON options
 
@@ -112,6 +114,26 @@
 | `definition` |          | *DestructorDefinition* | Determine which destructor definition mode to use. See [possible options](#destructor-definitions). Inferred from `code` option. |
 | `visibility` |          | *Visibility*           | Visibility of the destructor. See possible [visibilities](#visibilities). Default is `public`. |
 | `custom`     |          | *boolean*              | Determine whether the destructor will have a custom implementation or not. Default is `false`. |
+
+### EqualityOperator JSON options
+
+| Name                 | Required | Type                 | Description |
+|----------------------|----------|----------------------|-------------|
+| `defined`            |          | *boolean*            | Determine whether the equality and inequality operators are defined or not. Inferred from class `static` option. |
+| `comparePointers`    |          | *boolean*            | Determine whether the equality and inequality operators will just compare the class instance pointer or not. Inferred from class `copyable` option. |
+| `comparedProperties` |          | *ComparedProperty[]* | Compared properties in the equality and inequality operators. Inferred from class `properties` option. See [definition](#comparedproperty-json-options). |
+| `custom`             |          | *boolean*            | Determine whether the equality operator will have a custom implementation or not. Default is `false`. |
+| `customInequality`   |          | *boolean*            | Determine whether the inequality operator will have a custom implementation or not. Default is `false`. |
+
+### ComparedProperty JSON options
+
+| Name                                 | Required | Type      | Description |
+|--------------------------------------|----------|-----------|-------------|
+| `name`                               | &#x2705; | *string*  | Name of the property that will be compared. Must match the property `name` option. |
+| `useGetter`                          |          | *boolean* | Determine whether to use the property getter method or not. Inferred from property `hasMemberVar` and `hasGetter` options. |
+| `comparator`                         |          | *string*  | Expression evaluating to a boolean used to test equality of the property. For example, this comparator can be as simple as `true` or a bit more complicated like `$ == @.$` where `@` is the `comparatorClassInstancePlaceholder` option and `$` is the `comparatorPropertyPlaceholder` option. The `@` (`comparatorClassInstancePlaceholder`) placeholder will implicitly be replaced with the name of the other class instance argument name. The `$` (`comparatorPropertyPlaceholder`) placeholder will implicitly be replaced with either the name of the property member variable or the property getter method call. Inferred from `comparatorClassInstancePlaceholder` and `comparatorPropertyPlaceholder` options as well as property `type` option. |
+| `comparatorClassInstancePlaceholder` |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `@`. |
+| `comparatorPropertyPlaceholder`      |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `$`. |
 
 ### Naming conventions
 

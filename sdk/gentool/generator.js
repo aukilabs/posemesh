@@ -70,6 +70,7 @@ function generate() {
       util.fillCopyConstructor(interfaceJson);
       util.fillMoveConstructor(interfaceJson);
       util.fillDestructor(interfaceJson);
+      util.fillEqualityOperator(interfaceJson);
       interfaces[interfaceName] = interfaceJson;
       validateInterface(interfaceName, interfaceJson);
     } catch (error) {

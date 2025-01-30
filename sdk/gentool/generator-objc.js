@@ -44,6 +44,11 @@ function generateHeader(interfaceName, interfaceJson) {
     publicCtors += `- (void)dealloc;\n`;
   }
 
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    publicOperators += `- (BOOL)isEqual:(id)object;\n`;
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {
@@ -302,6 +307,28 @@ function generateSource(interfaceName, interfaceJson) {
       publicCtors += '\n';
     }
     publicCtors += dtor;
+  }
+
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    let eqOp = `- (BOOL)isEqual:(id)object\n`;
+    eqOp += `{\n`;
+    eqOp += `    if (self == object) {\n`;
+    eqOp += `        return YES;\n`;
+    eqOp += `    }\n`;
+    eqOp += `    if (![object isKindOfClass:[${name} class]]) {\n`;
+    eqOp += `        return NO;\n`;
+    eqOp += `    }\n`;
+    eqOp += `    ${name}* ${nameCamelBack} = (${name}*)object;\n`;
+    eqOp += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+    eqOp += `    NSAssert(${nameCamelBack}->${nameManagedMember}.get() != nullptr, @"${nameCamelBack}->${nameManagedMember} is null");\n`;
+    eqOp += `    return ${nameManagedMember}.get()->operator==(*(${nameCamelBack}->${nameManagedMember}.get()));\n`;
+    eqOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += eqOp;
   }
 
   let public = publicCtors;

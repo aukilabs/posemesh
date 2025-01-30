@@ -457,6 +457,19 @@ function getTypeMembVarMoveOp(type, membVar) {
   }
 }
 
+function getTypePropEqOp(type, clsParam, prpParam) {
+  if (isIntType(type)) {
+    return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+  switch (type) {
+    case 'float':
+    case 'double':
+      return `${prpParam} == ${clsParam}.${prpParam}`;
+    default:
+      return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+}
+
 let defaultPropGetterNameLangToTransformationMap = {};
 defaultPropGetterNameLangToTransformationMap[Language.CXX] = 'get%';
 defaultPropGetterNameLangToTransformationMap[Language.C] = 'get_%';
@@ -950,6 +963,15 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     throw new Error(`Invalid 'defaultValue' key type.`);
   } else {
     propertyJson['defaultValue.gen'] = false;
+  }
+
+  if (typeof propertyJson.partOfIdentity === 'undefined') {
+    propertyJson.partOfIdentity = !propertyJson.static;
+    propertyJson['partOfIdentity.gen'] = true;
+  } else if (typeof propertyJson.partOfIdentity !== 'boolean') {
+    throw new Error(`Invalid 'partOfIdentity' key type.`);
+  } else {
+    propertyJson['partOfIdentity.gen'] = false;
   }
 }
 
@@ -1482,6 +1504,164 @@ function fillDestructor(interfaceJson) {
   fillDestructorCustom(interfaceJson[nameKey]);
 }
 
+function makeEqualityOperatorComparedProperties(interfaceJson) {
+  let comparedProperties = [];
+  for (const propertyJson of getProperties(interfaceJson)) {
+    if (!getPropertyStatic(propertyJson) && propertyJson.partOfIdentity) {
+      let useGetter = undefined;
+      if (getPropertyHasMemberVar(propertyJson)) {
+        useGetter = false;
+      } else if (propertyJson.hasGetter) {
+        useGetter = true;
+      } else {
+        continue;
+      }
+      comparedProperties.push({
+        name: propertyJson.name,
+        'name.gen': true,
+        useGetter: useGetter,
+        'useGetter.gen': true,
+        comparator: getTypePropEqOp(propertyJson.type, '@', '$'),
+        'comparator.gen': true,
+        comparatorClassInstancePlaceholder: '@',
+        'comparatorClassInstancePlaceholder.gen': true,
+        comparatorPropertyPlaceholder: '$',
+        'comparatorPropertyPlaceholder.gen': true
+      });
+    }
+  }
+  return comparedProperties;
+}
+
+function fillEqualityOperator(interfaceJson) {
+  const nameKey = 'equalityOperator';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKeyGen] = true;
+    interfaceJson[nameKey] = {
+      defined: !getClassStatic(interfaceJson),
+      'defined.gen': true,
+      comparePointers: !getClassCopyable(interfaceJson),
+      'comparePointers.gen': true,
+      comparedProperties: makeEqualityOperatorComparedProperties(interfaceJson),
+      'comparedProperties.gen': true,
+      custom: false,
+      'custom.gen': true,
+      customInequality: false,
+      'customInequality.gen': true
+    };
+    return;
+  } else if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  interfaceJson[nameKeyGen] = false;
+
+  if (typeof interfaceJson[nameKey].defined === 'undefined') {
+    interfaceJson[nameKey].defined = !getClassStatic(interfaceJson);
+    interfaceJson[nameKey]['defined.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].defined !== 'boolean') {
+    throw new Error(`Invalid 'defined' key type.`);
+  } else {
+    interfaceJson[nameKey]['defined.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].comparePointers === 'undefined') {
+    interfaceJson[nameKey].comparePointers = !getClassCopyable(interfaceJson);
+    interfaceJson[nameKey]['comparePointers.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].comparePointers !== 'boolean') {
+    throw new Error(`Invalid 'comparePointers' key type.`);
+  } else {
+    interfaceJson[nameKey]['comparePointers.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].comparedProperties === 'undefined') {
+    interfaceJson[nameKey].comparedProperties = makeEqualityOperatorComparedProperties(interfaceJson);
+    interfaceJson[nameKey]['comparedProperties.gen'] = true;
+  } else if (!Array.isArray(interfaceJson[nameKey].comparedProperties)) {
+    throw new Error(`Invalid 'comparedProperties' key type.`);
+  } else {
+    interfaceJson[nameKey]['comparedProperties.gen'] = false;
+    for (const comparedPropertyJson of interfaceJson[nameKey].comparedProperties) {
+      let foundPropertyJson = undefined;
+      for (const propertyJson of getProperties(interfaceJson)) {
+        if (propertyJson.name === comparedPropertyJson.name) {
+          foundPropertyJson = propertyJson;
+          break;
+        }
+      }
+      if (foundPropertyJson === undefined) {
+        throw new Error(`Property '${comparedPropertyJson.name}' does not exist.`);
+      }
+      if (getPropertyStatic(foundPropertyJson)) {
+        throw new Error(`Property '${comparedPropertyJson.name}' is static.`);
+      }
+      comparedPropertyJson['name.gen'] = false;
+
+      if (typeof comparedPropertyJson.useGetter === 'undefined') {
+        let useGetter = undefined;
+        if (getPropertyHasMemberVar(foundPropertyJson)) {
+          useGetter = false;
+        } else if (foundPropertyJson.hasGetter) {
+          useGetter = true;
+        } else {
+          throw new Error(`Property '${comparedPropertyJson.name}' does not have a member variable or a getter method.`);
+        }
+        comparedPropertyJson.useGetter = useGetter;
+        comparedPropertyJson['useGetter.gen'] = true;
+      } else if (typeof comparedPropertyJson.useGetter !== 'boolean') {
+        throw new Error(`Invalid 'useGetter' key type.`);
+      } else {
+        comparedPropertyJson['useGetter.gen'] = false;
+      }
+
+      if (typeof comparedPropertyJson.comparatorClassInstancePlaceholder === 'undefined') {
+        comparedPropertyJson.comparatorClassInstancePlaceholder = '@';
+        comparedPropertyJson['comparatorClassInstancePlaceholder.gen'] = true;
+      } else if (typeof comparedPropertyJson.comparatorClassInstancePlaceholder !== 'string') {
+        throw new Error(`Invalid 'comparatorClassInstancePlaceholder' key type.`);
+      } else {
+        comparedPropertyJson['comparatorClassInstancePlaceholder.gen'] = false;
+      }
+
+      if (typeof comparedPropertyJson.comparatorPropertyPlaceholder === 'undefined') {
+        comparedPropertyJson.comparatorPropertyPlaceholder = '$';
+        comparedPropertyJson['comparatorPropertyPlaceholder.gen'] = true;
+      } else if (typeof comparedPropertyJson.comparatorPropertyPlaceholder !== 'string') {
+        throw new Error(`Invalid 'comparatorPropertyPlaceholder' key type.`);
+      } else {
+        comparedPropertyJson['comparatorPropertyPlaceholder.gen'] = false;
+      }
+
+      if (typeof comparedPropertyJson.comparator === 'undefined') {
+        comparedPropertyJson.comparator = getTypePropEqOp(foundPropertyJson.type, comparedPropertyJson.comparatorClassInstancePlaceholder, comparedPropertyJson.comparatorPropertyPlaceholder);
+        comparedPropertyJson['comparator.gen'] = true;
+      } else if (typeof comparedPropertyJson.comparator !== 'string') {
+        throw new Error(`Invalid 'comparator' key type.`);
+      } else {
+        comparedPropertyJson['comparator.gen'] = false;
+      }
+    }
+  }
+
+  if (typeof interfaceJson[nameKey].custom === 'undefined') {
+    interfaceJson[nameKey].custom = false;
+    interfaceJson[nameKey]['custom.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].custom !== 'boolean') {
+    throw new Error(`Invalid 'custom' key type.`);
+  } else {
+    interfaceJson[nameKey]['custom.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].customInequality === 'undefined') {
+    interfaceJson[nameKey].customInequality = false;
+    interfaceJson[nameKey]['customInequality.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].customInequality !== 'boolean') {
+    throw new Error(`Invalid 'customInequality' key type.`);
+  } else {
+    interfaceJson[nameKey]['customInequality.gen'] = false;
+  }
+}
+
 module.exports = {
   NameStyle,
   lower_case: NameStyle.lower_case,
@@ -1557,6 +1737,7 @@ module.exports = {
   getTypeImplicitDefaultValue,
   getTypeMembVarCopyOp,
   getTypeMembVarMoveOp,
+  getTypePropEqOp,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
   defaultPropSetterNameLangToTransformationMap,
@@ -1604,5 +1785,7 @@ module.exports = {
   fillDestructorDefinition,
   fillDestructorVisibility,
   fillDestructorCustom,
-  fillDestructor
+  fillDestructor,
+  makeEqualityOperatorComparedProperties,
+  fillEqualityOperator
 };
