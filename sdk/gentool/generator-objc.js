@@ -5,6 +5,7 @@ const util = require('./util');
 function generateHeader(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameSwift = util.getLangClassName(interfaceJson, util.Swift);
+  const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
   const copyable = util.getClassCopyable(interfaceJson);
   const copyableExt = copyable ? '<NSCopying>' : '';
   const static = util.getClassStatic(interfaceJson);
@@ -27,6 +28,20 @@ function generateHeader(interfaceName, interfaceJson) {
     publicCtors += '- (instancetype)init NS_UNAVAILABLE;\n';
   } else {
     publicCtors += '- (instancetype)init;\n';
+  }
+
+  const copyConstructor = util.getClassCopyConstructor(interfaceJson);
+  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+  if (!static && copyable && cCtorDefinition !== util.ConstructorDefinition.deleted && cCtorVisibility === util.Visibility.public) {
+    publicCtors += `- (instancetype)initWith${interfaceName}:(${name}*)${nameCamelBack};\n`;
+    publicCtors += `- (instancetype)copyWithZone:(NSZone*)zone;\n`;
+  } else {
+    publicCtors += `- (instancetype)copy NS_UNAVAILABLE;\n`;
+  }
+
+  if (!static) {
+    publicCtors += `- (void)dealloc;\n`;
   }
 
   let public = publicCtors;
@@ -122,6 +137,7 @@ function generateSource(interfaceName, interfaceJson) {
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
   const nameManagedMember = `m_${nameCamelBack}`;
+  const copyable = util.getClassCopyable(interfaceJson);
   const static = util.getClassStatic(interfaceJson);
   const managedGetterName = `managed${interfaceName}`;
   const nativeGetterName = `native${interfaceName}`;
@@ -213,6 +229,79 @@ function generateSource(interfaceName, interfaceJson) {
       privateCtors += '\n';
     }
     privateCtors += initWithNative;
+  }
+
+  const copyConstructor = util.getClassCopyConstructor(interfaceJson);
+  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+  if (!static && copyable && cCtorDefinition !== util.ConstructorDefinition.deleted) {
+    let cCtor = `- (instancetype)initWith${interfaceName}:(${name}*)${nameCamelBack}\n`;
+    cCtor += `{\n`;
+    cCtor += `    NSAssert(${nameCamelBack} != nil, @"${nameCamelBack} is null");\n`;
+    cCtor += `    NSAssert(${nameCamelBack}->${nameManagedMember}.get() != nullptr, @"${nameCamelBack}->${nameManagedMember} is null");\n`;
+    cCtor += `    auto* copy = new (std::nothrow) psm::${nameCxx}(*(${nameCamelBack}->${nameManagedMember}.get()));\n`;
+    cCtor += `    if (!copy) {\n`;
+    cCtor += `        return nil;\n`;
+    cCtor += `    }\n`;
+    cCtor += `    self = [self ${initWithNativeName}:copy];\n`;
+    cCtor += `    if (!self) {\n`;
+    cCtor += `        delete copy;\n`;
+    cCtor += `        return nil;\n`;
+    cCtor += `    }\n`;
+    cCtor += `    return self;\n`;
+    cCtor += `}\n`;
+    if (cCtorVisibility === util.Visibility.public) {
+      if (publicCtors.length > 0) {
+        publicCtors += '\n';
+      }
+      publicCtors += cCtor;
+    } else {
+      if (privateCtors.length > 0) {
+        privateCtors += '\n';
+      }
+      privateCtors += cCtor;
+    }
+
+    includesFirst.add('#include <new>');
+
+    let copyWithZone = `- (instancetype)copyWithZone:(NSZone*)zone\n`;
+    copyWithZone += `{\n`;
+    copyWithZone += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+    copyWithZone += `    auto* ${nameCamelBack} = new (std::nothrow) psm::${nameCxx}(*(${nameManagedMember}.get()));\n`;
+    copyWithZone += `    if (!${nameCamelBack}) {\n`;
+    copyWithZone += `        return nil;\n`;
+    copyWithZone += `    }\n`;
+    copyWithZone += `    ${name}* copy = [[[self class] allocWithZone:zone] ${initWithNativeName}:${nameCamelBack}];\n`;
+    copyWithZone += `    if (!copy) {\n`;
+    copyWithZone += `        delete ${nameCamelBack};\n`;
+    copyWithZone += `        return nil;\n`;
+    copyWithZone += `    }\n`;
+    copyWithZone += `    return copy;\n`;
+    copyWithZone += `}\n`;
+    if (cCtorVisibility === util.Visibility.public) {
+      if (publicCtors.length > 0) {
+        publicCtors += '\n';
+      }
+      publicCtors += copyWithZone;
+    } else {
+      if (privateCtors.length > 0) {
+        privateCtors += '\n';
+      }
+      privateCtors += copyWithZone;
+    }
+
+    includesFirst.add('#include <new>');
+  }
+
+  if (!static) {
+    let dtor = `- (void)dealloc\n`;
+    dtor += `{\n`;
+    dtor += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+    dtor += `}\n`;
+    if (publicCtors.length > 0) {
+      publicCtors += '\n';
+    }
+    publicCtors += dtor;
   }
 
   let public = publicCtors;
