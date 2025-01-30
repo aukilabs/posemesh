@@ -49,6 +49,11 @@ function generateHeader(interfaceName, interfaceJson) {
     publicOperators += `- (BOOL)isEqual:(id)object;\n`;
   }
 
+  const hashOperator = interfaceJson.hashOperator;
+  if (hashOperator.defined) {
+    publicOperators += `- (NSUInteger)hash;\n`;
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {
@@ -329,6 +334,20 @@ function generateSource(interfaceName, interfaceJson) {
       publicOperators += '\n';
     }
     publicOperators += eqOp;
+  }
+
+  const hashOperator = interfaceJson.hashOperator;
+  if (hashOperator.defined) {
+    let hashOp = `- (NSUInteger)hash\n`;
+    hashOp += `{\n`;
+    hashOp += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+    hashOp += `    return std::hash<psm::${nameCxx}> {}(*(${nameManagedMember}.get()));\n`;
+    hashOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += hashOp;
   }
 
   let public = publicCtors;

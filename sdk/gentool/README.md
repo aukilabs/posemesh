@@ -18,7 +18,8 @@
 | `copyConstructor`          |          | *CopyConstructor*          | Options for the copy constructor and operator. See [definition](#copyconstructor-json-options). |
 | `moveConstructor`          |          | *MoveConstructor*          | Options for the move constructor and operator. See [definition](#moveconstructor-json-options). |
 | `destructor`               |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
-| `equalityOperator`         |          | *EqualityOperator*         | Options for the equality operator. See [definition](#equalityoperator-json-options). |
+| `equalityOperator`         |          | *EqualityOperator*         | Options for the equality (and inequality) operator. See [definition](#equalityoperator-json-options). |
+| `hashOperator`             |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
 
 ### Alias JSON options
 
@@ -131,9 +132,27 @@
 |--------------------------------------|----------|-----------|-------------|
 | `name`                               | &#x2705; | *string*  | Name of the property that will be compared. Must match the property `name` option. |
 | `useGetter`                          |          | *boolean* | Determine whether to use the property getter method or not. Inferred from property `hasMemberVar` and `hasGetter` options. |
-| `comparator`                         |          | *string*  | Expression evaluating to a boolean used to test equality of the property. For example, this comparator can be as simple as `true` or a bit more complicated like `$ == @.$` where `@` is the `comparatorClassInstancePlaceholder` option and `$` is the `comparatorPropertyPlaceholder` option. The `@` (`comparatorClassInstancePlaceholder`) placeholder will implicitly be replaced with the name of the other class instance argument name. The `$` (`comparatorPropertyPlaceholder`) placeholder will implicitly be replaced with either the name of the property member variable or the property getter method call. Inferred from `comparatorClassInstancePlaceholder` and `comparatorPropertyPlaceholder` options as well as property `type` option. |
+| `comparator`                         |          | *string*  | Expression evaluating to a boolean used to test equality of the property. For example, this comparator can be as simple as `true` or a bit more complicated like `$ == @.$` where `@` is the `comparatorClassInstancePlaceholder` option and `$` is the `comparatorPropertyPlaceholder` option. The `@` (`comparatorClassInstancePlaceholder`) placeholder will implicitly be replaced with the name of the other class instance argument name. The `$` (`comparatorPropertyPlaceholder`) placeholder will implicitly be replaced with either the named access of the property member variable or the property getter method call. Inferred from `comparatorClassInstancePlaceholder` and `comparatorPropertyPlaceholder` options as well as property `type` option. |
 | `comparatorClassInstancePlaceholder` |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `@`. |
 | `comparatorPropertyPlaceholder`      |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `$`. |
+
+### HashOperator JSON options
+
+| Name               | Required | Type               | Description |
+|--------------------|----------|--------------------|-------------|
+| `defined`          |          | *boolean*          | Determine whether the hash operator is defined or not. Inferred from [equality operator](#equalityoperator-json-options) `defined` option. |
+| `usePointerAsHash` |          | *boolean*          | Determine whether the hash operator will just return the class instance pointer or not. Inferred from [equality operator](#equalityoperator-json-options) `comparePointers` option. |
+| `hashedProperties` |          | *HashedProperty[]* | Hashed properties in the hash operator. Inferred from [equality operator](#equalityoperator-json-options) `comparedProperties` option. See [definition](#hashedproperty-json-options). |
+| `custom`           |          | *boolean*          | Determine whether the hash operator will have a custom implementation or not. Inferred from [equality operator](#equalityoperator-json-options) `custom` option. |
+
+### HashedProperty JSON options
+
+| Name                | Required | Type      | Description |
+|---------------------|----------|-----------|-------------|
+| `name`              | &#x2705; | *string*  | Name of the property that will be hashed. Must match the property `name` option. |
+| `useGetter`         |          | *boolean* | Determine whether to use the property getter method or not. Inferred from [compared property](#comparedproperty-json-options) `useGetter` option if possible or property `hasMemberVar` and `hasGetter` options. |
+| `hasher`            |          | *string*  | Expression evaluating to a hash integer used to hash the property. For example, this hasher can be as simple as `123` or a bit more complicated like `hash<float> {}(@)` where `@` is the `hasherPlaceholder` option. The placeholder will implicitly be replaced with either the named access of the property member variable or the property getter method call. Inferred from `hasherPlaceholder` option as well as property `type` option. |
+| `hasherPlaceholder` |          | *string*  | Replace hasher placeholder used in `hasher` option. Default is `@`. |
 
 ### Naming conventions
 

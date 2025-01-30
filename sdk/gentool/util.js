@@ -470,6 +470,19 @@ function getTypePropEqOp(type, clsParam, prpParam) {
   }
 }
 
+function getTypePropHasher(type, param) {
+  if (isIntType(type)) {
+    return `hash<${type}> {}(${param})`;
+  }
+  switch (type) {
+    case 'float':
+    case 'double':
+      return `hash<${type}> {}(${param})`;
+    default:
+      return `hash<${type}> {}(${param})`;
+  }
+}
+
 let defaultPropGetterNameLangToTransformationMap = {};
 defaultPropGetterNameLangToTransformationMap[Language.CXX] = 'get%';
 defaultPropGetterNameLangToTransformationMap[Language.C] = 'get_%';
@@ -1662,6 +1675,149 @@ function fillEqualityOperator(interfaceJson) {
   }
 }
 
+function makeHashOperatorHashedProperties(interfaceJson) {
+  let hashedProperties = [];
+  for (const comparedPropertyJson of interfaceJson.equalityOperator.comparedProperties) {
+    let foundPropertyJson = undefined;
+    for (const propertyJson of getProperties(interfaceJson)) {
+      if (propertyJson.name === comparedPropertyJson.name) {
+        foundPropertyJson = propertyJson;
+        break;
+      }
+    }
+    hashedProperties.push({
+      name: comparedPropertyJson.name,
+      'name.gen': true,
+      useGetter: comparedPropertyJson.useGetter,
+      'useGetter.gen': true,
+      hasher: getTypePropHasher(foundPropertyJson.type, '@'),
+      'hasher.gen': true,
+      hasherPlaceholder: '@',
+      'hasherPlaceholder.gen': true
+    });
+  }
+  return hashedProperties;
+}
+
+function fillHashOperator(interfaceJson) {
+  const nameKey = 'hashOperator';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKeyGen] = true;
+    interfaceJson[nameKey] = {
+      defined: interfaceJson.equalityOperator.defined,
+      'defined.gen': true,
+      usePointerAsHash: interfaceJson.equalityOperator.comparePointers,
+      'usePointerAsHash.gen': true,
+      hashedProperties: makeHashOperatorHashedProperties(interfaceJson),
+      'hashedProperties.gen': true,
+      custom: false,
+      'custom.gen': true
+    };
+    return;
+  } else if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  interfaceJson[nameKeyGen] = false;
+
+  if (typeof interfaceJson[nameKey].defined === 'undefined') {
+    interfaceJson[nameKey].defined = interfaceJson.equalityOperator.defined;
+    interfaceJson[nameKey]['defined.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].defined !== 'boolean') {
+    throw new Error(`Invalid 'defined' key type.`);
+  } else {
+    interfaceJson[nameKey]['defined.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].usePointerAsHash === 'undefined') {
+    interfaceJson[nameKey].usePointerAsHash = interfaceJson.equalityOperator.comparePointers;
+    interfaceJson[nameKey]['usePointerAsHash.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].usePointerAsHash !== 'boolean') {
+    throw new Error(`Invalid 'usePointerAsHash' key type.`);
+  } else {
+    interfaceJson[nameKey]['usePointerAsHash.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].hashedProperties === 'undefined') {
+    interfaceJson[nameKey].hashedProperties = makeHashOperatorHashedProperties(interfaceJson);
+    interfaceJson[nameKey]['hashedProperties.gen'] = true;
+  } else if (!Array.isArray(interfaceJson[nameKey].hashedProperties)) {
+    throw new Error(`Invalid 'hashedProperties' key type.`);
+  } else {
+    interfaceJson[nameKey]['hashedProperties.gen'] = false;
+    for (const hashedPropertyJson of interfaceJson[nameKey].hashedProperties) {
+      let foundPropertyJson = undefined;
+      for (const propertyJson of getProperties(interfaceJson)) {
+        if (propertyJson.name === hashedPropertyJson.name) {
+          foundPropertyJson = propertyJson;
+          break;
+        }
+      }
+      if (foundPropertyJson === undefined) {
+        throw new Error(`Property '${hashedPropertyJson.name}' does not exist.`);
+      }
+      if (getPropertyStatic(foundPropertyJson)) {
+        throw new Error(`Property '${hashedPropertyJson.name}' is static.`);
+      }
+      hashedPropertyJson['name.gen'] = false;
+
+      let foundComparedPropertyJson = undefined;
+      for (const comparedPropertyJson of interfaceJson.equalityOperator.comparedProperties) {
+        if (comparedPropertyJson.name === hashedPropertyJson.name) {
+          foundComparedPropertyJson = comparedPropertyJson;
+          break;
+        }
+      }
+
+      if (typeof hashedPropertyJson.useGetter === 'undefined') {
+        let useGetter = undefined;
+        if (typeof foundComparedPropertyJson !== 'undefined') {
+          useGetter = foundComparedPropertyJson.useGetter;
+        } else if (getPropertyHasMemberVar(foundPropertyJson)) {
+          useGetter = false;
+        } else if (foundPropertyJson.hasGetter) {
+          useGetter = true;
+        } else {
+          throw new Error(`Property '${hashedPropertyJson.name}' does not have a member variable or a getter method.`);
+        }
+        hashedPropertyJson.useGetter = useGetter;
+        hashedPropertyJson['useGetter.gen'] = true;
+      } else if (typeof hashedPropertyJson.useGetter !== 'boolean') {
+        throw new Error(`Invalid 'useGetter' key type.`);
+      } else {
+        hashedPropertyJson['useGetter.gen'] = false;
+      }
+
+      if (typeof hashedPropertyJson.hasherPlaceholder === 'undefined') {
+        hashedPropertyJson.hasherPlaceholder = '@';
+        hashedPropertyJson['hasherPlaceholder.gen'] = true;
+      } else if (typeof hashedPropertyJson.hasherPlaceholder !== 'string') {
+        throw new Error(`Invalid 'hasherPlaceholder' key type.`);
+      } else {
+        hashedPropertyJson['hasherPlaceholder.gen'] = false;
+      }
+
+      if (typeof hashedPropertyJson.hasher === 'undefined') {
+        hashedPropertyJson.hasher = getTypePropHasher(foundPropertyJson.type, hashedPropertyJson.hasherPlaceholder);
+        hashedPropertyJson['hasher.gen'] = true;
+      } else if (typeof hashedPropertyJson.hasher !== 'string') {
+        throw new Error(`Invalid 'hasher' key type.`);
+      } else {
+        hashedPropertyJson['hasher.gen'] = false;
+      }
+    }
+  }
+
+  if (typeof interfaceJson[nameKey].custom === 'undefined') {
+    interfaceJson[nameKey].custom = interfaceJson.equalityOperator.custom;
+    interfaceJson[nameKey]['custom.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].custom !== 'boolean') {
+    throw new Error(`Invalid 'custom' key type.`);
+  } else {
+    interfaceJson[nameKey]['custom.gen'] = false;
+  }
+}
+
 module.exports = {
   NameStyle,
   lower_case: NameStyle.lower_case,
@@ -1738,6 +1894,7 @@ module.exports = {
   getTypeMembVarCopyOp,
   getTypeMembVarMoveOp,
   getTypePropEqOp,
+  getTypePropHasher,
   defaultPropGetterNameLangToTransformationMap,
   getPropertyGetterName,
   defaultPropSetterNameLangToTransformationMap,
@@ -1787,5 +1944,7 @@ module.exports = {
   fillDestructorCustom,
   fillDestructor,
   makeEqualityOperatorComparedProperties,
-  fillEqualityOperator
+  fillEqualityOperator,
+  makeHashOperatorHashedProperties,
+  fillHashOperator
 };
