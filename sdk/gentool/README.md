@@ -18,6 +18,8 @@
 | `copyConstructor`          |          | *CopyConstructor*          | Options for the copy constructor and operator. See [definition](#copyconstructor-json-options). |
 | `moveConstructor`          |          | *MoveConstructor*          | Options for the move constructor and operator. See [definition](#moveconstructor-json-options). |
 | `destructor`               |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
+| `equalityOperator`         |          | *EqualityOperator*         | Options for the equality (and inequality) operator. See [definition](#equalityoperator-json-options). |
+| `hashOperator`             |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
 
 ### Alias JSON options
 
@@ -49,6 +51,7 @@
 | `setterVisibility` |          | *Visibility* | Visibility of the property setter. See possible [visibilities](#visibilities). Default is `public`. |
 | `hasMemberVar`     |          | *boolean*    | Determine whether the property will have a member variable or not. Inferred from `getterCustom` and `setterCustom` options. |
 | `defaultValue`     |          | *string*     | Default member variable initialized value either set via a constructor or via a static member initialization if the class is static. Default is empty string. |
+| `partOfIdentity`   |          | *boolean*    | Determine whether the property is considered to be a part of identity of the class instance or not. If set to `true` the property will be used in the equality, inequality and hash operators. Inferred from `static` option. |
 
 ### ParameterlessConstructor JSON options
 
@@ -113,6 +116,44 @@
 | `visibility` |          | *Visibility*           | Visibility of the destructor. See possible [visibilities](#visibilities). Default is `public`. |
 | `custom`     |          | *boolean*              | Determine whether the destructor will have a custom implementation or not. Default is `false`. |
 
+### EqualityOperator JSON options
+
+| Name                 | Required | Type                 | Description |
+|----------------------|----------|----------------------|-------------|
+| `defined`            |          | *boolean*            | Determine whether the equality and inequality operators are defined or not. Inferred from class `static` option. |
+| `comparePointers`    |          | *boolean*            | Determine whether the equality and inequality operators will just compare the class instance pointer or not. Inferred from class `copyable` option. |
+| `comparedProperties` |          | *ComparedProperty[]* | Compared properties in the equality and inequality operators. Inferred from class `properties` option. See [definition](#comparedproperty-json-options). |
+| `custom`             |          | *boolean*            | Determine whether the equality operator will have a custom implementation or not. Default is `false`. |
+| `customInequality`   |          | *boolean*            | Determine whether the inequality operator will have a custom implementation or not. Default is `false`. |
+
+### ComparedProperty JSON options
+
+| Name                                 | Required | Type      | Description |
+|--------------------------------------|----------|-----------|-------------|
+| `name`                               | &#x2705; | *string*  | Name of the property that will be compared. Must match the property `name` option. |
+| `useGetter`                          |          | *boolean* | Determine whether to use the property getter method or not. Inferred from property `hasMemberVar` and `hasGetter` options. |
+| `comparator`                         |          | *string*  | Expression evaluating to a boolean used to test equality of the property. For example, this comparator can be as simple as `true` or a bit more complicated like `$ == @.$` where `@` is the `comparatorClassInstancePlaceholder` option and `$` is the `comparatorPropertyPlaceholder` option. The `@` (`comparatorClassInstancePlaceholder`) placeholder will implicitly be replaced with the name of the other class instance argument name. The `$` (`comparatorPropertyPlaceholder`) placeholder will implicitly be replaced with either the named access of the property member variable or the property getter method call. Inferred from `comparatorClassInstancePlaceholder` and `comparatorPropertyPlaceholder` options as well as property `type` option. |
+| `comparatorClassInstancePlaceholder` |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `@`. |
+| `comparatorPropertyPlaceholder`      |          | *string*  | Replace comparator placeholder used in `comparator` option. Default is `$`. |
+
+### HashOperator JSON options
+
+| Name               | Required | Type               | Description |
+|--------------------|----------|--------------------|-------------|
+| `defined`          |          | *boolean*          | Determine whether the hash operator is defined or not. Inferred from [equality operator](#equalityoperator-json-options) `defined` option. |
+| `usePointerAsHash` |          | *boolean*          | Determine whether the hash operator will just return the class instance pointer or not. Inferred from [equality operator](#equalityoperator-json-options) `comparePointers` option. |
+| `hashedProperties` |          | *HashedProperty[]* | Hashed properties in the hash operator. Inferred from [equality operator](#equalityoperator-json-options) `comparedProperties` option. See [definition](#hashedproperty-json-options). |
+| `custom`           |          | *boolean*          | Determine whether the hash operator will have a custom implementation or not. Inferred from [equality operator](#equalityoperator-json-options) `custom` option. |
+
+### HashedProperty JSON options
+
+| Name                | Required | Type      | Description |
+|---------------------|----------|-----------|-------------|
+| `name`              | &#x2705; | *string*  | Name of the property that will be hashed. Must match the property `name` option. |
+| `useGetter`         |          | *boolean* | Determine whether to use the property getter method or not. Inferred from [compared property](#comparedproperty-json-options) `useGetter` option if possible or property `hasMemberVar` and `hasGetter` options. |
+| `hasher`            |          | *string*  | Expression evaluating to a hash integer used to hash the property. For example, this hasher can be as simple as `123` or a bit more complicated like `hash<float> {}(@)` where `@` is the `hasherPlaceholder` option. The placeholder will implicitly be replaced with either the named access of the property member variable or the property getter method call. Inferred from `hasherPlaceholder` option as well as property `type` option. |
+| `hasherPlaceholder` |          | *string*  | Replace hasher placeholder used in `hasher` option. Default is `@`. |
+
 ### Naming conventions
 
 | Naming convention key   | Example |
@@ -171,15 +212,16 @@
 
 ### Valid types
 
-| Type key | Description |
-|----------|-------------|
-| `int8`   | An 8-bit signed integer. Maps to `std::int8_t` C++ type. A `number` type in JavaScript. |
-| `int16`  | A 16-bit signed integer. Maps to `std::int16_t` C++ type. A `number` type in JavaScript. |
-| `int32`  | A 32-bit signed integer. Maps to `std::int32_t` C++ type. A `number` type in JavaScript. |
-| `int64`  | A 64-bit signed integer. Maps to `std::int64_t` C++ type. A `number` type in JavaScript. |
-| `uint8`  | An 8-bit unsigned integer. Maps to `std::uint8_t` C++ type. A `number` type in JavaScript. |
-| `uint16` | A 16-bit unsigned integer. Maps to `std::uint16_t` C++ type. A `number` type in JavaScript. |
-| `uint32` | A 32-bit unsigned integer. Maps to `std::uint32_t` C++ type. A `number` type in JavaScript. |
-| `uint64` | A 64-bit unsigned integer. Maps to `std::uint64_t` C++ type. A `number` type in JavaScript. |
-| `float`  | A 32-bit IEEE 754 floating point number. Maps to `float` C++ type. A `number` type in JavaScript. |
-| `double` | A 64-bit IEEE 754 floating point number. Maps to `double` C++ type. A `number` type in JavaScript. |
+| Type key  | Description |
+|-----------|-------------|
+| `int8`    | An 8-bit signed integer. Maps to `std::int8_t` C++ type. A `number` type in JavaScript. |
+| `int16`   | A 16-bit signed integer. Maps to `std::int16_t` C++ type. A `number` type in JavaScript. |
+| `int32`   | A 32-bit signed integer. Maps to `std::int32_t` C++ type. A `number` type in JavaScript. |
+| `int64`   | A 64-bit signed integer. Maps to `std::int64_t` C++ type. A `number` type in JavaScript. |
+| `uint8`   | An 8-bit unsigned integer. Maps to `std::uint8_t` C++ type. A `number` type in JavaScript. |
+| `uint16`  | A 16-bit unsigned integer. Maps to `std::uint16_t` C++ type. A `number` type in JavaScript. |
+| `uint32`  | A 32-bit unsigned integer. Maps to `std::uint32_t` C++ type. A `number` type in JavaScript. |
+| `uint64`  | A 64-bit unsigned integer. Maps to `std::uint64_t` C++ type. A `number` type in JavaScript. |
+| `float`   | A 32-bit IEEE 754 floating point number. Maps to `float` C++ type. A `number` type in JavaScript. |
+| `double`  | A 64-bit IEEE 754 floating point number. Maps to `double` C++ type. A `number` type in JavaScript. |
+| `boolean` | A boolean type. Maps to `bool` C++ type. |

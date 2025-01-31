@@ -24,7 +24,7 @@ function generateHeader(interfaceName, interfaceJson) {
 
   let publicCtors = '', publicOperators = '', publicMethods = '', publicFuncs = '', publicMembVars = '', publicStatVars = '';
   let protectedCtors = '', protectedOperators = '', protectedMethods = '', protectedFuncs = '', protectedMembVars = '', protectedStatVars = '';
-  let privateCtors = '', privateOperators = '', privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '';
+  let privateCtors = '', privateOperators = '', privateMethods = '', privateFuncs = '', privateMembVars = '', privateStatVars = '', privateFriends = '';
 
   const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
   const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
@@ -171,6 +171,13 @@ function generateHeader(interfaceName, interfaceJson) {
     }
   }
 
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    publicOperators += `    bool PSM_API operator==(const ${name}& ${argName}) const noexcept;\n`;
+    publicOperators += `    bool PSM_API operator!=(const ${name}& ${argName}) const noexcept;\n`;
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propTypeRaw = propertyJson.type;
@@ -261,6 +268,12 @@ function generateHeader(interfaceName, interfaceJson) {
           throw new Error('Unhandled C++ setter visibility.');
       }
     }
+  }
+
+  const hashOperator = interfaceJson.hashOperator;
+  if (hashOperator.defined) {
+    privateFriends += `    friend struct std::hash<${name}>;\n`;
+    includesFirst.add('#include <functional>');
   }
 
   let public = publicCtors, protected = protectedCtors, private = privateCtors;
@@ -357,6 +370,12 @@ function generateHeader(interfaceName, interfaceJson) {
     }
     private += privateStatVars;
   }
+  if (privateFriends.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateFriends;
+  }
 
   if (public.length > 0) {
     code += `public:\n${public}`;
@@ -380,6 +399,21 @@ function generateHeader(interfaceName, interfaceJson) {
   }
   code += '\n';
   code += '}\n';
+
+  if (hashOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n`;
+    code += `namespace std {\n`;
+    code += `\n`;
+    code += `template <>\n`;
+    code += `struct hash<psm::${name}> {\n`;
+    code += `    std::size_t PSM_API operator()(const psm::${name}& ${argName}) const noexcept;\n`;
+    code += `};\n`;
+    code += `\n`;
+    code += `}\n`;
+    includesFirst.add('#include <functional>');
+  }
+
   code += '\n';
   code += `#endif // ${headerGuard}\n`;
 
@@ -860,6 +894,67 @@ function generateSource(interfaceName, interfaceJson) {
     }
   }
 
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    let eqOp = undefined, neOp = undefined;
+
+    if (!equalityOperator.custom) {
+      eqOp = `bool ${name}::operator==(const ${name}& ${argName}) const noexcept\n`;
+      eqOp += `{\n`;
+      if (equalityOperator.comparePointers) {
+        eqOp += `    return this == &${argName};\n`;
+      } else {
+        for (const comparedPropertyJson of equalityOperator.comparedProperties) {
+          const name = comparedPropertyJson.name;
+          const useGetter = comparedPropertyJson.useGetter;
+          const comparator = comparedPropertyJson.comparator;
+          const comparatorClassInstancePlaceholder = comparedPropertyJson.comparatorClassInstancePlaceholder;
+          const comparatorPropertyPlaceholder = comparedPropertyJson.comparatorPropertyPlaceholder;
+
+          let foundPropertyJson = undefined;
+          for (const propertyJson of util.getProperties(interfaceJson)) {
+            if (propertyJson.name === name) {
+              foundPropertyJson = propertyJson;
+              break;
+            }
+          }
+
+          let line = comparator.replaceAll(comparatorClassInstancePlaceholder, argName);
+          if (useGetter) {
+            const getterName = util.getPropertyGetterName(foundPropertyJson, util.CXX);
+            line = line.replaceAll(comparatorPropertyPlaceholder, `${getterName}()`);
+          } else {
+            const propName = util.getPropertyName(foundPropertyJson, util.CXX);
+            line = line.replaceAll(comparatorPropertyPlaceholder, `${propName}`);
+          }
+
+          eqOp += `    if (!(${line})) {\n`;
+          eqOp += `        return false;\n`;
+          eqOp += `    }\n`;
+        }
+        eqOp += `    return true;\n`;
+      }
+      eqOp += `}\n`;
+    }
+
+    if (!equalityOperator.customInequality) {
+      neOp = `bool ${name}::operator!=(const ${name}& ${argName}) const noexcept\n`;
+      neOp += `{\n`;
+      neOp += `    return !(*this == ${argName});\n`;
+      neOp += `}\n`;
+    }
+
+    if (typeof eqOp !== 'undefined') {
+      if (publicOperators.length > 0) { publicOperators += '\n'; }
+      publicOperators += eqOp;
+    }
+    if (typeof neOp !== 'undefined') {
+      if (publicOperators.length > 0) { publicOperators += '\n'; }
+      publicOperators += neOp;
+    }
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propType = util.getPropertyType(propertyJson, util.CXX);
@@ -1059,6 +1154,50 @@ function generateSource(interfaceName, interfaceJson) {
 
   if (namespaceBodyNeedsAdditionalNewLine) { code += '\n'; }
   code += '}\n';
+
+  const hashOperator = interfaceJson.hashOperator;
+  if (hashOperator.defined && !hashOperator.custom) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n`;
+    code += `namespace std {\n`;
+    code += `\n`;
+    code += `std::size_t hash<psm::${name}>::operator()(const psm::${name}& ${argName}) const noexcept\n`;
+    code += `{\n`;
+    if (hashOperator.usePointerAsHash) {
+      code += `    return hash<const psm::${name}*> {}(&${argName});\n`;
+    } else {
+      code += `    std::size_t result = 0;\n`;
+      for (const hashedPropertyJson of hashOperator.hashedProperties) {
+        const name = hashedPropertyJson.name;
+        const useGetter = hashedPropertyJson.useGetter;
+        const hasher = hashedPropertyJson.hasher;
+        const hasherPlaceholder = hashedPropertyJson.hasherPlaceholder;
+
+        let foundPropertyJson = undefined;
+        for (const propertyJson of util.getProperties(interfaceJson)) {
+          if (propertyJson.name === name) {
+            foundPropertyJson = propertyJson;
+            break;
+          }
+        }
+
+        let line = hasher;
+        if (useGetter) {
+          const getterName = util.getPropertyGetterName(foundPropertyJson, util.CXX);
+          line = line.replaceAll(hasherPlaceholder, `${argName}.${getterName}()`);
+        } else {
+          const propName = util.getPropertyName(foundPropertyJson, util.CXX);
+          line = line.replaceAll(hasherPlaceholder, `${argName}.${propName}`);
+        }
+
+        code += `    result ^= (${line}) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
+      }
+      code += `    return result;\n`;
+    }
+    code += `}\n`;
+    code += `\n`;
+    code += `}\n`;
+  }
 
   includesFirst = Array.from(includesFirst).sort();
   includesSecond = Array.from(includesSecond).sort();

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const generateInterfaceCXX = require('./generator-cxx');
 const generateInterfaceObjC = require('./generator-objc');
+const generateInterfaceSwift = require('./generator-swift');
 const path = require('path');
 const util = require('./util');
 
@@ -43,6 +44,7 @@ function validateInterface(interfaceName, interfaceJson) {
 function generateInterface(interfaceName, interfaceJson) {
   generateInterfaceCXX(interfaceName, interfaceJson);
   generateInterfaceObjC(interfaceName, interfaceJson);
+  generateInterfaceSwift(interfaceName, interfaceJson);
 }
 
 function generate() {
@@ -70,6 +72,8 @@ function generate() {
       util.fillCopyConstructor(interfaceJson);
       util.fillMoveConstructor(interfaceJson);
       util.fillDestructor(interfaceJson);
+      util.fillEqualityOperator(interfaceJson);
+      util.fillHashOperator(interfaceJson);
       interfaces[interfaceName] = interfaceJson;
       validateInterface(interfaceName, interfaceJson);
     } catch (error) {
