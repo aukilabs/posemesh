@@ -54,6 +54,41 @@ function generateHeader(interfaceName, interfaceJson) {
     publicOperators += `- (NSUInteger)hash;\n`;
   }
 
+  for (const propertyJson of util.getProperties(interfaceJson)) {
+    const propTypeRaw = propertyJson.type;
+    if (util.isIntType(propTypeRaw)) {
+      includesFirst.add('#include <stdint.h>');
+    }
+    const propStatic = util.getPropertyStatic(propertyJson);
+    if (propertyJson.hasGetter) {
+      const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
+      const getter = `${propStatic ? '+' : '-'} (${getterType})${getterName} NS_REFINED_FOR_SWIFT;\n`;
+      const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
+      if (getterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          publicFuncs += getter;
+        } else {
+          publicMethods += getter;
+        }
+      }
+    }
+    if (propertyJson.hasSetter) {
+      const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
+      const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
+      const setterVisibility = util.getPropertySetterVisibility(propertyJson);
+      if (setterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          publicFuncs += setter;
+        } else {
+          publicMethods += setter;
+        }
+      }
+    }
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {
@@ -348,6 +383,61 @@ function generateSource(interfaceName, interfaceJson) {
       publicOperators += '\n';
     }
     publicOperators += hashOp;
+  }
+
+  for (const propertyJson of util.getProperties(interfaceJson)) {
+    const propTypeRaw = propertyJson.type;
+    if (util.isIntType(propTypeRaw)) {
+      includesFirst.add('#include <stdint.h>');
+    }
+    const propStatic = util.getPropertyStatic(propertyJson);
+    if (propertyJson.hasGetter) {
+      const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
+      let getter = `${propStatic ? '+' : '-'} (${getterType})${getterName}\n`;
+      getter += `{\n`;
+      getter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+      getter += `    return ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+      getter += `}\n`;
+      const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
+      if (getterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          if (publicFuncs.length > 0) {
+            publicFuncs += '\n';
+          }
+          publicFuncs += getter;
+        } else {
+          if (publicMethods.length > 0) {
+            publicMethods += '\n';
+          }
+          publicMethods += getter;
+        }
+      }
+    }
+    if (propertyJson.hasSetter) {
+      const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
+      let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
+      setter += `{\n`;
+      setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+      setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
+      setter += `}\n`;
+      const setterVisibility = util.getPropertySetterVisibility(propertyJson);
+      if (setterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          if (publicFuncs.length > 0) {
+            publicFuncs += '\n';
+          }
+          publicFuncs += setter;
+        } else {
+          if (publicMethods.length > 0) {
+            publicMethods += '\n';
+          }
+          publicMethods += setter;
+        }
+      }
+    }
   }
 
   let public = publicCtors;
