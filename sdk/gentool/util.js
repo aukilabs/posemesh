@@ -292,6 +292,23 @@ function getIntType(signed, bits, language) {
   }
 }
 
+function getBooleanType(language) {
+  switch (language) {
+    case Language.CXX:
+      return 'bool';
+    case Language.C:
+      return 'uint8_t';
+    case Language.ObjC:
+      return 'BOOL';
+    case Language.Swift:
+      return 'Bool';
+    case Language.JS:
+      return 'boolean';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
 function getPropertyType(propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -311,6 +328,8 @@ function getPropertyType(propertyJson, language) {
       return getFloatType(language);
     case 'double':
       return getDoubleType(language);
+    case 'boolean':
+      return getBooleanType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -335,6 +354,8 @@ function getPropertyTypeForGetter(propertyJson, language) {
       return getFloatType(language);
     case 'double':
       return getDoubleType(language);
+    case 'boolean':
+      return getBooleanType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -359,6 +380,8 @@ function getPropertyTypeForSetter(propertyJson, language) {
       return getFloatType(language);
     case 'double':
       return getDoubleType(language);
+    case 'boolean':
+      return getBooleanType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -411,6 +434,7 @@ function isPrimitiveType(type) {
   switch (type) {
     case 'float':
     case 'double':
+    case 'boolean':
       return true;
     default:
       return false;
@@ -426,6 +450,8 @@ function getTypeImplicitDefaultValue(type) {
       return '0.0f';
     case 'double':
       return '0.0';
+    case 'boolean':
+      return 'false';
     default:
       return '';
   }
@@ -438,6 +464,7 @@ function getTypeMembVarCopyOp(type, membVar) {
   switch (type) {
     case 'float':
     case 'double':
+    case 'boolean':
       return membVar;
     default:
       return membVar;
@@ -451,6 +478,7 @@ function getTypeMembVarMoveOp(type, membVar) {
   switch (type) {
     case 'float':
     case 'double':
+    case 'boolean':
       return membVar;
     default:
       return `std::move(${membVar})`;
@@ -464,6 +492,7 @@ function getTypePropEqOp(type, clsParam, prpParam) {
   switch (type) {
     case 'float':
     case 'double':
+    case 'boolean':
       return `${prpParam} == ${clsParam}.${prpParam}`;
     default:
       return `${prpParam} == ${clsParam}.${prpParam}`;
@@ -477,6 +506,7 @@ function getTypePropHasher(type, param) {
   switch (type) {
     case 'float':
     case 'double':
+    case 'boolean':
       return `hash<${type}> {}(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
@@ -1876,6 +1906,7 @@ module.exports = {
   getFloatType,
   getDoubleType,
   getIntType,
+  getBooleanType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,

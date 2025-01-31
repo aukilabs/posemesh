@@ -394,10 +394,11 @@ function generateSource(interfaceName, interfaceJson) {
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
       const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
+      const getterExt = (propTypeRaw === 'boolean') ? ' ? YES : NO' : '';
       let getter = `${propStatic ? '+' : '-'} (${getterType})${getterName}\n`;
       getter += `{\n`;
       getter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-      getter += `    return ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+      getter += `    return ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
       getter += `}\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
@@ -418,10 +419,11 @@ function generateSource(interfaceName, interfaceJson) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
       const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
+      const setterExt = (propTypeRaw === 'boolean') ? ' ? true : false' : '';
       let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
       setter += `{\n`;
       setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-      setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
+      setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName}${setterExt});\n`;
       setter += `}\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
