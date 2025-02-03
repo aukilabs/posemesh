@@ -1,6 +1,10 @@
 name: Posemesh SDK
 on: [push]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build_apple_sdk:
     name: Build Apple SDK
