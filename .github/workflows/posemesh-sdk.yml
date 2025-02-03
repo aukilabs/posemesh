@@ -19,7 +19,7 @@ jobs:
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
       - name: Build Posemesh Networking (all platforms and architectures)
-        run: pwsh ./core/networking/scripts/Build-Apple.ps1 Release -InstallNecessaryRustToolchainsAndTargets
+        run: pwsh ./core/scripts/Build-Apple.ps1 Release networking -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV (all platforms and architectures)
         run: pwsh ./third-party/scripts/Build-OpenCV-Apple.ps1 Release

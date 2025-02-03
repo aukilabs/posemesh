@@ -72,7 +72,7 @@ git submodule update --init --recursive
 
 2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
 ```sh
-./core/networking/scripts/Build-Library.ps1 macOS ARM64 Debug
+./core/scripts/Build-Library.ps1 macOS ARM64 Debug networking
 ```
 
 3. Build OpenCV
