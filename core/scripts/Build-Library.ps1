@@ -249,7 +249,7 @@ Try {
             Write-Error -Message 'ASSERT: Variable $WASMTarget is not set.'
             Exit 1
         }
-        & cd $Package & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir pkg/$BuildType --out-name PosemeshNetworking --features "wasm" --manifest-path "${Package}/Cargo.toml"
+        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir pkg/$BuildType --out-name PosemeshNetworking --features "wasm" --manifest-path "${Package}/Cargo.toml"
     } Else {
         & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }
