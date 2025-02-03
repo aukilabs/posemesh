@@ -2,7 +2,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/CopyFileWithTextReplace.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/GetRustTargetName.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/LinkPlatformLibraries.cmake")
 
-set(NETWORKING_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../core")
+set(NETWORKING_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../core/networking")
 set(NETWORKING_PKG_PREFIX "${NETWORKING_PREFIX}/pkg")
 set(NETWORKING_TARGET_PREFIX "${NETWORKING_PREFIX}/target")
 
