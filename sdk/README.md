@@ -70,9 +70,9 @@ are not possible. The relay server is only used as a last resort.
 git submodule update --init --recursive
 ```
 
-2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/networking#building)):
+2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
 ```sh
-./networking/scripts/Build-Library.ps1 macOS ARM64 Debug
+./core/networking/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
 3. Build OpenCV

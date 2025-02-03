@@ -1,12 +1,12 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use libp2p::{gossipsub::{PublishError, TopicHash}, Stream};
-use posemesh_networking::{context, event, network::{self, Node}};
+use networking::{context, event, network::{self, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
 use serde::de;
 use tokio::{self, select, signal, time::sleep};
 use futures::{channel::mpsc::{channel, Receiver, Sender}, AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
 use std::{any::Any, borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, time::{Duration, SystemTime, UNIX_EPOCH}};
-use posemesh_protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
+use protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
 use sha2::{Digest, Sha256};
 use hex;
 use std::fs;
@@ -418,7 +418,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: "".to_string(),
+        private_key: vec![],
         private_key_path: private_key_path,
         name: name,
         // node_capabilities: vec![],

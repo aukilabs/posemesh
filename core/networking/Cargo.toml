@@ -1,0 +1,82 @@
+[package]
+name = "networking"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true } 
+libp2p-stream = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+rand = "0.8.5"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
+tokio = { workspace = true, features = ["full"] }
+libp2p-webrtc = { workspace = true, features = ["tokio"] }
+uuid = { version = "1.11.0", optional = true, features = ["v4"] }
+pyo3 = { version = "0.20.0", features = ["extension-module"], optional = true }
+pyo3-log = { version = "0.9.0", optional = true }
+pyo3-asyncio = { version = "0.20.0", features = ["tokio-runtime"], optional = true }
+protobuf = { workspace = true, optional = true }
+sha2 = { version = "0.10.8", optional = true }
+hex = { version = "0.4.3", optional = true }
+quick-protobuf = { workspace = true, optional = true }
+jsonwebtoken = { version = "9.3.0", optional = true }
+quick-protobuf-codec = { version = "0.3.1", optional = true }
+
+[target.'cfg(target_family="wasm")'.dependencies]
+libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay" ] }
+libp2p-webrtc-websys = { workspace = true }
+tracing-wasm = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+gloo-timers = { workspace = true, features = ["futures"] }
+
+[features]
+default = []
+cpp = []
+rust = ["dep:protobuf", "dep:sha2", "dep:hex", "dep:quick-protobuf", "dep:quick-protobuf-codec", "dep:jsonwebtoken", "dep:uuid"]
+wasm = []
+py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[[example]]
+name = "relay"
+path = "../examples/relay.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "receiver"
+path = "../examples/private_receiver.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "sender"
+path = "examples/private_dialer.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "dmt"
+path = "../examples/dmt.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "domain_manager"
+path = "../examples/domain_manager.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "data"
+path = "../examples/data_node.rs"
+required-features = ["rust"]
+
+[[example]]
+name = "reconstruction"
+path = "../examples/reconstruction_node.rs"
+required-features = ["rust"]

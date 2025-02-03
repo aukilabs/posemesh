@@ -1,8 +1,8 @@
 use libp2p::{gossipsub::{IdentTopic, TopicHash}, PeerId};
-use posemesh_networking::{context, event::{self, PubsubResult}, network};
+use networking::{context, event::{self, PubsubResult}, network};
 use tokio::{self, io};
 use futures::{channel::{mpsc::{channel, Receiver, Sender}, oneshot}, stream::{self, SplitStream}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use posemesh_protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Job, LocalRefinementOutputV1, Status, Task}};
+use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Job, LocalRefinementOutputV1, Status, Task}};
 use std::{borrow::{Borrow, BorrowMut}, collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
 
@@ -158,7 +158,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![domain_manager.clone()],
-        private_key: "".to_string(),
+        private_key: vec![],
         private_key_path: private_key_path,
         name: name,
     };
@@ -169,6 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut domain_cluster = DomainCluster::new(domain_manager_id.clone(), c.clone());
     
     let input_dir = format!("{}/input", base_path);
+    fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
 
     let mut upload_job_recv = domain_cluster.submit_job(&task::Job {

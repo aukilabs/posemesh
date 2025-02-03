@@ -1,4 +1,4 @@
-use posemesh_networking::{context, network, event};
+use networking::{context, network, event};
 use tokio::{self, signal, select};
 use futures::AsyncReadExt;
 
