@@ -84,7 +84,7 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build Posemesh Networking
-        run: pwsh ./core/networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
+        run: pwsh ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV
         run: |
