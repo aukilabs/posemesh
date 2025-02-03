@@ -63,6 +63,11 @@ path = "examples/private_dialer.rs"
 required-features = ["rust"]
 
 [[example]]
+name = "dmt"
+path = "examples/dmt.rs"
+required-features = ["rust"]
+
+[[example]]
 name = "domain_manager"
 path = "examples/domain_manager.rs"
 required-features = ["rust"]

@@ -57,7 +57,8 @@ async fn local_refinement_v1(mut stream: Stream, mut c: context::Context) {
 
         println!("Start executing {}", claim.task_name);
 
-        sleep(Duration::from_secs(5)).await;
+        let sleep_time = rand::random::<u64>() % 20;
+        sleep(Duration::from_secs(sleep_time)).await;
 
         let output = LocalRefinementOutputV1 {
             recording_id: input.recording_id.clone(),
