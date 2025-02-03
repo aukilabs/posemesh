@@ -55,10 +55,7 @@ function generateHeader(interfaceName, interfaceJson) {
   }
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
-    const propTypeRaw = propertyJson.type;
-    if (util.isIntType(propTypeRaw)) {
-      includesFirst.add('#include <stdint.h>');
-    }
+    let shouldAddIncludes = false;
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
@@ -66,6 +63,7 @@ function generateHeader(interfaceName, interfaceJson) {
       const getter = `${propStatic ? '+' : '-'} (${getterType})${getterName} NS_REFINED_FOR_SWIFT;\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
+        shouldAddIncludes = true;
         if (propStatic) {
           publicFuncs += getter;
         } else {
@@ -80,11 +78,18 @@ function generateHeader(interfaceName, interfaceJson) {
       const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
+        shouldAddIncludes = true;
         if (propStatic) {
           publicFuncs += setter;
         } else {
           publicMethods += setter;
         }
+      }
+    }
+    if (shouldAddIncludes) {
+      const propTypeRaw = propertyJson.type;
+      if (util.isIntType(propTypeRaw)) {
+        includesFirst.add('#include <stdint.h>');
       }
     }
   }
@@ -200,7 +205,7 @@ function generateSource(interfaceName, interfaceJson) {
     code += `@implementation ${name} {\n`;
     code += `    std::shared_ptr<psm::${nameCxx}> ${nameManagedMember};\n`;
     code += '}\n';
-    includesFirst.add('#include <managed>');
+    includesFirst.add('#include <memory>');
   }
 
   let publicCtors = '', publicOperators = '', publicMethods = '', publicFuncs = '';
@@ -387,9 +392,6 @@ function generateSource(interfaceName, interfaceJson) {
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propTypeRaw = propertyJson.type;
-    if (util.isIntType(propTypeRaw)) {
-      includesFirst.add('#include <stdint.h>');
-    }
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);

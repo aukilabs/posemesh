@@ -180,14 +180,12 @@ function generateHeader(interfaceName, interfaceJson) {
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
-    const propTypeRaw = propertyJson.type;
-    if (util.isIntType(propTypeRaw)) {
-      includesFirst.add('#include <cstdint>');
-    }
+    let shouldAddIncludes = false;
     const propType = util.getPropertyType(propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
     const propStaticPfx = propStatic ? 'static ' : '';
     if (util.getPropertyHasMemberVar(propertyJson)) {
+      shouldAddIncludes = true;
       const m = `    ${propStaticPfx}${propType} ${propName};\n`;
       if (propStatic) {
         privateStatVars += m;
@@ -196,6 +194,7 @@ function generateHeader(interfaceName, interfaceJson) {
       }
     }
     if (propertyJson.hasGetter) {
+      shouldAddIncludes = true;
       const getterConstExt = propertyJson.getterConst ? ' const' : '';
       const getterNoexceptExt = propertyJson.getterNoexcept ? ' noexcept' : '';
       const getterName = util.getPropertyGetterName(propertyJson, util.CXX);
@@ -232,6 +231,7 @@ function generateHeader(interfaceName, interfaceJson) {
       }
     }
     if (propertyJson.hasSetter) {
+      shouldAddIncludes = true;
       const setterConstExt = propertyJson.setterConst ? ' const' : '';
       const setterNoexceptExt = propertyJson.setterNoexcept ? ' noexcept' : '';
       const setterName = util.getPropertySetterName(propertyJson, util.CXX);
@@ -266,6 +266,12 @@ function generateHeader(interfaceName, interfaceJson) {
           break;
         default:
           throw new Error('Unhandled C++ setter visibility.');
+      }
+    }
+    if (shouldAddIncludes) {
+      const propTypeRaw = propertyJson.type;
+      if (util.isIntType(propTypeRaw)) {
+        includesFirst.add('#include <cstdint>');
       }
     }
   }
