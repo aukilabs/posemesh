@@ -76,6 +76,7 @@ function generate() {
       util.fillDestructor(interfaceJson);
       util.fillEqualityOperator(interfaceJson);
       util.fillHashOperator(interfaceJson);
+      util.fillCGenerateFuncAliasDefines(interfaceJson);
       interfaces[interfaceName] = interfaceJson;
       validateInterface(interfaceName, interfaceJson);
     } catch (error) {

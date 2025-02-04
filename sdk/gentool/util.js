@@ -1848,6 +1848,17 @@ function fillHashOperator(interfaceJson) {
   }
 }
 
+function fillCGenerateFuncAliasDefines(interfaceJson) {
+  if (typeof interfaceJson['c.generateFuncAliasDefines'] === 'undefined') {
+    interfaceJson['c.generateFuncAliasDefines'] = true;
+    interfaceJson['c.generateFuncAliasDefines.gen'] = true;
+  } else if (typeof interfaceJson['c.generateFuncAliasDefines'] !== 'boolean') {
+    throw new Error(`Invalid 'c.generateFuncAliasDefines' key type.`);
+  } else {
+    interfaceJson['c.generateFuncAliasDefines.gen'] = false;
+  }
+}
+
 module.exports = {
   NameStyle,
   lower_case: NameStyle.lower_case,
@@ -1977,5 +1988,6 @@ module.exports = {
   makeEqualityOperatorComparedProperties,
   fillEqualityOperator,
   makeHashOperatorHashedProperties,
-  fillHashOperator
+  fillHashOperator,
+  fillCGenerateFuncAliasDefines
 };

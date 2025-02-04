@@ -36,12 +36,17 @@ function generateHeader(interfaceName, interfaceJson) {
   code += '#endif\n';
 
   let publicCtors = '', publicOperators = '', publicMethods = '', publicFuncs = '';
+  let funcAliases = [];
 
   const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
   const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
   const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
   if (!static && pCtorDefinition !== util.ConstructorDefinition.deleted && pCtorVisibility === util.Visibility.public) {
     publicCtors += `${name}* PSM_API ${nameWithoutTSuffix}_create();\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_create`,
+      args: []
+    });
   }
 
   const copyConstructor = util.getClassCopyConstructor(interfaceJson);
@@ -50,17 +55,29 @@ function generateHeader(interfaceName, interfaceJson) {
   if (!static && copyable && cCtorDefinition !== util.ConstructorDefinition.deleted && cCtorVisibility === util.Visibility.public) {
     const mainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.C);
     publicCtors += `${name}* PSM_API ${nameWithoutTSuffix}_duplicate(const ${name}* ${mainArgName});\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_duplicate`,
+      args: [mainArgName]
+    });
   }
 
   if (!static) {
     const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
     publicCtors += `void PSM_API ${nameWithoutTSuffix}_destroy(${name}* ${mainArgName});\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_destroy`,
+      args: [mainArgName]
+    });
   }
 
   const equalityOperator = interfaceJson.equalityOperator;
   if (equalityOperator.defined) {
     const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
     publicOperators += `uint8_t PSM_API ${nameWithoutTSuffix}_equals(const ${name}* ${mainArgName}, const ${name}* other_${mainArgName});\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_equals`,
+      args: [mainArgName, `other_${mainArgName}`]
+    });
     includesFirst.add('#include <stdint.h>');
   }
 
@@ -68,6 +85,10 @@ function generateHeader(interfaceName, interfaceJson) {
   if (hashOperator.defined) {
     const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
     publicOperators += `size_t PSM_API ${nameWithoutTSuffix}_hash(const ${name}* ${mainArgName});\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_hash`,
+      args: [mainArgName]
+    });
     includesFirst.add('#include <stddef.h>');
   }
 
@@ -85,8 +106,16 @@ function generateHeader(interfaceName, interfaceJson) {
         shouldAddIncludes = true;
         if (propStatic) {
           publicFuncs += getter;
+          funcAliases.push({
+            name: `${nameWithoutTSuffix}_${getterName}`,
+            args: []
+          });
         } else {
           publicMethods += getter;
+          funcAliases.push({
+            name: `${nameWithoutTSuffix}_${getterName}`,
+            args: [mainArgName]
+          });
         }
       }
     }
@@ -102,8 +131,16 @@ function generateHeader(interfaceName, interfaceJson) {
         shouldAddIncludes = true;
         if (propStatic) {
           publicFuncs += setter;
+          funcAliases.push({
+            name: `${nameWithoutTSuffix}_${setterName}`,
+            args: [setterArgName]
+          });
         } else {
           publicMethods += setter;
+          funcAliases.push({
+            name: `${nameWithoutTSuffix}_${setterName}`,
+            args: [mainArgName, setterArgName]
+          });
         }
       }
     }
@@ -145,6 +182,26 @@ function generateHeader(interfaceName, interfaceJson) {
   code += '}\n';
   code += '#endif\n';
 
+  if (interfaceJson['c.generateFuncAliasDefines'] && funcAliases.length > 0) {
+    for (const alias of util.getLangAliases(interfaceJson, util.C)) {
+      const aliasWithoutTSuffix = alias.substring(0, alias.length - 2);
+      code += '\n';
+      for (const funcAlias of funcAliases) {
+        let args = '';
+        let argsSent = '';
+        for (const arg of funcAlias.args) {
+          if (args.length > 0) {
+            args += ', ';
+            argsSent += ', ';
+          }
+          args += `_${arg}`;
+          argsSent += `(_${arg})`;
+        }
+        code += `#define ${aliasWithoutTSuffix}${funcAlias.name.substring(nameWithoutTSuffix.length)}(${args}) (${funcAlias.name}(${argsSent}))\n`;
+      }
+    }
+  }
+
   code += `\n`;
   code += `#endif // ${headerGuard}\n`;
 
@@ -173,6 +230,58 @@ function generateSource(interfaceName, interfaceJson) {
 
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
   code += '%INCLUDES%\n';
+
+  let publicCtors = '', publicOperators = '', publicMethods = '', publicFuncs = '';
+  let privateCtors = '', privateOperators = '', privateMethods = '', privateFuncs = '';
+
+  let public = publicCtors;
+  if (publicOperators.length > 0) {
+    if (public.length > 0) {
+      public += '\n';
+    }
+    public += publicOperators;
+  }
+  if (publicMethods.length > 0) {
+    if (public.length > 0) {
+      public += '\n';
+    }
+    public += publicMethods;
+  }
+  if (publicFuncs.length > 0) {
+    if (public.length > 0) {
+      public += '\n';
+    }
+    public += publicFuncs;
+  }
+
+  let private = privateCtors;
+  if (privateOperators.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateOperators;
+  }
+  if (privateMethods.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateMethods;
+  }
+  if (privateFuncs.length > 0) {
+    if (private.length > 0) {
+      private += '\n';
+    }
+    private += privateFuncs;
+  }
+
+  if (public.length > 0) {
+    code += '\n';
+    code += public;
+  }
+  if (private.length > 0) {
+    code += '\n';
+    code += private;
+  }
 
   includesFirst = Array.from(includesFirst).sort();
   includesSecond = Array.from(includesSecond).sort();
