@@ -97,6 +97,7 @@ extern "C" {
         const char* peer_id,
         const char* protocol,
         void* user_data,
+        uint32_t timeout,
         void (*callback)(uint8_t status, void* user_data)
     );
 #else
@@ -107,6 +108,7 @@ extern "C" {
         const char* peer_id,
         const char* protocol,
         void* user_data,
+        uint32_t timeout,
         void (*callback)(uint8_t status, void* user_data)
     ) {
         assert(context);
@@ -121,9 +123,10 @@ extern "C" {
             let peerId = UTF8ToString($3);
             let protocol = UTF8ToString($4);
             let userData = $5;
-            let callback = $6;
+            let timeout = $6;
+            let callback = $7;
             __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(
-                context, new Uint8Array(HEAPU8.buffer, message, messageSize), peerId, protocol
+                context, new Uint8Array(HEAPU8.buffer, message, messageSize), peerId, protocol, timeout
             ).then(function(status) {
                 if (callback) {
                     dynCall('vip', callback, [status ? 1 : 0, userData]);
@@ -134,7 +137,7 @@ extern "C" {
                     dynCall('vip', callback, [0, userData]);
                 }
             });
-        }, context, message, message_size, peer_id, protocol, user_data, callback);
+        }, context, message, message_size, peer_id, protocol, user_data, timeout, callback);
         return 1;
     }
 #endif

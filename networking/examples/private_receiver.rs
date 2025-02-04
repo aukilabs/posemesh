@@ -30,8 +30,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         private_key: vec![],
         private_key_path: private_key_path,
         name: name,
-        node_capabilities: vec![],
-        node_types: vec!["client".to_string()],
+        // node_capabilities: vec![],
+        // node_types: vec!["client".to_string()],
     };
     
     let runtime = Runtime::new()?;
@@ -48,10 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match e {
                         Some(e) => {
                             match e {
-                                event::Event::MessageReceived { peer, stream, .. } => {
+                                event::Event::StreamMessageReceivedEvent { peer, mut msg_reader, .. } => {
                                     let mut buf = Vec::new();
-                                    let mut s = stream;
-                                    let _ = s.read_to_end(&mut buf).await;
+                                    let _ = msg_reader.read_to_end(&mut buf).await;
                                     println!("Received message from {}: {:?}", peer, String::from_utf8_lossy(&buf));
                                 }
                                 _ => {}

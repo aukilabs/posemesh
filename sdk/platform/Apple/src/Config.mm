@@ -1,15 +1,16 @@
 #import <Posemesh/Config.h>
 
+#include <Posemesh/Config.hpp>
 #include <cstdint>
 #include <new>
-#include <Posemesh/Config.hpp>
 
 @implementation PSMConfig {
     psm::Config* m_config;
 }
 
-- (instancetype)init {
-    auto* config = new(std::nothrow) psm::Config;
+- (instancetype)init
+{
+    auto* config = new (std::nothrow) psm::Config;
     if (!config) {
         return nil;
     }
@@ -21,10 +22,11 @@
     return self;
 }
 
-- (instancetype)initWithConfig:(PSMConfig*)config {
+- (instancetype)initWithConfig:(PSMConfig*)config
+{
     NSAssert(config, @"config is null");
     NSAssert(config->m_config, @"config->m_config is null");
-    auto* copy = new(std::nothrow) psm::Config(*(config->m_config));
+    auto* copy = new (std::nothrow) psm::Config(*(config->m_config));
     if (!copy) {
         return nil;
     }
@@ -36,7 +38,8 @@
     return self;
 }
 
-- (instancetype)initWithNativeConfig:(psm::Config*)config {
+- (instancetype)initWithNativeConfig:(psm::Config*)config
+{
     NSAssert(config, @"config is null");
     self = [super init];
     if (!self) {
@@ -46,9 +49,10 @@
     return self;
 }
 
-- (instancetype)copyWithZone:(NSZone*)zone {
+- (instancetype)copyWithZone:(NSZone*)zone
+{
     NSAssert(m_config, @"m_config is null");
-    auto* config = new(std::nothrow) psm::Config(*m_config);
+    auto* config = new (std::nothrow) psm::Config(*m_config);
     if (!config) {
         return nil;
     }
@@ -60,13 +64,15 @@
     return copy;
 }
 
-- (void)dealloc {
+- (void)dealloc
+{
     NSAssert(m_config, @"m_config is null");
     delete m_config;
     m_config = nullptr;
 }
 
-- (BOOL)isEqual:(id)object {
+- (BOOL)isEqual:(id)object
+{
     if (self == object)
         return YES;
     if (![object isKindOfClass:[PSMConfig class]])
@@ -77,31 +83,37 @@
     return m_config->operator==(*(config->m_config));
 }
 
-- (NSUInteger)hash {
+- (NSUInteger)hash
+{
     return 0;
 }
 
-- (BOOL)serveAsBootstrap {
+- (BOOL)serveAsBootstrap
+{
     NSAssert(m_config, @"m_config is null");
     return static_cast<BOOL>(m_config->getServeAsBootstrap());
 }
 
-- (void)setServeAsBootstrap:(BOOL)serveAsBootstrap {
+- (void)setServeAsBootstrap:(BOOL)serveAsBootstrap
+{
     NSAssert(m_config, @"m_config is null");
     m_config->setServeAsBootstrap(static_cast<bool>(serveAsBootstrap));
 }
 
-- (BOOL)serveAsRelay {
+- (BOOL)serveAsRelay
+{
     NSAssert(m_config, @"m_config is null");
     return static_cast<BOOL>(m_config->getServeAsRelay());
 }
 
-- (void)setServeAsRelay:(BOOL)serveAsRelay {
+- (void)setServeAsRelay:(BOOL)serveAsRelay
+{
     NSAssert(m_config, @"m_config is null");
     m_config->setServeAsRelay(static_cast<bool>(serveAsRelay));
 }
 
-- (NSArray<NSString*>*)bootstraps {
+- (NSArray<NSString*>*)bootstraps
+{
     NSAssert(m_config, @"m_config is null");
     const auto bootstraps = m_config->getBootstraps();
     NSMutableArray<NSString*>* array = [[NSMutableArray<NSString*> alloc] init];
@@ -111,7 +123,8 @@
     return array;
 }
 
-- (BOOL)setBootstraps:(NSArray<NSString*>*)bootstraps {
+- (BOOL)setBootstraps:(NSArray<NSString*>*)bootstraps
+{
     NSAssert(m_config, @"m_config is null");
     std::vector<std::string> bootstraps_vector;
     for (NSString* bootstrap in bootstraps) {
@@ -120,7 +133,8 @@
     return static_cast<BOOL>(m_config->setBootstraps(std::move(bootstraps_vector)));
 }
 
-- (NSArray<NSString*>*)relays {
+- (NSArray<NSString*>*)relays
+{
     NSAssert(m_config, @"m_config is null");
     const auto relays = m_config->getRelays();
     NSMutableArray<NSString*>* array = [[NSMutableArray<NSString*> alloc] init];
@@ -130,7 +144,8 @@
     return array;
 }
 
-- (BOOL)setRelays:(NSArray<NSString*>*)relays {
+- (BOOL)setRelays:(NSArray<NSString*>*)relays
+{
     NSAssert(m_config, @"m_config is null");
     std::vector<std::string> relays_vector;
     for (NSString* relay in relays) {
@@ -139,35 +154,41 @@
     return static_cast<BOOL>(m_config->setRelays(std::move(relays_vector)));
 }
 
-- (NSData*)privateKey {
+- (NSData*)privateKey
+{
     NSAssert(m_config, @"m_config is null");
     const auto privateKey = m_config->getPrivateKey();
     return [[NSData alloc] initWithBytes:privateKey.data() length:privateKey.size()];
 }
 
-- (void)setPrivateKey:(NSData*)privateKey {
+- (void)setPrivateKey:(NSData*)privateKey
+{
     NSAssert(m_config, @"m_config is null");
     const auto* privateKeyData = static_cast<const std::uint8_t*>([privateKey bytes]);
-    m_config->setPrivateKey(std::vector<std::uint8_t>{privateKeyData, privateKeyData + [privateKey length]});
+    m_config->setPrivateKey(std::vector<std::uint8_t> { privateKeyData, privateKeyData + [privateKey length] });
 }
 
-- (NSString*)privateKeyPath {
+- (NSString*)privateKeyPath
+{
     NSAssert(m_config, @"m_config is null");
     return [NSString stringWithUTF8String:m_config->getPrivateKeyPath().c_str()];
 }
 
-- (void)setPrivateKeyPath:(NSString*)privateKeyPath {
+- (void)setPrivateKeyPath:(NSString*)privateKeyPath
+{
     NSAssert(m_config, @"m_config is null");
     m_config->setPrivateKeyPath([privateKeyPath UTF8String]);
 }
 
-- (void*)nativeConfig {
+- (void*)nativeConfig
+{
     NSAssert(m_config, @"m_config is null");
     return m_config;
 }
 
-+ (PSMConfig*)default {
-    auto* nativeConfig = new(std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
++ (PSMConfig*)default
+{
+    auto* nativeConfig = new (std::nothrow) psm::Config(std::move(psm::Config::createDefault()));
     if (!nativeConfig) {
         return nil;
     }

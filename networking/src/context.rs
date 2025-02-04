@@ -1,9 +1,13 @@
 use crate::client;
 use crate::event;
+use crate::network::Node;
 use crate::network::{Networking, NetworkingConfig};
+use core::time;
+use std::collections::HashMap;
 use std::error::Error;
 use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
 use futures::lock::Mutex;
+use libp2p::{Stream, PeerId};
 use std::sync::Arc;
 
 #[cfg(any(feature="cpp", feature="wasm"))]
@@ -14,7 +18,7 @@ use libp2p::Multiaddr;
 #[cfg(any(feature="cpp", feature="py"))]
 use tokio::runtime::Runtime;
 #[cfg(feature="py")]
-use crate::event::{MessageReceivedEvent, NewNodeRegisteredEvent};
+use crate::event::{PyStream, NewNodeRegisteredEvent, PubSubMessageReceivedEvent};
 
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
@@ -65,11 +69,13 @@ impl Config {
 }
 
 #[cfg_attr(feature="py", pyclass)]
+#[derive(Clone)]
 pub struct Context {
     #[cfg(any(feature="cpp", feature="py"))]
     runtime: Arc<Runtime>,
     client: client::Client,
     receiver: Arc<Mutex<Receiver<event::Event>>>,
+    pub id: String,
 }
 
 #[cfg_attr(feature="py", pymethods)]
@@ -180,8 +186,6 @@ impl Context {
             private_key: private_key,
             private_key_path: private_key_path,
             name: "my_name".to_string(),
-            node_types: vec![],
-            node_capabilities: vec![],
         };
         let ctx = context_create(cfg)?;
         Ok(Box::new(ctx))
@@ -189,7 +193,7 @@ impl Context {
 
     #[cfg(feature="py")]
     #[new]
-    pub fn new(mdns: bool, relay_nodes: Vec<String>, name: String, node_types: Vec<String>, capabilities: Vec<String>, pkey_path: String, port: u16) -> PyResult<Self> {
+    pub fn new(mdns: bool, relay_nodes: Vec<String>, name: String, pkey_path: String, port: u16) -> PyResult<Self> {
         pyo3_log::init();
         let cfg = NetworkingConfig {
             port: port,
@@ -201,8 +205,6 @@ impl Context {
             private_key: vec![],
             private_key_path: pkey_path.clone(),
             name: name.clone(),
-            node_types: node_types.clone(),
-            node_capabilities: capabilities.clone(),
         };
         let ctx = context_create(&cfg).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(ctx)
@@ -215,29 +217,37 @@ impl Context {
         peer_id: String,
         protocol: String,
         user_data: *mut c_void,
+        timeout: u32,
         callback: *const c_void
     ) {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
         if callback.is_null() {
             self.runtime.spawn(async move {
-                match sender.send(msg, peer_id, protocol).await {
+                match sender.send(msg, peer_id, protocol, timeout).await {
                     Ok(_) => { },
                     Err(error) => {
                         eprintln!("Context::send_with_callback(): {:?}", error);
+
+                        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                        eprintln!("Failed to send message: Apple platforms require 'com.apple.security.network.client' entitlement set to YES.");
                     }
                 }
             });
         } else {
             let callback: extern "C" fn(status: u8, user_data: *mut c_void) = unsafe { std::mem::transmute(callback) };
             self.runtime.spawn(async move {
-                match sender.send(msg, peer_id, protocol).await {
+                match sender.send(msg, peer_id, protocol, timeout).await {
                     Ok(_) => {
                         let user_data = user_data_safe as *mut c_void;
                         callback(1, user_data);
                     },
                     Err(error) => {
                         eprintln!("Context::send_with_callback(): {:?}", error);
+
+                        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                        eprintln!("Failed to send message: Apple platforms require 'com.apple.security.network.client' entitlement set to YES.");
+
                         let user_data = user_data_safe as *mut c_void;
                         callback(0, user_data);
                     }
@@ -271,12 +281,12 @@ impl Context {
     }
 
     #[cfg(feature="py")]
-    pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, py: Python<'a>) -> PyResult<&'a PyAny> {
+    pub fn send<'a>(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, timeout: u32, py: Python<'a>) -> PyResult<&'a PyAny> {
         let mut sender = self.client.clone();
 
         let fut = async move {
-            let result = sender.send(msg, peer_id, protocol).await;
-            result.map_err(|e| PyValueError::new_err(e.to_string()))
+            let result = sender.send(msg, peer_id.clone(), protocol.clone(), timeout).await.map_err(|e| PyValueError::new_err(e.to_string()))?;
+            Ok(Python::with_gil(|py| event::PyStream::new(protocol, peer_id, result).into_py(py)))
         };
         future_into_py(py, fut)
     }
@@ -294,9 +304,13 @@ impl Context {
                             let py_message = Python::with_gil(|py| Py::new(py, NewNodeRegisteredEvent::new(node)).unwrap().into_py(py));
                             Ok(py_message)
                         }
-                        event::Event::MessageReceived { protocol, stream, peer } => {
-                            let py_message = Python::with_gil(|py| Py::new(py, MessageReceivedEvent::new(protocol, peer, stream)).unwrap().into_py(py));
+                        event::Event::StreamMessageReceivedEvent { protocol, msg_reader, peer } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, PyStream::new(protocol.to_string(), peer.to_string(), msg_reader)).unwrap().into_py(py));
                             Ok(py_message)
+                        }
+                        event::Event::PubSubMessageReceivedEvent { topic, result } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, PubSubMessageReceivedEvent {topic, result}).unwrap().into_py(py));
+                            Ok(py_message) 
                         }
                     }
                 },
@@ -320,9 +334,9 @@ impl Context {
 
 #[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
-    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
-        sender.send(msg, peer_id, protocol).await
+        sender.send(msg, peer_id, protocol, timeout).await
     }
 
     pub async fn poll(&mut self) -> Option<event::Event> {
@@ -334,6 +348,16 @@ impl Context {
         let mut sender = self.client.clone();
         sender.set_stream_handler(protocol).await
     }
+
+    pub async fn publish(&mut self, topic: String, message: Vec<u8>) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut sender = self.client.clone();
+        sender.publish(topic, message).await
+    }
+
+    pub async fn subscribe(&mut self, topic: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut sender = self.client.clone();
+        sender.subscribe(topic).await
+    }
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error + Send + Sync>> {
@@ -344,13 +368,18 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let (event_sender, event_receiver) = channel::<event::Event>(8);
     let client = client::new_client(sender);
     let cfg = config.clone();
+    let mut id: String = PeerId::random().to_string();
 
     #[cfg(any(target_family="wasm", feature="rust"))]
     let networking = Networking::new(&cfg, receiver, event_sender)?;
+    
+    #[cfg(any(target_family="wasm", feature="rust"))]
+    let id = networking.node.id.clone();
 
     #[cfg(any(feature="cpp", feature="py"))]
     runtime.block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
+        id = networking.node.id.clone();
         runtime.spawn(async move {
             let _ = networking.run().await.expect("Failed to run networking");
         });
@@ -371,5 +400,6 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         runtime: Arc::new(runtime),
         client,
         receiver: Arc::new(Mutex::new(event_receiver)),
+        id,
     })
 }
