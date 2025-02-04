@@ -10,8 +10,9 @@ jobs:
     name: Build Apple SDK
     runs-on: macos-latest
     strategy:
+      # fail-fast: true
       matrix:
-        arch: [AMD64, ARM64],
+        arch: [AMD64, ARM64]
         platform: [macOS, Mac-Catalyst, iOS, iOS-Simulator]
         exclude:
         - arch: AMD64
