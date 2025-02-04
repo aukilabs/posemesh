@@ -367,7 +367,11 @@ function generateSource(interfaceName, interfaceJson) {
       } else {
         getter += `    if (!${mainArgName}) {\n`;
         getter += `        assert(!"${nameWithoutTSuffix}_${getterName}(): ${mainArgName} is null");\n`;
-        getter += `        return {};\n`;
+        if (propTypeRaw === 'boolean') {
+          getter += `        return static_cast<uint8_t>(${util.getTypeImplicitDefaultValue(propTypeRaw)});\n`;
+        } else {
+          getter += `        return ${util.getTypeImplicitDefaultValue(propTypeRaw)};\n`;
+        }
         getter += `    }\n`;
         if (propTypeRaw === 'boolean') {
           getter += `    return static_cast<uint8_t>(${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
