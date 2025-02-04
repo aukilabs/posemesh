@@ -249,7 +249,7 @@ Try {
             Write-Error -Message 'ASSERT: Variable $WASMTarget is not set.'
             Exit 1
         }
-        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir pkg/$BuildType --out-name PosemeshNetworking --features "wasm" --manifest-path "${Package}/Cargo.toml"
+        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir ../pkg/$Package/$BuildType --out-name PosemeshNetworking $Package --features "wasm"
     } Else {
         & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }
@@ -258,7 +258,7 @@ Try {
         Exit 1
     }
     If(-Not $WASMPackCommand) {
-        $StaticLibraryPathRenamed = "target/$RustTarget/$RustBuildTypeDirName/lib_${Package}_static.a"
+        $StaticLibraryPathRenamed = "target/$RustTarget/$RustBuildTypeDirName/lib${Package}_static.a"
         If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
             Remove-Item -Force -Path $StaticLibraryPathRenamed 2> $Null
             If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
@@ -266,7 +266,7 @@ Try {
                 Exit 1
             }
         }
-        $StaticLibraryPathOriginal = "target/$RustTarget/$RustBuildTypeDirName/lib_$Package.a"
+        $StaticLibraryPathOriginal = "target/$RustTarget/$RustBuildTypeDirName/lib$Package.a"
         If(-Not (Test-Path -Path $StaticLibraryPathOriginal -PathType Leaf)) {
             Write-Error -Message "File '$StaticLibraryPathOriginal' does not exist."
             Exit 1
