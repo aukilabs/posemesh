@@ -226,13 +226,215 @@ function generateHeader(interfaceName, interfaceJson) {
 }
 
 function generateSource(interfaceName, interfaceJson) {
-  let includesFirst = new Set([`#include <Posemesh/C/${interfaceName}.h>`]), includesSecond = new Set([]);
+  const name = util.getLangClassName(interfaceJson, util.C);
+  const nameWithoutTSuffix = name.substring(0, name.length - 2);
+  const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
+  const static = util.getClassStatic(interfaceJson);
+  const copyable = util.getClassCopyable(interfaceJson);
+
+  let includesFirst = new Set([`#include <Posemesh/C/${interfaceName}.h>`, `#include <Posemesh/${interfaceName}.hpp>`]), includesSecond = new Set([]);
 
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
-  code += '%INCLUDES%\n';
+  code += '%INCLUDES%';
 
   let publicCtors = '', publicOperators = '', publicMethods = '', publicFuncs = '';
   let privateCtors = '', privateOperators = '', privateMethods = '', privateFuncs = '';
+
+  const parameterlessConstructor = util.getClassParameterlessConstructor(interfaceJson);
+  const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
+  const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
+  if (!static && pCtorDefinition !== util.ConstructorDefinition.deleted) {
+    let pCtor = `${name}* ${nameWithoutTSuffix}_create()\n`;
+    pCtor += `{\n`;
+    pCtor += `    return new (std::nothrow) psm::${nameCxx};\n`;
+    pCtor += `}\n`;
+    if (pCtorVisibility === util.Visibility.public) {
+      if (publicCtors.length > 0) {
+        publicCtors += '\n';
+      }
+      publicCtors += pCtor;
+    } else {
+      if (privateCtors.length > 0) {
+        privateCtors += '\n';
+      }
+      privateCtors += pCtor;
+    }
+
+    includesFirst.add('#include <new>');
+  }
+
+  const copyConstructor = util.getClassCopyConstructor(interfaceJson);
+  const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
+  const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
+  if (!static && copyable && cCtorDefinition !== util.ConstructorDefinition.deleted) {
+    const mainArgName = util.getCopyOrMoveConstructorMainArgName(copyConstructor, util.C);
+    let cCtor = `${name}* ${nameWithoutTSuffix}_duplicate(const ${name}* ${mainArgName})\n`;
+    cCtor += `{\n`;
+    cCtor += `    if (!${mainArgName}) {\n`;
+    cCtor += `        assert(!"${nameWithoutTSuffix}_duplicate(): ${mainArgName} is null");\n`;
+    cCtor += `        return nullptr;\n`;
+    cCtor += `    }\n`;
+    cCtor += `    return new (std::nothrow) psm::${nameCxx}(*${mainArgName});\n`;
+    cCtor += `}\n`;
+    if (cCtorVisibility === util.Visibility.public) {
+      if (publicCtors.length > 0) {
+        publicCtors += '\n';
+      }
+      publicCtors += cCtor;
+    } else {
+      if (privateCtors.length > 0) {
+        privateCtors += '\n';
+      }
+      privateCtors += cCtor;
+    }
+
+    includesFirst.add('#include <cassert>');
+    includesFirst.add('#include <new>');
+  }
+
+  if (!static) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let dtor = `void ${nameWithoutTSuffix}_destroy(${name}* ${mainArgName})\n`;
+    dtor += `{\n`;
+    dtor += `    delete ${mainArgName};\n`;
+    dtor += `}\n`;
+    if (publicCtors.length > 0) {
+      publicCtors += '\n';
+    }
+    publicCtors += dtor;
+  }
+
+  const equalityOperator = interfaceJson.equalityOperator;
+  if (equalityOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let eqOp = `uint8_t ${nameWithoutTSuffix}_equals(const ${name}* ${mainArgName}, const ${name}* other_${mainArgName})\n`;
+    eqOp += `{\n`;
+    eqOp += `    if (!${mainArgName}) {\n`;
+    eqOp += `        assert(!"${nameWithoutTSuffix}_equals(): ${mainArgName} is null");\n`;
+    eqOp += `        return 0;\n`;
+    eqOp += `    }\n`;
+    eqOp += `    if (!other_${mainArgName}) {\n`;
+    eqOp += `        assert(!"${nameWithoutTSuffix}_equals(): other_${mainArgName} is null");\n`;
+    eqOp += `        return 0;\n`;
+    eqOp += `    }\n`;
+    eqOp += `    return static_cast<uint8_t>(${mainArgName}->operator==(*other_${mainArgName}));\n`;
+    eqOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += eqOp;
+
+    includesFirst.add('#include <cassert>');
+  }
+
+  const hashOperator = interfaceJson.hashOperator;
+  if (hashOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let hashOp = `size_t ${nameWithoutTSuffix}_hash(const ${name}* ${mainArgName})\n`;
+    hashOp += `{\n`;
+    hashOp += `    if (!${mainArgName}) {\n`;
+    hashOp += `        assert(!"${nameWithoutTSuffix}_hash(): ${mainArgName} is null");\n`;
+    hashOp += `        return 0;\n`;
+    hashOp += `    }\n`;
+    hashOp += `    return std::hash<psm::${nameCxx}> {}(*${mainArgName});\n`;
+    hashOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += hashOp;
+
+    includesFirst.add('#include <cassert>');
+  }
+
+  for (const propertyJson of util.getProperties(interfaceJson)) {
+    const propTypeRaw = propertyJson.type;
+    const propStatic = util.getPropertyStatic(propertyJson);
+    if (propertyJson.hasGetter) {
+      const getterName = util.getPropertyGetterName(propertyJson, util.C);
+      const getterType = util.getPropertyTypeForGetter(propertyJson, util.C);
+      const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
+      const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+      let getter = `${getterType} ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`})\n`;
+      getter += `{\n`;
+      if (propStatic) {
+        if (propTypeRaw === 'boolean') {
+          getter += `    return static_cast<uint8_t>(psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
+        } else {
+          getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+        }
+      } else {
+        getter += `    if (!${mainArgName}) {\n`;
+        getter += `        assert(!"${nameWithoutTSuffix}_${getterName}(): ${mainArgName} is null");\n`;
+        getter += `        return {};\n`;
+        getter += `    }\n`;
+        if (propTypeRaw === 'boolean') {
+          getter += `    return static_cast<uint8_t>(${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
+        } else {
+          getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+        }
+      }
+      getter += `}\n`;
+      const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
+      if (getterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          if (publicFuncs.length > 0) {
+            publicFuncs += '\n';
+          }
+          publicFuncs += getter;
+        } else {
+          if (publicMethods.length > 0) {
+            publicMethods += '\n';
+          }
+          publicMethods += getter;
+          includesFirst.add('#include <cassert>');
+        }
+      }
+    }
+    if (propertyJson.hasSetter) {
+      const setterName = util.getPropertySetterName(propertyJson, util.C);
+      const setterType = util.getPropertyTypeForSetter(propertyJson, util.C);
+      const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
+      const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
+      let setter = `void ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName})\n`;
+      setter += `{\n`;
+      if (propStatic) {
+        if (propTypeRaw === 'boolean') {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
+        } else {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
+        }
+      } else {
+        setter += `    if (!${mainArgName}) {\n`;
+        setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${mainArgName} is null");\n`;
+        setter += `        return;\n`;
+        setter += `    }\n`;
+        if (propTypeRaw === 'boolean') {
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
+        } else {
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
+        }
+      }
+      setter += `}\n`;
+      const setterVisibility = util.getPropertySetterVisibility(propertyJson);
+      if (setterVisibility === util.Visibility.public) {
+        if (propStatic) {
+          if (publicFuncs.length > 0) {
+            publicFuncs += '\n';
+          }
+          publicFuncs += setter;
+        } else {
+          if (publicMethods.length > 0) {
+            publicMethods += '\n';
+          }
+          publicMethods += setter;
+          includesFirst.add('#include <cassert>');
+        }
+      }
+    }
+  }
 
   let public = publicCtors;
   if (publicOperators.length > 0) {
