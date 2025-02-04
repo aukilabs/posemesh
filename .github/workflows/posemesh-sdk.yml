@@ -8,7 +8,7 @@ concurrency:
 jobs:
   build_apple_sdk:
     name: Build Apple SDK
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository with submodules
