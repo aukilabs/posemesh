@@ -24,14 +24,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install PowerShell
-        run: brew install --cask powershell
-
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
       - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
-        run: pwsh ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
         run: pwsh ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
@@ -39,34 +37,37 @@ jobs:
       - name: Build Posemesh SDK for ${{ matrix.platform }} ${{ matrix.arch }}
         run: pwsh ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
-      - name: Bundle Posemesh SDK
-        run: |
-          pwsh ./sdk/scripts/Bundle-Framework.ps1 ${{ matrix.platform }} Release
-      
       - name: Upload Frameworks
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-Release
-          path: ./sdk/out-${{ matrix.platform }}-Release/Posemesh.framework
+          name: out-${{ matrix.platform }}-${{ matrix.arch }}-Release
+          path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release/Posemesh.framework
 
   build_xcframework:
     name: Build XC Framework
     runs-on: macos-latest
     needs: build_apple_frameworks
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download all Frameworks
         uses: actions/download-artifact@v4
         with:
-          path: DownloadedFrameworks
+          path: ./sdk
 
-      - name: Create XCFramework
+      - name: Bundle Posemesh SDK
+        shell: pwsh
         run: |
-          mkdir -p XCFrameworks
-          xcodebuild -create-xcframework \
-            -framework DownloadedFrameworks/macOS-Release/Posemesh.framework \
-            -framework DownloadedFrameworks/Framework-Mac-Catalyst-Release/Posemesh.framework \
-            -framework DownloadedFrameworks/Framework-iOS-Simulator-Release/Posemesh.framework \
-            -output out-Apple-Release/Posemesh.xcframework
+          ./sdk/scripts/Bundle-Framework.ps1 macOS Release
+          ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
+          ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
+          ./sdk/scripts/Bundle-XCFramework.ps1 Release
+      
+      - name: Zip
+        run: |
+          cd ./sdk/out-Apple-Release
+          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
 
       - name: Get Posemesh SDK version
         run: |
@@ -78,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
-          path: out-Apple-Release/Posemesh.xcframework
+          path: ./sdk/out-Apple-Release/Posemesh.zip
 
   build_web_sdk:
     name: Build Web SDK
