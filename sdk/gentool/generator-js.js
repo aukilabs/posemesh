@@ -185,7 +185,7 @@ function generateJsSource(interfaceName, interfaceJson) {
 }
 
 function generateTransformTsDefScript(interfaceName, interfaceJson) {
-    return '';
+    return ''; // TODO: complete
 }
 
 function generateInterfaceJS(interfaceName, interfaceJson) {
