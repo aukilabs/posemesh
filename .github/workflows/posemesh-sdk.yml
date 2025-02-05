@@ -30,6 +30,24 @@ jobs:
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-cargo-
+
+      - name: Cache Cargo build artifacts (Per Target)
+        uses: actions/cache@v4
+        with:
+          path: ./core/target
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
+
       - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
         run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
@@ -38,7 +56,7 @@ jobs:
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
-      - name: Build Posemesh SDK for ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Build Framework for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
         run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
@@ -46,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: out-${{ matrix.platform }}-${{ matrix.arch }}-Release
-          path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release/Posemesh.framework
+          path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release
 
   build_xcframework:
     name: Build XC Framework
@@ -117,6 +135,17 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ./core/target
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-cargo-
 
       - name: Install WASM-Pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
