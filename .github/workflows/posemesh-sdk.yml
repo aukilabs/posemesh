@@ -5,10 +5,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CC_x86_64-apple-ios-macabi: "clang"
+  CC_x86_64_apple_ios_macabi: "clang"
+
 jobs:
   build_apple_frameworks:
     name: Build Apple SDK
-    runs-on: macos-13
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
@@ -21,8 +25,6 @@ jobs:
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -32,10 +34,12 @@ jobs:
         run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
-        run: pwsh ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+        shell: pwsh
+        run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
       - name: Build Posemesh SDK for ${{ matrix.platform }} ${{ matrix.arch }}
-        run: pwsh ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+        shell: pwsh
+        run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
       - name: Upload Frameworks
         uses: actions/upload-artifact@v4
