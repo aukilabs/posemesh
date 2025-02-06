@@ -545,8 +545,7 @@ function generateSource(interfaceName, interfaceJson) {
     code += `\n`;
     code += `${nameRef}* ${nameRefWithoutTSuffix}_clone(const ${nameRef}* ${mainArgName}_ref)\n`;
     code += `{\n`;
-    code += `    if (!${mainArgName}_ref)\n`;
-    code += `    {\n`;
+    code += `    if (!${mainArgName}_ref) {\n`;
     code += `        return nullptr;\n`;
     code += `    }\n`;
     code += `    return new (std::nothrow) ${nameRef}(*${mainArgName}_ref);\n`;
@@ -557,8 +556,7 @@ function generateSource(interfaceName, interfaceJson) {
     code += `\n`;
     code += `${name}* ${nameRefWithoutTSuffix}_get(const ${nameRef}* ${mainArgName}_ref)\n`;
     code += `{\n`;
-    code += `    if (!${mainArgName}_ref)\n`;
-    code += `    {\n`;
+    code += `    if (!${mainArgName}_ref) {\n`;
     code += `        return nullptr;\n`;
     code += `    }\n`;
     code += `    return ${mainArgName}_ref->get();\n`;
