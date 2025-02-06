@@ -202,7 +202,23 @@ function generateJsSource(interfaceName, interfaceJson) {
 }
 
 function generateTransformTsDefScript(interfaceName, interfaceJson) {
-    return ''; // TODO: complete
+  const name = util.getLangClassName(interfaceJson, util.JS);
+  const fixFuncName = `fix${name}`;
+  const isSpecialPosemeshClass = name === 'Posemesh';
+  const static = util.getClassStatic(interfaceJson);
+  const copyable = util.getClassCopyable(interfaceJson);
+
+  let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
+  code += `\n`;
+  code += `function ${fixFuncName}(content, newLine, tab) {\n`;
+
+  // TODO: impl
+  code += `    // TODO: impl\n`;
+
+  code += `}\n`;
+  code += `\n`;
+  code += `module.exports = ${fixFuncName};\n`;
+  return code;
 }
 
 function generateInterfaceJS(interfaceName, interfaceJson) {
