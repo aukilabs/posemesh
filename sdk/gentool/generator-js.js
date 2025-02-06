@@ -173,6 +173,23 @@ function generateJsSource(interfaceName, interfaceJson) {
     }
   }
 
+  const aliases = util.getLangAliases(interfaceJson, util.JS);
+  if (aliases.length > 0) {
+    if (builderFunctionBody.length > 0) {
+      builderFunctionBody += '\n';
+    }
+    for (const alias of aliases) {
+      if (alias === 'Posemesh') {
+        throw new Error(`Alias of a class should not be 'Posemesh'.`);
+      }
+      if (name === 'Posemesh') {
+        builderFunctionBody += `    Posemesh.${alias} = Posemesh;\n`;
+      } else {
+        builderFunctionBody += `    Posemesh.${alias} = Posemesh.${name};\n`;
+      }
+    }
+  }
+
   code += `\n`;
   if (builderFunctionBody.length > 0) {
     code += `__internalPosemeshAPI.builderFunctions.push(function() {\n`;
