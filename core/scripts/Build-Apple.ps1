@@ -8,6 +8,9 @@ Param(
     })]
     [String]$BuildType,
 
+    [Parameter(Position = 1)]
+    [String]$Package,
+
     [Switch]$InstallNecessaryRustToolchainsAndTargets
 )
 
@@ -19,6 +22,11 @@ If(-Not $IsMacOS) {
 If(-Not $BuildType) {
     $BuildType = 'Release'
     Write-Warning -Message "Using the implicit '$BuildType' build type."
+}
+
+If(-Not $Package) {
+    Write-Error -Message "-Package is required."
+    Exit 1 
 }
 
 $BuildTypes = $Null
@@ -47,9 +55,9 @@ ForEach($BuildTypeFromList In $BuildTypes) {
         $Architectures = $PlatformArchitectureCombinations[$Platform]
         ForEach($Architecture In $Architectures) {
             If($InstallNecessaryRustToolchainsAndTargets) {
-                & "$PSScriptRoot/Build-Library.ps1" $Platform $Architecture $BuildTypeFromList -InstallNecessaryRustToolchainsAndTargets
+                & "$PSScriptRoot/Build-Library.ps1" $Platform $Architecture $BuildTypeFromList $Package -InstallNecessaryRustToolchainsAndTargets
             } Else {
-                & "$PSScriptRoot/Build-Library.ps1" $Platform $Architecture $BuildTypeFromList
+                & "$PSScriptRoot/Build-Library.ps1" $Platform $Architecture $BuildTypeFromList $Package
             }
             If($LastExitCode -Ne 0) {
                 Write-Error -Message "Failed to build Posemesh Networking library for '$Platform' platform, '$Architecture' architecture and '$BuildTypeFromList' build type."

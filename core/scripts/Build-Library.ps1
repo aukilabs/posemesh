@@ -22,11 +22,19 @@ Param(
     })]
     [String]$BuildType,
 
+    [Parameter(Position=3)]
+    [String]$Package, 
+
     [Switch]$InstallNecessaryRustToolchainsAndTargets
 )
 
 If(-Not $Platform) {
     Write-Error -Message "Parameter '-Platform' is not specified."
+    Exit 1
+}
+
+If(-Not $Package) {
+    Write-Error -Message "Parameter '-Package' is not specified."
     Exit 1
 }
 
@@ -241,16 +249,16 @@ Try {
             Write-Error -Message 'ASSERT: Variable $WASMTarget is not set.'
             Exit 1
         }
-        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir pkg/$BuildType --out-name PosemeshNetworking --features "wasm"
+        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir ../pkg/$Package/$BuildType --out-name PosemeshNetworking $Package --features "wasm"
     } Else {
-        & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp"
+        & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }
     If($LastExitCode -Ne 0) {
         Write-Error -Message 'Failed to build Posemesh Networking library.'
         Exit 1
     }
     If(-Not $WASMPackCommand) {
-        $StaticLibraryPathRenamed = "target/$RustTarget/$RustBuildTypeDirName/libposemesh_networking_static.a"
+        $StaticLibraryPathRenamed = "target/$RustTarget/$RustBuildTypeDirName/lib${Package}_static.a"
         If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
             Remove-Item -Force -Path $StaticLibraryPathRenamed 2> $Null
             If(Test-Path -Path $StaticLibraryPathRenamed -PathType Leaf) {
@@ -258,7 +266,7 @@ Try {
                 Exit 1
             }
         }
-        $StaticLibraryPathOriginal = "target/$RustTarget/$RustBuildTypeDirName/libposemesh_networking.a"
+        $StaticLibraryPathOriginal = "target/$RustTarget/$RustBuildTypeDirName/lib$Package.a"
         If(-Not (Test-Path -Path $StaticLibraryPathOriginal -PathType Leaf)) {
             Write-Error -Message "File '$StaticLibraryPathOriginal' does not exist."
             Exit 1

@@ -1,12 +1,12 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use libp2p::{gossipsub::{PublishError, TopicHash}, Stream};
-use posemesh_networking::{context, event, network::{self, Node}};
+use networking::{context, event, network::{self, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
 use serde::de;
 use tokio::{self, select, signal, time::sleep};
 use futures::{channel::mpsc::{channel, Receiver, Sender}, AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
 use std::{any::Any, borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, time::{Duration, SystemTime, UNIX_EPOCH}};
-use posemesh_protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
+use protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
 use sha2::{Digest, Sha256};
 use hex;
 use std::fs;
@@ -60,7 +60,6 @@ pub async fn start_task(task: &mut task::Task,  c: &mut context::Context) -> Res
     task.status = task::Status::STARTED;
 
     let task_update = serialize_into_vec(task).expect("cant serialize task update");
-    println!("Task update: {:?}", task.job_id);
     c.publish(task.job_id.clone(), task_update).await.expect("cant publish task update");
 
     Ok(upload_stream)
@@ -118,7 +117,7 @@ impl<T> Queue<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct JobHandler {
     id: String,
     tasks: HashMap<String, task::Task>,
@@ -158,7 +157,6 @@ impl DomainManager {
                                     }
                                 }
                                 event::Event::NewNodeRegistered { node } => {
-                                    println!("New node registered: {:?}", node);
                                     self.nodes.insert(node.id.clone(), node);
                                 }
                                 event::Event::PubSubMessageReceivedEvent { result, .. } => {
@@ -166,7 +164,6 @@ impl DomainManager {
                                         event::PubsubResult::Ok { message, from } => {
                                             if from.is_none() || from.unwrap().to_string() != self.peer.id {
                                                 let task_event = deserialize_from_slice::<task::Task>(&message)?;
-                                                println!("Received message from {}: {:?}", from.unwrap(), task_event);
                                                 // TODO: verify access token, ignore if not valid. Ignore expiration time
                                                 if let Some(j) = self.jobs.get_mut(&task_event.job_id) {
                                                     if let Some(t) = j.tasks.get_mut(&task_event.name) {
@@ -194,10 +191,10 @@ impl DomainManager {
                 _ = interval.tick() => {
                     println!("##########################");
                     // print task status as a table | Job | Task Name | Status | Receiver | Output |
-                    println!("| {:<10} | {:<10} | {:<10} | {:<10} |", "Job", "Task Name", "Status", "Receiver");
+                    println!("| {:<64} | {:<20} | {:<30} | {:<60} |", "Job", "Task Name", "Status", "Done By");
                     for (job_id, job) in self.jobs.iter() {
                         for (task_name, task) in job.tasks.iter() {
-                            println!("| {:<10} | {:<10} | {:?} | {:<10} |", job_id, task_name, task.status, task.receiver);
+                            println!("| {:<64} | {:<20} | {:<30} | {:<60} |", job_id, task_name, format!("{:?}", task.status), task.receiver);
                         }
                     }
                     println!("##########################");
@@ -214,7 +211,6 @@ impl DomainManager {
 
     async fn accept_job(&mut self, mut stream: Stream) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut buf = Vec::new();
-        println!("Reading job from stream");
         let _ = stream.read_to_end(&mut buf).await?;
         let job = deserialize_from_slice::<task::Job>(&buf)?;
 
@@ -228,8 +224,6 @@ impl DomainManager {
             tasks: HashMap::new(),
         };
 
-        println!("Received job: {:?}", job);
-        
         let resp = task::SubmitJobResponse {
             job_id: job_id.clone(),
             code: task::Code::Accepted,
@@ -265,7 +259,6 @@ impl DomainManager {
                 timeout: parse_duration_to_millis(&task_req.timeout).map_err(|e| format!("Error parsing timeout: {}", e))?,
                 input: task_req.data.clone(),
             };
-            println!("Task Request Input: {:?}", task_req.data);
             
             if !task_req.needs.is_empty() {
                 for need in task_req.needs.iter() {
@@ -305,7 +298,6 @@ impl DomainManager {
     }
 
     async fn run_task(&mut self, t: &mut task::Task, input: Option<task::Any>, dependencies: HashMap<String, task::Task>, timeout: u32) -> Result<(), Box<dyn Error + Send + Sync>> {
-        println!("Running task: {}, {:?}", t.name, input);
         let mut serialized_input: Vec<u8> = vec![];
 
         match input {
@@ -323,7 +315,6 @@ impl DomainManager {
                         }
                     },
                     "LocalRefinementInputV1" => {
-                        println!("LocalRefinementInputV1, {:?}", input.value);
                         serialized_input = input.value.clone();
                     },
                     _ => {}
@@ -346,17 +337,15 @@ impl DomainManager {
                 println!("Error publishing message: {:?}", e);
                 return Err(e);
             }
-            println!("Published message: {:?}", t);
         }
         Ok(())
     }
 
     // TODO: handle task failure
     async fn poll_task_req(&mut self, task_handler: &TaskHandler) -> Result<(), Box<dyn Error + Send + Sync>> {
-        println!("Poll task request: {}", task_handler.name);
         let mut jobs = self.jobs.clone();
         if let Some(j) = jobs.get_mut(&task_handler.job_id) {
-            if let Some(t) = j.tasks.get_mut(&task_handler.name) {
+            if let Some(t) = j.clone().tasks.get_mut(&task_handler.name) {
                 // TODO: adding sleep so we wont check the same task again and again too often
                 if t.status == task::Status::WAITING_FOR_RESOURCE {
                     let nodes = self.find_nodes(task_handler.capability_filters.clone());
@@ -366,7 +355,7 @@ impl DomainManager {
                     } else {
                         t.receiver = nodes[0].id.clone();
                         t.status = task::Status::PENDING;
-                    } 
+                    }
                 }
                 if t.status == task::Status::PENDING {
                     let mut dependencies = HashMap::<String, task::Task>::new();
@@ -389,13 +378,14 @@ impl DomainManager {
                         sleep(std::time::Duration::from_secs(5)).await;
                         self.task_req_queue.add(task_handler.clone()).await;
                     }
+                    j.tasks.insert(t.name.clone(), t.clone());
+                    self.jobs.insert(task_handler.job_id.clone(), j.clone());
                     return Ok(());
                 } else {
                     self.task_req_queue.add(task_handler.clone()).await;
                 }
             }
         }
-        println!("Task not found: {:?}", task_handler);
         self.task_req_queue.add(task_handler.clone()).await;
         Ok(())
     }
@@ -428,7 +418,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: "".to_string(),
+        private_key: vec![],
         private_key_path: private_key_path,
         name: name,
         // node_capabilities: vec![],

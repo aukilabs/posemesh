@@ -1,8 +1,8 @@
 use libp2p::{gossipsub::{IdentTopic, TopicHash}, PeerId};
-use posemesh_networking::{context, event::{self, PubsubResult}, network};
+use networking::{context, event::{self, PubsubResult}, network};
 use tokio::{self, io};
 use futures::{channel::{mpsc::{channel, Receiver, Sender}, oneshot}, stream::{self, SplitStream}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use posemesh_protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Job, LocalRefinementOutputV1, Status, Task}};
+use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Job, LocalRefinementOutputV1, Status, Task}};
 use std::{borrow::{Borrow, BorrowMut}, collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
 
