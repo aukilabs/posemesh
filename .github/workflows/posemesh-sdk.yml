@@ -4,8 +4,8 @@ on:
     paths-ignore:
       - '**/examples/**'
       - '*.md'
-      - .vscode
-      - .github
+      - '.vscode/**'
+      - '.github/**'
 
 
 concurrency:
