@@ -212,8 +212,52 @@ function generateTransformTsDefScript(interfaceName, interfaceJson) {
   code += `\n`;
   code += `function ${fixFuncName}(content, newLine, tab) {\n`;
 
-  // TODO: impl
-  code += `    // TODO: impl\n`;
+  code += `    // Find member area\n`;
+  code += `    const memberAreaMatches = content.match(/export interface ${name} \\{(.|\\r|\\n)*?\\}/gm);\n`;
+  code += `    if (!Array.isArray(memberAreaMatches) || memberAreaMatches.length === 0) {\n`;
+  code += `        throw new Error('Member area for \\'${name}\\' not found.');\n`;
+  code += `    }\n`;
+  code += `    if (memberAreaMatches.length > 1) {\n`;
+  code += `        throw new Error('Multiple member areas for \\'${name}\\' found.');\n`;
+  code += `    }\n`;
+  code += `    const memberArea = memberAreaMatches[0];\n`;
+  code += `\n`;
+  code += `    // Find static area\n`;
+  code += `    const staticAreaMatches = content.match(/${name}: \\{(.|\\r|\\n)*?\\};/gm);\n`;
+  code += `    if (!Array.isArray(staticAreaMatches) || staticAreaMatches.length === 0) {\n`;
+  code += `        throw new Error('Static area for \\'${name}\\' not found.');\n`;
+  code += `    }\n`;
+  code += `    if (staticAreaMatches.length > 1) {\n`;
+  code += `        throw new Error('Multiple static areas for \\'${name}\\' found.');\n`;
+  code += `    }\n`;
+  code += `    const staticArea = staticAreaMatches[0];\n`;
+
+  if (isSpecialPosemeshClass || static) {
+    code += `\n`;
+    code += `    // Remove member area\n`;
+    code += `    if (content.include(\`\${newLine}\${newLine}\${memberArea}\`)) {\n`;
+    code += `        content = content.replace(\`\${newLine}\${newLine}\${memberArea}\`, '');\n`;
+    code += `    } else if (content.include(\`\${memberArea}\${newLine}\${newLine}\`)) {\n`;
+    code += `        content = content.replace(\`\${memberArea}\${newLine}\${newLine}\`, '');\n`;
+    code += `    } else {\n`;
+    code += `        throw new Error('Member area for \\'${name}\\' could not be removed.');\n`;
+    code += `    }\n`;
+  }
+
+  if (isSpecialPosemeshClass) {
+    code += `\n`;
+    code += `    // Remove static area\n`;
+    code += `    if (content.include(\`\${newLine}\${staticArea}\`)) {\n`;
+    code += `        content = content.replace(\`\${newLine}\${staticArea}\`, '');\n`;
+    code += `    } else if (content.include(\`\${staticArea}\${newLine}\`)) {\n`;
+    code += `        content = content.replace(\`\${staticArea}\${newLine}\`, '');\n`;
+    code += `    } else {\n`;
+    code += `        throw new Error('Static area for \\'${name}\\' could not be removed.');\n`;
+    code += `    }\n`;
+  }
+
+  code += `\n`;
+  code += `    return content;\n`;
 
   code += `}\n`;
   code += `\n`;
