@@ -10,7 +10,6 @@ use futures::lock::Mutex;
 use libp2p::{Stream, PeerId};
 use std::sync::Arc;
 
-#[cfg(any(feature="cpp", feature="wasm"))]
 use std::{ffi::CStr, os::raw::{c_char, c_uchar, c_void}};
 #[cfg(any(feature="cpp", feature="wasm"))]
 use libp2p::Multiaddr;
@@ -30,7 +29,6 @@ use pyo3::exceptions::PyValueError;
 #[cfg(feature="py")]
 use pyo3_asyncio::tokio::future_into_py;
 
-#[cfg(feature="cpp")]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -223,7 +221,7 @@ impl Context {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
         if callback.is_null() {
-            self.runtime.spawn(async move {
+            get_runtime().spawn(async move {
                 match sender.send(msg, peer_id, protocol, timeout).await {
                     Ok(_) => { },
                     Err(error) => {

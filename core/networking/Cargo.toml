@@ -26,6 +26,7 @@ hex = { version = "0.4.3", optional = true }
 quick-protobuf = { workspace = true, optional = true }
 jsonwebtoken = { version = "9.3.0", optional = true }
 quick-protobuf-codec = { version = "0.3.1", optional = true }
+runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay" ] }

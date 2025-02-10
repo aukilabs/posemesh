@@ -1,4 +1,4 @@
-mod client;
+pub mod client;
 pub mod event;
 pub mod context;
 pub mod network;

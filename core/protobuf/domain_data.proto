@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+package domain_data;
+
+message Metadata {
+    required string name = 1;
+    required string data_type = 2;
+    required uint32 size = 3;
+    string hash = 4;
+    map<string, string> properties = 5;
+}
+
+message Query {
+    required string domain_id = 1;
+    repeated string hashes = 2;
+    string name = 3;
+    string data_type = 4;
+}

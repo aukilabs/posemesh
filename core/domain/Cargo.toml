@@ -1,0 +1,33 @@
+[package]
+name = "domain"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[build-dependencies]
+cbindgen = "0.28.0"
+pb-rs = "0.10.0"
+
+[dependencies]
+futures = { workspace = true } 
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+networking = { workspace = true, features = ["rust"] }
+protobuf = { workspace = true }
+quick-protobuf = { workspace = true }
+quick-protobuf-codec = { workspace = true }
+async-trait = "0.1.86"
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
+tokio = { workspace = true, features = ["full"] }
+jsonwebtoken = { version = "9.3.0", optional = true }
+runtime = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+cpp = []
+rust = []

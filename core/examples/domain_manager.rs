@@ -159,23 +159,16 @@ impl DomainManager {
                                 event::Event::NewNodeRegistered { node } => {
                                     self.nodes.insert(node.id.clone(), node);
                                 }
-                                event::Event::PubSubMessageReceivedEvent { result, .. } => {
-                                    match result {
-                                        event::PubsubResult::Ok { message, from } => {
-                                            if from.is_none() || from.unwrap().to_string() != self.peer.id {
-                                                let task_event = deserialize_from_slice::<task::Task>(&message)?;
-                                                // TODO: verify access token, ignore if not valid. Ignore expiration time
-                                                if let Some(j) = self.jobs.get_mut(&task_event.job_id) {
-                                                    if let Some(t) = j.tasks.get_mut(&task_event.name) {
-                                                        t.status = task_event.status;
-                                                        t.output = task_event.output;
-                                                        println!("Task {} status updated: {:?}", t.name, t.status);
-                                                    }
-                                                }
+                                event::Event::PubSubMessageReceivedEvent { from, message, .. } => {
+                                    if from.is_none() || from.unwrap().to_string() != self.peer.id {
+                                        let task_event = deserialize_from_slice::<task::Task>(&message)?;
+                                        // TODO: verify access token, ignore if not valid. Ignore expiration time
+                                        if let Some(j) = self.jobs.get_mut(&task_event.job_id) {
+                                            if let Some(t) = j.tasks.get_mut(&task_event.name) {
+                                                t.status = task_event.status;
+                                                t.output = task_event.output;
+                                                println!("Task {} status updated: {:?}", t.name, t.status);
                                             }
-                                        }
-                                        event::PubsubResult::Err(e) => {
-                                            println!("Error receiving message: {:?}", e);
                                         }
                                     }
                                 }
