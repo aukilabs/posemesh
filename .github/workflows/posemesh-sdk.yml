@@ -1,5 +1,12 @@
 name: Posemesh SDK
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - '**/examples/**'
+      - '*.md'
+      - .vscode
+      - .github
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

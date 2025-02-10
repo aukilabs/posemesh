@@ -9,15 +9,15 @@ First, ensure that you have [Rust](https://www.rust-lang.org/tools/install) inst
 To build the library simply run the following command in PowerShell in the current directory:
 
 ```
-./scripts/Build-Library.ps1 <Platform> <Architecture> <BuildType>
+./scripts/Build-Library.ps1 <Platform> <Architecture> <BuildType> <Package>
 ```
 
-Replace the `<Platform>` and `<Architecture>` with the platform and architecture combination for which you want to build the library. Refer to the [supported platforms and architectures](#supported-platforms-and-architectures) table below. As of `<BuildType>`, you should replace it with either `Debug` or `Release`, depending on which configuration you wish to produce.
+Replace the `<Platform>` and `<Architecture>` with the platform and architecture combination for which you want to build the library. Refer to the [supported platforms and architectures](#supported-platforms-and-architectures) table below. As of `<BuildType>`, you should replace it with either `Debug` or `Release`, depending on which configuration you wish to produce. Specify which package you want to build with `<Package>`.
 
 Some platform and architecture combinations may require specific Rust toolchains and targets to be installed. The `Build-Library.ps1` script can install them automatically, however you first need to allow it to do so. You can do that by also specifying the `-InstallNecessaryRustToolchainsAndTargets` flag. The command will now look as follows:
 
 ```
-./scripts/Build-Library.ps1 <Platform> <Architecture> <BuildType> -InstallNecessaryRustToolchainsAndTargets
+./scripts/Build-Library.ps1 <Platform> <Architecture> <BuildType> <Package> -InstallNecessaryRustToolchainsAndTargets
 ```
 
 The build results end up in a newly-created `target` directory. They include a static library alongside some C++ header files with exported types and function declarations.
@@ -38,9 +38,7 @@ Note that building for `macOS`, `Mac-Catalyst`, `iOS` and `iOS-Simulator` can on
 
 There are also other scripts which can aid in the development and deployment process:
 
-- `Build-Apple.ps1` script builds all Apple platform and architecture combinations. It takes one parameter for build type which can be `Debug`, `Release` (default) or `Both`. Similarly to `Build-Library.ps1`, flag `-InstallNecessaryRustToolchainsAndTargets` can be specified to allow the underlying script calls to install the necessary Rust toolchains and targets if missing.
-
-- `. ./scripts/pybindgen.sh` to generate rust binding for python.
+- `Build-Apple.ps1` script builds all Apple platform and architecture combinations. It takes one parameter for build type which can be `Debug`, `Release` (default) or `Both`, and second parameter for package name. Similarly to `Build-Library.ps1`, flag `-InstallNecessaryRustToolchainsAndTargets` can be specified to allow the underlying script calls to install the necessary Rust toolchains and targets if missing.
 
 # Notes
 
