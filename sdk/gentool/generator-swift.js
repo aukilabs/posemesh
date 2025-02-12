@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const util = require('./util');
 
@@ -51,7 +50,7 @@ function generateInterfaceSwift(interfaceName, interfaceJson) {
 
   let sourceCode = generateSource(interfaceName, interfaceJson);
 
-  fs.writeFileSync(sourceFilePath, sourceCode, 'utf8');
+  util.writeFileContentIfDifferent(sourceFilePath, sourceCode);
 }
 
 module.exports = generateInterfaceSwift;

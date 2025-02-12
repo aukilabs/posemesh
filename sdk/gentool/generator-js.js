@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const util = require('./util');
 
@@ -274,9 +273,9 @@ function generateInterfaceJS(interfaceName, interfaceJson) {
   let jsSourceCode = generateJsSource(interfaceName, interfaceJson);
   let transformTsDefScriptCode = generateTransformTsDefScript(interfaceName, interfaceJson);
 
-  fs.writeFileSync(cppSourceFilePath, cppSourceCode, 'utf8');
-  fs.writeFileSync(jsSourceFilePath, jsSourceCode, 'utf8');
-  fs.writeFileSync(transformTsDefScriptFilePath, transformTsDefScriptCode, 'utf8');
+  util.writeFileContentIfDifferent(cppSourceFilePath, cppSourceCode);
+  util.writeFileContentIfDifferent(jsSourceFilePath, jsSourceCode);
+  util.writeFileContentIfDifferent(transformTsDefScriptFilePath, transformTsDefScriptCode);
 }
 
 module.exports = generateInterfaceJS;
