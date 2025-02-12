@@ -15,23 +15,26 @@ var __internalPosemeshAPI = {
     },
     toVectorInt8: function(array) {
         let vectorInt8 = new Posemesh.__mainModule.VectorInt8();
+        vectorInt8.resize(array.length);
         try {
             if (array instanceof Int8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorInt8.push_back(item);
+                    vectorInt8.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= -128n && item <= 127n) {
-                            vectorInt8.push_back(Number(item));
+                            vectorInt8.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= -128 && item <= 127) {
-                            vectorInt8.push_back(item);
+                            vectorInt8.set(i, item);
                             i++;
                             continue;
                         }
@@ -56,23 +59,26 @@ var __internalPosemeshAPI = {
     },
     toVectorInt16: function(array) {
         let vectorInt16 = new Posemesh.__mainModule.VectorInt16();
+        vectorInt16.resize(array.length);
         try {
             if (array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorInt16.push_back(item);
+                    vectorInt16.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= -32768n && item <= 32767n) {
-                            vectorInt16.push_back(Number(item));
+                            vectorInt16.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= -32768 && item <= 32767) {
-                            vectorInt16.push_back(item);
+                            vectorInt16.set(i, item);
                             i++;
                             continue;
                         }
@@ -97,23 +103,26 @@ var __internalPosemeshAPI = {
     },
     toVectorInt32: function(array) {
         let vectorInt32 = new Posemesh.__mainModule.VectorInt32();
+        vectorInt32.resize(array.length);
         try {
             if (array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorInt32.push_back(item);
+                    vectorInt32.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= -2147483648n && item <= 2147483647n) {
-                            vectorInt32.push_back(Number(item));
+                            vectorInt32.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= -2147483648 && item <= 2147483647) {
-                            vectorInt32.push_back(item);
+                            vectorInt32.set(i, item);
                             i++;
                             continue;
                         }
@@ -138,28 +147,33 @@ var __internalPosemeshAPI = {
     },
     toVectorInt64: function(array) {
         let vectorInt64 = new Posemesh.__mainModule.VectorInt64();
+        vectorInt64.resize(array.length);
         try {
             if (array instanceof BigInt64Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorInt64.push_back(item);
+                    vectorInt64.set(i, item);
+                    i++;
                 }
             } else if (array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorInt64.push_back(BigInt(item));
+                    vectorInt64.set(i, BigInt(item));
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= -9223372036854775808n && item <= 9223372036854775807n) {
-                            vectorInt64.push_back(item);
+                            vectorInt64.set(i, item);
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         let bigIntItem = BigInt(item);
                         if (bigIntItem >= -9223372036854775808n && bigIntItem <= 9223372036854775807n) {
-                            vectorInt64.push_back(bigIntItem);
+                            vectorInt64.set(i, bigIntItem);
                             i++;
                             continue;
                         }
@@ -184,23 +198,26 @@ var __internalPosemeshAPI = {
     },
     toVectorUint8: function(array) {
         let vectorUint8 = new Posemesh.__mainModule.VectorUint8();
+        vectorUint8.resize(array.length);
         try {
             if (array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorUint8.push_back(item);
+                    vectorUint8.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= 0n && item <= 255n) {
-                            vectorUint8.push_back(Number(item));
+                            vectorUint8.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= 0 && item <= 255) {
-                            vectorUint8.push_back(item);
+                            vectorUint8.set(i, item);
                             i++;
                             continue;
                         }
@@ -225,23 +242,26 @@ var __internalPosemeshAPI = {
     },
     toVectorUint16: function(array) {
         let vectorUint16 = new Posemesh.__mainModule.VectorUint16();
+        vectorUint16.resize(array.length);
         try {
             if (array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorUint16.push_back(item);
+                    vectorUint16.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= 0n && item <= 65535n) {
-                            vectorUint16.push_back(Number(item));
+                            vectorUint16.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= 0 && item <= 65535) {
-                            vectorUint16.push_back(item);
+                            vectorUint16.set(i, item);
                             i++;
                             continue;
                         }
@@ -266,23 +286,26 @@ var __internalPosemeshAPI = {
     },
     toVectorUint32: function(array) {
         let vectorUint32 = new Posemesh.__mainModule.VectorUint32();
+        vectorUint32.resize(array.length);
         try {
             if (array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorUint32.push_back(item);
+                    vectorUint32.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= 0n && item <= 4294967295n) {
-                            vectorUint32.push_back(Number(item));
+                            vectorUint32.set(i, Number(item));
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         if (item >= 0 && item <= 4294967295) {
-                            vectorUint32.push_back(item);
+                            vectorUint32.set(i, item);
                             i++;
                             continue;
                         }
@@ -307,28 +330,33 @@ var __internalPosemeshAPI = {
     },
     toVectorUint64: function(array) {
         let vectorUint64 = new Posemesh.__mainModule.VectorUint64();
+        vectorUint64.resize(array.length);
         try {
             if (array instanceof BigUint64Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorUint64.push_back(item);
+                    vectorUint64.set(i, item);
+                    i++;
                 }
             } else if (array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorUint64.push_back(BigInt(item));
+                    vectorUint64.set(i, BigInt(item));
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
                         if (item >= 0n && item <= 18446744073709551615n) {
-                            vectorUint64.push_back(item);
+                            vectorUint64.set(i, item);
                             i++;
                             continue;
                         }
                     } else if (typeof item === 'number') {
                         let bigIntItem = BigInt(item);
                         if (bigIntItem >= 0n && bigIntItem <= 18446744073709551615n) {
-                            vectorUint64.push_back(bigIntItem);
+                            vectorUint64.set(i, bigIntItem);
                             i++;
                             continue;
                         }
@@ -353,20 +381,23 @@ var __internalPosemeshAPI = {
     },
     toVectorFloat: function(array) {
         let vectorFloat = new Posemesh.__mainModule.VectorFloat();
+        vectorFloat.resize(array.length);
         try {
             if (array instanceof Float32Array || array instanceof Float64Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorFloat.push_back(item);
+                    vectorFloat.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
-                        vectorFloat.push_back(Number(item));
+                        vectorFloat.set(i, Number(item));
                         i++;
                         continue;
                     } else if (typeof item === 'number') {
-                        vectorFloat.push_back(item);
+                        vectorFloat.set(i, item);
                         i++;
                         continue;
                     }
@@ -390,20 +421,23 @@ var __internalPosemeshAPI = {
     },
     toVectorDouble: function(array) {
         let vectorDouble = new Posemesh.__mainModule.VectorDouble();
+        vectorDouble.resize(array.length);
         try {
             if (array instanceof Float64Array || array instanceof Float32Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                let i = 0;
                 for (let item of array) {
-                    vectorDouble.push_back(item);
+                    vectorDouble.set(i, item);
+                    i++;
                 }
             } else {
                 let i = 0;
                 for (let item of array) {
                     if (typeof item === 'bigint') {
-                        vectorDouble.push_back(Number(item));
+                        vectorDouble.set(i, Number(item));
                         i++;
                         continue;
                     } else if (typeof item === 'number') {
-                        vectorDouble.push_back(item);
+                        vectorDouble.set(i, item);
                         i++;
                         continue;
                     }
@@ -427,11 +461,12 @@ var __internalPosemeshAPI = {
     },
     toVectorBoolean: function(array) {
         let vectorBoolean = new Posemesh.__mainModule.VectorBoolean();
+        vectorBoolean.resize(array.length);
         try {
             let i = 0;
             for (let item of array) {
                 if (typeof item === 'boolean') {
-                    vectorBoolean.push_back(item ? 1 : 0);
+                    vectorBoolean.set(i, item ? 1 : 0);
                     i++;
                     continue;
                 }
@@ -454,11 +489,12 @@ var __internalPosemeshAPI = {
     },
     toVectorString: function(array) {
         let vectorString = new Posemesh.__mainModule.VectorString();
+        vectorString.resize(array.length);
         try {
             let i = 0;
             for (let item of array) {
                 if (typeof item === 'string') {
-                    vectorString.push_back(item);
+                    vectorString.set(i, item);
                     i++;
                     continue;
                 }
