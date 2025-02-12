@@ -501,13 +501,14 @@ function getTypePropEqOp(type, clsParam, prpParam) {
 
 function getTypePropHasher(type, param) {
   if (isIntType(type)) {
-    return `hash<${type}> {}(${param})`;
+    return `hash<${type}_t> {}(${param})`;
   }
   switch (type) {
     case 'float':
     case 'double':
-    case 'boolean':
       return `hash<${type}> {}(${param})`;
+    case 'boolean':
+      return `hash<bool> {}(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }

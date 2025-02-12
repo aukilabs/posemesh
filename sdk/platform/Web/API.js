@@ -1,10 +1,454 @@
 var __internalPosemeshAPI = {
-    builderFunctions: [],
+    builderFunctions: [
+        function() {
+            Posemesh.__mainModule.VectorBoolean = Posemesh.__mainModule.VectorUint8;
+        }
+    ],
+
+    fromVectorInt8: function(vectorInt8) {
+        let size = vectorInt8.size();
+        let array = new Int8Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorInt8.get(i);
+        }
+        return array;
+    },
+    toVectorInt8: function(array) {
+        let vectorInt8 = new Posemesh.__mainModule.VectorInt8();
+        try {
+            if (array instanceof Int8Array) {
+                for (let item of array) {
+                    vectorInt8.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= -128n && item <= 127n) {
+                            vectorInt8.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= -128 && item <= 127) {
+                            vectorInt8.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not a signed 8-bit integer.`);
+                }
+            }
+            return vectorInt8;
+        } catch (error) {
+            vectorInt8.delete();
+            throw error;
+        }
+    },
+
+    fromVectorInt16: function(vectorInt16) {
+        let size = vectorInt16.size();
+        let array = new Int16Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorInt16.get(i);
+        }
+        return array;
+    },
+    toVectorInt16: function(array) {
+        let vectorInt16 = new Posemesh.__mainModule.VectorInt16();
+        try {
+            if (array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorInt16.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= -32768n && item <= 32767n) {
+                            vectorInt16.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= -32768 && item <= 32767) {
+                            vectorInt16.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not a signed 16-bit integer.`);
+                }
+            }
+            return vectorInt16;
+        } catch (error) {
+            vectorInt16.delete();
+            throw error;
+        }
+    },
+
+    fromVectorInt32: function(vectorInt32) {
+        let size = vectorInt32.size();
+        let array = new Int32Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorInt32.get(i);
+        }
+        return array;
+    },
+    toVectorInt32: function(array) {
+        let vectorInt32 = new Posemesh.__mainModule.VectorInt32();
+        try {
+            if (array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorInt32.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= -2147483648n && item <= 2147483647n) {
+                            vectorInt32.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= -2147483648 && item <= 2147483647) {
+                            vectorInt32.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not a signed 32-bit integer.`);
+                }
+            }
+            return vectorInt32;
+        } catch (error) {
+            vectorInt32.delete();
+            throw error;
+        }
+    },
+
+    fromVectorInt64: function(vectorInt64) {
+        let size = vectorInt64.size();
+        let array = new BigInt64Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorInt64.get(i);
+        }
+        return array;
+    },
+    toVectorInt64: function(array) {
+        let vectorInt64 = new Posemesh.__mainModule.VectorInt64();
+        try {
+            if (array instanceof BigInt64Array) {
+                for (let item of array) {
+                    vectorInt64.push_back(item);
+                }
+            } else if (array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorInt64.push_back(BigInt(item));
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= -9223372036854775808n && item <= 9223372036854775807n) {
+                            vectorInt64.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        let bigIntItem = BigInt(item);
+                        if (bigIntItem >= -9223372036854775808n && bigIntItem <= 9223372036854775807n) {
+                            vectorInt64.push_back(bigIntItem);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not a signed 64-bit integer.`);
+                }
+            }
+            return vectorInt64;
+        } catch (error) {
+            vectorInt64.delete();
+            throw error;
+        }
+    },
+
+    fromVectorUint8: function(vectorUint8) {
+        let size = vectorUint8.size();
+        let array = new Uint8Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorUint8.get(i);
+        }
+        return array;
+    },
+    toVectorUint8: function(array) {
+        let vectorUint8 = new Posemesh.__mainModule.VectorUint8();
+        try {
+            if (array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorUint8.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= 0n && item <= 255n) {
+                            vectorUint8.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= 0 && item <= 255) {
+                            vectorUint8.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not an unsigned 8-bit integer.`);
+                }
+            }
+            return vectorUint8;
+        } catch (error) {
+            vectorUint8.delete();
+            throw error;
+        }
+    },
+
+    fromVectorUint16: function(vectorUint16) {
+        let size = vectorUint16.size();
+        let array = new Uint16Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorUint16.get(i);
+        }
+        return array;
+    },
+    toVectorUint16: function(array) {
+        let vectorUint16 = new Posemesh.__mainModule.VectorUint16();
+        try {
+            if (array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorUint16.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= 0n && item <= 65535n) {
+                            vectorUint16.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= 0 && item <= 65535) {
+                            vectorUint16.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not an unsigned 16-bit integer.`);
+                }
+            }
+            return vectorUint16;
+        } catch (error) {
+            vectorUint16.delete();
+            throw error;
+        }
+    },
+
+    fromVectorUint32: function(vectorUint32) {
+        let size = vectorUint32.size();
+        let array = new Uint32Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorUint32.get(i);
+        }
+        return array;
+    },
+    toVectorUint32: function(array) {
+        let vectorUint32 = new Posemesh.__mainModule.VectorUint32();
+        try {
+            if (array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorUint32.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= 0n && item <= 4294967295n) {
+                            vectorUint32.push_back(Number(item));
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        if (item >= 0 && item <= 4294967295) {
+                            vectorUint32.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not an unsigned 32-bit integer.`);
+                }
+            }
+            return vectorUint32;
+        } catch (error) {
+            vectorUint32.delete();
+            throw error;
+        }
+    },
+
+    fromVectorUint64: function(vectorUint64) {
+        let size = vectorUint64.size();
+        let array = new BigUint64Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorUint64.get(i);
+        }
+        return array;
+    },
+    toVectorUint64: function(array) {
+        let vectorUint64 = new Posemesh.__mainModule.VectorUint64();
+        try {
+            if (array instanceof BigUint64Array) {
+                for (let item of array) {
+                    vectorUint64.push_back(item);
+                }
+            } else if (array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorUint64.push_back(BigInt(item));
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        if (item >= 0n && item <= 18446744073709551615n) {
+                            vectorUint64.push_back(item);
+                            i++;
+                            continue;
+                        }
+                    } else if (typeof item === 'number') {
+                        let bigIntItem = BigInt(item);
+                        if (bigIntItem >= 0n && bigIntItem <= 18446744073709551615n) {
+                            vectorUint64.push_back(bigIntItem);
+                            i++;
+                            continue;
+                        }
+                    }
+                    throw new Error(`Array item at index ${i} is not an unsigned 64-bit integer.`);
+                }
+            }
+            return vectorUint64;
+        } catch (error) {
+            vectorUint64.delete();
+            throw error;
+        }
+    },
+
+    fromVectorFloat: function(vectorFloat) {
+        let size = vectorFloat.size();
+        let array = new Float32Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorFloat.get(i);
+        }
+        return array;
+    },
+    toVectorFloat: function(array) {
+        let vectorFloat = new Posemesh.__mainModule.VectorFloat();
+        try {
+            if (array instanceof Float32Array || array instanceof Float64Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorFloat.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        vectorFloat.push_back(Number(item));
+                        i++;
+                        continue;
+                    } else if (typeof item === 'number') {
+                        vectorFloat.push_back(item);
+                        i++;
+                        continue;
+                    }
+                    throw new Error(`Array item at index ${i} is not a number.`);
+                }
+            }
+            return vectorFloat;
+        } catch (error) {
+            vectorFloat.delete();
+            throw error;
+        }
+    },
+
+    fromVectorDouble: function(vectorDouble) {
+        let size = vectorDouble.size();
+        let array = new Float64Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = vectorDouble.get(i);
+        }
+        return array;
+    },
+    toVectorDouble: function(array) {
+        let vectorDouble = new Posemesh.__mainModule.VectorDouble();
+        try {
+            if (array instanceof Float64Array || array instanceof Float32Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
+                for (let item of array) {
+                    vectorDouble.push_back(item);
+                }
+            } else {
+                let i = 0;
+                for (let item of array) {
+                    if (typeof item === 'bigint') {
+                        vectorDouble.push_back(Number(item));
+                        i++;
+                        continue;
+                    } else if (typeof item === 'number') {
+                        vectorDouble.push_back(item);
+                        i++;
+                        continue;
+                    }
+                    throw new Error(`Array item at index ${i} is not a number.`);
+                }
+            }
+            return vectorDouble;
+        } catch (error) {
+            vectorDouble.delete();
+            throw error;
+        }
+    },
+
+    fromVectorBoolean: function(vectorBoolean) {
+        let size = vectorBoolean.size();
+        let array = new Array(size);
+        for (let i = 0; i < size; ++i) {
+            array[i] = (vectorBoolean.get(i) !== 0);
+        }
+        return array;
+    },
+    toVectorBoolean: function(array) {
+        let vectorBoolean = new Posemesh.__mainModule.VectorBoolean();
+        try {
+            let i = 0;
+            for (let item of array) {
+                if (typeof item === 'boolean') {
+                    vectorBoolean.push_back(item ? 1 : 0);
+                    i++;
+                    continue;
+                }
+                throw new Error(`Array item at index ${i} is not a boolean.`);
+            }
+            return vectorBoolean;
+        } catch (error) {
+            vectorBoolean.delete();
+            throw error;
+        }
+    },
+
     fromVectorString: function(vectorString) {
         let size = vectorString.size();
-        let array = [];
+        let array = new Array(size);
         for (let i = 0; i < size; ++i) {
-            array.push(vectorString.get(i));
+            array[i] = vectorString.get(i);
         }
         return array;
     },
@@ -13,40 +457,16 @@ var __internalPosemeshAPI = {
         try {
             let i = 0;
             for (let item of array) {
-                if (typeof item !== "string") {
-                    throw new Error(`Array item at index ${i} is not a string.`);
+                if (typeof item === 'string') {
+                    vectorString.push_back(item);
+                    i++;
+                    continue;
                 }
-                vectorString.push_back(item);
-                i++;
+                throw new Error(`Array item at index ${i} is not a string.`);
             }
             return vectorString;
         } catch (error) {
             vectorString.delete();
-            throw error;
-        }
-    },
-    fromVectorUint8: function(vectorUint8) {
-        let size = vectorUint8.size();
-        let array = [];
-        for (let i = 0; i < size; ++i) {
-            array.push(vectorUint8.get(i));
-        }
-        return new Uint8Array(array);
-    },
-    toVectorUint8: function(array) {
-        let vectorUint8 = new Posemesh.__mainModule.VectorUint8();
-        try {
-            let i = 0;
-            for (let item of array) {
-                if (typeof item !== "number" || item < 0 || item > 255) {
-                    throw new Error(`Array item at index ${i} is not a byte.`);
-                }
-                vectorUint8.push_back(item);
-                i++;
-            }
-            return vectorUint8;
-        } catch (error) {
-            vectorUint8.delete();
             throw error;
         }
     }
