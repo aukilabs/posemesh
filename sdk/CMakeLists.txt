@@ -49,15 +49,25 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Vector2f.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Vector3f.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Matrix3x3f.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector2f.gen.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector2f.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector3f.gen.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Matrix3x3f.gen.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
@@ -77,12 +87,20 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/API.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Vector2f.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Vector3f.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Matrix3x3f.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector2f.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector3f.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix3x3f.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
     )
@@ -103,6 +121,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
     )
 endif()
 
@@ -135,6 +154,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
     )
     if(USE_BABEL_JS)
