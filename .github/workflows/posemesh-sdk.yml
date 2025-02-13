@@ -59,6 +59,10 @@ jobs:
         shell: pwsh
         run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
 
+      - name: Build Posemesh Domain for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release domain -InstallNecessaryRustToolchainsAndTargets
+
       - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
