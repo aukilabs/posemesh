@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use crate::cluster::DomainCluster;
 use crate::data;
 use crate::datastore::Datastore;
-use crate::remote::RemoteDataStore;
+use crate::remote::RemoteDatastore;
 use crate::domain_data;
 
 #[repr(C)]
@@ -152,7 +152,7 @@ pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster, peer: *mut Co
     }
     let cluster = unsafe { Box::from_raw(cluster) };
     let peer = unsafe { Box::from_raw(peer) };
-    let remote_storage = RemoteDataStore::new(cluster, peer);
+    let remote_storage = RemoteDatastore::new(cluster, peer);
     Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(remote_storage))))
 }
 
@@ -200,8 +200,10 @@ pub extern "C" fn find_domain_data(
     let query = query as *const domain_data::Query;
     let query_clone = unsafe { (*query).clone() };
 
+    let user_data_clone = user_data as usize;
+
     // Spawn a Tokio task to process the receiver
-    get_runtime().block_on(async move {
+    get_runtime().spawn(async move {
         let stream = store_wrapper.store.find(domain_id, query_clone).await;
         let mut stream = Box::pin(stream);
 
@@ -209,11 +211,13 @@ pub extern "C" fn find_domain_data(
             match result {
                 Ok(data) => {
                     let c_data = from_rust(&data);
+                    let user_data = user_data_clone as *mut c_void;
                     callback(user_data, &c_data, ptr::null());
                 }
                 Err(err) => {
                     let message = CString::new(err.to_string()).unwrap().into_raw();
                     let error = DomainError { message };
+                    let user_data = user_data_clone as *mut c_void;
                     callback(user_data, ptr::null(), &error);
                 }
             }

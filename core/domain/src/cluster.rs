@@ -1,6 +1,6 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use networking::{context::{self, Context, Config}, event};
-use futures::{channel::{mpsc::{self, channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 use protobuf::task::{self,Job, Status};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
