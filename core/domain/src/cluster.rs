@@ -120,7 +120,7 @@ impl DomainCluster {
         }
     }
 
-    pub(crate) async fn submit_job(&mut self, job: &Job) -> Receiver<TaskUpdateEvent> {
+    pub async fn submit_job(&mut self, job: &Job) -> Receiver<TaskUpdateEvent> {
         let (tx, rx) = channel::<TaskUpdateEvent>(100);
         self.sender.send(Command::SubmitJob {
             job: job.clone(),

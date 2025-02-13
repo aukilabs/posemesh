@@ -46,38 +46,3 @@ py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
-
-[[example]]
-name = "relay"
-path = "../examples/relay.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "receiver"
-path = "../examples/private_receiver.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "sender"
-path = "examples/private_dialer.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "dmt"
-path = "../examples/dmt.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "domain_manager"
-path = "../examples/domain_manager.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "data"
-path = "../examples/data_node.rs"
-required-features = ["rust"]
-
-[[example]]
-name = "reconstruction"
-path = "../examples/reconstruction_node.rs"
-required-features = ["rust"]
