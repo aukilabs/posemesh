@@ -1,38 +1,101 @@
 name: Posemesh SDK
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - '**/examples/**'
+      - '*.md'
+      - '.vscode/**'
+      - '.github/**'
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build_apple_sdk:
+  build_apple_frameworks:
     name: Build Apple SDK
     runs-on: macos-latest
+    env:
+      CC_x86_64-apple-ios-macabi: "clang"
+      CC_x86_64_apple_ios_macabi: "clang"
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [AMD64, ARM64]
+        platform: [macOS, Mac-Catalyst, iOS, iOS-Simulator]
+        exclude:
+        - arch: AMD64
+          platform: iOS
 
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
         with:
-          submodules: recursive
-
-      - name: Install PowerShell
-        run: brew install --cask powershell
+          submodules: true
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      - name: Build Posemesh Networking (all platforms and architectures)
-        run: pwsh ./networking/scripts/Build-Apple.ps1 Release -InstallNecessaryRustToolchainsAndTargets
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-cargo-
 
-      - name: Build OpenCV (all platforms and architectures)
-        run: pwsh ./third-party/scripts/Build-OpenCV-Apple.ps1 Release
+      - name: Cache Cargo build artifacts (Per Target)
+        uses: actions/cache@v4
+        with:
+          path: ./core/target
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
-      - name: Build Posemesh SDK (all platforms and architectures)
-        run: pwsh ./sdk/scripts/Build-Apple.ps1 Release
+      - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
+
+      - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+
+      - name: Build Framework for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+
+      - name: Upload Frameworks
+        uses: actions/upload-artifact@v4
+        with:
+          name: out-${{ matrix.platform }}-${{ matrix.arch }}-Release
+          path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release
+
+  build_xcframework:
+    name: Build XC Framework
+    runs-on: macos-latest
+    needs: build_apple_frameworks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all Frameworks
+        uses: actions/download-artifact@v4
+        with:
+          path: ./sdk
 
       - name: Bundle Posemesh SDK
+        shell: pwsh
         run: |
-          pwsh ./sdk/scripts/Bundle-Framework.ps1 macOS Release
-          pwsh ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
-          pwsh ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
-          pwsh ./sdk/scripts/Bundle-XCFramework.ps1 Release
+          ./sdk/scripts/Bundle-Framework.ps1 macOS Release
+          ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
+          ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
+          ./sdk/scripts/Bundle-XCFramework.ps1 Release
+      
+      - name: Zip
+        run: |
           cd ./sdk/out-Apple-Release
           zip -r -y ./Posemesh.zip ./Posemesh.xcframework
 
@@ -79,12 +142,23 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ./core/target
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-cargo-
 
       - name: Install WASM-Pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build Posemesh Networking
-        run: pwsh ./networking/scripts/Build-Library.ps1 Web WASM32 Release -InstallNecessaryRustToolchainsAndTargets
+        run: pwsh ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV
         run: |

@@ -1,12 +1,12 @@
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use posemesh_networking::{context, event, network::{self, Node}};
+use networking::{context, event, network::{self, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, signal, time::{sleep, Duration}};
 use futures::{io::BufReader, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, StreamExt};
 use uuid::Uuid;
 use std::{borrow::BorrowMut, collections::HashMap, fs::{read, OpenOptions}, io::Write};
-use posemesh_protobuf::{task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}, domain_data};
+use protobuf::{task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}, domain_data};
 use sha2::{digest::crypto_common::rand_core::le, Digest, Sha256};
 use hex;
 use std::{io, fs};
@@ -57,7 +57,8 @@ async fn local_refinement_v1(mut stream: Stream, mut c: context::Context) {
 
         println!("Start executing {}", claim.task_name);
 
-        sleep(Duration::from_secs(5)).await;
+        let sleep_time = rand::random::<u64>() % 20;
+        sleep(Duration::from_secs(sleep_time)).await;
 
         let output = LocalRefinementOutputV1 {
             recording_id: input.recording_id.clone(),
@@ -138,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: "".to_string(),
+        private_key: vec![],
         private_key_path: private_key_path,
         name: name,
         // node_capabilities: vec![],
