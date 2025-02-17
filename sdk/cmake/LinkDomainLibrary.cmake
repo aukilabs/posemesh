@@ -26,25 +26,25 @@ function(LINK_DOMAIN_LIBRARY NAME)
     if(APPLE)
         set(DOMAIN_LIBRARY "${DOMAIN_TARGET_DIR_WITH_BUILD_TYPE}/libdomain_static.a")
     elseif(EMSCRIPTEN)
-        set(DOMAIN_LIBRARY_JS "${DOMAIN_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshNetworking.js")
-        set(DOMAIN_LIBRARY_WASM "${DOMAIN_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshNetworking_bg.wasm")
+        set(DOMAIN_LIBRARY_JS "${DOMAIN_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshDomain.js")
+        set(DOMAIN_LIBRARY_WASM "${DOMAIN_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshDomain_bg.wasm")
     else()
         message(FATAL_ERROR "TODO") # TODO: this needs to be implemented
     endif()
 
     if(NOT EXISTS "${DOMAIN_INCLUDE_DIR}" OR NOT IS_DIRECTORY "${DOMAIN_INCLUDE_DIR}")
-        message(FATAL_ERROR "Posemesh Networking library is not built for targeted platform, architecture and configuration (build type): Includes directory is missing.")
+        message(FATAL_ERROR "Posemesh Domain library is not built for targeted platform, architecture and configuration (build type): Includes directory is missing.")
     endif()
     if(EMSCRIPTEN)
         if(NOT EXISTS "${DOMAIN_LIBRARY_JS}" OR IS_DIRECTORY "${DOMAIN_LIBRARY_JS}")
-            message(FATAL_ERROR "Posemesh Networking library is not built for targeted platform, architecture and configuration (build type): JavaScript file is missing.")
+            message(FATAL_ERROR "Posemesh Domain library is not built for targeted platform, architecture and configuration (build type): JavaScript file is missing.")
         endif()
         if(NOT EXISTS "${DOMAIN_LIBRARY_WASM}" OR IS_DIRECTORY "${DOMAIN_LIBRARY_WASM}")
-            message(FATAL_ERROR "Posemesh Networking library is not built for targeted platform, architecture and configuration (build type): WebAssembly file is missing.")
+            message(FATAL_ERROR "Posemesh Domain library is not built for targeted platform, architecture and configuration (build type): WebAssembly file is missing.")
         endif()
     else()
         if(NOT EXISTS "${DOMAIN_LIBRARY}" OR IS_DIRECTORY "${DOMAIN_LIBRARY}")
-            message(FATAL_ERROR "Posemesh Networking library is not built for targeted platform, architecture and configuration (build type): Archive file is missing.")
+            message(FATAL_ERROR "Posemesh Domain library is not built for targeted platform, architecture and configuration (build type): Archive file is missing.")
         endif()
     endif()
 
@@ -56,17 +56,17 @@ function(LINK_DOMAIN_LIBRARY NAME)
     if(EMSCRIPTEN)
         copy_file_with_text_replace(
             "${DOMAIN_LIBRARY_JS}"
-            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshDomain_TextReplaced.js"
             REPLACES
-                "|MATCH-WORD|wasm_bindgen" "__internalPosemeshNetworking"
-                "script_src.replace(/\\.js$/, '_bg.wasm')" "'PosemeshNetworking.wasm'"
+                "|MATCH-WORD|wasm_bindgen" "__internalPosemeshDomain"
+                "script_src.replace(/\\.js$/, '_bg.wasm')" "'PosemeshDomain.wasm'"
                 "console.warn('using deprecated parameters for the initialization function" "// console.warn('using deprecated parameters for the initialization function" # HACK
         )
         install(
             FILES
                 "${DOMAIN_LIBRARY_WASM}"
             DESTINATION "${CMAKE_INSTALL_PREFIX}"
-            RENAME "PosemeshNetworking.wasm"
+            RENAME "PosemeshDomain.wasm"
         )
     else()
         if(APPLE)
