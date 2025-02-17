@@ -41,7 +41,6 @@ gloo-timers = { workspace = true, features = ["futures"] }
 default = []
 cpp = []
 rust = ["dep:protobuf", "dep:sha2", "dep:hex", "dep:quick-protobuf", "dep:quick-protobuf-codec", "dep:jsonwebtoken", "dep:uuid"]
-wasm = []
 py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]
 
 [lib]

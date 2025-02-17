@@ -1,6 +1,5 @@
 
-use crate::{data::DomainData, domain_data, remote::{DataStream, DomainError}};
-use futures::{Stream};
+use crate::{protobuf::domain_data, remote::{DataStream, DomainError}};
 use async_trait::async_trait;
 
 #[async_trait]

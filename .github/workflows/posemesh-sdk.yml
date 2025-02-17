@@ -133,17 +133,6 @@ jobs:
           ./emsdk install 3.1.69
           ./emsdk activate 3.1.69
 
-      - name: Install PowerShell
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget apt-transport-https software-properties-common
-          source /etc/os-release
-          wget -q https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb
-          sudo dpkg -i packages-microsoft-prod.deb
-          rm packages-microsoft-prod.deb
-          sudo apt-get update
-          sudo apt-get install -y powershell
-
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       
@@ -162,7 +151,12 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build Posemesh Networking
-        run: pwsh ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
+
+      - name: Build Posemesh Domain
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release domain -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV
         run: |

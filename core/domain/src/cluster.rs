@@ -1,9 +1,12 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
-use networking::{context::{self, Context, Config}, event};
-use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
+use networking::{context::{self, Context}, event};
+use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
 use protobuf::task::{self,Job, Status};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 pub enum TaskUpdateResult {
     Ok(task::Task),
@@ -15,8 +18,6 @@ pub struct TaskUpdateEvent {
     pub from: Option<PeerId>,
     pub result: TaskUpdateResult,
 }
-
-const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
 struct InnerDomainCluster {
     command_rx: Receiver<Command>,
@@ -30,49 +31,73 @@ enum Command {
         job: Job,
         response: Sender<TaskUpdateEvent>,
     },
+    UpdateTask {
+        task: task::Task,
+    }
 }
 
 impl InnerDomainCluster {
     fn init(mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    Some(Command::SubmitJob { job, response }) = self.command_rx.next() => {
-                        // TODO: error handling
-                        let _ = self.submit_job(&job, response).await;
-                    }
-                    e = self.peer.poll() => {
-                        match e {
-                            Some(event::Event::PubSubMessageReceivedEvent { topic, message, from }) => {
-                                let mut task = deserialize_from_slice::<task::Task>(&message).expect("can't deserialize task");
-                                if let Some(tx) = self.jobs.get_mut(&topic) {
-                                    if let Err(e) = tx.send(TaskUpdateEvent {
-                                        topic: topic.clone(),
-                                        from: from,
-                                        result: TaskUpdateResult::Ok(task.clone()),
-                                    }).await {
-                                        if SendError::is_disconnected(&e) {
-                                            self.jobs.remove(&topic);
-                                            break;
-                                        }
-                                        task.status = Status::FAILED;
-                                        let _ = tx.send(TaskUpdateEvent {
-                                            topic: topic.clone(),
-                                            from: from,
-                                            result: TaskUpdateResult::Ok(task.clone()),
-                                        }).await;
-                                        // // TODO: send failed task update with error
-                                        // self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                    command = self.command_rx.select_next_some() => self.handle_command(command).await,
+                    event = self.peer.poll() => self.handle_event(event).await,
                 }
-                
             }
         });
+
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(async move {
+            loop {
+                futures::select! {
+                    command = self.command_rx.select_next_some() => self.handle_command(command).await,
+                    event = self.peer.poll().fuse() => self.handle_event(event).await,
+                    complete => break,
+                }
+            }
+        })
+    }
+
+    async fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::SubmitJob { job, response } => {
+                let _ = self.submit_job(&job, response).await;
+            },
+            Command::UpdateTask { task } => {
+                let _ = self.peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("can't serialize task update")).await;
+            }
+        }
+    }
+
+    async fn handle_event(&mut self, e: Option<event::Event>) {
+        match e {
+            Some(event::Event::PubSubMessageReceivedEvent { topic, message, from }) => {
+                let mut task = deserialize_from_slice::<task::Task>(&message).expect("can't deserialize task");
+                if let Some(tx) = self.jobs.get_mut(&topic) {
+                    if let Err(e) = tx.send(TaskUpdateEvent {
+                        topic: topic.clone(),
+                        from: from,
+                        result: TaskUpdateResult::Ok(task.clone()),
+                    }).await {
+                        if SendError::is_disconnected(&e) {
+                            self.jobs.remove(&topic);
+                            return;
+                        }
+                        task.status = Status::FAILED;
+                        let _ = tx.send(TaskUpdateEvent {
+                            topic: topic.clone(),
+                            from: from,
+                            result: TaskUpdateResult::Ok(task.clone()),
+                        }).await;
+                        // // TODO: send failed task update with error
+                        // self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     async fn submit_job(&mut self, job: &Job, tx: Sender<TaskUpdateEvent>) {
@@ -101,6 +126,7 @@ impl InnerDomainCluster {
     }
 }
 
+#[derive(Clone)]
 pub struct DomainCluster {
     sender: Sender<Command>,
 }
@@ -127,5 +153,11 @@ impl DomainCluster {
             response: tx,
         }).await.expect("can't send command");
         rx
+    }
+
+    pub async fn update_task(&mut self, task: &task::Task) {
+        self.sender.send(Command::UpdateTask  {
+            task: task.clone(),
+        }).await.expect("can't send command"); 
     }
 }

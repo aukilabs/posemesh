@@ -11,7 +11,7 @@ typedef struct DomainCluster DomainCluster;
 
 typedef struct DomainData {
   const char *domain_id;
-  const char *hash;
+  const char *id;
   const char *name;
   const char *data_type;
   const char *metadata;

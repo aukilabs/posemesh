@@ -1,8 +1,13 @@
-mod data;
 mod remote;
 pub mod cluster;
 mod datastore;
-include!("protobuf/mod.rs");
+mod binding_helper;
+mod protobuf {
+    include!("protobuf/mod.rs");
+}
 
 #[cfg(feature="cpp")]
 mod c;
+
+#[cfg(target_family = "wasm")]
+mod wasm;

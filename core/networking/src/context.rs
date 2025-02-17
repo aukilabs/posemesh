@@ -14,7 +14,7 @@ use std::sync::Arc;
 use runtime::get_runtime;
 
 use std::{ffi::CStr, os::raw::{c_char, c_uchar, c_void}};
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 use libp2p::Multiaddr;
 
 #[cfg(any(feature="cpp", feature="py"))]
@@ -32,6 +32,7 @@ use pyo3::exceptions::PyValueError;
 #[cfg(feature="py")]
 use pyo3_asyncio::tokio::future_into_py;
 
+#[cfg(feature="cpp")]
 #[repr(C)]
 pub struct Config {
     pub serve_as_bootstrap: u8,
@@ -43,7 +44,7 @@ pub struct Config {
     pub private_key_path: *const c_char,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen(getter_with_clone)]
 #[allow(non_snake_case)]
 pub struct Config {
@@ -52,7 +53,7 @@ pub struct Config {
     pub privateKey: Vec<u8>,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]
@@ -79,7 +80,7 @@ pub struct Context {
 
 #[cfg_attr(feature="py", pymethods)]
 impl Context {
-    #[cfg(any(feature="wasm", feature="cpp"))]
+    #[cfg(any(target_family="wasm", feature="cpp"))]
     pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error + Send + Sync>> {
         // ************************
         // ** serve_as_bootstrap **
@@ -333,6 +334,13 @@ impl Context {
 
 #[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
+    pub fn copy(&self) -> Context {
+        Context {
+            client: self.client.clone(),
+            receiver: self.receiver.clone(),
+            id: self.id.clone(),
+        }
+    }
     pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol, timeout).await
@@ -386,7 +394,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(feature="rust")]
+    #[cfg(all(feature="rust", not(target_arch = "wasm32")))]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });

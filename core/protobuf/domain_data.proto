@@ -6,13 +6,18 @@ message Metadata {
     required string name = 1;
     required string data_type = 2;
     required uint32 size = 3;
-    string hash = 4;
+    string id = 4;
     map<string, string> properties = 5;
 }
 
 message Query {
+    repeated string hashes = 1;
+    string name = 2;
+    string data_type = 3;
+}
+
+message Data {
     required string domain_id = 1;
-    repeated string hashes = 2;
-    string name = 3;
-    string data_type = 4;
+    required Metadata metadata = 2;
+    required bytes content = 3;
 }

@@ -1,29 +1,19 @@
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 #[cfg(not(target_family = "wasm"))]
-use tokio::task::spawn;
+use tokio::task::spawn as spawn;
 
 #[cfg(target_family = "wasm")]
-use wasm_bindgen_futures::spawn_local;
+use wasm_bindgen_futures::spawn_local as spawn;
 
 use std::{error::Error, future::Future};
 use async_trait::async_trait;
 use libp2p::{PeerId, Stream};
 use networking::context::Context;
 use protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status};
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, data::DomainData, domain_data, datastore::Datastore};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::Datastore, protobuf::domain_data::{self, Data}};
 use futures::{channel::{mpsc::{channel, Receiver, Sender}, oneshot}, stream::{self, SplitStream}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
-pub struct DataStream {
-    pub receiver: Receiver<Result<DomainData, DomainError>>,
-}
-
-impl futures::Stream for DataStream {
-    type Item = Result<DomainData, DomainError>;
-
-    fn poll_next(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Option<Self::Item>> {
-        self.receiver.poll_next_unpin(cx)
-    }
-}
+pub type DataStream = Receiver<Result<Data, DomainError>>;
 
 // Define a custom error type
 #[derive(Debug)]
@@ -45,6 +35,8 @@ impl std::fmt::Display for DomainError {
 struct TaskHandler {
     #[cfg(not(target_family = "wasm"))]
     handler: Option<tokio::task::JoinHandle<()>>,
+    #[cfg(target_family = "wasm")]
+    handler: Option<()>,
 }
 
 impl TaskHandler {
@@ -59,13 +51,13 @@ impl TaskHandler {
         #[cfg(not(target_family = "wasm"))]
         {
             // Non-WASM environment: spawn using tokio
-            self.handler = Some(tokio::spawn(handler));
+            self.handler = Some(spawn(handler));
         }
 
         #[cfg(target_family = "wasm")]
         {
             // WASM environment: spawn using spawn_local
-            spawn_local(handler);
+            spawn(handler);
         }
     }
 
@@ -79,18 +71,19 @@ impl TaskHandler {
     }
 }
 
+#[derive(Clone)]
 pub struct RemoteDatastore {
-    cluster: Box<DomainCluster>,
-    peer: Box<Context>,
+    cluster: DomainCluster,
+    peer: Context,
 }
 
 impl RemoteDatastore {
-    pub fn new(cluster: Box<DomainCluster>, peer: Box<Context> ) -> Self {
+    pub fn new(cluster: DomainCluster, peer: Context ) -> Self {
         Self { cluster, peer }
     }
 
     // TODO: error handling
-    async fn read_from_stream(domain_id: String, mut src: Stream, mut dest: Sender<Result<DomainData, DomainError>>) {
+    async fn read_from_stream(domain_id: String, mut src: Stream, mut dest: Sender<Result<Data, DomainError>>) {
         loop {
             let mut length_buf = [0u8; 4];
             let has = src.read(&mut length_buf).await.expect("Failed to read length");
@@ -109,14 +102,10 @@ impl RemoteDatastore {
             let mut buffer = vec![0u8; metadata.size as usize];
             src.read_exact(&mut buffer).await.expect("Failed to read buffer");
 
-            let data = DomainData {
+            let data = Data {
+                metadata,
                 domain_id: domain_id.clone(),
-                hash: metadata.hash.unwrap(),
-                properties: metadata.properties,
-                name: metadata.name,
-                data_type: metadata.data_type,
                 content: buffer,
-                content_size: metadata.size as usize,
             };
             let _ = dest.send(Ok(data));
         }
@@ -128,9 +117,9 @@ impl Datastore for RemoteDatastore {
     async fn find(&mut self, domain_id: String, query: domain_data::Query) -> DataStream
     {
         let mut download_task = TaskHandler::new();
-        let (data_sender, data_receiver) = channel::<Result<DomainData, DomainError>>(100);
-        let peer = self.peer.clone();
+        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
         let peer_id = self.peer.id.clone();
+        let mut peer = self.peer.clone();
         let domain_id = domain_id.clone();
         let query = query.clone();
         let job = &task::Job {
@@ -163,8 +152,7 @@ impl Datastore for RemoteDatastore {
 
         let mut download_task_recv = self.cluster.submit_job(job).await;
 
-        #[cfg(not(target_family = "wasm"))]
-        tokio::spawn(async move {
+        spawn(async move {
             loop {
                 let update = download_task_recv.try_next();
                 match update {
@@ -174,19 +162,17 @@ impl Datastore for RemoteDatastore {
                     })) => match task.status {
                         Status::PENDING => {
                             task.status = Status::STARTED;
-                            let mut peer_clone = peer.clone();
                             let domain_id_clone = domain_id.clone();
                             let data_sender_clone = data_sender.clone();
-                            peer_clone.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
+                            peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
+                            let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
+                                access_token: task.access_token.clone(),
+                            }).unwrap();
+                            let mut length_buf = [0u8; 4];
+                            let length = m_buf.len() as u32;
+                            length_buf.copy_from_slice(&length.to_be_bytes());
+                            let upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
                             download_task.execute(async move {
-                                let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
-                                    access_token: task.access_token.clone(),
-                                }).unwrap();
-                                let mut length_buf = [0u8; 4];
-                                let length = m_buf.len() as u32;
-                                length_buf.copy_from_slice(&length.to_be_bytes());
-                                let upload_stream = peer_clone.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
-                                
                                 RemoteDatastore::read_from_stream(domain_id_clone, upload_stream, data_sender_clone).await;
                             });
                         },
@@ -201,6 +187,6 @@ impl Datastore for RemoteDatastore {
             }
         });
         
-        DataStream { receiver: data_receiver }
+        data_receiver
     }
 }

@@ -9,16 +9,16 @@ use runtime::get_runtime;
 use tokio::sync::mpsc;
 
 use crate::cluster::DomainCluster;
-use crate::data;
 use crate::datastore::Datastore;
 use crate::remote::RemoteDatastore;
-use crate::domain_data;
+use crate::binding_helper::init_r_remote_storage;
+use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct DomainData {
     pub domain_id: *const c_char,
-    pub hash: *const c_char,
+    pub id: *const c_char,
     pub name: *const c_char,           // Pointer to the null-terminated C string (no fixed size)
     pub data_type: *const c_char,      // Pointer to the null-terminated C string (no fixed size)
     pub metadata: *const c_char,
@@ -26,11 +26,17 @@ pub struct DomainData {
     pub content_size: usize,
 }
 
-fn to_rust(c_domain_data: *const DomainData) -> data::DomainData {
+fn to_rust(c_domain_data: *const DomainData) -> Data {
     let c_domain_data_ref = unsafe { &*c_domain_data };
 
     let domain_id = unsafe { CStr::from_ptr(c_domain_data_ref.domain_id).to_string_lossy().into_owned() };
-    let hash = unsafe { CStr::from_ptr(c_domain_data_ref.hash).to_string_lossy().into_owned() };
+    let id = unsafe {
+        if c_domain_data_ref.id.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(c_domain_data_ref.id).to_string_lossy().into_owned())
+        }
+    };
     let name = unsafe { CStr::from_ptr(c_domain_data_ref.name).to_string_lossy().into_owned() };
     let data_type = unsafe { CStr::from_ptr(c_domain_data_ref.data_type).to_string_lossy().into_owned() };
     let metadata = unsafe { CStr::from_ptr(c_domain_data_ref.metadata).to_string_lossy().into_owned() };
@@ -47,23 +53,29 @@ fn to_rust(c_domain_data: *const DomainData) -> data::DomainData {
     };
     let content_size = content.len();
 
-    data::DomainData {
-        domain_id,
-        hash,
-        name,
-        data_type,
-        properties: serde_json::from_str(&metadata).unwrap(),
+    Data {
+        domain_id: domain_id,
+        metadata: Metadata {
+            name,
+            data_type,
+            properties: serde_json::from_str(&metadata).unwrap(),
+            size: content_size as u32,
+            id,
+        },
         content,
-        content_size: content_size,
     }
 }
 
-fn from_rust(r_domain_data: &data::DomainData) -> DomainData {
+fn from_rust(r_domain_data: &Data) -> DomainData {
+    let id = match &r_domain_data.metadata.id {
+        Some(id) => CString::new(id.clone()).unwrap().into_raw(),
+        None => ptr::null_mut(),
+    };
+    let metadata = &r_domain_data.metadata;
     let domain_id = CString::new(r_domain_data.domain_id.clone()).unwrap().into_raw();
-    let hash = CString::new(r_domain_data.hash.clone()).unwrap().into_raw();
-    let name = CString::new(r_domain_data.name.clone()).unwrap().into_raw();
-    let data_type = CString::new(r_domain_data.data_type.clone()).unwrap().into_raw();
-    let metadata = CString::new(serde_json::to_string(&r_domain_data.properties).unwrap()).unwrap().into_raw();
+    let name = CString::new(metadata.name.clone()).unwrap().into_raw();
+    let data_type = CString::new(metadata.data_type.clone()).unwrap().into_raw();
+    let metadata = CString::new(serde_json::to_string(&metadata.properties).unwrap()).unwrap().into_raw();
 
     let content = if r_domain_data.content.is_empty() {
         ptr::null_mut()
@@ -73,11 +85,11 @@ fn from_rust(r_domain_data: &data::DomainData) -> DomainData {
         let content_ptr = content_ptr as *mut c_void;
         content_ptr
     };
-    let content_size = r_domain_data.content_size;
+    let content_size = r_domain_data.metadata.size as usize;
 
     DomainData {
         domain_id,
-        hash,
+        id,
         name,
         data_type,
         metadata,
@@ -110,7 +122,7 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
     let data = &mut *data;
 
     free_c_string(data.domain_id);
-    free_c_string(data.hash);
+    free_c_string(data.id);
     free_c_string(data.name);
     free_c_string(data.data_type);
     free_c_string(data.metadata);
@@ -147,13 +159,7 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 
 #[no_mangle]
 pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster, peer: *mut Context) -> *mut DatastoreWrapper {
-    if cluster.is_null() || peer.is_null() {
-        return ptr::null_mut();
-    }
-    let cluster = unsafe { Box::from_raw(cluster) };
-    let peer = unsafe { Box::from_raw(peer) };
-    let remote_storage = RemoteDatastore::new(cluster, peer);
-    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(remote_storage))))
+    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster, peer)))))
 }
 
 #[no_mangle]
