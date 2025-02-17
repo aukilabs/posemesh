@@ -4,32 +4,37 @@
 
 namespace psm {
 
-PoseEstimation::~PoseEstimation() = default;
-
 bool PoseEstimation::solvePnP(
-    const float* objectPoints,
-    const float* imagePoints,
-    const float* cameraMatrix,
+    const Vector3f objectPoints[],
+    const Vector2f imagePoints[],
+    const Matrix3x3f cameraMatrix,
     Matrix3x3f* outR,
     Vector3f* outT)
 {
     std::vector<cv::Point3f> cvObjectPoints;
-    for (int i = 0; i < 12; i += 3) {
-        cvObjectPoints.push_back(cv::Point3f(objectPoints[i + 0],
-            objectPoints[i + 1],
-            objectPoints[i + 2]));
+    for (int i = 0; i < 4; i++) {
+        cvObjectPoints.push_back(cv::Point3f(
+            objectPoints[i].getX(),
+            objectPoints[i].getY(),
+            objectPoints[i].getZ()));
     }
 
     std::vector<cv::Point2f> cvImagePoints;
-    for (int i = 0; i < 8; i += 2)
+    for (int i = 0; i < 4; i++)
     {
-        cvImagePoints.push_back(cv::Point2f(imagePoints[i], imagePoints[i + 1]));
+        cvImagePoints.push_back(cv::Point2f(imagePoints[i].getX(), imagePoints[i].getY()));
     }
 
     cv::Mat cvCameraMatrix = cv::Mat::zeros(3, 3, CV_32F);
-    for (int i = 0; i < 9; i++) {
-        cvCameraMatrix.at<float>(i) = cameraMatrix[i];
-    }
+    cvCameraMatrix.at<float>(0) = cameraMatrix.getM00();
+    cvCameraMatrix.at<float>(1) = cameraMatrix.getM01();
+    cvCameraMatrix.at<float>(2) = cameraMatrix.getM02();
+    cvCameraMatrix.at<float>(3) = cameraMatrix.getM10();
+    cvCameraMatrix.at<float>(4) = cameraMatrix.getM11();
+    cvCameraMatrix.at<float>(5) = cameraMatrix.getM12();
+    cvCameraMatrix.at<float>(6) = cameraMatrix.getM20();
+    cvCameraMatrix.at<float>(7) = cameraMatrix.getM21();
+    cvCameraMatrix.at<float>(8) = cameraMatrix.getM22();
 
     cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_32F);
     cv::Mat rvec = cv::Mat::zeros(3, 1, CV_32F);

@@ -49,6 +49,9 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Vector2f.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Vector3f.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Matrix3x3f.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
