@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::{Arc, Mutex};
@@ -95,6 +95,48 @@ fn from_rust(r_domain_data: &Data) -> DomainData {
         metadata,
         content,
         content_size,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c_int, name: *const c_char, data_type: *const c_char) -> *mut domain_data::Query {
+    let name = unsafe { 
+        if name.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(name).to_string_lossy().into_owned())
+        }
+    };
+    let data_type = unsafe { 
+        if data_type.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(data_type).to_string_lossy().into_owned())
+        }
+    };
+    let ids = unsafe {
+        assert!(!ids_ptr.is_null());
+        let ids_slice = std::slice::from_raw_parts(ids_ptr, len as usize);
+        ids_slice.iter().map(|&id| CStr::from_ptr(id).to_string_lossy().into_owned()).collect()
+    };
+
+    let query = domain_data::Query {
+        ids,
+        name,
+        data_type,
+    };
+
+    Box::into_raw(Box::new(query))
+}
+
+#[no_mangle]
+pub extern "C" fn free_domain_data_query(query: *mut domain_data::Query) {
+    if query.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(query);
     }
 }
 

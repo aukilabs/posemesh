@@ -2,8 +2,29 @@ use std::sync::{Arc, Mutex};
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::Datastore, protobuf::domain_data::{self, Metadata, Query}, remote::{DataStream as r_DataStream, RemoteDatastore as r_RemoteDatastore}};
+use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::Datastore, protobuf::domain_data, remote::{DataStream as r_DataStream, RemoteDatastore as r_RemoteDatastore}};
 use wasm_bindgen_futures::{future_to_promise, js_sys};
+
+#[derive(Clone)]
+#[wasm_bindgen]
+pub struct Query {
+    inner: domain_data::Query,
+}
+
+#[wasm_bindgen]
+impl Query {
+    #[wasm_bindgen(constructor)]
+    pub fn new(ids: Vec<String>, name: Option<String>, data_type: Option<String>) -> Self {
+        Self {
+            inner: domain_data::Query {
+                ids,
+                name,
+                data_type,
+            }
+        }
+    }
+}
+
 
 #[wasm_bindgen]
 pub struct DomainData {
@@ -98,7 +119,7 @@ impl RemoteDatastore {
     pub fn find(
         &mut self,
         domain_id: String,
-        query: JsValue,
+        query: Query,
     ) -> js_sys::Promise {
         let domain_id = domain_id.clone();
         // TODO: Convert query to Rust struct
@@ -106,11 +127,7 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.find(domain_id, Query {
-                hashes: vec![],
-                name: None,
-                data_type: None,
-            }).await;
+            let stream = inner.find(domain_id, query.inner).await;
             let stream = DataStream { inner: Arc::new(Mutex::new(stream)) };
             
             Ok(JsValue::from(stream))

@@ -13,107 +13,107 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # build_apple_frameworks:
-  #   name: Build Apple SDK
-  #   runs-on: macos-latest
-  #   env:
-  #     CC_x86_64-apple-ios-macabi: "clang"
-  #     CC_x86_64_apple_ios_macabi: "clang"
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       arch: [AMD64, ARM64]
-  #       platform: [macOS, Mac-Catalyst, iOS, iOS-Simulator]
-  #       exclude:
-  #       - arch: AMD64
-  #         platform: iOS
+  build_apple_frameworks:
+    name: Build Apple SDK
+    runs-on: macos-latest
+    env:
+      CC_x86_64-apple-ios-macabi: "clang"
+      CC_x86_64_apple_ios_macabi: "clang"
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [AMD64, ARM64]
+        platform: [macOS, Mac-Catalyst, iOS, iOS-Simulator]
+        exclude:
+        - arch: AMD64
+          platform: iOS
 
-  #   steps:
-  #     - name: Checkout repository with submodules
-  #       uses: actions/checkout@v4
-  #       with:
-  #         submodules: true
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-  #     - name: Install Rust
-  #       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Install Rust
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-  #     - name: Cache Cargo registry and Git sources (Shared)
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: |
-  #           ~/.cargo/registry
-  #           ~/.cargo/git
-  #         key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
-  #         restore-keys: |
-  #           rust-cache-cargo-
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-cargo-
 
-  #     - name: Cache Cargo build artifacts (Per Target)
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: ./core/target
-  #         key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
-  #         restore-keys: |
-  #           rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
+      - name: Cache Cargo build artifacts (Per Target)
+        uses: actions/cache@v4
+        with:
+          path: ./core/target
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          restore-keys: |
+            rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
-  #     - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
-  #       shell: pwsh
-  #       run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
+      - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
 
-  #     - name: Build Posemesh Domain for ${{ matrix.platform }} ${{ matrix.arch }}
-  #       shell: pwsh
-  #       run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release domain -InstallNecessaryRustToolchainsAndTargets
+      - name: Build Posemesh Domain for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release domain -InstallNecessaryRustToolchainsAndTargets
 
-  #     - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
-  #       shell: pwsh
-  #       run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+      - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
-  #     - name: Build Framework for ${{ matrix.platform }} ${{ matrix.arch }}
-  #       shell: pwsh
-  #       run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+      - name: Build Framework for ${{ matrix.platform }} ${{ matrix.arch }}
+        shell: pwsh
+        run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
-  #     - name: Upload Frameworks
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: out-${{ matrix.platform }}-${{ matrix.arch }}-Release
-  #         path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release
+      - name: Upload Frameworks
+        uses: actions/upload-artifact@v4
+        with:
+          name: out-${{ matrix.platform }}-${{ matrix.arch }}-Release
+          path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release
 
-  # build_xcframework:
-  #   name: Build XC Framework
-  #   runs-on: macos-latest
-  #   needs: build_apple_frameworks
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
+  build_xcframework:
+    name: Build XC Framework
+    runs-on: macos-latest
+    needs: build_apple_frameworks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  #     - name: Download all Frameworks
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         path: ./sdk
+      - name: Download all Frameworks
+        uses: actions/download-artifact@v4
+        with:
+          path: ./sdk
 
-  #     - name: Bundle Posemesh SDK
-  #       shell: pwsh
-  #       run: |
-  #         ./sdk/scripts/Bundle-Framework.ps1 macOS Release
-  #         ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
-  #         ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
-  #         ./sdk/scripts/Bundle-XCFramework.ps1 Release
+      - name: Bundle Posemesh SDK
+        shell: pwsh
+        run: |
+          ./sdk/scripts/Bundle-Framework.ps1 macOS Release
+          ./sdk/scripts/Bundle-Framework.ps1 Mac-Catalyst Release
+          ./sdk/scripts/Bundle-Framework.ps1 iOS-Simulator Release
+          ./sdk/scripts/Bundle-XCFramework.ps1 Release
       
-  #     - name: Zip
-  #       run: |
-  #         cd ./sdk/out-Apple-Release
-  #         zip -r -y ./Posemesh.zip ./Posemesh.xcframework
+      - name: Zip
+        run: |
+          cd ./sdk/out-Apple-Release
+          zip -r -y ./Posemesh.zip ./Posemesh.xcframework
 
-  #     - name: Get Posemesh SDK version
-  #       run: |
-  #         POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
-  #         if [[ $? -ne 0 ]]; then echo '::error file=sdk/scripts/Get-Version.ps1::Get-Version.ps1 script failed.' 1>&2; exit 1; fi
-  #         echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
+      - name: Get Posemesh SDK version
+        run: |
+          POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
+          if [[ $? -ne 0 ]]; then echo '::error file=sdk/scripts/Get-Version.ps1::Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
 
-  #     - name: Upload Posemesh SDK
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
-  #         path: ./sdk/out-Apple-Release/Posemesh.zip
+      - name: Upload Posemesh SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Posemesh-Apple-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
+          path: ./sdk/out-Apple-Release/Posemesh.zip
 
   build_web_sdk:
     name: Build Web SDK

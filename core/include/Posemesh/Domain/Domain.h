@@ -29,6 +29,13 @@ typedef void (*FindCallback)(void*, const struct DomainData*, const struct Domai
 extern "C" {
 #endif // __cplusplus
 
+Query *create_domain_data_query(const char *const *ids_ptr,
+                                int len,
+                                const char *name,
+                                const char *data_type);
+
+void free_domain_data_query(Query *query);
+
 /**
  * Free a DomainData struct
  */

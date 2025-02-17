@@ -11,7 +11,7 @@ message Metadata {
 }
 
 message Query {
-    repeated string hashes = 1;
+    repeated string ids = 1;
     string name = 2;
     string data_type = 3;
 }
