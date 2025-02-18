@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posemesh Domain Demo</title>
+</head>
+<body>
+    <script type="module">
+        import init, { Config, posemeshNetworkingContextCreate, DomainCluster, RemoteDatastore, Query } from "./pkg/posemesh-domain.js";
+
+        init().then(async () => {
+            const cfg = new Config("/ip4/127.0.0.1/tcp/18808/p2p/12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", "", "");
+            const libp2pInstance = posemeshNetworkingContextCreate(cfg);
+
+            const domainCluster = new DomainCluster("12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", libp2pInstance);
+            const remoteStorage = new RemoteDatastore(domainCluster, libp2pInstance);
+
+            const query = new Query([], null, null);
+
+            // const dataIterator = await remoteStorage.find("", query);
+            // const domainData = await dataIterator.next();
+        });
+    </script>
+</body>
+</html>

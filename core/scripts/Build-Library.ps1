@@ -245,11 +245,12 @@ Try {
         }
     }
     If($WASMPackCommand) {
+        $capitalized = ($package.Substring(0,1).ToUpper() + $package.Substring(1))
         If($WASMTarget -Eq $Null) {
             Write-Error -Message 'ASSERT: Variable $WASMTarget is not set.'
             Exit 1
         }
-        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir ../pkg/$Package/$BuildType --out-name PosemeshNetworking $Package --features "wasm"
+        & $RustUpCommand run $RustToolchain $WASMPackCommand build --target $WASMTarget @($WASMBuildTypeFlag | Where-Object { $_ }) --out-dir ../pkg/$Package/$BuildType --out-name Posemesh$capitalized $Package
     } Else {
         & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }

@@ -2,15 +2,11 @@ use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{context, event, network::{self, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{self, select, signal, time::{sleep, Duration}};
-use futures::{io::BufReader, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, StreamExt};
+use tokio::{self, select, signal};
+use futures::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
-use std::{borrow::BorrowMut, collections::HashMap, fs::{read, OpenOptions}, io::Write};
-use protobuf::{task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}, domain_data};
-use sha2::{digest::crypto_common::rand_core::le, Digest, Sha256};
-use hex;
-use std::{io, fs};
-use quick_protobuf_codec::Codec;
+use std::{collections::HashMap, fs::OpenOptions, io::Write};
+use protobuf::{task::{self, StoreDataOutputV1}, domain_data};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,7 +70,7 @@ async fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Co
                 // TODO: add timeout so stream wont be idle for too long
                 let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
                 if chunk_size == 0 {
-                    metadata.id = data_id.clone();
+                    metadata.hash = data_id.clone();
                     let m_buf = serialize_into_vec(&metadata).expect("Failed to serialize metadata");
                     let mut length_buf = [0u8; 4];
                     let length = m_buf.len() as u32;

@@ -467,37 +467,11 @@ impl Networking {
                 tracing::info!("Received message from {:?} on topic {topic}", source);
                 if let Err(e) = self.event_sender.send(event::Event::PubSubMessageReceivedEvent { 
                         topic: topic.clone(),
-                        result: event::PubsubResult::Ok {
-                            message: data.clone(),
-                            from: source.clone(),
-                        }
+                        message: data.clone(),
+                        from: source.clone(),
                     }).await {
                     tracing::error!("Failed to send pubsub message: {e}");
                 }
-                // }
-                // #[cfg(target_family="wasm")]
-                // match self.register_node() {
-                //     Ok(_) => {},
-                //     Err(e) => {
-                //         tracing::error!("Failed to register node: {e}");
-                //     }
-                // }
-                // match serde_json::from_slice::<Node>(&message.data) {
-                //     Ok(node) => {
-                //         if self.nodes_map.lock().unwrap().contains_key(&node.id) {
-                //             return;
-                //         }
-                //         if node.id == *self.swarm.local_peer_id().to_string() {
-                //             return;
-                //         }
-                //         println!("Node {} joins the network", node.name);
-                //         self.nodes_map.lock().unwrap().insert(node.id.clone(), node.clone());
-                //         self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap();
-                //     },
-                //     Err(e) => {
-                //         tracing::info!("Failed to deserialize node info: {}", e);
-                //     }
-                // }
             },
             // Prints peer id identify info is being sent to.
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Sent { peer_id, .. })) => {

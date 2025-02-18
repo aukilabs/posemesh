@@ -1,137 +1,12 @@
-use libp2p::{gossipsub::{IdentTopic, TopicHash}, PeerId};
-use networking::{context, event::{self, PubsubResult}, network};
-use tokio::{self, io};
-use futures::{channel::{mpsc::{channel, Receiver, Sender}, oneshot}, stream::{self, SplitStream}, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Job, LocalRefinementOutputV1, Status, Task}};
-use std::{borrow::{Borrow, BorrowMut}, collections::HashMap, fs, io::Read, vec};
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
-
-pub enum TaskUpdateResult {
-    Ok(task::Task),
-    Err(Box<dyn std::error::Error + Send + Sync>),
-}
-
-pub struct TaskUpdateEvent {
-    pub topic: TopicHash,
-    pub from: Option<PeerId>,
-    pub result: TaskUpdateResult,
-}
+use networking::{context, network};
+use tokio;
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
+use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}};
+use std::{collections::HashMap, fs, io::Read, vec};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use domain::cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
-
-struct InnerDomainCluster {
-    command_rx: Receiver<Command>,
-    manager: String,
-    peer: context::Context,
-    jobs: HashMap<TopicHash, Sender<TaskUpdateEvent>>,
-    // domain_id: String,
-    // private_key: String,
-}
-
-enum Command {
-    SubmitJob {
-        job: Job,
-        response: oneshot::Sender<Receiver<TaskUpdateEvent>>,
-    },
-}
-
-impl InnerDomainCluster {
-    fn init(mut self) {
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    Some(Command::SubmitJob { job, response }) = self.command_rx.next() => {
-                        let res = self.submit_job(&job).await;
-                        let _ = response.send(res);
-                    }
-                    e = self.peer.poll() => {
-                        match e {
-                            Some(event::Event::PubSubMessageReceivedEvent { topic, result }) => {
-                                match result {
-                                    PubsubResult::Ok { message, from } => {
-                                        let mut task = deserialize_from_slice::<task::Task>(&message).expect("can't deserialize task");
-                                        if let Some(tx) = self.jobs.get_mut(&topic) {
-                                            if let Err(e) = tx.send(TaskUpdateEvent {
-                                                topic: topic.clone(),
-                                                from: from,
-                                                result: TaskUpdateResult::Ok(task.clone()),
-                                            }).await {
-                                                println!("Error sending task update: {:?}", e);
-                                                task.status = Status::FAILED;
-                                                self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
-                                            }
-                                        }
-                                    }
-                                    PubsubResult::Err(e) => {
-                                        println!("Error receiving message: {:?}", e);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                
-            }
-        });
-    }
-
-    async fn submit_job(&mut self, job: &Job) -> Receiver<TaskUpdateEvent> {
-        let res = self.peer.send(serialize_into_vec(job).expect("can't serialize job"), self.manager.clone(), "/jobs/v1".to_string(), 0).await;
-        if let Err(e) = res {
-            panic!("Error sending task request: {:?}", e); 
-        }
-        let mut s = res.unwrap();
-        s.close().await.expect("can't close stream");
-
-        println!("Sent job request");
-        let mut out = Vec::new();
-        let _ = s.read_to_end(&mut out).await.expect("can't read from stream");
-        let job = {
-            let mut reader = BytesReader::from_bytes(&out);
-            reader.read_message::<task::SubmitJobResponse>(&out).expect("can't read job")
-        };
-
-        println!("Received job response: {:?}", job);
-        let job_id = job.job_id.clone();
-
-        self.peer.subscribe(job_id.clone()).await.unwrap();
-
-        let (tx, rx) = channel::<TaskUpdateEvent>(100);
-        self.jobs.insert(TopicHash::from_raw(job_id.clone()), tx);
-
-        rx
-    }
-}
-
-pub struct DomainCluster {
-    sender: Sender<Command>,
-}
-
-impl DomainCluster {
-    pub fn new(manager: String, peer: context::Context) -> Self {
-        let (tx, rx) = channel::<Command>(100);
-        let dc = InnerDomainCluster {
-            manager: manager,
-            peer: peer,
-            jobs: HashMap::new(),
-            command_rx: rx,
-        };
-        dc.init();
-        DomainCluster {
-            sender: tx,
-        }
-    }
-
-    pub async fn submit_job(&mut self, job: &Job) -> Receiver<TaskUpdateEvent> {
-        let (tx, rx) = oneshot::channel::<Receiver<TaskUpdateEvent>>();
-        self.sender.send(Command::SubmitJob {
-            job: job.clone(),
-            response: tx,
-        }).await.expect("can't send command");
-        rx.await.expect("can't receive response")
-    }
-}
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
@@ -163,10 +38,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name: name,
     };
     let mut c = context::context_create(cfg)?;
+    let peer_id = c.id.clone();
+    let c_clone = c.clone();
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
 
-    let mut domain_cluster = DomainCluster::new(domain_manager_id.clone(), c.clone());
+    let mut domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c_clone));
     
     let input_dir = format!("{}/input", base_path);
     fs::create_dir_all(&input_dir).expect("cant create input dir");
@@ -190,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     min_cpu: 0,
                 }),
                 data: None,
-                sender: c.id.clone(),
+                sender: peer_id.clone(),
                 receiver: "".to_string(),
             }
         ],
@@ -250,8 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     name: entry.file_name().to_string_lossy().to_string(),
                     data_type: "image".to_string(),
                     size: f.metadata()?.len() as u32,
-                    metadata: HashMap::new(),
-                    id: "somedata".to_string(),
+                    properties: HashMap::new(),
+                    hash: "somedata".to_string(),
                 };
 
                 // framed_io.send(metadata).await?;
@@ -300,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let info = deserialize_from_slice::<domain_data::DomainDataMetadata>(&buffer)?;
 
         let input = task::LocalRefinementInputV1 {
-            recording_id: info.id.clone(),
+            recording_id: info.hash.clone(),
         };
         let task = task::TaskRequest {
             needs: vec![],

@@ -1,11 +1,11 @@
-mod client;
+pub mod client;
 pub mod event;
 pub mod context;
 pub mod network;
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 use context::{Config, Context};
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 use std::{ffi::{c_char, c_uchar, c_uint, CStr}, os::raw::c_void, slice};
 
 #[cfg(feature="py")]
@@ -23,7 +23,7 @@ use pyo3::prelude::*;
 // ** posemesh_networking_get_commit_id() **
 // *****************************************
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 fn posemesh_networking_get_commit_id() -> String {
     return env!("COMMIT_ID").to_string();
 }
@@ -49,7 +49,7 @@ pub extern "C" fn psm_posemesh_networking_get_commit_id(buffer: *mut c_char, siz
     };
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingGetCommitId() -> String {
@@ -60,7 +60,7 @@ pub fn posemeshNetworkingGetCommitId() -> String {
 // ** posemesh_networking_context_create() **
 // ******************************************
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 fn posemesh_networking_context_create(config: &Config) -> *mut Context {
     match Context::new(config) {
         Ok(context) => Box::into_raw(context),
@@ -71,6 +71,26 @@ fn posemesh_networking_context_create(config: &Config) -> *mut Context {
     }
 }
 
+#[cfg(any(feature="cpp", target_family="wasm"))]
+fn posemesh_networking_context_clone(ctx: *mut Context) -> *mut Context {
+    assert!(!ctx.is_null(), "posemesh_networking_context_clone(): context is null");
+    let context = unsafe { &*ctx };
+    Box::into_raw(Box::new(context.clone()))
+}
+
+#[cfg(feature="cpp")]
+#[no_mangle]
+pub extern "C" fn psm_posemesh_networking_context_clone(ctx: *mut Context) -> *mut Context {
+    posemesh_networking_context_clone(ctx)
+}
+
+#[cfg(target_family="wasm")]
+#[wasm_bindgen]
+#[allow(non_snake_case)]
+pub fn posemeshNetworkingContextClone(ctx: *mut Context) -> *mut Context {
+    posemesh_networking_context_clone(ctx)
+}
+
 #[cfg(feature="cpp")]
 #[no_mangle]
 pub extern "C" fn psm_posemesh_networking_context_create(config: *const Config) -> *mut Context {
@@ -78,7 +98,7 @@ pub extern "C" fn psm_posemesh_networking_context_create(config: *const Config) 
     posemesh_networking_context_create(unsafe { &*config })
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextCreate(config: &Config) -> *mut Context {
@@ -89,7 +109,7 @@ pub fn posemeshNetworkingContextCreate(config: &Config) -> *mut Context {
 // ** posemesh_networking_context_destroy() **
 // *******************************************
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 fn posemesh_networking_context_destroy(context: *mut Context) {
     assert!(!context.is_null(), "posemesh_networking_context_destroy(): context is null");
     unsafe {
@@ -103,7 +123,7 @@ pub extern "C" fn psm_posemesh_networking_context_destroy(context: *mut Context)
     posemesh_networking_context_destroy(context);
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
@@ -117,10 +137,10 @@ pub fn posemeshNetworkingContextDestroy(context: *mut Context) {
 #[cfg(feature="cpp")]
 type SendMessageReturnType = u8;
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 type SendMessageReturnType = Promise;
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 fn posemesh_networking_context_send_message(
     context: *mut Context,
     message: Vec<u8>,
@@ -137,7 +157,7 @@ fn posemesh_networking_context_send_message(
         &mut *context
     };
 
-    #[cfg(feature="wasm")]
+    #[cfg(target_family="wasm")]
     return future_to_promise(async move {
         match context.send(message, peer_id, protocol, timeout).await {
             Ok(_) => { Ok(JsValue::from(true)) },
@@ -155,7 +175,7 @@ fn posemesh_networking_context_send_message(
     }
 }
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 fn posemesh_networking_context_send_message_2(
     context: *mut Context,
     message: *const c_void,
@@ -182,7 +202,7 @@ fn posemesh_networking_context_send_message_2(
         Err(error) => {
             eprintln!("posemesh_networking_context_send_message_2(): {:?}", error);
             
-            #[cfg(feature="wasm")]
+            #[cfg(target_family="wasm")]
             return future_to_promise(async move {
                 Err(JsValue::from(Error::new(error.to_string().as_str())))
             });
@@ -200,7 +220,7 @@ fn posemesh_networking_context_send_message_2(
         Err(error) => {
             eprintln!("posemesh_networking_context_send_message_2(): {:?}", error);
 
-            #[cfg(feature="wasm")]
+            #[cfg(target_family="wasm")]
             return future_to_promise(async move {
                 Err(JsValue::from(Error::new(error.to_string().as_str())))
             });
@@ -238,14 +258,14 @@ pub extern "C" fn psm_posemesh_networking_context_send_message(
     posemesh_networking_context_send_message_2(context, message, message_size, peer_id, protocol, user_data, timeout, callback)
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextSendMessage(context: *mut Context, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Promise {
     posemesh_networking_context_send_message(context, message, peer_id, protocol, timeout)
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn posemeshNetworkingContextSendMessage2(
