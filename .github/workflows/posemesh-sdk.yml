@@ -16,7 +16,6 @@ jobs:
     runs-on: [self-hosted, macOS]
     env:
       CC_x86_64-apple-ios-macabi: "clang"
-      CC_x86_64_apple_ios_macabi: "clang"
     strategy:
       fail-fast: false
       matrix:

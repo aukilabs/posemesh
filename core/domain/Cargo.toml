@@ -27,7 +27,7 @@ runtime = { workspace = true }
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-libp2p = { workspace = true, features = [ "tokio", "gossipsub" ] }
+libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub" ] }
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
