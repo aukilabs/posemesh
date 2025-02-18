@@ -1,7 +1,7 @@
-mod remote;
 pub mod cluster;
 mod datastore;
 mod binding_helper;
+
 mod protobuf {
     include!("protobuf/mod.rs");
 }
