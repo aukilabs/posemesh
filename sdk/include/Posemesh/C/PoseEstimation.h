@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-#include "API.hpp"
+#include "API.h"
+#include "Vector2f.h"
 #include "Vector3f.h"
 #include "Matrix3x3f.h"
 
@@ -21,11 +22,11 @@ extern "C" {
 #endif
 
 bool PSM_API psm_pose_estimation_get_solve_pnp(
-    const float* objectPoints,
-    const float* imagePoints,
-    const float* cameraMatrix,
-    Matrix3x3f* outR,
-    Vector3f* outT);
+    psm_vector3f_t *objectPoints[],
+    psm_vector2f_t *imagePoints[],
+    psm_matrix3x3f_t *cameraMatrix,
+    psm_matrix3x3f_t* outR,
+    psm_vector3f_t* outT);
 
 #if defined(__cplusplus)
 }

@@ -64,6 +64,10 @@ add_platform_library(
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Vector2f.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Vector3f.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Matrix3x3f.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2f.gen.cpp"

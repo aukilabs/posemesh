@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "API.hpp"
+#include "API.h"
 
 #if defined(__cplusplus)
 namespace psm {
