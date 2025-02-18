@@ -110,6 +110,10 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector2f.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector3f.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix3x3f.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
         set_apple_platform_umbrella_header(

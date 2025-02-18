@@ -31,8 +31,8 @@
 
     psm::Vector3f translation;
     psm::Matrix3x3f rotation;
-    bool solveResult = psm::PoseEstimation::solvePnP(oPoints, iPoints, cMatrix, &rotation, &translation);
-    if (solveResult == false) {
+    bool estimationResult = psm::PoseEstimation::solvePnP(oPoints, iPoints, cMatrix, &rotation, &translation);
+    if (estimationResult == false) {
         return false;
     }
 
@@ -50,7 +50,7 @@
     [outR setM21:rotation.getM21()];
     [outR setM22:rotation.getM22()];
     
-    return solveResult;
+    return estimationResult;
 }
 
 

@@ -69,15 +69,6 @@ bool PoseEstimation::solvePnP(
     outR->setM20(R.at<float>(6));
     outR->setM21(R.at<float>(7));
     outR->setM22(R.at<float>(8));
-
-    // for (int i = 0; i < 9; i++)
-    // {
-    //     outR[i] = R.at<float>(i);
-    // }
-
-    // outT[0] = tvec.at<float>(0);
-    // outT[1] = tvec.at<float>(1);
-    // outT[2] = tvec.at<float>(2);
     
     outT->setX(tvec.at<float>(0));
     outT->setY(tvec.at<float>(1));

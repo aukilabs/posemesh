@@ -1,2 +1,6 @@
 #import "Config.h"
 #import "Posemesh.h"
+#import "Vector2f.h"
+#import "Vector3f.h"
+#import "Matrix3x3f.h"
+#import "PoseEstimation.h"

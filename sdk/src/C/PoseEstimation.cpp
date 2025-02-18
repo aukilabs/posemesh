@@ -2,9 +2,9 @@
 #include <Posemesh/PoseEstimation.hpp>
 
 bool psm_pose_estimation_get_solve_pnp(
-    psm_vector3f_t *objectPoints[],
-    psm_vector2f_t *imagePoints[],
-    psm_matrix3x3f_t *cameraMatrix,
+    psm_vector3f_t* objectPoints[],
+    psm_vector2f_t* imagePoints[],
+    psm_matrix3x3f_t* cameraMatrix,
     psm_matrix3x3f_t* outR,
     psm_vector3f_t* outT)
 {
