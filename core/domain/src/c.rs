@@ -9,8 +9,7 @@ use runtime::get_runtime;
 use tokio::sync::mpsc;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::Datastore;
-use crate::remote::RemoteDatastore;
+use crate::datastore::{common::Datastore, remote::RemoteDatastore};
 use crate::binding_helper::init_r_remote_storage;
 use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
 
