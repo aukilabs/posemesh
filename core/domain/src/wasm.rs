@@ -47,17 +47,6 @@ impl DomainData {
 }
 
 #[wasm_bindgen]
-impl DomainData {
-    #[wasm_bindgen]
-    pub fn destroy(&mut self) {
-        unsafe {
-            Vec::from_raw_parts(self.data as *mut u8, self.size, self.size);
-        }
-    }
-}
-
-
-#[wasm_bindgen]
 pub struct DataStream {
     inner: Arc<Mutex<r_DataStream>>,
 }
@@ -83,6 +72,12 @@ impl DataStream {
         };
         // Convert the Rust Future into a JavaScript Promise
         future_to_promise(future)
+    }
+
+    #[wasm_bindgen]
+    pub fn close(&mut self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.close();
     }
 }
 

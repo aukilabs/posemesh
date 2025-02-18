@@ -17,18 +17,17 @@ protobuf = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
 async-trait = "0.1.86"
+jsonwebtoken = "9.3.0"
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
 tokio = { workspace = true, features = ["full"] }
-jsonwebtoken = { version = "9.3.0", optional = true }
 runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 libp2p = { workspace = true, features = [ "tokio", "gossipsub" ] }
-tsify = "0.4.5"
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]

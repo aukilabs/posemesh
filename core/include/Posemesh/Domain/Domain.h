@@ -9,6 +9,8 @@ typedef struct DatastoreWrapper DatastoreWrapper;
 
 typedef struct DomainCluster DomainCluster;
 
+typedef struct Query Query;
+
 typedef struct DomainData {
   const char *domain_id;
   const char *id;
@@ -29,12 +31,12 @@ typedef void (*FindCallback)(void*, const struct DomainData*, const struct Domai
 extern "C" {
 #endif // __cplusplus
 
-Query *create_domain_data_query(const char *const *ids_ptr,
-                                int len,
-                                const char *name,
-                                const char *data_type);
+struct Query *create_domain_data_query(const char *const *ids_ptr,
+                                       int len,
+                                       const char *name,
+                                       const char *data_type);
 
-void free_domain_data_query(Query *query);
+void free_domain_data_query(struct Query *query);
 
 /**
  * Free a DomainData struct
@@ -51,7 +53,7 @@ void free_datastore(struct DatastoreWrapper *store);
 
 void find_domain_data(struct DatastoreWrapper *store,
                       const char *domain_id,
-                      Query *query,
+                      struct Query *query,
                       FindCallback callback,
                       void *user_data);
 

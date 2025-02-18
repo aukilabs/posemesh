@@ -20,6 +20,7 @@ pub type DataStream = Receiver<Result<Data, DomainError>>;
 pub enum DomainError {
     NotFound,
     Interrupted,
+    Cancelled,
 }
 
 impl Error for DomainError {}
@@ -28,6 +29,7 @@ impl std::fmt::Display for DomainError {
         match self {
             DomainError::NotFound => write!(f, "Not found"),
             DomainError::Interrupted => write!(f, "Interrupted"),
+            DomainError::Cancelled => write!(f, "Cancelled"),
         }
     }
 }
