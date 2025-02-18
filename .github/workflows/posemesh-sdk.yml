@@ -25,6 +25,7 @@ jobs:
         - arch: AMD64
           platform: iOS
 
+
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
@@ -76,7 +77,7 @@ jobs:
 
   build_xcframework:
     name: Build XC Framework
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     needs: build_apple_frameworks
     steps:
       - name: Checkout repository
@@ -147,9 +148,10 @@ jobs:
       - name: Install WASM-Pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build Posemesh Networking
-        shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
+      # - name: build domain
+      #   run: |
+      #     cd core
+      #     wasm-pack build --target bundler --out-dir ../pkg/domain --out-name posemesh-domain domain
 
       - name: Build Posemesh Domain
         shell: pwsh
