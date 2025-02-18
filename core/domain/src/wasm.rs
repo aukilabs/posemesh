@@ -1,8 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, sync::{Arc, Mutex}};
+use futures::SinkExt;
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::Datastore, protobuf::domain_data, remote::{DataStream as r_DataStream, RemoteDatastore as r_RemoteDatastore}};
+use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{Datastore, DataReader as r_DataReader, DataWriter as r_DataWriter}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
 use wasm_bindgen_futures::{future_to_promise, js_sys};
 
 #[derive(Clone)]
@@ -28,31 +29,45 @@ impl Query {
 
 #[wasm_bindgen]
 pub struct DomainData {
-    // pub domain_id: String,
-    // pub metadata: Metadata,
-    // pub content: *const u8,
-    // pub content_size: usize,
-    pub data: *const u8,
+    pub domain_id: String,
+    pub metadata: Metadata,
+    pub content: *const u8,
+}
+
+#[wasm_bindgen]
+pub struct Metadata {
+    pub name: String,
+    pub data_type: String,
     pub size: usize,
+    pub properties: HashMap<String, String>,
+    pub id: Option<String>,
 }
 
 impl DomainData {
     pub fn new(r_data: &domain_data::Data) -> Self {
-        let serialized = serialize_into_vec(r_data).expect("Failed to serialize metadata");
-        DomainData {
-            data: serialized.as_ptr(),
-            size: serialized.len(),
+        let content = r_data.content.as_slice();
+        let content_size = content.len();
+        Self {
+            domain_id: r_data.domain_id.clone(),
+            metadata: Metadata {
+                name: r_data.metadata.name.clone(),
+                data_type: r_data.metadata.data_type.clone(),
+                size: content_size,
+                properties: r_data.metadata.properties.clone(),
+                id: r_data.metadata.id.clone(),
+            },
+            content: content.as_ptr(),
         }
     }
 }
 
 #[wasm_bindgen]
-pub struct DataStream {
-    inner: Arc<Mutex<r_DataStream>>,
+pub struct DataReader {
+    inner: Arc<Mutex<r_DataReader>>,
 }
 
 #[wasm_bindgen]
-impl DataStream {
+impl DataReader {
     #[wasm_bindgen]
     pub fn next(&mut self) -> js_sys::Promise {
         let inner = self.inner.clone();
@@ -78,6 +93,38 @@ impl DataStream {
     pub fn close(&mut self) {
         let mut inner = self.inner.lock().unwrap();
         inner.close();
+    }
+}
+
+
+#[wasm_bindgen]
+pub struct DataWriter {
+    inner: r_DataWriter,
+}
+
+#[wasm_bindgen]
+impl DataWriter {
+    #[wasm_bindgen]
+    pub fn push(&mut self, data: DomainData) {
+        let data = domain_data::Data {
+            domain_id: data.domain_id,
+            metadata: domain_data::Metadata {
+                name: data.metadata.name,
+                data_type: data.metadata.data_type,
+                properties: data.metadata.properties,
+                id: data.metadata.id,
+                size: data.metadata.size as u32,
+            },
+            content: Vec::from(unsafe { std::slice::from_raw_parts(data.content, data.metadata.size) }),
+        };
+
+        future_to_promise(async move {
+            let res = self.inner.send(Ok(data)).await;
+            match res {
+                Ok(_) => Ok(JsValue::NULL),
+                Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+            }
+        });
     }
 }
 
@@ -111,7 +158,7 @@ impl RemoteDatastore {
     }
 
     #[wasm_bindgen]
-    pub fn find(
+    pub fn consume(
         &mut self,
         domain_id: String,
         query: Query,
@@ -122,10 +169,28 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.find(domain_id, query.inner).await;
-            let stream = DataStream { inner: Arc::new(Mutex::new(stream)) };
+            let stream = inner.consume(domain_id, query.inner).await;
+            let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
             
             Ok(JsValue::from(stream))
+        })
+    }
+
+    #[wasm_bindgen]
+    pub fn produce(
+        &mut self,
+        domain_id: String,
+        data: *const u8,
+        size: usize,
+    ) -> js_sys::Promise {
+        let domain_id = domain_id.clone();
+        let data = unsafe { std::slice::from_raw_parts(data, size) };
+        let data = data.to_vec();
+        let mut inner = self.inner.clone();
+
+        future_to_promise(async move {
+            let writer = inner.produce(domain_id).await;
+            Ok(JsValue::NULL)
         })
     }
 }

@@ -155,9 +155,11 @@ impl DomainCluster {
         rx
     }
 
-    pub async fn update_task(&mut self, task: &task::Task) {
-        self.sender.send(Command::UpdateTask  {
-            task: task.clone(),
-        }).await.expect("can't send command"); 
-    }
+    // pub async fn update_task(&mut self, task: &task::Task) {
+    //     self.sender.send(Command::UpdateTask  {
+    //         task: task.clone(),
+    //     }).await.expect("can't send command"); 
+    // }
+
+    // pub async fn request_response(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn std::error::Error + Send + Sync>>
 }
