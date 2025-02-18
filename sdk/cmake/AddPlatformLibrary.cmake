@@ -127,6 +127,7 @@ function(ADD_PLATFORM_LIBRARY NAME)
             ${NAME}
             PRIVATE
                 "SHELL:--emit-tsd ${NAME}.d.ts"
+                "SHELL:-s ENVIRONMENT=web,node"
                 "SHELL:-s EXPORT_ES6=0"
                 "SHELL:-s EXPORT_NAME=__internal${NAME}"
                 "SHELL:-s MODULARIZE=1"
