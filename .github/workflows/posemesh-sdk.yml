@@ -25,6 +25,7 @@ jobs:
         - arch: AMD64
           platform: iOS
 
+
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
@@ -72,7 +73,7 @@ jobs:
 
   build_xcframework:
     name: Build XC Framework
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     needs: build_apple_frameworks
     steps:
       - name: Checkout repository

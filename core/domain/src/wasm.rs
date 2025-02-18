@@ -150,7 +150,7 @@ pub struct RemoteDatastore {
 #[wasm_bindgen]
 impl RemoteDatastore {
     #[wasm_bindgen(constructor)]
-    pub fn new(cluster: DomainCluster, peer: *mut Context ) -> Self {
+    pub fn new(cluster: DomainCluster, peer: *mut Context) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
 
