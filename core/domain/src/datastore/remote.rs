@@ -1,17 +1,20 @@
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+
 #[cfg(not(target_family = "wasm"))]
 use tokio::task::spawn as spawn;
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-use std::{future::Future, sync::Arc};
+use std::{collections::{HashMap, HashSet}, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use networking::context::Context;
-use protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status};
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::domain_data::{self, Data}};
-use futures::{channel::mpsc::channel, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt};
+use protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::domain_data::{self, Data, Metadata}};
+use futures::{channel::mpsc::channel, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt};
+
+use super::common::{Reader, ReliableDataProducer, Writer};
 
 struct TaskHandler {
     #[cfg(not(target_family = "wasm"))]
@@ -64,7 +67,7 @@ impl RemoteDatastore {
     }
 
     // TODO: error handling
-    async fn read_from_stream(domain_id: String, mut src: Stream, mut dest: DataWriter) {
+    async fn read_from_stream(domain_id: String, mut src: ReadHalf<Stream>, mut dest: DataWriter) {
         loop {
             let mut length_buf = [0u8; 4];
             let has = src.read(&mut length_buf).await.expect("Failed to read length");
@@ -92,8 +95,29 @@ impl RemoteDatastore {
         }
     }
 
-    async fn write_to_stream(src: Arc<Mutex<DataReader>>, mut dest: Stream) {
+    async fn write_to_stream(src: Arc<Mutex<DataReader>>, dest: Stream, mut response_sender: Writer<Metadata>) {
         let mut src = src.lock().await;
+
+        let (mut reader, mut writer) = dest.split();
+        spawn(async move {
+            loop {
+                let mut length_buf = [0u8; 4];
+                let has = reader.read(&mut length_buf).await.expect("Failed to read length");
+                if has == 0 {
+                    break;
+                }
+        
+                let length = u32::from_be_bytes(length_buf) as usize;
+        
+                // Read the data in chunks
+                let mut buffer = vec![0u8; length];
+                reader.read_exact(&mut buffer).await.expect("Failed to read buffer");
+        
+                let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer).expect("Failed to deserialize metadata");
+                let _ = response_sender.send(Ok(metadata));
+            }
+        });
+        
         while let Ok(Some(data)) = src.try_next() {
             match data {
                 Ok(data) => {
@@ -102,11 +126,11 @@ impl RemoteDatastore {
                     let length = m_buf.len() as u32;
                     length_buf.copy_from_slice(&length.to_be_bytes());
                     
-                    dest.write_all(&length_buf).await.expect("Failed to write length");
+                    writer.write_all(&length_buf).await.expect("Failed to write length");
                     
-                    dest.write_all(&m_buf).await.expect("Failed to write metadata");
-                    dest.write_all(&data.content).await.expect("Failed to write content");
-                    dest.flush().await.expect("Failed to flush");
+                    writer.write_all(&m_buf).await.expect("Failed to write metadata");
+                    writer.write_all(&data.content).await.expect("Failed to write content");
+                    writer.flush().await.expect("Failed to flush");
                 },
                 Err(e) => {
                     eprintln!("Failed to read data: {:?}", e);
@@ -177,8 +201,9 @@ impl Datastore for RemoteDatastore {
                             let length = m_buf.len() as u32;
                             length_buf.copy_from_slice(&length.to_be_bytes());
                             let upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
+                            let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
-                                RemoteDatastore::read_from_stream(domain_id_clone, upload_stream, data_sender_clone).await;
+                                RemoteDatastore::read_from_stream(domain_id_clone, reader, data_sender_clone).await;
                             });
                         },
                         Status::FAILED => {
@@ -195,9 +220,10 @@ impl Datastore for RemoteDatastore {
         data_receiver
     }
 
-    async fn produce(&mut self, domain_id: String) -> DataWriter {
+    async fn produce(&mut self, domain_id: String) -> ReliableDataProducer {
         let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
         let mut upload_task = TaskHandler::new();
+        let (uploaded_data_sender, uploaded_data_receiver) = channel::<Result<Metadata, DomainError>>(100);
         let mut upload_job_recv = self.cluster.submit_job(&task::Job {
             name: "stream uploading recordings".to_string(),
             tasks: vec![
@@ -243,8 +269,9 @@ impl Datastore for RemoteDatastore {
                             length_buf.copy_from_slice(&length.to_be_bytes());
                             let upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
                             let data_receiver = data_receiver.clone();
+                            let uploaded_data_sender = uploaded_data_sender.clone();
                             let handler = async move {
-                                RemoteDatastore::write_to_stream(data_receiver, upload_stream).await;
+                                RemoteDatastore::write_to_stream(data_receiver, upload_stream, uploaded_data_sender).await;
                             };
                             upload_task.execute(handler);
                         },
@@ -259,6 +286,6 @@ impl Datastore for RemoteDatastore {
             }
         });
 
-        data_sender
+        ReliableDataProducer::new(uploaded_data_receiver, data_sender)
     }
 }
