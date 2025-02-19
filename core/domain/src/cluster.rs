@@ -8,11 +8,13 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[derive(Debug)]
 pub enum TaskUpdateResult {
     Ok(task::Task),
     Err(Box<dyn std::error::Error + Send + Sync>),
 }
 
+#[derive(Debug)]
 pub struct TaskUpdateEvent {
     pub topic: TopicHash,
     pub from: Option<PeerId>,

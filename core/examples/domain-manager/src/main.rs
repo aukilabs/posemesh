@@ -54,7 +54,7 @@ pub async fn start_task(task: &mut task::Task,  c: &mut context::Context) -> Res
     let mut length_buf = [0u8; 4];
     let length = m_buf.len() as u32;
     length_buf.copy_from_slice(&length.to_be_bytes());
-    let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect("cant send handshake");
+    let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect(&format!("cant send handshake with {}", task.receiver.clone()));
     upload_stream.write_all(&m_buf).await.expect("cant write handshake");
     upload_stream.flush().await.expect("cant flush handshake");
     task.status = task::Status::STARTED;
