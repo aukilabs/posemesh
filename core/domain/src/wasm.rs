@@ -2,7 +2,8 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 use futures::SinkExt;
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
-use serde_wasm_bindgen::to_value;
+use serde::de;
+use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{Datastore, DataReader as r_DataReader, DataWriter as r_DataWriter}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
 use wasm_bindgen_futures::{future_to_promise, js_sys};
@@ -28,37 +29,36 @@ impl Query {
 }
 
 
-#[wasm_bindgen]
+#[wasm_bindgen(getter_with_clone)]
 pub struct DomainData {
     pub domain_id: String,
     pub metadata: Metadata,
     pub content: *const u8,
 }
 
-#[wasm_bindgen]
+#[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct Metadata {
     pub name: String,
     pub data_type: String,
     pub size: usize,
     pub properties: JsValue,
-    pub id: Option<String>,
+    pub id: String,
 }
 
-impl DomainData {
-    pub fn new(r_data: &domain_data::Data) -> Self {
-        let content = r_data.content.as_slice();
-        let content_size = content.len();
-        Self {
-            domain_id: r_data.domain_id.clone(),
-            metadata: Metadata {
-                name: r_data.metadata.name.clone(),
-                data_type: r_data.metadata.data_type.clone(),
-                size: content_size,
-                properties: to_value(&r_data.metadata.properties).unwrap(),
-                id: r_data.metadata.id.clone(),
-            },
-            content: content.as_ptr(),
-        }
+fn from_r_data(r_data: &domain_data::Data) -> DomainData {
+    let content = r_data.content.as_slice();
+    let content_size = content.len();
+    DomainData {
+        domain_id: r_data.domain_id.clone(),
+        metadata: Metadata {
+            name: r_data.metadata.name.clone(),
+            data_type: r_data.metadata.data_type.clone(),
+            size: content_size,
+            properties: to_value(&r_data.metadata.properties).unwrap(),
+            id: r_data.metadata.id.clone().unwrap_or("".to_string()),
+        },
+        content: content.as_ptr(),
     }
 }
 
@@ -78,7 +78,7 @@ impl DataReader {
             match inner.try_next() {
                 Ok(Some(Ok(data))) => {
                     // Convert the Rust struct into a JavaScript object
-                    let data = DomainData::new(&data);
+                    let data = from_r_data(&data);
                     Ok(JsValue::from(data))
                 }
                 Ok(Some(Err(e))) => Err(JsValue::from_str(&format!("{}", e))),
@@ -112,15 +112,16 @@ impl DataWriter {
             metadata: domain_data::Metadata {
                 name: data.metadata.name,
                 data_type: data.metadata.data_type,
-                properties: data.metadata.properties,
-                id: data.metadata.id,
+                properties: from_value(data.metadata.properties).unwrap(),
+                id: None,
                 size: data.metadata.size as u32,
             },
             content: Vec::from(unsafe { std::slice::from_raw_parts(data.content, data.metadata.size) }),
         };
+        let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let res = self.inner.send(Ok(data)).await;
+            let res = inner.send(Ok(data)).await;
             match res {
                 Ok(_) => Ok(JsValue::NULL),
                 Err(e) => Err(JsValue::from_str(&format!("{}", e))),

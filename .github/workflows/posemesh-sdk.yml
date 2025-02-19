@@ -25,7 +25,6 @@ jobs:
         - arch: AMD64
           platform: iOS
 
-
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
@@ -41,7 +40,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 
@@ -49,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./core/target
-          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
@@ -137,7 +136,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ./core/target
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 
