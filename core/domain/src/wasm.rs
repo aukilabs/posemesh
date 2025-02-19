@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 use futures::SinkExt;
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{Datastore, DataReader as r_DataReader, DataWriter as r_DataWriter}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
 use wasm_bindgen_futures::{future_to_promise, js_sys};
@@ -39,7 +40,7 @@ pub struct Metadata {
     pub name: String,
     pub data_type: String,
     pub size: usize,
-    pub properties: HashMap<String, String>,
+    pub properties: JsValue,
     pub id: Option<String>,
 }
 
@@ -53,7 +54,7 @@ impl DomainData {
                 name: r_data.metadata.name.clone(),
                 data_type: r_data.metadata.data_type.clone(),
                 size: content_size,
-                properties: r_data.metadata.properties.clone(),
+                properties: to_value(&r_data.metadata.properties).unwrap(),
                 id: r_data.metadata.id.clone(),
             },
             content: content.as_ptr(),
