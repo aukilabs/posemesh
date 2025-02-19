@@ -12,7 +12,6 @@ pb-rs = "0.10.0"
 futures = { workspace = true } 
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-networking = { workspace = true, features = ["rust"] }
 protobuf = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
@@ -23,12 +22,14 @@ jsonwebtoken = "9.3.0"
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
 tokio = { workspace = true, features = ["full"] }
 runtime = { workspace = true }
+networking = { workspace = true, features = ["rust"] }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub" ] }
+libp2p = { workspace = true, features = [ "wasm-bindgen", "gossipsub" ] }
 serde-wasm-bindgen = { workspace = true }
+networking = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
