@@ -3,7 +3,7 @@ use std::{collections::HashSet, error::Error, sync::Arc};
 
 use crate::protobuf::domain_data::{self, Data};
 use async_trait::async_trait;
-use futures::{channel::mpsc::{Receiver, Sender}, lock::Mutex, SinkExt};
+use futures::{channel::mpsc::{Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
 use uuid::Uuid;
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -59,7 +59,7 @@ impl ReliableDataProducer {
         let pendings = Arc::new(Mutex::new(HashSet::new()));
         let pending_clone = pendings.clone();
         spawn(async move {
-            while let Ok(Some(m)) = response.try_next() {
+            while let Some(m) = response.next().await {
                 match m {
                     Ok(metadata) => {
                         let id = metadata.id.unwrap_or("why no id".to_string());
@@ -67,7 +67,7 @@ impl ReliableDataProducer {
                         pendings.remove(&id);
                     }
                     Err(e) => {
-                        println!("{}", e)
+                        eprintln!("{}", e);
                     }
                 }
             }
@@ -88,13 +88,18 @@ impl ReliableDataProducer {
                 Ok(id)
             },
             Err(e) => {
+                eprintln!("{}", e);
                 Err(DomainError::Interrupted)
             },
         }
     }
 
-    pub async fn done(self) -> bool {
+    pub async fn is_completed(&self) -> bool {
         let pendings = self.pendings.lock();
         pendings.await.is_empty()
+    }
+
+    pub async fn close(mut self) {
+        self.writer.close().await.expect("can't close writer");
     }
 }

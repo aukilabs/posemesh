@@ -2,7 +2,7 @@ pub mod cluster;
 pub mod datastore;
 mod binding_helper;
 
-mod protobuf {
+pub mod protobuf {
     include!("protobuf/mod.rs");
 }
 
