@@ -4,7 +4,7 @@ use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}};
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use domain::cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::remote::RemoteDatastore};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 

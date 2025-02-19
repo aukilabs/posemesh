@@ -1,12 +1,12 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
 use futures::SinkExt;
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
 use serde::de;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{Datastore, DataReader as r_DataReader, DataWriter as r_DataWriter}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
-use wasm_bindgen_futures::{future_to_promise, js_sys};
+use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
+use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise}, spawn_local};
 
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -46,18 +46,22 @@ pub struct Metadata {
     pub id: String,
 }
 
+fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
+    Metadata {
+        name: r_metadata.name.clone(),
+        data_type: r_metadata.data_type.clone(),
+        size: r_metadata.size as usize,
+        properties: to_value(&r_metadata.properties).unwrap(),
+        id: r_metadata.id.clone().unwrap_or("from".to_string()),
+    }
+}
+
 fn from_r_data(r_data: &domain_data::Data) -> DomainData {
     let content = r_data.content.as_slice();
     let content_size = content.len();
     DomainData {
         domain_id: r_data.domain_id.clone(),
-        metadata: Metadata {
-            name: r_data.metadata.name.clone(),
-            data_type: r_data.metadata.data_type.clone(),
-            size: content_size,
-            properties: to_value(&r_data.metadata.properties).unwrap(),
-            id: r_data.metadata.id.clone().unwrap_or("".to_string()),
-        },
+        metadata: from_r_metadata(&r_data.metadata),
         content: content.as_ptr(),
     }
 }
@@ -99,34 +103,37 @@ impl DataReader {
 
 
 #[wasm_bindgen]
-pub struct DataWriter {
-    inner: r_DataWriter,
+pub struct MetadataReader {
+    inner: Arc<Mutex<r_Reader<domain_data::Metadata>>>,
 }
 
 #[wasm_bindgen]
-impl DataWriter {
+impl MetadataReader {
     #[wasm_bindgen]
-    pub fn push(&mut self, data: DomainData) {
-        let data = domain_data::Data {
-            domain_id: data.domain_id,
-            metadata: domain_data::Metadata {
-                name: data.metadata.name,
-                data_type: data.metadata.data_type,
-                properties: from_value(data.metadata.properties).unwrap(),
-                id: None,
-                size: data.metadata.size as u32,
-            },
-            content: Vec::from(unsafe { std::slice::from_raw_parts(data.content, data.metadata.size) }),
-        };
-        let mut inner = self.inner.clone();
-
-        future_to_promise(async move {
-            let res = inner.send(Ok(data)).await;
-            match res {
-                Ok(_) => Ok(JsValue::NULL),
+    pub fn next(&mut self) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        let future = async move {
+            let mut inner = inner.lock().unwrap();
+            // Attempt to get the next item from the stream
+            match inner.try_next() {
+                Ok(Some(Ok(data))) => {
+                    // Convert the Rust struct into a JavaScript object
+                    let data = from_r_metadata(&data);
+                    Ok(JsValue::from(data))
+                }
+                Ok(Some(Err(e))) => Err(JsValue::from_str(&format!("{}", e))),
+                Ok(None) => Ok(JsValue::NULL),
                 Err(e) => Err(JsValue::from_str(&format!("{}", e))),
             }
-        });
+        };
+        // Convert the Rust Future into a JavaScript Promise
+        future_to_promise(future)
+    }
+
+    #[wasm_bindgen]
+    pub fn close(&mut self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.close();
     }
 }
 
@@ -141,6 +148,47 @@ impl DomainCluster {
     pub fn new(domain_manager_id: String, context: *mut Context) -> Self {
         let context = Box::new(unsafe { (*context).clone() });
         Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_id, context))) }   
+    }
+}
+
+#[wasm_bindgen]
+struct ReliableDataProducer {
+    inner: r_ReliableDataProducer
+}
+
+#[wasm_bindgen]
+impl ReliableDataProducer {
+    #[wasm_bindgen]
+    pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
+        let id = data.metadata.id.is_empty().then(|| data_id_generator());
+        let data = domain_data::Data {
+            domain_id: data.domain_id,
+            metadata: domain_data::Metadata {
+                name: data.metadata.name,
+                data_type: data.metadata.data_type,
+                properties: from_value(data.metadata.properties).unwrap(),
+                id,
+                size: data.metadata.size as u32,
+            },
+            content: Vec::from(unsafe { std::slice::from_raw_parts(data.content, data.metadata.size) }),
+        };
+        let mut writer = self.inner.clone();
+        let future = async move {
+            let res = writer.push(&data).await;
+            match res {
+                Ok(id) => Ok(JsValue::from_str(&id)),
+                Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+            }
+        };
+        future_to_promise(future)
+    }
+
+    #[wasm_bindgen]
+    pub fn done(self) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async {
+            Ok(JsValue::from_bool(inner.done().await))
+        }) 
     }
 }
 
@@ -191,8 +239,8 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let writer = inner.produce(domain_id).await;
-            Ok(JsValue::NULL)
+            let r = inner.produce(domain_id).await;
+            Ok(JsValue::from(ReliableDataProducer {inner: r}))
         })
     }
 }

@@ -1,5 +1,5 @@
 pub mod cluster;
-mod datastore;
+pub mod datastore;
 mod binding_helper;
 
 mod protobuf {
