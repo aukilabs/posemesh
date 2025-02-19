@@ -79,15 +79,14 @@ impl DataReader {
         let future = async move {
             let mut inner = inner.lock().unwrap();
             // Attempt to get the next item from the stream
-            match inner.try_next() {
-                Ok(Some(Ok(data))) => {
+            match inner.next().await {
+                Some(Ok(data)) => {
                     // Convert the Rust struct into a JavaScript object
                     let data = from_r_data(&data);
                     Ok(JsValue::from(data))
                 }
-                Ok(Some(Err(e))) => Err(JsValue::from_str(&format!("{}", e))),
-                Ok(None) => Ok(JsValue::NULL),
-                Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+                Some(Err(e)) => Err(JsValue::from_str(&format!("{}", e))),
+                None => Ok(JsValue::NULL),
             }
         };
         // Convert the Rust Future into a JavaScript Promise
@@ -115,15 +114,14 @@ impl MetadataReader {
         let future = async move {
             let mut inner = inner.lock().unwrap();
             // Attempt to get the next item from the stream
-            match inner.try_next() {
-                Ok(Some(Ok(data))) => {
+            match inner.next().await {
+                Some(Ok(data)) => {
                     // Convert the Rust struct into a JavaScript object
                     let data = from_r_metadata(&data);
                     Ok(JsValue::from(data))
                 }
-                Ok(Some(Err(e))) => Err(JsValue::from_str(&format!("{}", e))),
-                Ok(None) => Ok(JsValue::NULL),
-                Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+                Some(Err(e)) => Err(JsValue::from_str(&format!("{}", e))),
+                None => Ok(JsValue::NULL),
             }
         };
         // Convert the Rust Future into a JavaScript Promise
@@ -184,11 +182,20 @@ impl ReliableDataProducer {
     }
 
     #[wasm_bindgen]
-    pub fn done(self) -> Promise {
+    pub fn is_completed(self) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async {
-            Ok(JsValue::from_bool(inner.done().await))
+            Ok(JsValue::from_bool(inner.is_completed().await))
         }) 
+    }
+
+    #[wasm_bindgen]
+    pub fn close(self) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async {
+            inner.close().await;
+            Ok(JsValue::NULL)
+        })
     }
 }
 
