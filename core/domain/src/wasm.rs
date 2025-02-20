@@ -1,5 +1,5 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use networking::context::Context;
 use quick_protobuf::serialize_into_vec;
 use serde::de;
@@ -100,41 +100,6 @@ impl DataReader {
     }
 }
 
-
-#[wasm_bindgen]
-pub struct MetadataReader {
-    inner: Arc<Mutex<r_Reader<domain_data::Metadata>>>,
-}
-
-#[wasm_bindgen]
-impl MetadataReader {
-    #[wasm_bindgen]
-    pub fn next(&mut self) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let future = async move {
-            let mut inner = inner.lock().unwrap();
-            // Attempt to get the next item from the stream
-            match inner.next().await {
-                Some(Ok(data)) => {
-                    // Convert the Rust struct into a JavaScript object
-                    let data = from_r_metadata(&data);
-                    Ok(JsValue::from(data))
-                }
-                Some(Err(e)) => Err(JsValue::from_str(&format!("{}", e))),
-                None => Ok(JsValue::NULL),
-            }
-        };
-        // Convert the Rust Future into a JavaScript Promise
-        future_to_promise(future)
-    }
-
-    #[wasm_bindgen]
-    pub fn close(&mut self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.close();
-    }
-}
-
 #[wasm_bindgen]
 pub struct DomainCluster {
     inner: Arc<Mutex<r_DomainCluster>>,
@@ -184,7 +149,7 @@ impl ReliableDataProducer {
     #[wasm_bindgen]
     pub fn is_completed(self) -> Promise {
         let inner = self.inner.clone();
-        future_to_promise(async {
+        future_to_promise(async move{
             Ok(JsValue::from_bool(inner.is_completed().await))
         }) 
     }
