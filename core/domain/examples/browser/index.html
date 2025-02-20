@@ -3,24 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Posemesh Domain Demo</title>
+    <title>Libp2p File Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="flex flex-col items-center justify-center h-screen bg-gray-100">
+
+    <!-- Drag and Drop Zone -->
+    <div id="dropZone" class="w-3/4 h-40 flex items-center justify-center border-2 border-dashed border-gray-400 bg-white rounded-lg cursor-pointer">
+        <p class="text-gray-600">Drag & drop files here or click to select</p>
+        <input type="file" id="fileInput" multiple class="hidden">
+    </div>
+
+    <!-- Upload Button & Progress -->
+    <div class="mt-4 flex items-center space-x-4">
+        <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
+        <span id="progressLabel" class="text-gray-700"></span>
+    </div>
+
+    <!-- Finish Button -->
+    <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Upload</button>
+
+    <!-- Import UploadManager and Set Up Events -->
     <script type="module">
-        import init, { Config, posemeshNetworkingContextCreate, DomainCluster, RemoteDatastore, Query } from "./pkg/posemesh-domain.js";
+        import { UploadManager } from "./main.js";
 
-        init().then(async () => {
-            const cfg = new Config("/ip4/127.0.0.1/tcp/18808/p2p/12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", "", "");
-            const libp2pInstance = posemeshNetworkingContextCreate(cfg);
+        const uploadManager = new UploadManager();
 
-            const domainCluster = new DomainCluster("12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", libp2pInstance);
-            const remoteStorage = new RemoteDatastore(domainCluster, libp2pInstance);
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const finishBtn = document.getElementById("finishBtn");
+        const progressLabel = document.getElementById("progressLabel");
 
-            const query = new Query([], null, null);
+        function finishUpload() {
+            fileInput.value = "";
+            uploadBtn.disabled = true;
+            finishBtn.disabled = true;
+            progressLabel.innerText = "Upload complete!";
+        }
 
-            // const dataIterator = await remoteStorage.find("", query);
-            // const domainData = await dataIterator.next();
+        await uploadManager.init(
+            (files) => {
+                uploadBtn.disabled = false;
+                progressLabel.innerText = `${files.length} file(s) selected`;
+            },
+            (message) => {
+                progressLabel.innerText = message;
+            },
+            () => {
+                progressLabel.innerText = "All files uploaded!";
+                uploadBtn.disabled = true;
+                finishBtn.disabled = false;
+            }
+        );
+
+        dropZone.addEventListener("click", () => fileInput.click());
+
+        dropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZone.classList.add("bg-gray-200");
         });
+
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-gray-200"));
+
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropZone.classList.remove("bg-gray-200");
+            uploadManager.handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener("change", (e) => uploadManager.handleFiles(e.target.files));
+
+        uploadBtn.addEventListener("click", () => uploadManager.uploadFiles());
+        finishBtn.addEventListener("click", finishUpload);
     </script>
+
 </body>
 </html>
