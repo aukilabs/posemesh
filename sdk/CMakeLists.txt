@@ -147,9 +147,6 @@ link_networking_library(Posemesh)
 include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
 
-include(AddGLMHeaders)
-add_glm_headers(Posemesh)
-
 if(EMSCRIPTEN)
     configure_file(
         "${CMAKE_CURRENT_LIST_DIR}/platform/Web/VerifyCommitId.js.in"
