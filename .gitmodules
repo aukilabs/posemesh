@@ -2,3 +2,7 @@
 	path = third-party/ios-cmake
 	url = https://github.com/aukilabs/ios-cmake.git
 	branch = release/v4.5.0
+[submodule "OpenCV"]
+	path = third-party/opencv
+	url = https://github.com/aukilabs/opencv.git
+	branch = feature/v4.10.0_debug
