@@ -133,6 +133,9 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector2f.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector3f.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Matrix3x3f.cpp"
     )
 endif()
 
@@ -166,6 +169,9 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector2f.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector3f.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Matrix3x3f.js"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
     )
     if(USE_BABEL_JS)

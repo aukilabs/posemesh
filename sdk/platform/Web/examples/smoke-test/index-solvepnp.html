@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="Posemesh.js"></script>
+    </head>
+    <body>
+        <script>
+            var posemesh;
+            async function solvePnPTest() {
+                await Posemesh.initialize();
+
+                let squareLength = 0.05;
+                let objectPoints = new Posemesh.Vector3fArray();
+                let o0 = new Posemesh.Vector3f();
+                o0.x = -squareLength / 2;
+                o0.y = squareLength / 2;
+                objectPoints.push_back(o0);
+
+                let o1 = new Posemesh.Vector3f();
+                o1.x = squareLength / 2;
+                o1.y = squareLength / 2;
+                objectPoints.push_back(o1);
+                
+                let o2 = new Posemesh.Vector3f();
+                o2.x = squareLength / 2;
+                o2.y = -squareLength / 2;
+                objectPoints.push_back(o2);
+                
+                let o3 = new Posemesh.Vector3f();
+                o3.x = -squareLength / 2;
+                o3.y = -squareLength / 2;
+                objectPoints.push_back(o3);
+
+                let imagePoints = new Posemesh.Vector2fArray();
+                let i0 = new Posemesh.Vector2f();
+                i0.x = 358.8713;
+                i0.y = 1128.691;
+                imagePoints.push_back(i0);
+
+                let i1 = new Posemesh.Vector2f();
+                i1.x = 542.3757;
+                i1.y = 1105.69;
+                imagePoints.push_back(i1);
+
+                let i2 = new Posemesh.Vector2f();
+                i2.x = 560.4747;
+                i2.y = 1267.68;
+                imagePoints.push_back(i2);
+
+                let i3 = new Posemesh.Vector2f();
+                i3.x = 361.8601;
+                i3.y = 1295.745;
+                imagePoints.push_back(i3);
+
+                let cameraMatrix = new Posemesh.Matrix3x3f();
+                cameraMatrix.m00 = 1444.07;
+                cameraMatrix.m02 = 723.0972;
+                cameraMatrix.m11 = 1444.07;
+                cameraMatrix.m12 = 961.7217;
+                cameraMatrix.m22 = 1;
+
+                let outT = new Posemesh.Vector3f();
+                console.log(`pre call outT = ${outT.x} ${outT.y} ${outT.z}`);
+                let outR = new Posemesh.Matrix3x3f();
+
+                let estimationSuccess = Posemesh.PoseEstimation.solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT);
+                console.log(`Estimation success = ${estimationSuccess}`);
+
+                console.log(`outT = ${outT.x} ${outT.y} ${outT.z}`);
+                console.log(outT);
+                console.log(`outR = ${outR.m00} ${outR.m01}  ${outR.m02}...`);
+                console.log(outR);
+            }
+            solvePnPTest();
+        </script>
+    </body>
+</html>

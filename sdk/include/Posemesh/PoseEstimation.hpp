@@ -10,8 +10,6 @@ namespace psm {
 
 class PoseEstimation final {
 public:
-    PSM_API ~PoseEstimation();
-
     static bool PSM_API solvePnP(
         const Vector3f objectPoints[],
         const Vector2f imagePoints[],

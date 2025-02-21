@@ -40,9 +40,10 @@ bool PoseEstimation::solvePnP(
     cv::Mat rvec = cv::Mat::zeros(3, 1, CV_32F);
     cv::Mat tvec = cv::Mat::zeros(3, 1, CV_32F);
 
+    bool estimationResult = false;
     try
     {
-        cv::solvePnP(cvObjectPoints,
+        estimationResult = cv::solvePnP(cvObjectPoints,
                      cvImagePoints,
                      cvCameraMatrix,
                      distCoeffs,
@@ -50,10 +51,12 @@ bool PoseEstimation::solvePnP(
                      tvec,
                      false,
                      cv::SOLVEPNP_IPPE_SQUARE);
+
+        if (!estimationResult) return false;
     }
     catch (cv::Exception &e)
     {
-        std::cout << "OpenCV exception caught: " << e.what() << std::endl;
+        std::cerr << "OpenCV exception caught: " << e.what() << std::endl;
         return false;
     }
 
@@ -75,7 +78,6 @@ bool PoseEstimation::solvePnP(
     outT->setZ(tvec.at<float>(2));
     
     // outR is a Matrix3x3f, maybe converto OpenGL before returning?
-    // outT is a Vector3f
-    return true;
+    return estimationResult;
 }
 }
