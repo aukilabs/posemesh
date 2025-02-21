@@ -63,6 +63,18 @@ are not possible. The relay server is only used as a last resort.
 
 * Rust - ([installation instructions](https://www.rust-lang.org/tools/install)) 
 * Powershell - (`brew install powershell`)
+* Typescript - (`npm install typescript`) (required for Web/WASM32 builds only)
+* wasm-pack - (`brew install wasm-pack`) (required for Web/WASM32 builds only)
+* Emscripten - see below (required for Web/WASM32 builds only)
+
+#### Emscripten installation
+```sh
+git clone https://github.com/emscripten-core/emsdk.git
+./emsdk/emsdk install 3.1.69
+./emsdk/emsdk activate 3.1.69
+# Refer to the 'Next steps' instructions from the activate command to add Emscripten to the environment variables, or run:
+# source emsdk/emsdk_env.sh
+```
 
 ### Step by step guide
 1. Check out submodules:
