@@ -105,12 +105,6 @@
     m_vector2f.get()->setY(y);
 }
 
-- (float)length
-{
-    NSAssert(m_vector2f.get() != nullptr, @"m_vector2f is null");
-    return m_vector2f.get()->getLength();
-}
-
 - (instancetype)initWithManagedVector2f:(std::shared_ptr<psm::Vector2f>)vector2f
 {
     NSAssert(vector2f.get() != nullptr, @"vector2f is null");

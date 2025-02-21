@@ -18,7 +18,6 @@ NS_SWIFT_NAME(Vector2f) PSM_API @interface PSMVector2f : NSObject<NSCopying>
 - (void)setX:(float)x NS_REFINED_FOR_SWIFT;
 - (float)y NS_REFINED_FOR_SWIFT;
 - (void)setY:(float)y NS_REFINED_FOR_SWIFT;
-- (float)length NS_REFINED_FOR_SWIFT;
 
 #if defined(POSEMESH_BUILD)
 - (void*)managedVector2f;

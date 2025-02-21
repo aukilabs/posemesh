@@ -8,12 +8,6 @@
     {
       "name": "Y",
       "type": "float"
-    },
-    {
-      "name": "length",
-      "type": "float",
-      "hasSetter": false,
-      "getterCustom": true 
     }
   ]
 }

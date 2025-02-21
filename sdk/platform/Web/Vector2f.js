@@ -14,10 +14,4 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         enumerable: true,
         configurable: false
     });
-
-    Object.defineProperty(Posemesh.Vector2f.prototype, 'length', {
-        get: Posemesh.Vector2f.prototype.__getLength,
-        enumerable: true,
-        configurable: false
-    });
 });

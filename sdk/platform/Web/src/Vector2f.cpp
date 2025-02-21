@@ -26,6 +26,5 @@ EMSCRIPTEN_BINDINGS(Vector2f)
         .function("__getX()", &Vector2f::getX)
         .function("__setX(x)", &Vector2f::setX)
         .function("__getY()", &Vector2f::getY)
-        .function("__setY(y)", &Vector2f::setY)
-        .function("__getLength()", &Vector2f::getLength);
+        .function("__setY(y)", &Vector2f::setY);
 }

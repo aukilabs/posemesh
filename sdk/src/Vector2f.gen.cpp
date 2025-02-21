@@ -7,7 +7,6 @@ namespace psm {
 Vector2f::Vector2f() noexcept
     : m_x(0.0f)
     , m_y(0.0f)
-    , m_length(0.0f)
 {
 }
 
@@ -27,9 +26,6 @@ bool Vector2f::operator==(const Vector2f& vector2f) const noexcept
         return false;
     }
     if (!(m_y == vector2f.m_y)) {
-        return false;
-    }
-    if (!(m_length == vector2f.m_length)) {
         return false;
     }
     return true;
@@ -69,7 +65,6 @@ std::size_t hash<psm::Vector2f>::operator()(const psm::Vector2f& vector2f) const
     std::size_t result = 0;
     result ^= (hash<float> {}(vector2f.m_x)) + 0x9e3779b9 + (result << 6) + (result >> 2);
     result ^= (hash<float> {}(vector2f.m_y)) + 0x9e3779b9 + (result << 6) + (result >> 2);
-    result ^= (hash<float> {}(vector2f.m_length)) + 0x9e3779b9 + (result << 6) + (result >> 2);
     return result;
 }
 

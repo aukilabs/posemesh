@@ -18,10 +18,4 @@ extension Vector2f {
             __setY(newValue)
         }
     }
-
-    public var length: Float {
-        get {
-            return __length()
-        }
-    }
 }

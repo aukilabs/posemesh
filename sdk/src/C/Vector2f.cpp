@@ -81,12 +81,3 @@ void psm_vector2f_set_y(psm_vector2f_t* vector2f, float y)
     }
     vector2f->setY(y);
 }
-
-float psm_vector2f_get_length(const psm_vector2f_t* vector2f)
-{
-    if (!vector2f) {
-        assert(!"psm_vector2f_get_length(): vector2f is null");
-        return 0.0f;
-    }
-    return vector2f->getLength();
-}

@@ -25,12 +25,10 @@ public:
     void PSM_API setX(float x) noexcept;
     float PSM_API getY() const noexcept;
     void PSM_API setY(float y) noexcept;
-    float PSM_API getLength() const noexcept;
 
 private:
     float m_x;
     float m_y;
-    float m_length;
 
     friend struct std::hash<Vector2f>;
 };
