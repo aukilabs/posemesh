@@ -221,6 +221,7 @@ impl DomainManager {
             err_msg: "".to_string(),
         };
         stream.write_all(&serialize_into_vec(&resp).unwrap()).await?;
+        stream.flush().await?;
         self.peer.subscribe(job_id.clone()).await?;
 
         for task_req in job.tasks.iter() {

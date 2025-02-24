@@ -29,12 +29,14 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
+console_error_panic_hook = { workspace = true }
 
 [features]
 default = []
 cpp = []
 rust = []
 py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]
+node = []
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]

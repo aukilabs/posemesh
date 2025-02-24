@@ -35,13 +35,16 @@ impl Client {
             }
         }
 
+        tracing::debug!("Waiting for response");
+
         #[cfg(target_family = "wasm")]
         match select(TimeoutFuture::new(timeout), receiver).await {
             Left(_) => {
+                tracing::debug!("Timed out");
                 return Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out")));
             }
-            Right((result, timer)) => {
-                drop(timer);
+            Right((result, _)) => {
+                tracing::debug!("Received result");
                 return match result {
                     Ok(result) => result,
                     Err(e) => Err(Box::new(e)), 

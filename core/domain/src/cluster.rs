@@ -1,9 +1,9 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use networking::{context::{self, Context}, event};
 use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
-use protobuf::task::{self,Job, Status};
+use protobuf::task::{self, Job, Status, SubmitJobResponse, Task};
 use std::collections::HashMap;
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -46,6 +46,7 @@ impl InnerDomainCluster {
                 tokio::select! {
                     command = self.command_rx.select_next_some() => self.handle_command(command).await,
                     event = self.peer.poll() => self.handle_event(event).await,
+                    else => break,
                 }
             }
         });
@@ -112,12 +113,10 @@ impl InnerDomainCluster {
         s.close().await.expect("can't close stream");
 
         let mut out = Vec::new();
-        let _ = s.read_to_end(&mut out).await.expect("can't read from stream");
-        let job = {
-            let mut reader = BytesReader::from_bytes(&out);
-            reader.read_message::<task::SubmitJobResponse>(&out).expect("can't read job")
-        };
+        let bytes = s.read_to_end(&mut out).await.expect("can't read from stream");
+        let job = deserialize_from_slice::<SubmitJobResponse>(&out).expect("can't deserialize job"); 
 
+        tracing::debug!("Job submitted: {:?}", job.job_id);
         self.subscribe_to_job(job.job_id, tx).await
     }
 
@@ -135,6 +134,9 @@ pub struct DomainCluster {
 
 impl DomainCluster {
     pub fn new(manager: String, peer: Box<Context>) -> Self {
+        #[cfg(not(target_family="wasm"))]
+        let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+
         let (tx, rx) = channel::<Command>(100);
         let dc = InnerDomainCluster {
             manager: manager,
@@ -143,6 +145,7 @@ impl DomainCluster {
             command_rx: rx,
         };
         dc.init();
+
         DomainCluster {
             sender: tx,
         }

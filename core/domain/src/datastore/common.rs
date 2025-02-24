@@ -47,7 +47,6 @@ pub fn data_id_generator() -> String {
     Uuid::new_v4().to_string()
 }
 
-
 #[derive(Clone)]
 pub struct ReliableDataProducer {
     writer: DataWriter,
@@ -58,6 +57,7 @@ impl ReliableDataProducer {
     pub fn new(mut response: Reader<domain_data::Metadata>, writer: DataWriter) -> Self {
         let pendings = Arc::new(Mutex::new(HashSet::new()));
         let pending_clone = pendings.clone();
+
         spawn(async move {
             while let Some(m) = response.next().await {
                 match m {
