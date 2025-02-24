@@ -36,7 +36,6 @@ default = []
 cpp = []
 rust = []
 py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]
-node = []
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
