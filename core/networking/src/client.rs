@@ -4,7 +4,6 @@ use core::time;
 use std::error::Error;
 use futures::{channel::{mpsc::{self, Receiver}, oneshot}, future::{select, Either::{Left, Right}}, SinkExt};
 use std::str::FromStr;
-use crate::event;
 #[cfg(target_family = "wasm")]
 use gloo_timers::future::TimeoutFuture;
 
@@ -35,16 +34,13 @@ impl Client {
             }
         }
 
-        tracing::debug!("Waiting for response");
 
         #[cfg(target_family = "wasm")]
         match select(TimeoutFuture::new(timeout), receiver).await {
             Left(_) => {
-                tracing::debug!("Timed out");
                 return Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out")));
             }
             Right((result, _)) => {
-                tracing::debug!("Received result");
                 return match result {
                     Ok(result) => result,
                     Err(e) => Err(Box::new(e)), 
