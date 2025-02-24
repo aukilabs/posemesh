@@ -108,14 +108,11 @@ endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 
-include(LinkNetworkingLibrary)
-link_networking_library(Posemesh)
+include(LinkBaseLibrary)
+link_base_library(Posemesh)
 
 include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
-
-include(LinkDomainLibrary)
-link_domain_library(Posemesh)
 
 if(EMSCRIPTEN)
     include(ReplaceJavaScriptSymbols)
