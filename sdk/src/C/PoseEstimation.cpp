@@ -47,7 +47,7 @@ bool psm_pose_estimation_get_solve_pnp(
     }
 
     // from oT & oR -> outT & outR
-    
+
     outT->setX(translation.getX());
     outT->setY(translation.getY());
     outT->setZ(translation.getZ());

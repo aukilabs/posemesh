@@ -4,7 +4,8 @@
 
 @implementation PSMPoseEstimation
 
-+ (BOOL)solvePnPForObjectPoints:(NSArray *)objectPoints imagePoints:(NSArray *)imagePoints cameraMatrix:(PSMMatrix3x3f *)cameraMatrix outR:(PSMMatrix3x3f *)outR outT:(PSMVector3f *)outT {
++ (BOOL)solvePnPForObjectPoints:(NSArray*)objectPoints imagePoints:(NSArray*)imagePoints cameraMatrix:(PSMMatrix3x3f*)cameraMatrix outR:(PSMMatrix3x3f*)outR outT:(PSMVector3f*)outT
+{
     psm::Vector3f oPoints[4];
     for (int i = 0; i < 4; i++) {
         oPoints[i].setX([objectPoints[i] x]);
@@ -49,9 +50,8 @@
     [outR setM20:rotation.getM20()];
     [outR setM21:rotation.getM21()];
     [outR setM22:rotation.getM22()];
-    
+
     return estimationResult;
 }
-
 
 @end

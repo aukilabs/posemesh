@@ -1,8 +1,8 @@
+#include <Posemesh/Vector2f.hpp>
+#include <Posemesh/Vector3f.hpp>
 #include <cstdint>
 #include <emscripten/bind.h>
 #include <string>
-#include <Posemesh/Vector2f.hpp>
-#include <Posemesh/Vector3f.hpp>
 
 using namespace emscripten;
 

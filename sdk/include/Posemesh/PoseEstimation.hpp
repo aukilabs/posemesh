@@ -2,9 +2,9 @@
 #define __POSEMESH_POSE_ESTIMATION_HPP__
 
 #include "API.hpp"
+#include <Posemesh/Matrix3x3f.hpp>
 #include <Posemesh/Vector2f.hpp>
 #include <Posemesh/Vector3f.hpp>
-#include <Posemesh/Matrix3x3f.hpp>
 
 namespace psm {
 
@@ -16,6 +16,7 @@ public:
         const Matrix3x3f cameraMatrix,
         Matrix3x3f* outR,
         Vector3f* outT);
+
 private:
     PoseEstimation() = delete;
 };

@@ -20,8 +20,7 @@ bool PoseEstimation::solvePnP(
     }
 
     std::vector<cv::Point2f> cvImagePoints;
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         cvImagePoints.push_back(cv::Point2f(imagePoints[i].getX(), imagePoints[i].getY()));
     }
 
@@ -41,21 +40,19 @@ bool PoseEstimation::solvePnP(
     cv::Mat tvec = cv::Mat::zeros(3, 1, CV_32F);
 
     bool estimationResult = false;
-    try
-    {
+    try {
         estimationResult = cv::solvePnP(cvObjectPoints,
-                     cvImagePoints,
-                     cvCameraMatrix,
-                     distCoeffs,
-                     rvec,
-                     tvec,
-                     false,
-                     cv::SOLVEPNP_IPPE_SQUARE);
+            cvImagePoints,
+            cvCameraMatrix,
+            distCoeffs,
+            rvec,
+            tvec,
+            false,
+            cv::SOLVEPNP_IPPE_SQUARE);
 
-        if (!estimationResult) return false;
-    }
-    catch (cv::Exception &e)
-    {
+        if (!estimationResult)
+            return false;
+    } catch (cv::Exception& e) {
         std::cerr << "OpenCV exception caught: " << e.what() << std::endl;
         return false;
     }
@@ -72,11 +69,11 @@ bool PoseEstimation::solvePnP(
     outR->setM20(R.at<float>(6));
     outR->setM21(R.at<float>(7));
     outR->setM22(R.at<float>(8));
-    
+
     outT->setX(tvec.at<float>(0));
     outT->setY(tvec.at<float>(1));
     outT->setZ(tvec.at<float>(2));
-    
+
     // outR is a Matrix3x3f, maybe converto OpenGL before returning?
     return estimationResult;
 }
