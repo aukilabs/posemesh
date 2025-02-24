@@ -63,8 +63,9 @@ are not possible. The relay server is only used as a last resort.
 
 * Rust - ([installation instructions](https://www.rust-lang.org/tools/install)) 
 * Powershell - (`brew install powershell`)
-* Typescript - (`npm install typescript`) (required for Web/WASM32 builds only)
+* Typescript - (`npm install --global typescript`) (required for Web/WASM32 builds only)
 * wasm-pack - (`brew install wasm-pack`) (required for Web/WASM32 builds only)
+* LLVM - (`brew install llvm`) (required for Web/WASM32 builds only)
 * Emscripten - see below (required for Web/WASM32 builds only)
 
 #### Emscripten installation
@@ -87,17 +88,22 @@ git submodule update --init --recursive
 ./core/scripts/Build-Library.ps1 macOS ARM64 Debug networking
 ```
 
-3. Build OpenCV
+3. Build domain library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
+```sh
+./core/scripts/Build-Library.ps1 macOS ARM64 Debug domain
+```
+
+4. Build OpenCV
 ```sh
 ./third-party/scripts/Build-OpenCV-Library.ps1 macOS ARM64 Debug
 ```
 
-4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+5. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
 ```sh
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-5. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
+6. Build output can be found int `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
 
 # Apple entitlements
 
