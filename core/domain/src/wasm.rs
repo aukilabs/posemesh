@@ -36,6 +36,18 @@ pub struct DomainData {
     pub content: *const u8,
 }
 
+#[wasm_bindgen]
+impl DomainData {
+    #[wasm_bindgen(constructor)]
+    pub fn new(domain_id: String, metadata: Metadata, content: *const u8) -> Self {
+        Self {
+            domain_id,
+            metadata,
+            content,
+        }
+    }
+}
+
 #[derive(Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Metadata {
@@ -44,6 +56,20 @@ pub struct Metadata {
     pub size: usize,
     pub properties: JsValue,
     pub id: String,
+}
+
+#[wasm_bindgen]
+impl Metadata {
+    #[wasm_bindgen(constructor)]
+    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: String) -> Self {
+        Self {
+            name,
+            data_type,
+            size,
+            properties,
+            id,
+        }
+    }
 }
 
 fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
@@ -56,6 +82,16 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
     }
 }
 
+fn to_r_metadata(metadata: Metadata) -> domain_data::Metadata {
+    domain_data::Metadata {
+        name: metadata.name,
+        data_type: metadata.data_type,
+        properties: from_value(metadata.properties).unwrap(),
+        id: Some(metadata.id),
+        size: metadata.size as u32,
+    }
+}
+
 fn from_r_data(r_data: &domain_data::Data) -> DomainData {
     let content = r_data.content.as_slice();
     let content_size = content.len();
@@ -63,6 +99,16 @@ fn from_r_data(r_data: &domain_data::Data) -> DomainData {
         domain_id: r_data.domain_id.clone(),
         metadata: from_r_metadata(&r_data.metadata),
         content: content.as_ptr(),
+    }
+}
+
+fn to_r_data(data: DomainData) -> domain_data::Data {
+    let metadata = to_r_metadata(data.metadata);
+    let content = Vec::from(unsafe { std::slice::from_raw_parts(data.content, metadata.size as usize) });
+    domain_data::Data {
+        domain_id: data.domain_id,
+        metadata,
+        content,
     }
 }
 
@@ -81,6 +127,7 @@ impl DataReader {
             // Attempt to get the next item from the stream
             match inner.next().await {
                 Some(Ok(data)) => {
+                    tracing::debug!("Got data: {:?}", data.metadata);
                     // Convert the Rust struct into a JavaScript object
                     let data = from_r_data(&data);
                     Ok(JsValue::from(data))
@@ -147,15 +194,15 @@ impl ReliableDataProducer {
     }
 
     #[wasm_bindgen]
-    pub fn is_completed(self) -> Promise {
+    pub fn is_completed(&self) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async move{
             Ok(JsValue::from_bool(inner.is_completed().await))
-        }) 
+        })
     }
 
     #[wasm_bindgen]
-    pub fn close(self) -> Promise {
+    pub fn close(&self) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async {
             inner.close().await;
@@ -192,6 +239,7 @@ impl RemoteDatastore {
 
         future_to_promise(async move {
             let stream = inner.consume(domain_id, query.inner).await;
+            tracing::debug!("download stream");
             let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
             
             Ok(JsValue::from(stream))
@@ -202,12 +250,8 @@ impl RemoteDatastore {
     pub fn produce(
         &mut self,
         domain_id: String,
-        data: *const u8,
-        size: usize,
     ) -> js_sys::Promise {
         let domain_id = domain_id.clone();
-        let data = unsafe { std::slice::from_raw_parts(data, size) };
-        let data = data.to_vec();
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
@@ -215,4 +259,16 @@ impl RemoteDatastore {
             Ok(JsValue::from(ReliableDataProducer {inner: r}))
         })
     }
+}
+
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook
+    // This is not needed for tracing_wasm to work, but it is a common tool for getting proper error line numbers for panics.
+    console_error_panic_hook::set_once();
+
+    // Add this line:
+    tracing_wasm::set_as_global_default();
+
+    Ok(())
 }

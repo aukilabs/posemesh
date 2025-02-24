@@ -283,13 +283,6 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
 
 impl Networking {
     pub(crate) fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        #[cfg(not(target_family="wasm"))]
-        let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-        
-        #[cfg(target_family="wasm")]
-        tracing_wasm::set_as_global_default();
 
         let mut private_key = cfg.private_key.clone();
         let mut private_key_bytes = &mut private_key;
