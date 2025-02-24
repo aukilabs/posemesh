@@ -2,5 +2,7 @@
 #import "Posemesh.h"
 #import "Vector2f.h"
 #import "Vector3f.h"
+#import "Vector4f.h"
 #import "Matrix3x3f.h"
+#import "Matrix4x4f.h"
 #import "PoseEstimation.h"
