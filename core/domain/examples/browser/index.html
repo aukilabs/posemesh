@@ -8,21 +8,28 @@
 </head>
 <body class="flex flex-col items-center justify-center h-screen bg-gray-100">
 
-    <!-- Drag and Drop Zone -->
-    <div id="dropZone" class="w-3/4 h-40 flex items-center justify-center border-2 border-dashed border-gray-400 bg-white rounded-lg cursor-pointer">
-        <p class="text-gray-600">Drag & drop files here or click to select</p>
-        <input type="file" id="fileInput" multiple class="hidden">
+    <div class="w-3/4 h-3/4 grid grid-cols-2 gap-4 bg-white shadow-lg rounded-lg p-6">
+        <div class="flex flex-col items-center">
+            <h2 class="text-lg font-semibold mb-4">Upload Files</h2>
+            <div id="dropZone" class="w-full h-40 flex items-center justify-center border-2 border-dashed border-gray-400 bg-gray-50 rounded-lg cursor-pointer relative">
+                <p class="text-gray-600">Drag & drop files here or click to select</p>
+                <input type="file" id="fileInput" multiple class="absolute inset-0 opacity-0 pointer-events-auto z-10">
+            </div>
+            <div class="mt-4 flex items-center space-x-4">
+                <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
+                <span id="progressLabel" class="text-gray-700"></span>
+            </div>
+            <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Upload</button>
+        </div>
+
+        <!-- Download Section -->
+        <div class="flex flex-col items-center">
+            <h2 class="text-lg font-semibold mb-4">Download Files</h2>
+            <button id="downloadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50">Download</button>
+            <button id="finishDownloadBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Download</button>
+            <div id="fileMetadata" class="mt-4 text-gray-700"></div>
+        </div>
     </div>
-
-    <!-- Upload Button & Progress -->
-    <div class="mt-4 flex items-center space-x-4">
-        <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
-        <span id="progressLabel" class="text-gray-700"></span>
-    </div>
-
-    <!-- Finish Button -->
-    <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Upload</button>
-
     <!-- Import UploadManager and Set Up Events -->
     <script type="module">
         import { UploadManager } from "./main.js";
@@ -35,12 +42,35 @@
         const finishBtn = document.getElementById("finishBtn");
         const progressLabel = document.getElementById("progressLabel");
 
+        const downloadBtn = document.getElementById("downloadBtn");
+        const finishDownloadBtn = document.getElementById("finishDownloadBtn");
+        const fileMetadata = document.getElementById("fileMetadata");
+
         function finishUpload() {
             fileInput.value = "";
             uploadBtn.disabled = true;
             finishBtn.disabled = true;
             progressLabel.innerText = "Upload complete!";
         }
+
+        // dropZone.addEventListener("click", () => fileInput.click());
+
+        dropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZone.classList.add("bg-gray-200");
+        });
+
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-gray-200"));
+
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropZone.classList.remove("bg-gray-200");
+            uploadManager.handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener("change", (e) => uploadManager.handleFiles(e.target.files));
+        uploadBtn.addEventListener("click", () => uploadManager.uploadFiles());
+        finishBtn.addEventListener("click", finishUpload);
 
         await uploadManager.init(
             (files) => {
@@ -57,25 +87,25 @@
             }
         );
 
-        dropZone.addEventListener("click", () => fileInput.click());
-
-        dropZone.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            dropZone.classList.add("bg-gray-200");
+        downloadBtn.addEventListener("click", async () => {
+            const downloading = await uploadManager.downloadFiles();
+            while(true) {
+                const file = await downloading.next();
+                if (!file) break;
+                const metadata = file.metadata
+            
+                const p = document.createElement("p");
+                p.textContent = `${metadata.name} ${metadata.size} bytes`;
+                
+                fileMetadata.appendChild(p);
+                finishDownloadBtn.disabled = false;
+            }
         });
-
-        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-gray-200"));
-
-        dropZone.addEventListener("drop", (e) => {
-            e.preventDefault();
-            dropZone.classList.remove("bg-gray-200");
-            uploadManager.handleFiles(e.dataTransfer.files);
+        
+        finishDownloadBtn.addEventListener("click", () => {
+            fileMetadata.innerText = "Download complete!";
+            finishDownloadBtn.disabled = true;
         });
-
-        fileInput.addEventListener("change", (e) => uploadManager.handleFiles(e.target.files));
-
-        uploadBtn.addEventListener("click", () => uploadManager.uploadFiles());
-        finishBtn.addEventListener("click", finishUpload);
     </script>
 
 </body>
