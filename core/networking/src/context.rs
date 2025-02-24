@@ -10,9 +10,11 @@ use futures::lock::Mutex;
 use libp2p::{Stream, PeerId};
 use std::sync::Arc;
 
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(not(target_family="wasm"))]
+use runtime::get_runtime;
+
 use std::{ffi::CStr, os::raw::{c_char, c_uchar, c_void}};
-#[cfg(any(feature="cpp", feature="wasm"))]
+#[cfg(any(feature="cpp", target_family="wasm"))]
 use libp2p::Multiaddr;
 
 #[cfg(any(feature="cpp", feature="py"))]
@@ -42,7 +44,7 @@ pub struct Config {
     pub private_key_path: *const c_char,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen(getter_with_clone)]
 #[allow(non_snake_case)]
 pub struct Config {
@@ -51,7 +53,7 @@ pub struct Config {
     pub privateKey: Vec<u8>,
 }
 
-#[cfg(feature="wasm")]
+#[cfg(target_family="wasm")]
 #[wasm_bindgen]
 impl Config {
     #[wasm_bindgen(constructor)]
@@ -71,8 +73,6 @@ impl Config {
 #[cfg_attr(feature="py", pyclass)]
 #[derive(Clone)]
 pub struct Context {
-    #[cfg(any(feature="cpp", feature="py"))]
-    runtime: Arc<Runtime>,
     client: client::Client,
     receiver: Arc<Mutex<Receiver<event::Event>>>,
     pub id: String,
@@ -80,7 +80,7 @@ pub struct Context {
 
 #[cfg_attr(feature="py", pymethods)]
 impl Context {
-    #[cfg(any(feature="wasm", feature="cpp"))]
+    #[cfg(any(target_family="wasm", feature="cpp"))]
     pub fn new(config: &Config) -> Result<Box<Context>, Box<dyn Error + Send + Sync>> {
         // ************************
         // ** serve_as_bootstrap **
@@ -223,7 +223,7 @@ impl Context {
         let mut sender = self.client.clone();
         let user_data_safe = user_data as usize; // Rust is holding me hostage here
         if callback.is_null() {
-            self.runtime.spawn(async move {
+            get_runtime().spawn(async move {
                 match sender.send(msg, peer_id, protocol, timeout).await {
                     Ok(_) => { },
                     Err(error) => {
@@ -236,7 +236,7 @@ impl Context {
             });
         } else {
             let callback: extern "C" fn(status: u8, user_data: *mut c_void) = unsafe { std::mem::transmute(callback) };
-            self.runtime.spawn(async move {
+            get_runtime().spawn(async move {
                 match sender.send(msg, peer_id, protocol, timeout).await {
                     Ok(_) => {
                         let user_data = user_data_safe as *mut c_void;
@@ -263,7 +263,7 @@ impl Context {
         callback: extern "C" fn(status: u8)
     ) {
         let mut sender = self.client.clone();
-        self.runtime.spawn(async move {
+        get_runtime().spawn(async move {
             match sender.set_stream_handler(protocol).await {
                 Ok(_) => {
                     if (callback as *const c_void) != std::ptr::null() {
@@ -334,6 +334,13 @@ impl Context {
 
 #[cfg(any(feature="rust", target_family="wasm"))]
 impl Context {
+    pub fn copy(&self) -> Context {
+        Context {
+            client: self.client.clone(),
+            receiver: self.receiver.clone(),
+            id: self.id.clone(),
+        }
+    }
     pub async fn send(&mut self, msg: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
         sender.send(msg, peer_id, protocol, timeout).await
@@ -361,9 +368,6 @@ impl Context {
 }
 
 pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Error + Send + Sync>> {
-    #[cfg(any(feature="cpp", feature="py"))]
-    let runtime = Runtime::new()?;
-
     let (sender, receiver) = channel::<client::Command>(8);
     let (event_sender, event_receiver) = channel::<event::Event>(8);
     let client = client::new_client(sender);
@@ -377,10 +381,10 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let id = networking.node.id.clone();
 
     #[cfg(any(feature="cpp", feature="py"))]
-    runtime.block_on(async {
+    get_runtime().block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
         id = networking.node.id.clone();
-        runtime.spawn(async move {
+        tokio::spawn(async move {
             let _ = networking.run().await.expect("Failed to run networking");
         });
     });
@@ -390,14 +394,12 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(feature="rust")]
+    #[cfg(all(feature="rust", not(target_arch = "wasm32")))]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
     Ok(Context {
-        #[cfg(any(feature="cpp", feature="py"))]
-        runtime: Arc::new(runtime),
         client,
         receiver: Arc::new(Mutex::new(event_receiver)),
         id,

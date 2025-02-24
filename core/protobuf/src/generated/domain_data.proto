@@ -6,6 +6,13 @@ message DomainDataMetadata {
     string name = 1;
     string data_type = 2;
     uint32 size = 3;
-    optional string id = 4;
-    map<string, string> metadata = 5;
+    optional string hash = 4;
+    map<string, string> properties = 5;
+}
+
+message DataQuery {
+    string domain_id = 1;
+    repeated string hashes = 2;
+    optional string name = 3;
+    optional string data_type = 4;
 }

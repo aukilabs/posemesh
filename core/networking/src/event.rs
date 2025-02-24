@@ -25,7 +25,8 @@ pub enum Event {
     },
     PubSubMessageReceivedEvent {
         topic: TopicHash,
-        result: PubsubResult,
+        message: Vec<u8>,
+        from: Option<PeerId>,
     },
 }
 
