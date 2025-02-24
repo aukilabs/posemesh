@@ -133,7 +133,7 @@ if(EMSCRIPTEN)
         PREPEND_STRING "/* Copyright (c) Auki Labs Limited ${POSEMESH_COPYRIGHT_YEAR}, ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}, ${POSEMESH_COMMIT_ID} */"
         NEW_LINE_AFTER_PREPENDED_STRING
         INPUTS
-            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshBase_TextReplaced.js"
             Posemesh_ReplacedJavaScriptSymbols
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"

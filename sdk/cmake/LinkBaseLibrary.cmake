@@ -58,8 +58,9 @@ function(LINK_BASE_LIBRARY NAME)
             "${BASE_LIBRARY_JS}"
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshBase_TextReplaced.js"
             REPLACES
-                "|MATCH-WORD|wasm_bindgen" "__internalPosemeshBase"
-                "script_src.replace(/\\.js$/, '_bg.wasm')" "'PosemeshBase.wasm'"
+                "let wasm" "let wasm = undefined, wasmImports = { env: {} }"
+                "|REGEX|export[ \\t]+function[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(" "function \\1(...args) { return wasmImports.env.\\1(...args) }\nwasmImports.env.\\1 = function("
+                "export class " "class "
         )
         install(
             FILES
