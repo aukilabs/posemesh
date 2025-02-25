@@ -10,3 +10,8 @@ networking = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+cpp = []
+rust = []

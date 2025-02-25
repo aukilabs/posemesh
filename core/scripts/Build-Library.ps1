@@ -308,7 +308,7 @@ Try {
         & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }
     If($LastExitCode -Ne 0) {
-        Write-Error -Message 'Failed to build Posemesh Networking library.'
+        Write-Error -Message 'Failed to build Posemesh Core library.'
         Exit 1
     }
     If(-Not $WASMPackCommand) {
