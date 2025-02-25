@@ -3,24 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Posemesh Domain Demo</title>
+    <title>Libp2p File Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="flex flex-col items-center justify-center h-screen bg-gray-100">
+
+    <div class="w-3/4 h-3/4 grid grid-cols-2 gap-4 bg-white shadow-lg rounded-lg p-6">
+        <div class="flex flex-col items-center">
+            <h2 class="text-lg font-semibold mb-4">Upload Files</h2>
+            <div id="dropZone" class="w-full h-40 flex items-center justify-center border-2 border-dashed border-gray-400 bg-gray-50 rounded-lg cursor-pointer relative">
+                <p class="text-gray-600">Drag & drop files here or click to select</p>
+                <input type="file" id="fileInput" multiple class="absolute inset-0 opacity-0 pointer-events-auto z-10">
+            </div>
+            <div class="mt-4 flex items-center space-x-4">
+                <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
+                <span id="progressLabel" class="text-gray-700"></span>
+            </div>
+            <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Upload</button>
+        </div>
+
+        <!-- Download Section -->
+        <div class="flex flex-col items-center">
+            <h2 class="text-lg font-semibold mb-4">Download Files</h2>
+            <button id="downloadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50">Download</button>
+            <button id="finishDownloadBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Download</button>
+            <div id="fileMetadata" class="mt-4 text-gray-700"></div>
+        </div>
+    </div>
+    <!-- Import UploadManager and Set Up Events -->
     <script type="module">
-        import init, { Config, posemeshNetworkingContextCreate, DomainCluster, RemoteDatastore, Query } from "./pkg/posemesh-domain.js";
+        import { UploadManager } from "./main.js";
 
-        init().then(async () => {
-            const cfg = new Config("/ip4/127.0.0.1/tcp/18808/p2p/12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", "", "");
-            const libp2pInstance = posemeshNetworkingContextCreate(cfg);
+        const uploadManager = new UploadManager();
 
-            const domainCluster = new DomainCluster("12D3KooWHjpEysZauYgRdYhvN2gZAeJoZdTfKopiiWA3cnahLJbg", libp2pInstance);
-            const remoteStorage = new RemoteDatastore(domainCluster, libp2pInstance);
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const finishBtn = document.getElementById("finishBtn");
+        const progressLabel = document.getElementById("progressLabel");
 
-            const query = new Query([], null, null);
+        const downloadBtn = document.getElementById("downloadBtn");
+        const finishDownloadBtn = document.getElementById("finishDownloadBtn");
+        const fileMetadata = document.getElementById("fileMetadata");
 
-            // const dataIterator = await remoteStorage.find("", query);
-            // const domainData = await dataIterator.next();
+        function finishUpload() {
+            fileInput.value = "";
+            uploadBtn.disabled = true;
+            finishBtn.disabled = true;
+            progressLabel.innerText = "Upload complete!";
+        }
+
+        // dropZone.addEventListener("click", () => fileInput.click());
+
+        dropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZone.classList.add("bg-gray-200");
+        });
+
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-gray-200"));
+
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropZone.classList.remove("bg-gray-200");
+            uploadManager.handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener("change", (e) => uploadManager.handleFiles(e.target.files));
+        uploadBtn.addEventListener("click", () => uploadManager.uploadFiles());
+        finishBtn.addEventListener("click", finishUpload);
+
+        await uploadManager.init(
+            (files) => {
+                uploadBtn.disabled = false;
+                progressLabel.innerText = `${files.length} file(s) selected`;
+            },
+            (message) => {
+                progressLabel.innerText = message;
+            },
+            () => {
+                progressLabel.innerText = "All files uploaded!";
+                uploadBtn.disabled = true;
+                finishBtn.disabled = false;
+            }
+        );
+
+        downloadBtn.addEventListener("click", async () => {
+            const downloading = await uploadManager.downloadFiles();
+            while(true) {
+                const file = await downloading.next();
+                if (!file) break;
+                const metadata = file.metadata
+            
+                const p = document.createElement("p");
+                p.textContent = `${metadata.name} ${metadata.size} bytes`;
+                
+                fileMetadata.appendChild(p);
+                finishDownloadBtn.disabled = false;
+            }
+        });
+        
+        finishDownloadBtn.addEventListener("click", () => {
+            fileMetadata.innerText = "Download complete!";
+            finishDownloadBtn.disabled = true;
         });
     </script>
+
 </body>
 </html>
