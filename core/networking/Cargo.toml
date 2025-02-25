@@ -29,6 +29,7 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
+console_error_panic_hook = { workspace = true }
 
 [features]
 default = []
