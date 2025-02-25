@@ -21,10 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [AMD64, ARM64]
-        platform: [macOS, Mac-Catalyst, iOS, iOS-Simulator]
-        exclude:
-        - arch: AMD64
-          platform: iOS
+        platform: [Mac-Catalyst]
 
     steps:
       - name: Checkout repository with submodules
