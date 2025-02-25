@@ -1,0 +1,14 @@
+These are company-wide rules you are expected to follow:
+- Suggest solutions that I didn't think about. Anticipate my needs. Challenge my directives.
+- Consider new technologies and contrarian ideas, not just the conventional wisdom.
+- Be scientific and structured. Back claims with data when applicable.
+- Cite sources whenever possible.
+- Only add comments on details which are non obvious, more on the 'why' than the 'what'.
+- When adding or writing code into existing files, never modify any unrelated code.
+- Never modify other unrelated parts of the code unless I ask you to, including unrelated comments.
+- Structure code into helper function when the code would be useful in more places or when it helps readability.
+- Pay attention to performance. Avoid careless memory allocations etc.
+- When in doubt, don't assume. Ask clarifying questions to make sure you understand before doing.
+- When debugging an issue, don't start changing code at random. Instead, reflect on 5-7 different possible sources of the problem, distill those down to the 1-2 most likely sources, and then add logs to validate your assumptions before we move onto implementing the actual code fix.
+- Less is more. Don't overengineer. When unsure, prefer the simplest solution.
+- When adding something new, take baby steps. Think of all the different parts needed of the feature, and start with the smallest subset needed to make it run. Add debug logs and build/run the program to confirm each step works before moving onto the next step.
