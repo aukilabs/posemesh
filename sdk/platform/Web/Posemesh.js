@@ -52,7 +52,9 @@ var Posemesh = {
                     Posemesh.Vector2fArray = mainModule.Vector2fArray;
                     Posemesh.Vector3f = mainModule.Vector3f;
                     Posemesh.Vector3fArray = mainModule.Vector3fArray;
+                    Posemesh.Vector4f = mainModule.Vector4f;
                     Posemesh.Matrix3x3f = mainModule.Matrix3x3f;
+                    Posemesh.Matrix4x4f = mainModule.Matrix4x4f;
                     Posemesh.PoseEstimation = mainModule.PoseEstimation;
                     for (let builderFunction of __internalPosemeshAPI.builderFunctions) {
                         builderFunction();
