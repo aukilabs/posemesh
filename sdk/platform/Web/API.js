@@ -1,7 +1,7 @@
 var __internalPosemeshAPI = {
     builderFunctions: [
-        function() {
-            Posemesh.__mainModule.VectorBoolean = Posemesh.__mainModule.VectorUint8;
+        function(context) {
+            __internalPosemesh.VectorBoolean = __internalPosemesh.VectorUint8;
         }
     ],
 
@@ -14,7 +14,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorInt8: function(array) {
-        let vectorInt8 = new Posemesh.__mainModule.VectorInt8();
+        let vectorInt8 = new __internalPosemesh.VectorInt8();
         vectorInt8.resize(array.length);
         try {
             if (array instanceof Int8Array) {
@@ -58,7 +58,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorInt16: function(array) {
-        let vectorInt16 = new Posemesh.__mainModule.VectorInt16();
+        let vectorInt16 = new __internalPosemesh.VectorInt16();
         vectorInt16.resize(array.length);
         try {
             if (array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint8Array) {
@@ -102,7 +102,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorInt32: function(array) {
-        let vectorInt32 = new Posemesh.__mainModule.VectorInt32();
+        let vectorInt32 = new __internalPosemesh.VectorInt32();
         vectorInt32.resize(array.length);
         try {
             if (array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint16Array || array instanceof Uint8Array) {
@@ -146,7 +146,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorInt64: function(array) {
-        let vectorInt64 = new Posemesh.__mainModule.VectorInt64();
+        let vectorInt64 = new __internalPosemesh.VectorInt64();
         vectorInt64.resize(array.length);
         try {
             if (array instanceof BigInt64Array) {
@@ -197,7 +197,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorUint8: function(array) {
-        let vectorUint8 = new Posemesh.__mainModule.VectorUint8();
+        let vectorUint8 = new __internalPosemesh.VectorUint8();
         vectorUint8.resize(array.length);
         try {
             if (array instanceof Uint8Array) {
@@ -241,7 +241,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorUint16: function(array) {
-        let vectorUint16 = new Posemesh.__mainModule.VectorUint16();
+        let vectorUint16 = new __internalPosemesh.VectorUint16();
         vectorUint16.resize(array.length);
         try {
             if (array instanceof Uint16Array || array instanceof Uint8Array) {
@@ -285,7 +285,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorUint32: function(array) {
-        let vectorUint32 = new Posemesh.__mainModule.VectorUint32();
+        let vectorUint32 = new __internalPosemesh.VectorUint32();
         vectorUint32.resize(array.length);
         try {
             if (array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
@@ -329,7 +329,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorUint64: function(array) {
-        let vectorUint64 = new Posemesh.__mainModule.VectorUint64();
+        let vectorUint64 = new __internalPosemesh.VectorUint64();
         vectorUint64.resize(array.length);
         try {
             if (array instanceof BigUint64Array) {
@@ -380,7 +380,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorFloat: function(array) {
-        let vectorFloat = new Posemesh.__mainModule.VectorFloat();
+        let vectorFloat = new __internalPosemesh.VectorFloat();
         vectorFloat.resize(array.length);
         try {
             if (array instanceof Float32Array || array instanceof Float64Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
@@ -420,7 +420,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorDouble: function(array) {
-        let vectorDouble = new Posemesh.__mainModule.VectorDouble();
+        let vectorDouble = new __internalPosemesh.VectorDouble();
         vectorDouble.resize(array.length);
         try {
             if (array instanceof Float64Array || array instanceof Float32Array || array instanceof Int32Array || array instanceof Int16Array || array instanceof Int8Array || array instanceof Uint32Array || array instanceof Uint16Array || array instanceof Uint8Array) {
@@ -460,7 +460,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorBoolean: function(array) {
-        let vectorBoolean = new Posemesh.__mainModule.VectorBoolean();
+        let vectorBoolean = new __internalPosemesh.VectorBoolean();
         vectorBoolean.resize(array.length);
         try {
             let i = 0;
@@ -488,7 +488,7 @@ var __internalPosemeshAPI = {
         return array;
     },
     toVectorString: function(array) {
-        let vectorString = new Posemesh.__mainModule.VectorString();
+        let vectorString = new __internalPosemesh.VectorString();
         vectorString.resize(array.length);
         try {
             let i = 0;
