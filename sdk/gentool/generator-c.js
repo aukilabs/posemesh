@@ -11,7 +11,7 @@ function generateHeader(interfaceName, interfaceJson) {
   const static = util.getClassStatic(interfaceJson);
   const copyable = util.getClassCopyable(interfaceJson);
 
-  let includesFirst = new Set([]), includesSecond = new Set(['#include "API.hpp"']);
+  let includesFirst = new Set([]), includesSecond = new Set(['#include "API.h"']);
 
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
   code += `\n`;

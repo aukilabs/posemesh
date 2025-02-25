@@ -1,5 +1,5 @@
 {
-  "name": "Vector3f",
+  "name": "Vector2f",
   "properties": [
     {
       "name": "X",
@@ -7,10 +7,6 @@
     },
     {
       "name": "Y",
-      "type": "float"
-    },
-    {
-      "name": "Z",
       "type": "float"
     }
   ]

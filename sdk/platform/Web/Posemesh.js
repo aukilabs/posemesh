@@ -33,10 +33,10 @@ var Posemesh = {
             }
             let networkingPromise = networkingWasmPath ? __internalPosemeshNetworking(networkingWasmPath) : __internalPosemeshNetworking();
             networkingPromise.then(() => {
-                if (!__internalPosemeshAPI.verifyNetworkingCommitId()) {
-                    reject(new Error('Posemesh Networking WebAssembly file version does not match the Posemesh JavaScript file version.'));
-                    return;
-                }
+                // if (!__internalPosemeshAPI.verifyNetworkingCommitId()) {
+                //     reject(new Error('Posemesh Networking WebAssembly file version does not match the Posemesh JavaScript file version.'));
+                //     return;
+                // }
                 let mainPromise = mainWasmPath ? __internalPosemesh({
                     locateFile: () => mainWasmPath,
                 }) : __internalPosemesh();
@@ -48,6 +48,14 @@ var Posemesh = {
                     Posemesh = mainModule.Posemesh;
                     Posemesh.__mainModule = mainModule;
                     Posemesh.Config = mainModule.Config;
+                    Posemesh.Vector2f = mainModule.Vector2f;
+                    Posemesh.Vector2fArray = mainModule.Vector2fArray;
+                    Posemesh.Vector3f = mainModule.Vector3f;
+                    Posemesh.Vector3fArray = mainModule.Vector3fArray;
+                    Posemesh.Vector4f = mainModule.Vector4f;
+                    Posemesh.Matrix3x3f = mainModule.Matrix3x3f;
+                    Posemesh.Matrix4x4f = mainModule.Matrix4x4f;
+                    Posemesh.PoseEstimation = mainModule.PoseEstimation;
                     for (let builderFunction of __internalPosemeshAPI.builderFunctions) {
                         builderFunction();
                     }

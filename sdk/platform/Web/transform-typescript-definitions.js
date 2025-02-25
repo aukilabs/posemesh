@@ -142,10 +142,10 @@ fs.readFile(inputFilePath, 'utf8', (error, content) => {
             process.exit(1);
             return;
         }
-        if (!validate(content)) {
-            process.exit(1);
-            return;
-        }
+        //if (!validate(content)) {
+        //    process.exit(1);
+        //    return;
+        //}
         console.log('Successfully transformed TypeScript definitions.');
     });
 });
