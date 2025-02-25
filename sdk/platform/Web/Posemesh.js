@@ -54,6 +54,7 @@ var Posemesh = {
                     Posemesh.Vector3fArray = mainModule.Vector3fArray;
                     Posemesh.Matrix3x3f = mainModule.Matrix3x3f;
                     Posemesh.PoseEstimation = mainModule.PoseEstimation;
+                    Posemesh.QRDetection = mainModule.QRDetection;
                     for (let builderFunction of __internalPosemeshAPI.builderFunctions) {
                         builderFunction();
                     }

@@ -55,6 +55,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Matrix3x3f.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Matrix4x4f.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
@@ -65,6 +66,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Matrix3x3f.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Matrix4x4f.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
@@ -74,6 +76,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Matrix3x3f.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Matrix4x4f.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2f.gen.cpp"
@@ -82,6 +85,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/Matrix3x3f.gen.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Matrix4x4f.gen.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/QRDetection.cpp"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
@@ -146,6 +150,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector2f.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector3f.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector4f.cpp"
@@ -184,6 +189,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector2f.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector3f.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector4f.js"
