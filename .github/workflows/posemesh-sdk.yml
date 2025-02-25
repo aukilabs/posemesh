@@ -5,7 +5,7 @@ on:
       - '**/examples/**'
       - '*.md'
       - '.vscode/**'
-      # - '.github/**'
+      - '.github/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,10 +14,7 @@ concurrency:
 jobs:
   build_apple_frameworks:
     name: Build Apple SDK
-    runs-on: macos-latest
-    env:
-      CC_x86_64-apple-ios-macabi: "clang"
-      CC_x86_64_apple_ios_macabi: "clang"
+    runs-on: [self-hosted, macOS]
     strategy:
       fail-fast: false
       matrix:
@@ -77,7 +74,7 @@ jobs:
 
   build_xcframework:
     name: Build XC Framework
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS]
     needs: build_apple_frameworks
     steps:
       - name: Checkout repository
