@@ -32,3 +32,4 @@ protobuf = { path = "protobuf" }
 networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
+console_error_panic_hook = "0.1.7"
