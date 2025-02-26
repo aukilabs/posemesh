@@ -257,7 +257,7 @@ impl Context {
     }
 
     #[cfg(feature="cpp")]
-    pub fn set_stream_handler(
+    pub fn set_stream_handler_cpp(
         &mut self,
         protocol: String,
         callback: extern "C" fn(status: u8)
@@ -374,13 +374,13 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let cfg = config.clone();
     let mut id: String = PeerId::random().to_string();
 
-    #[cfg(any(target_family="wasm", feature="rust"))]
+    #[cfg(any(target_family="wasm", feature="cpp", feature="rust"))]
     let networking = Networking::new(&cfg, receiver, event_sender)?;
     
-    #[cfg(any(target_family="wasm", feature="rust"))]
+    #[cfg(any(target_family="wasm", feature="cpp", feature="rust"))]
     let id = networking.node.id.clone();
 
-    #[cfg(any(feature="cpp", feature="py"))]
+    #[cfg(feature="py")]
     get_runtime().block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
         id = networking.node.id.clone();
@@ -394,7 +394,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(all(feature="rust", not(target_arch = "wasm32")))]
+    #[cfg(all(any(feature="cpp", feature="rust"), not(target_arch = "wasm32")))]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });

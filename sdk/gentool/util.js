@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 const NameStyle = {
   lower_case: 1,
   UPPER_CASE: 2,
@@ -501,13 +503,14 @@ function getTypePropEqOp(type, clsParam, prpParam) {
 
 function getTypePropHasher(type, param) {
   if (isIntType(type)) {
-    return `hash<${type}> {}(${param})`;
+    return `hash<${type}_t> {}(${param})`;
   }
   switch (type) {
     case 'float':
     case 'double':
-    case 'boolean':
       return `hash<${type}> {}(${param})`;
+    case 'boolean':
+      return `hash<bool> {}(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }
@@ -1859,6 +1862,18 @@ function fillCGenerateFuncAliasDefines(interfaceJson) {
   }
 }
 
+function writeFileContentIfDifferent(filePath, content) {
+  if (fs.existsSync(filePath)) {
+    if (!fs.statSync(filePath).isFile()) {
+      throw new Error(`Item at '${filePath}' path is not a file.`);
+    }
+    if (fs.readFileSync(filePath, 'utf8') === content) {
+      return;
+    }
+  }
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
 module.exports = {
   NameStyle,
   lower_case: NameStyle.lower_case,
@@ -1989,5 +2004,6 @@ module.exports = {
   fillEqualityOperator,
   makeHashOperatorHashedProperties,
   fillHashOperator,
-  fillCGenerateFuncAliasDefines
+  fillCGenerateFuncAliasDefines,
+  writeFileContentIfDifferent
 };

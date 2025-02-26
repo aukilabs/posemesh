@@ -1,12 +1,12 @@
 find_program(
-    NPM_EXECUTABLE_PATH
-    NAMES npm
+    NODE_EXECUTABLE_PATH
+    NAMES node
     REQUIRED
 )
 
 set(WEB_PLATFORM_ROOT "${CMAKE_CURRENT_LIST_DIR}/../platform/Web")
 
-function(TRANSPILE_MINIFY_JAVASCRIPT NAME OUTPUT INPUT)
+function(REPLACE_JAVASCRIPT_SYMBOLS NAME OUTPUT INPUT)
     if(NOT "${NAME}" MATCHES "^[a-zA-Z0-9_.+-]+$")
         message(FATAL_ERROR "Target name '${NAME}' is invalid.")
     endif()
@@ -30,8 +30,7 @@ function(TRANSPILE_MINIFY_JAVASCRIPT NAME OUTPUT INPUT)
 
     add_custom_command(
         OUTPUT "${OUTPUT_ABSOLUTE}"
-        COMMAND "${NPM_EXECUTABLE_PATH}" install
-        COMMAND "${NPM_EXECUTABLE_PATH}" exec babel "${INPUT_ABSOLUTE}" > "${OUTPUT_ABSOLUTE}"
+        COMMAND "${NODE_EXECUTABLE_PATH}" replace-javascript-symbols.js "${INPUT_ABSOLUTE}" "${OUTPUT_ABSOLUTE}"
         DEPENDS
             "${INPUT_DEPENDS}"
         WORKING_DIRECTORY "${WEB_PLATFORM_ROOT}"

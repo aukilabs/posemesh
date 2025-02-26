@@ -1,5 +1,7 @@
-__internalPosemeshAPI.builderFunctions.push(function() {
-    Posemesh.Config.prototype.getBootstraps = function() {
+posemeshModule.Config = null;
+
+__internalPosemeshAPI.builderFunctions.push(function(context) {
+    __internalPosemesh.Config.prototype.getBootstraps = function() {
         let bootstraps = this.__getBootstraps();
         try {
             return __internalPosemeshAPI.fromVectorString(bootstraps);
@@ -8,7 +10,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Posemesh.Config.prototype.setBootstraps = function(bootstraps) {
+    __internalPosemesh.Config.prototype.setBootstraps = function(bootstraps) {
         let vectorString = __internalPosemeshAPI.toVectorString(bootstraps);
         try {
             return this.__setBootstraps(vectorString);
@@ -17,8 +19,8 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Object.defineProperty(Posemesh.Config.prototype, 'bootstraps', {
-        get: Posemesh.Config.prototype.getBootstraps,
+    Object.defineProperty(__internalPosemesh.Config.prototype, 'bootstraps', {
+        get: __internalPosemesh.Config.prototype.getBootstraps,
         set: function(bootstraps) {
             this.setBootstraps(bootstraps);
         },
@@ -26,7 +28,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         configurable: false
     });
 
-    Posemesh.Config.prototype.getRelays = function() {
+    __internalPosemesh.Config.prototype.getRelays = function() {
         let relays = this.__getRelays();
         try {
             return __internalPosemeshAPI.fromVectorString(relays);
@@ -35,7 +37,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Posemesh.Config.prototype.setRelays = function(relays) {
+    __internalPosemesh.Config.prototype.setRelays = function(relays) {
         let vectorString = __internalPosemeshAPI.toVectorString(relays);
         try {
             return this.__setRelays(vectorString);
@@ -44,8 +46,8 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Object.defineProperty(Posemesh.Config.prototype, 'relays', {
-        get: Posemesh.Config.prototype.getRelays,
+    Object.defineProperty(__internalPosemesh.Config.prototype, 'relays', {
+        get: __internalPosemesh.Config.prototype.getRelays,
         set: function(relays) {
             this.setRelays(relays);
         },
@@ -53,7 +55,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         configurable: false
     });
 
-    Posemesh.Config.prototype.getPrivateKey = function() {
+    __internalPosemesh.Config.prototype.getPrivateKey = function() {
         let privateKey = this.__getPrivateKey();
         try {
             return __internalPosemeshAPI.fromVectorUint8(privateKey);
@@ -62,7 +64,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Posemesh.Config.prototype.setPrivateKey = function(privateKey) {
+    __internalPosemesh.Config.prototype.setPrivateKey = function(privateKey) {
         let vectorUint8 = __internalPosemeshAPI.toVectorUint8(privateKey);
         try {
             this.__setPrivateKey(vectorUint8);
@@ -71,10 +73,12 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
-    Object.defineProperty(Posemesh.Config.prototype, 'privateKey', {
-        get: Posemesh.Config.prototype.getPrivateKey,
-        set: Posemesh.Config.prototype.setPrivateKey,
+    Object.defineProperty(__internalPosemesh.Config.prototype, 'privateKey', {
+        get: __internalPosemesh.Config.prototype.getPrivateKey,
+        set: __internalPosemesh.Config.prototype.setPrivateKey,
         enumerable: true,
         configurable: false
     });
+
+    posemeshModule.Config = __internalPosemesh.Config;
 });

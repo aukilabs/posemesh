@@ -53,13 +53,9 @@ jobs:
           restore-keys: |
             rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
-      - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Build Posemesh Base for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
-
-      - name: Build Posemesh Domain for ${{ matrix.platform }} ${{ matrix.arch }}
-        shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release domain -InstallNecessaryRustToolchainsAndTargets
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release base -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
@@ -148,13 +144,9 @@ jobs:
       - name: Install WASM-Pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build Posemesh Networking
+      - name: Build Posemesh Base
         shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
-
-      - name: Build Posemesh Domain
-        shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release domain -InstallNecessaryRustToolchainsAndTargets
+        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release base -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV
         run: |

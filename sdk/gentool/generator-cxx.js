@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const util = require('./util');
 
@@ -1232,8 +1231,8 @@ function generateInterfaceCXX(interfaceName, interfaceJson) {
   let headerCode = generateHeader(interfaceName, interfaceJson);
   let sourceCode = generateSource(interfaceName, interfaceJson);
 
-  fs.writeFileSync(headerFilePath, headerCode, 'utf8');
-  fs.writeFileSync(sourceFilePath, sourceCode, 'utf8');
+  util.writeFileContentIfDifferent(headerFilePath, headerCode);
+  util.writeFileContentIfDifferent(sourceFilePath, sourceCode);
 }
 
 module.exports = generateInterfaceCXX;

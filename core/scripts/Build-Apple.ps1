@@ -60,7 +60,7 @@ ForEach($BuildTypeFromList In $BuildTypes) {
                 & "$PSScriptRoot/Build-Library.ps1" $Platform $Architecture $BuildTypeFromList $Package
             }
             If($LastExitCode -Ne 0) {
-                Write-Error -Message "Failed to build Posemesh Networking library for '$Platform' platform, '$Architecture' architecture and '$BuildTypeFromList' build type."
+                Write-Error -Message "Failed to build Posemesh Core library for '$Platform' platform, '$Architecture' architecture and '$BuildTypeFromList' build type."
                 Exit 1
             }
         }

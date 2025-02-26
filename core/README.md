@@ -1,6 +1,6 @@
-# Posemesh Networking
+# Posemesh Core
 
-Posemesh Networking is a Rust library that implements all of the underlying network code for efficient and optimized communication between nodes in the Posemesh network. The module is designed to simplify the process of running a peer-to-peer (P2P) Posemesh node, allowing easy and seamless P2P communication within the Posemesh network. With this module, nodes can join the network, discover peers, and exchange messages in a decentralized, scalable, and resilient manner.
+Posemesh Core is a Rust library that implements all of the underlying network code for efficient and optimized communication between nodes in the Posemesh network. The module is designed to simplify the process of running a peer-to-peer (P2P) Posemesh node, allowing easy and seamless P2P communication within the Posemesh network. With this module, nodes can join the network, discover peers, and exchange messages in a decentralized, scalable, and resilient manner.
 
 ## Building
 

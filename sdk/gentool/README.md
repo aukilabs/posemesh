@@ -4,22 +4,23 @@
 
 ### Root JSON options
 
-| Name                       | Required | Type                       | Description |
-|----------------------------|----------|----------------------------|-------------|
-| `name`                     | &#x2705; | *string*                   | Name of the class in `Camel_Snake_Case` naming convention. The different [naming conventions](#naming-conventions) are automatically derived from this one, however they can be manually specified with options such as `name.style.lowerCase`, `name.style.upperCase` and such. Furthermore, different [language](#languages) binding names are taken from the generated naming conventions, but they can also be manually specified with options such as `name.lang.cPlusPlus`, `name.lang.c` and such. |
-| `static`                   |          | *boolean*                  | Determine whether the class will be static or not. Default is `false`. |
-| `final`                    |          | *boolean*                  | Determine whether the class will be final or not. Inferred from `static` option. |
-| `aliases`                  |          | *Alias[]*                  | Alternative names of the class. No aliases by default. See [definition](#alias-json-options). |
-| `headerGuardName`          |          | *string*                   | Name of the class in `UPPER_CASE` naming convention used for C++ and C header guards. Derived from `name` option. |
-| `properties`               |          | *Property[]*               | Properties of the class. No properties by default. See [definition](#property-json-options). |
-| `copyable`                 |          | *boolean*                  | Determine whether the class is copyable or not. Inferred from `static` option. |
-| `movable`                  |          | *boolean*                  | Determine whether the class is movable or not. Inferred from `static` option. |
-| `parameterlessConstructor` |          | *ParameterlessConstructor* | Options for the parameterless constructor. See [definition](#parameterlessconstructor-json-options). |
-| `copyConstructor`          |          | *CopyConstructor*          | Options for the copy constructor and operator. See [definition](#copyconstructor-json-options). |
-| `moveConstructor`          |          | *MoveConstructor*          | Options for the move constructor and operator. See [definition](#moveconstructor-json-options). |
-| `destructor`               |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
-| `equalityOperator`         |          | *EqualityOperator*         | Options for the equality (and inequality) operator. See [definition](#equalityoperator-json-options). |
-| `hashOperator`             |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
+| Name                         | Required | Type                       | Description |
+|------------------------------|----------|----------------------------|-------------|
+| `name`                       | &#x2705; | *string*                   | Name of the class in `Camel_Snake_Case` naming convention. The different [naming conventions](#naming-conventions) are automatically derived from this one, however they can be manually specified with options such as `name.style.lowerCase`, `name.style.upperCase` and such. Furthermore, different [language](#languages) binding names are taken from the generated naming conventions, but they can also be manually specified with options such as `name.lang.cPlusPlus`, `name.lang.c` and such. |
+| `static`                     |          | *boolean*                  | Determine whether the class will be static or not. Default is `false`. |
+| `final`                      |          | *boolean*                  | Determine whether the class will be final or not. Inferred from `static` option. |
+| `aliases`                    |          | *Alias[]*                  | Alternative names of the class. No aliases by default. See [definition](#alias-json-options). |
+| `headerGuardName`            |          | *string*                   | Name of the class in `UPPER_CASE` naming convention used for C++ and C header guards. Derived from `name` option. |
+| `properties`                 |          | *Property[]*               | Properties of the class. No properties by default. See [definition](#property-json-options). |
+| `copyable`                   |          | *boolean*                  | Determine whether the class is copyable or not. Inferred from `static` option. |
+| `movable`                    |          | *boolean*                  | Determine whether the class is movable or not. Inferred from `static` option. |
+| `parameterlessConstructor`   |          | *ParameterlessConstructor* | Options for the parameterless constructor. See [definition](#parameterlessconstructor-json-options). |
+| `copyConstructor`            |          | *CopyConstructor*          | Options for the copy constructor and operator. See [definition](#copyconstructor-json-options). |
+| `moveConstructor`            |          | *MoveConstructor*          | Options for the move constructor and operator. See [definition](#moveconstructor-json-options). |
+| `destructor`                 |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
+| `equalityOperator`           |          | *EqualityOperator*         | Options for the equality (and inequality) operator. See [definition](#equalityoperator-json-options). |
+| `hashOperator`               |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
+| `c.generateFuncAliasDefines` |          | *boolean*                  | Determine whether the C header will contain the macro defines for all class functions with the first part of the function replaced with names for all class aliases or not. Default is `true`. |
 
 ### Alias JSON options
 

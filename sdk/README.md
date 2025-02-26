@@ -9,7 +9,7 @@ The purpose of the SDK is to allow a device to exchange spatial data and compute
 Any application, device or server interacting with the posemesh will use the Posemesh SDK to communicate with other devices in a standardised way.
 
 ## SDK Architecture
-For the posemesh to work on a wide range of devices and software stacks, cross-platform support is a big part of the architecture. The majority of code is written in C++ and then cross-compiled with bindings to other languages. The only exception is the networking code, which is written in Rust because the libp2p library for C++ doesn't support all required features yet.
+For the posemesh to work on a wide range of devices and software stacks, cross-platform support is a big part of the architecture. The majority of code is written in C++ and then cross-compiled with bindings to other languages. The only exception is the core networking base code, which is written in Rust because the libp2p library for C++ doesn't support all required features yet.
 
 This approach avoids code duplication and makes sure the SDK works the same regardless of platform or programming language.
 
@@ -70,9 +70,9 @@ are not possible. The relay server is only used as a last resort.
 git submodule update --init --recursive
 ```
 
-2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
+2. Build base library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
 ```sh
-./core/scripts/Build-Library.ps1 macOS ARM64 Debug networking
+./core/scripts/Build-Library.ps1 macOS ARM64 Debug base
 ```
 
 3. Build OpenCV
@@ -80,7 +80,7 @@ git submodule update --init --recursive
 ./third-party/scripts/Build-OpenCV-Library.ps1 macOS ARM64 Debug
 ```
 
-4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
 ```sh
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
