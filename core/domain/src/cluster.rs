@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use networking::{context::{self, Context}, event};
 use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
-use protobuf::task::{self, Job, Status, SubmitJobResponse, Task};
+use crate::protobuf::task::{self, Job, Status, SubmitJobResponse, Task};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
@@ -98,6 +98,9 @@ impl InnerDomainCluster {
                         // self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
                     }
                 }
+            }
+            Some(event::Event::NewNodeRegistered { node }) => {
+                tracing::debug!("New node registered: {:?}", node.name);
             }
             _ => {}
         }

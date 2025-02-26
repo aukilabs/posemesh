@@ -1,4 +1,4 @@
-use domain::{datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::domain_data::Metadata};
+use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::domain_data::Metadata};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{context, event, network::{self, Node}};
@@ -230,38 +230,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name: name,
     };
     let mut c = context::context_create(cfg)?;
-    c.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    c.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    let mut nodes: HashMap<String, Node> = HashMap::new();
+    let mut produce_handler = c.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
+    let mut consume_handler = c.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
+    let domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c.clone()));
     let (tx, rx) = channel::<String>(100);
     let rx = Arc::new(Mutex::new(rx));
+
     loop {
         select! {
             _ = signal::ctrl_c() => {
                 break;
             }
-            e = c.poll() => {
-                match e {
-                    Some(e) => {
-                        match e {
-                            event::Event::StreamMessageReceivedEvent { peer, msg_reader, protocol } => {
-                                if protocol.to_string() == PRODUCE_DATA_PROTOCOL_V1 {
-                                    store_data_v1(base_path.to_string(), msg_reader, c.clone(), tx.clone()).await;
-                                } else if protocol.to_string() == CONSUME_DATA_PROTOCOL_V1 {
-                                    serve_data_v1(base_path.to_string(), msg_reader, c.clone(), rx.clone()).await;
-                                }
-                            }
-                            event::Event::NewNodeRegistered { node } => {
-                                println!("New node registered: {:?}", node);
-                                nodes.insert(node.id.clone(), node);
-                            }
-                            _ => {}
-                        }
-                    }
-                    None => break
-                }
+            Some((_, stream)) = produce_handler.next() => {
+                let c = c.clone();
+                let tx = tx.clone();
+                let base_path = base_path.clone();
+                store_data_v1(base_path, stream, c, tx).await;
+            }
+            Some((_, stream)) = consume_handler.next() => {
+                let c = c.clone();
+                let rx = rx.clone();
+                let base_path = base_path.clone();
+                serve_data_v1(base_path, stream, c, rx).await;
             }
             else => break
         }
