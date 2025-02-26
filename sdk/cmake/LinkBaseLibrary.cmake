@@ -58,9 +58,9 @@ function(LINK_BASE_LIBRARY NAME)
             "${BASE_LIBRARY_JS}"
             "${CMAKE_CURRENT_BINARY_DIR}/PosemeshBase_TextReplaced.js"
             REPLACES
-                "let wasm" "let wasm = undefined, wasmImports = { env: {} }"
-                "|REGEX|export[ \\t]+function[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(" "function \\1(...args) { return wasmImports.env.\\1(...args) }\nwasmImports.env.\\1 = function("
-                "export class " "class "
+                "let wasm" "let wasm = undefined, wasmImports = { \"./PosemeshBase_bg.js\": {} }, regClsFuncs = []"
+                "|REGEX|export[ \\t]+function[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(" "function \\1(...args) { return wasmImports[\"./PosemeshBase_bg.js\"].\\1(...args) }\nwasmImports[\"./PosemeshBase_bg.js\"].\\1 = function("
+                "|REGEX|export[ \\t]+class[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\{" "regClsFuncs.push(function() { wasmImports[\"./PosemeshBase_bg.js\"].\\1 = \\1 })\nclass \\1 {"
         )
         install(
             FILES

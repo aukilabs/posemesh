@@ -1,4 +1,5 @@
     /// --- END MAIN JS WRAPPER --- ///
+
     posemeshModule.initializePosemesh = async function(baseWasmSource = undefined, mainWasmSource = undefined) {
         if (typeof baseWasmSource === 'undefined') {
             baseWasmSource = './PosemeshBase.wasm';
@@ -53,7 +54,7 @@
                     (async function() {
                         if (typeof source === 'object' && typeof source.then === 'function') {
                             if ('instantiateStreaming' in WebAssembly) {
-                                return await WebAssembly.instantiateStreaming(source, imports).exports;
+                                return (await WebAssembly.instantiateStreaming(source, imports)).instance;
                             } else {
                                 source = await source;
                             }
@@ -64,7 +65,7 @@
                         if (!(source instanceof ArrayBuffer || source instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(source)))) {
                             throw new Error('Invalid \'source\' buffer type.');
                         }
-                        return await WebAssembly.instantiate(source, imports).exports;
+                        return (await WebAssembly.instantiate(source, imports)).instance;
                     })().then(function(result) {
                         successCallback(result);
                         posemeshSignal();

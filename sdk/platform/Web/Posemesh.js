@@ -1,4 +1,4 @@
-posemeshModule.Posemesh = {};
+posemeshModule.Posemesh = null;
 
 __internalPosemeshAPI.builderFunctions.push(function(context) {
     __internalPosemesh.Posemesh.prototype.sendMessage = function(message, peerId, protocol) {
@@ -16,5 +16,5 @@ __internalPosemeshAPI.builderFunctions.push(function(context) {
         return __internalPosemeshBase.posemeshNetworkingContextSendMessage(this.__context, message, peerId, protocol, 0);
     };
 
-    Object.assign(posemeshModule.Posemesh, __internalPosemesh.Posemesh);
+    posemeshModule.Posemesh = __internalPosemesh.Posemesh;
 });

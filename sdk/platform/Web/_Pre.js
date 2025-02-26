@@ -11,4 +11,5 @@
 }(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : (typeof global !== 'undefined' ? global : this))), function() {
     let posemeshModule = {};
     let posemeshModuleCanInitialize = true;
+
     /// --- BEGIN MAIN JS WRAPPER --- ///

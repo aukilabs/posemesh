@@ -1,4 +1,4 @@
-posemeshModule.Config = {};
+posemeshModule.Config = null;
 
 __internalPosemeshAPI.builderFunctions.push(function(context) {
     __internalPosemesh.Config.prototype.getBootstraps = function() {
@@ -80,5 +80,5 @@ __internalPosemeshAPI.builderFunctions.push(function(context) {
         configurable: false
     });
 
-    Object.assign(posemeshModule.Config, __internalPosemesh.Config);
+    posemeshModule.Config = __internalPosemesh.Config;
 });
