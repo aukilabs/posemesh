@@ -73,8 +73,7 @@ message StoreDataOutputV1 {
 }
 
 message LocalRefinementOutputV1 {
-  string recording_id = 1;
-  string result_id = 2;
+  repeated string result_ids = 1;
 }
 
 enum Status {
@@ -97,7 +96,7 @@ message Task {
 }
 
 message LocalRefinementInputV1 {
-  string recording_id = 1;
+  domain_data.Query query = 1;
 }
 
 message DomainClusterHandshake {

@@ -10,6 +10,5 @@ release = false
 domain = { workspace = true }
 tokio = { workspace = true }
 networking = { workspace = true }
-protobuf = { workspace = true }
 quick-protobuf = { workspace = true }
 futures = { workspace = true }

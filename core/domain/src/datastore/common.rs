@@ -39,7 +39,7 @@ impl std::fmt::Display for DomainError {
 
 #[async_trait]
 pub trait Datastore: Send + Sync {
-    async fn consume(self: &mut Self, domain_id: String, query: domain_data::Query) -> DataReader;
+    async fn consume(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
     async fn produce(self: &mut Self, domain_id: String) -> ReliableDataProducer;
 }
 

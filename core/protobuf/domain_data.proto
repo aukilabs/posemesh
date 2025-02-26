@@ -12,8 +12,10 @@ message Metadata {
 
 message Query {
     repeated string ids = 1;
-    string name = 2;
-    string data_type = 3;
+    string name_regexp = 2;
+    string data_type_regexp = 3;
+    repeated string names = 4;
+    repeated string data_types = 5;
 }
 
 message Data {

@@ -10,7 +10,7 @@ use std::{collections::{HashMap, HashSet}, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use networking::context::Context;
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task}}};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
 use futures::{channel::mpsc::channel, executor::block_on, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
 use super::common::{Reader, ReliableDataProducer, Writer};
@@ -174,7 +174,7 @@ impl RemoteDatastore {
 
 #[async_trait]
 impl Datastore for RemoteDatastore {
-    async fn consume(&mut self, domain_id: String, query: domain_data::Query) -> DataReader
+    async fn consume(&mut self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader
     {
         let mut download_task = TaskHandler::new();
         let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
@@ -182,6 +182,10 @@ impl Datastore for RemoteDatastore {
         let mut peer = self.peer.clone();
         let domain_id = domain_id.clone();
         let query = query.clone();
+        let data = ConsumeDataInputV1 {
+            query: Some(query),
+            keep_alive,
+        };
         let job = &task::Job {
             name: "stream download domain data".to_string(),
             tasks: vec![
@@ -199,11 +203,7 @@ impl Datastore for RemoteDatastore {
                         min_gpu: 0,
                         min_cpu: 0,
                     }),
-                    // TODO: task::Any type_url
-                    data: Some(task::Any {
-                        type_url: "type.googleapis.com/posemesh.task.DownloadData".to_string(),
-                        value: serialize_into_vec(&query).unwrap(),
-                    }),
+                    data: None,
                     sender: peer_id.clone(),
                     receiver: "".to_string(),
                 }
@@ -225,14 +225,21 @@ impl Datastore for RemoteDatastore {
                             task.status = Status::STARTED;
                             let domain_id_clone = domain_id.clone();
                             peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
-                            let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
+                            let mut m_buf = serialize_into_vec(&task::DomainClusterHandshake{
                                 access_token: task.access_token.clone(),
                             }).unwrap();
                             let mut length_buf = [0u8; 4];
                             let length = m_buf.len() as u32;
                             length_buf.copy_from_slice(&length.to_be_bytes());
                             
-                            let upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
+                            let mut upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
+                            m_buf = serialize_into_vec(&data).unwrap();
+                            length_buf = [0u8; 4];
+                            let length = m_buf.len() as u32;
+                            length_buf.copy_from_slice(&length.to_be_bytes());
+                            upload_stream.write_all(&length_buf).await.expect("cant write data length");
+                            upload_stream.write_all(&m_buf).await.expect("cant write data");
+                            
                             let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
                                 RemoteDatastore::read_from_stream(domain_id_clone, reader, data_sender).await;

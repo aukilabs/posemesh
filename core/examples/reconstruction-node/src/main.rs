@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::domain_data::Query};
+use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::{domain_data::Query,task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{context, network::NetworkingConfig};
@@ -6,7 +6,6 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, time::{sleep, Duration}};
 use futures::{AsyncReadExt, StreamExt};
 use uuid::Uuid;
-use protobuf::{task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}, domain_data};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,7 +52,7 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
 
     println!("Start executing {}", claim.task_name);
 
-    let mut downloader = datastore.consume("".to_string(), Query { ids: vec![], name: None, data_type: None }).await;
+    let mut downloader = datastore.consume("".to_string(), Query { ids: vec![], name_regexp: None, data_type_regexp: None, names: vec![], data_types: vec![] }, false).await;
     loop {
         match downloader.next().await {
             Some(Ok(data)) => {
@@ -69,8 +68,7 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
     }
 
     let output = LocalRefinementOutputV1 {
-        recording_id: input.recording_id.clone(),
-        result_id: Uuid::new_v4().to_string(),
+        result_ids: vec![Uuid::new_v4().to_string()],
     };
     let event = task::Task {
         name: claim.task_name.clone(),

@@ -1,13 +1,11 @@
-use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::domain_data::Metadata};
+use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, StoreDataOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{context, event, network::{self, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, signal};
-use futures::{channel::{self, mpsc::{channel, Receiver, Sender}}, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use uuid::Uuid;
+use futures::{AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 use std::{collections::HashMap, fs::{self, OpenOptions}, io::{Read, Write}, sync::Arc};
-use protobuf::{task::{self, StoreDataOutputV1}, domain_data};
 use serde::{de, Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,12 +30,12 @@ async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::e
     let mut buffer = vec![0u8; length];
     stream.read_exact(&mut buffer).await?;
         
-    let header = deserialize_from_slice::<task::DomainClusterHandshake>(&buffer)?;
+    let header = deserialize_from_slice::<DomainClusterHandshake>(&buffer)?;
 
     decode_jwt(header.access_token.as_str())
 }
 
-async fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Context, mut notify: Sender<String>) {
+async fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Context) {
     tokio::spawn(async move {
         let claim = handshake(&mut stream).await.expect("Failed to handshake");
         let job_id = claim.job_id.clone();
@@ -90,7 +88,7 @@ async fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Co
     
                     content_file.flush().expect("Failed to flush file");
                     println!("Stored data: {}, size: {}", metadata.name, metadata.size);
-                    notify.send(path.clone()).await.expect("Failed to send notification");
+                    // notify.send(path.clone()).await.expect("Failed to send notification");
                     break;
                 }
                 let mut buffer = vec![0u8; chunk_size];
@@ -123,82 +121,97 @@ async fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Co
     });
 }
 
-async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: context::Context, listener: Arc<Mutex<Receiver<String>>>) {
-    // create domain_data directory if it doesn't exist
+async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: context::Context) {
+    let header = handshake(&mut stream).await.expect("Failed to handshake");
+
+    let mut buf = vec![];
+    stream.read_to_end(&mut buf).await.expect("Failed to read stream");
+    let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf).expect("Failed to deserialize consume data input");
+    
     std::fs::create_dir_all(format!("{}/output/domain_data", base_path)).expect("Failed to create domain_data directory");
-    tokio::spawn(async move {
-        let listener = listener.clone();
-        // keep loading files from domain_data directory, /domain_data/<data_id>/metadata.bin + /domain_data/<data_id>/content.bin
-        // write metadata.bin into protobuf and send it to the stream, send content.bin in chunks to the stream
+    // let listener = listener.clone();
+    let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path)).expect("Failed to read domain_data directory");
+    for path in paths {
+        let path = path.expect("Failed to read path").path();
+        let data_id = path.file_name().expect("Failed to get file name").to_str().expect("Failed to convert to str").to_string();
+        let metadata_path = format!("{}/metadata.bin", path.to_str().expect("Failed to convert to str"));
+        let content_path = format!("{}/content.bin", path.to_str().expect("Failed to convert to str"));
 
-        // load directories from domain_data directory
-        let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path)).expect("Failed to read domain_data directory");
-        for path in paths {
-            let path = path.expect("Failed to read path").path();
-            let data_id = path.file_name().expect("Failed to get file name").to_str().expect("Failed to convert to str").to_string();
-            let metadata_path = format!("{}/metadata.bin", path.to_str().expect("Failed to convert to str"));
-            let content_path = format!("{}/content.bin", path.to_str().expect("Failed to convert to str"));
+        let metadata_buf = std::fs::read(metadata_path).expect("Failed to read metadata");
+        let mut length_buf = [0u8; 4];
+        let length = metadata_buf.len() as u32;
+        length_buf.copy_from_slice(&length.to_be_bytes());
+        stream.write_all(&length_buf).await.expect("Failed to write length");
+        stream.write_all(&metadata_buf).await.expect("Failed to write metadata");
 
-            let metadata_buf = std::fs::read(metadata_path).expect("Failed to read metadata");
-            let mut length_buf = [0u8; 4];
-            let length = metadata_buf.len() as u32;
-            length_buf.copy_from_slice(&length.to_be_bytes());
-            stream.write_all(&length_buf).await.expect("Failed to write length");
-            stream.write_all(&metadata_buf).await.expect("Failed to write metadata");
+        let metadata = deserialize_from_slice::<Metadata>(&metadata_buf).expect("Failed to deserialize metadata");
 
-            let metadata = deserialize_from_slice::<domain_data::DomainDataMetadata>(&metadata_buf).expect("Failed to deserialize metadata");
-
-            let mut f = fs::File::open(content_path).expect("Failed to open file");
-            let mut written = 0;
-            let chunk_size = 7 * 1024;
-            loop {
-                let mut buf = vec![0; chunk_size];
-                let n = f.read(&mut buf).expect("Failed to read chunk");
-                if n == 0 {
-                    break;
-                }
-                written += n;
-                println!("Wrote chunk: {}/{}", written, metadata.size);
-                stream.write_all(&buf[..n]).await.expect("cant write chunk");
-                stream.flush().await.expect("cant flush chunk");
-            }
-        }
-
-        let mut listener = listener.lock().await;
-        // send file when listener has next notification
+        let mut f = fs::File::open(content_path).expect("Failed to open file");
+        let mut written = 0;
+        let chunk_size = 7 * 1024;
         loop {
-            match listener.next().await {
-                Some(path) => {
-                    let metadata_path = format!("{}/metadata.bin", path.clone());
-                    let metadata_buf = std::fs::read(metadata_path.clone()).expect("Failed to read metadata");
-                    let mut length_buf = [0u8; 4];
-                    let length = metadata_buf.len() as u32;
-                    length_buf.copy_from_slice(&length.to_be_bytes());
-                    stream.write_all(&length_buf).await.expect("Failed to write length");
-                    stream.write_all(&metadata_buf).await.expect("Failed to write metadata");
-
-                    let metadata = deserialize_from_slice::<domain_data::DomainDataMetadata>(&metadata_buf).expect("Failed to deserialize metadata");
-
-                    let content_path = format!("{}/content.bin", path.clone());
-                    let mut f = fs::File::open(content_path).expect("Failed to open file");
-                    let mut written = 0;
-                    let chunk_size = 7 * 1024;
-                    loop {
-                        let mut buf = vec![0; chunk_size];
-                        let n = f.read(&mut buf).expect("Failed to read chunk");
-                        if n == 0 {
-                            break;
-                        }
-                        written += n;
-                        println!("Wrote chunk: {}/{}", written, metadata.size);
-                        stream.write_all(&buf[..n]).await.expect("cant write chunk");
-                        stream.flush().await.expect("cant flush chunk");
-                    }
-                }
-                None => break,
+            let mut buf = vec![0; chunk_size];
+            let n = f.read(&mut buf).expect("Failed to read chunk");
+            if n == 0 {
+                break;
             }
+            written += n;
+            println!("Wrote chunk: {}/{}", written, metadata.size);
+            stream.write_all(&buf[..n]).await.expect("cant write chunk");
+            stream.flush().await.expect("cant flush chunk");
         }
-    });
+    }
+
+    if !input.keep_alive {
+        let task = Task {
+            name: header.task_name.clone(),
+            receiver: header.receiver.clone(),
+            sender: header.sender.clone(),
+            endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
+            status: Status::DONE,
+            access_token: "".to_string(),
+            job_id: header.job_id.clone(),
+            output: None,
+        };
+        let buf = serialize_into_vec(&task).expect("Failed to serialize task update");
+        c.publish(header.job_id.clone(), buf).await.expect("Failed to publish task update");
+        stream.close().await.expect("Failed to close stream");
+    }
+
+    // let mut listener = listener.lock().await;
+    // // send file when listener has next notification
+    // loop {
+    //     match listener.next().await {
+    //         Some(path) => {
+    //             let metadata_path = format!("{}/metadata.bin", path.clone());
+    //             let metadata_buf = std::fs::read(metadata_path.clone()).expect("Failed to read metadata");
+    //             let mut length_buf = [0u8; 4];
+    //             let length = metadata_buf.len() as u32;
+    //             length_buf.copy_from_slice(&length.to_be_bytes());
+    //             stream.write_all(&length_buf).await.expect("Failed to write length");
+    //             stream.write_all(&metadata_buf).await.expect("Failed to write metadata");
+
+    //             let metadata = deserialize_from_slice::<domain_data::DomainDataMetadata>(&metadata_buf).expect("Failed to deserialize metadata");
+
+    //             let content_path = format!("{}/content.bin", path.clone());
+    //             let mut f = fs::File::open(content_path).expect("Failed to open file");
+    //             let mut written = 0;
+    //             let chunk_size = 7 * 1024;
+    //             loop {
+    //                 let mut buf = vec![0; chunk_size];
+    //                 let n = f.read(&mut buf).expect("Failed to read chunk");
+    //                 if n == 0 {
+    //                     break;
+    //                 }
+    //                 written += n;
+    //                 println!("Wrote chunk: {}/{}", written, metadata.size);
+    //                 stream.write_all(&buf[..n]).await.expect("cant write chunk");
+    //                 stream.flush().await.expect("cant flush chunk");
+    //             }
+    //         }
+    //         None => break,
+    //     }
+    // }
 }
 /*
     * This is a simple example of a data node. It will connect to the domain manager and store and retrieve domain data.
@@ -235,8 +248,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
     let domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c.clone()));
-    let (tx, rx) = channel::<String>(100);
-    let rx = Arc::new(Mutex::new(rx));
 
     loop {
         select! {
@@ -245,15 +256,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
             Some((_, stream)) = produce_handler.next() => {
                 let c = c.clone();
-                let tx = tx.clone();
+                // let tx = tx.clone();
                 let base_path = base_path.clone();
-                store_data_v1(base_path, stream, c, tx).await;
+                store_data_v1(base_path, stream, c).await;
             }
             Some((_, stream)) = consume_handler.next() => {
                 let c = c.clone();
-                let rx = rx.clone();
+                // let rx = rx.clone();
                 let base_path = base_path.clone();
-                serve_data_v1(base_path, stream, c, rx).await;
+                tokio::spawn(serve_data_v1(base_path, stream, c.clone()));
             }
             else => break
         }
