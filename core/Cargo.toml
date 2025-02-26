@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "networking",
-    "protobuf",
     "domain",
     "runtime"
 , "examples/client", "examples/domain-manager", "examples/data-node", "examples/reconstruction-node", "base"]

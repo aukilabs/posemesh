@@ -10,8 +10,7 @@ use std::{collections::{HashMap, HashSet}, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use networking::context::Context;
-use protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task};
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::domain_data::{self, Data, Metadata}};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task}}};
 use futures::{channel::mpsc::channel, executor::block_on, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
 use super::common::{Reader, ReliableDataProducer, Writer};

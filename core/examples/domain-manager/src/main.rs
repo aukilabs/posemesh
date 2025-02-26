@@ -148,7 +148,7 @@ impl DomainManager {
         loop {
             select! {
                 Some((_, stream)) = job_handler.next() => {
-                    self.accept_job(stream).await?;
+                    self.accept_job(stream).await.expect("Error accepting job");
                 }
                 e = self.peer.poll() => {
                     match e {

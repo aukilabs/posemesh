@@ -873,7 +873,6 @@ dependencies = [
  "libp2p",
  "networking",
  "pb-rs",
- "protobuf",
  "quick-protobuf",
  "quick-protobuf-codec 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "runtime",

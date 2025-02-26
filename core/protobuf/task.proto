@@ -1,5 +1,5 @@
 syntax = "proto3";
-
+import "domain_data.proto";
 package task;
 
 message Any {
@@ -61,6 +61,11 @@ message ResourceRecruitment {
         TERMINATE = 1;  // "Terminate"
     }
     TerminationPolicy termination_policy = 2;
+}
+
+message ConsumeDataInputV1 {
+  domain_data.Query query = 1;
+  bool keep_alive = 2;
 }
 
 message StoreDataOutputV1 {
