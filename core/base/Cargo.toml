@@ -12,6 +12,7 @@ networking = { workspace = true }
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = []
-cpp = []
-rust = []
+default = ["domain/default", "networking/default"]
+cpp = ["domain/cpp", "networking/cpp"]
+rust = ["domain/rust", "networking/rust"]
+py = ["networking/py"]
