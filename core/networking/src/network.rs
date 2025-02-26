@@ -614,7 +614,7 @@ impl Networking {
         } 
     }
 
-    fn add_stream_protocol(&mut self, protocol: StreamProtocol, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+    fn add_stream_protocol(&mut self, protocol: StreamProtocol, sender: oneshot::Sender<Result<IncomingStreams, Box<dyn Error + Send + Sync>>>) {
         let proto = protocol.clone();
         let protocol_ctrl = self.swarm.behaviour_mut().streams.new_control().accept(protocol);
         if protocol_ctrl.is_err() {
@@ -623,12 +623,6 @@ impl Networking {
         }
         let incoming_stream = protocol_ctrl.unwrap();
 
-        #[cfg(target_family="wasm")]
-        wasm_bindgen_futures::spawn_local(protocol_handler(incoming_stream, proto.clone(), self.event_sender.clone()));
-
-        #[cfg(not(target_family="wasm"))]
-        tokio::spawn(protocol_handler(incoming_stream, proto.clone(), self.event_sender.clone()));
-
         let mut node = self.node.clone();
 
         node.capabilities.push(proto.to_string());
@@ -636,7 +630,7 @@ impl Networking {
         self.node = node;
         self.event_sender.try_send(event::Event::NewNodeRegistered { node: self.node.clone() }).unwrap();
 
-        let _ = sender.send(Ok(()));
+        let _ = sender.send(Ok(incoming_stream));
     }
 
     fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
@@ -691,18 +685,5 @@ async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProt
     
     if let Err(send_err) = send_response.send(Ok(stream)) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
-    }
-}
-
-async fn protocol_handler(mut incoming_stream: IncomingStreams, protocol: StreamProtocol, mut event_sender: futures::channel::mpsc::Sender<event::Event>) {
-    while let Some((peer, stream)) = incoming_stream.next().await {
-        let proto = protocol.clone();
-        let _ = event_sender
-            .send(event::Event::StreamMessageReceivedEvent { 
-                msg_reader: stream,
-                protocol: proto,
-                peer,
-             })
-            .await;
     }
 }

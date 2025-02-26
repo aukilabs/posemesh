@@ -141,21 +141,19 @@ impl DomainManager {
     }
 
     async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.peer.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
+        let mut job_handler = self.peer.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
         // periodically print latest status of tasks
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
 
         loop {
             select! {
+                Some((_, stream)) = job_handler.next() => {
+                    self.accept_job(stream).await?;
+                }
                 e = self.peer.poll() => {
                     match e {
                         Some(e) => {
                             match e {
-                                event::Event::StreamMessageReceivedEvent { msg_reader, protocol, .. } => {
-                                    if protocol.to_string() == "/jobs/v1" {
-                                        self.accept_job(msg_reader).await?;
-                                    }
-                                }
                                 event::Event::NewNodeRegistered { node } => {
                                     self.nodes.insert(node.id.clone(), node);
                                 }

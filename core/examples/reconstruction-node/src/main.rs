@@ -1,16 +1,11 @@
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::{context, event, network::{self, Node}};
+use networking::{context, network::NetworkingConfig};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{self, select, signal, time::{sleep, Duration}};
-use futures::{io::BufReader, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, StreamExt};
+use tokio::{self, select, time::{sleep, Duration}};
+use futures::{AsyncReadExt, StreamExt};
 use uuid::Uuid;
-use std::{borrow::BorrowMut, collections::HashMap, fs::{read, OpenOptions}, io::Write};
-use protobuf::{task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}, domain_data};
-use sha2::{digest::crypto_common::rand_core::le, Digest, Sha256};
-use hex;
-use std::{io, fs};
-use quick_protobuf_codec::Codec;
+use protobuf::task::{self, LocalRefinementOutputV1};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &network::NetworkingConfig{
+    let cfg = &NetworkingConfig{
         port: port,
         bootstrap_nodes: vec![domain_manager.clone()],
         enable_relay_server: false,
@@ -140,43 +135,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_mdns: false,
         relay_nodes: vec![],
         private_key: vec![],
-        private_key_path: private_key_path,
-        name: name,
-        // node_capabilities: vec![],
-        // node_types: vec!["relay".to_string()],
+        private_key_path,
+        name,
     };
     let mut c = context::context_create(cfg)?;
-    c.set_stream_handler("/local-refinement/v1".to_string()).await.unwrap();
-    c.set_stream_handler("/global-refinement/v1".to_string()).await.unwrap();
-    let mut nodes: HashMap<String, Node> = HashMap::new();
-
-    let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
+    let mut local_refinement_v1_handler = c.set_stream_handler("/local-refinement/v1".to_string()).await.unwrap();
+    let mut global_refinement_v1_handler = c.set_stream_handler("/global-refinement/v1".to_string()).await.unwrap();
 
     loop {
         select! {
-            _ = signal::ctrl_c() => {
-                break;
+            Some((_, stream)) = local_refinement_v1_handler.next() => {
+                let _ = tokio::spawn(local_refinement_v1(stream, c.clone()));
             }
-            e = c.poll() => {
-                match e {
-                    Some(e) => {
-                        match e {
-                            event::Event::StreamMessageReceivedEvent { peer, msg_reader, protocol } => {
-                                if protocol.to_string() == "/local-refinement/v1" {
-                                    local_refinement_v1(msg_reader, c.clone()).await;
-                                } else if protocol.to_string() == "/global-refinement/v1" {
-                                    global_refinement_v1(msg_reader, c.clone()).await;
-                                }
-                            }
-                            event::Event::NewNodeRegistered { node } => {
-                                println!("New node registered: {:?}", node);
-                                nodes.insert(node.id.clone(), node);
-                            }
-                            _ => {}
-                        }
-                    }
-                    None => break
-                }
+            Some((_, stream)) = global_refinement_v1_handler.next() => {
+                let _ = tokio::spawn(global_refinement_v1(stream, c.clone()));
             }
             else => break
         }

@@ -18,11 +18,6 @@ pub enum Event {
     NewNodeRegistered {
         node: crate::network::Node,
     },
-    StreamMessageReceivedEvent {
-        protocol: StreamProtocol,
-        msg_reader: Stream,
-        peer: PeerId,
-    },
     PubSubMessageReceivedEvent {
         topic: TopicHash,
         message: Vec<u8>,
@@ -72,7 +67,7 @@ impl NewNodeRegisteredEvent {
 #[pyclass]
 pub(crate) struct PubSubMessageReceivedEvent {
     pub topic: TopicHash,
-    pub result: PubsubResult,
+    pub message: Vec<u8>,
 }
 
 #[cfg(feature="py")]
