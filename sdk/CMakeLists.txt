@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.30.2 FATAL_ERROR)
 
+set(GENERATED_INTERFACE_FILES_CMAKE_FILE "${CMAKE_CURRENT_LIST_DIR}/cmake/GeneratedInterfaceFiles.cmake")
+if(NOT EXISTS "${GENERATED_INTERFACE_FILES_CMAKE_FILE}" OR IS_DIRECTORY "${GENERATED_INTERFACE_FILES_CMAKE_FILE}")
+    message(FATAL_ERROR "Required generated file 'cmake/GeneratedInterfaceFiles.cmake' is missing. Did you run 'npm run generate' in 'sdk/gentool' directory?")
+endif()
+include("${GENERATED_INTERFACE_FILES_CMAKE_FILE}")
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(Platform)
 
@@ -49,15 +55,19 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
+        "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
+        "${POSEMESH_GENERATED_CXX_SOURCES}"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
@@ -77,14 +87,17 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/API.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
+            "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
+            "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
+            "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
         set_apple_platform_umbrella_header(
@@ -103,6 +116,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+            "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
 endif()
 
@@ -141,6 +155,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"
     )
