@@ -31,7 +31,7 @@ serde-wasm-bindgen = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
 
 [features]
-default = []
+default = ["rust"]
 cpp = []
 rust = []
 py = ["dep:pyo3", "dep:pyo3-log", "dep:pyo3-asyncio"]

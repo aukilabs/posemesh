@@ -4,7 +4,7 @@ members = [
     "protobuf",
     "domain",
     "runtime"
-, "examples/client", "examples/domain-manager"]
+, "examples/client", "examples/domain-manager", "examples/reconstruction-node"]
 resolver = "2"
 
 [workspace.package]
