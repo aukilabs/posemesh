@@ -371,13 +371,13 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let cfg = config.clone();
     let mut id: String = PeerId::random().to_string();
 
-    #[cfg(any(target_family="wasm", feature="cpp", feature="rust"))]
+    #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
     let networking = Networking::new(&cfg, receiver, event_sender)?;
     
-    #[cfg(any(target_family="wasm", feature="cpp", feature="rust"))]
+    #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
     let id = networking.node.id.clone();
 
-    #[cfg(feature="py")]
+    #[cfg(any(feature="cpp", feature="py"))]
     get_runtime().block_on(async {
         let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
         id = networking.node.id.clone();
@@ -391,7 +391,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(all(any(feature="cpp", feature="rust"), not(target_arch = "wasm32")))]
+    #[cfg(all(feature="rust", not(target_arch = "wasm32"), not(any(feature="cpp", feature="py"))))]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });

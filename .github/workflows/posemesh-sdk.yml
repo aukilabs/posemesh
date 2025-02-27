@@ -28,7 +28,12 @@ jobs:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+
+      - name: Generate interfaces
+        run: |
+          cd sdk/gentool
+          npm run generate
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -120,6 +125,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Generate interfaces
+        run: |
+          cd sdk/gentool
+          npm run generate
+
       - name: Install Emscripten
         run: |
           git clone https://github.com/emscripten-core/emsdk.git
@@ -178,6 +188,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Generate interfaces and commit changes locally
+        run: |
+          cd sdk/gentool
+          npm run generate dont-gitignore-code-files
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "temp: generate interfaces (local)"
 
       - name: Install PowerShell
         run: |

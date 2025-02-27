@@ -135,14 +135,21 @@ function generateCppSource(interfaceName, interfaceJson) {
 
 function generateJsSource(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
+  const aliases = util.getLangAliases(interfaceJson, util.JS);
 
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
+  code += '\n';
+  code += `posemeshModule.${name} = null;\n`;
+  for (const alias of aliases) {
+    code += `posemeshModule.${alias} = null;\n`;
+  }
+
   let builderFunctionBody = '';
 
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.JS);
     const propStatic = util.getPropertyStatic(propertyJson);
-    const propRootObj = `${name === 'Posemesh' ? 'Posemesh' : `Posemesh.${name}`}${propStatic ? '' : '.prototype'}`;
+    const propRootObj = `__internalPosemesh.${name}${propStatic ? '' : '.prototype'}`;
     let propDef = `    Object.defineProperty(${propRootObj}, '${propName}', {\n`;
     let addPropDef = false;
     if (propertyJson.hasGetter) {
@@ -172,21 +179,12 @@ function generateJsSource(interfaceName, interfaceJson) {
     }
   }
 
-  const aliases = util.getLangAliases(interfaceJson, util.JS);
-  if (aliases.length > 0) {
-    if (builderFunctionBody.length > 0) {
-      builderFunctionBody += '\n';
-    }
-    for (const alias of aliases) {
-      if (alias === 'Posemesh') {
-        throw new Error(`Alias of a class should not be 'Posemesh'.`);
-      }
-      if (name === 'Posemesh') {
-        builderFunctionBody += `    Posemesh.${alias} = Posemesh;\n`;
-      } else {
-        builderFunctionBody += `    Posemesh.${alias} = Posemesh.${name};\n`;
-      }
-    }
+  if (builderFunctionBody.length > 0) {
+    builderFunctionBody += '\n';
+  }
+  builderFunctionBody += `    posemeshModule.${name} = __internalPosemesh.${name};\n`;
+  for (const alias of aliases) {
+    builderFunctionBody += `    posemeshModule.${alias} = __internalPosemesh.${name};\n`;
   }
 
   code += `\n`;
@@ -201,9 +199,10 @@ function generateJsSource(interfaceName, interfaceJson) {
 }
 
 function generateTransformTsDefScript(interfaceName, interfaceJson) {
+  // TODO: TEMP: this needs to be fully reworked !!!
   const name = util.getLangClassName(interfaceJson, util.JS);
   const fixFuncName = `fix${name}`;
-  const isSpecialPosemeshClass = name === 'Posemesh';
+  const isSpecialPosemeshClass = name === 'Posemesh'; // TODO: TEMP: remove, this class is no longer special !!!
   const static = util.getClassStatic(interfaceJson);
   const copyable = util.getClassCopyable(interfaceJson);
 
