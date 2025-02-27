@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -13,24 +14,30 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
+
         #container {
             position: relative;
             width: 100%;
             height: 100%;
         }
+
         #video {
             position: absolute;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: none; /* Hidden until stream starts */
+            display: none;
+            /* Hidden until stream starts */
         }
+
         #canvas {
             position: absolute;
             width: 100%;
             height: 100%;
-            display: none; /* Hidden canvas for processing */
+            display: none;
+            /* Hidden canvas for processing */
         }
+
         #status {
             position: absolute;
             top: 50%;
@@ -41,21 +48,25 @@
             padding: 10px 20px;
             border-radius: 8px;
             text-align: center;
-            text-shadow: 
-                -2px -2px 0 rgba(0,0,0,0.5),
-                2px -2px 0 rgba(0,0,0,0.5),
-                -2px 2px 0 rgba(0,0,0,0.5),
-                2px 2px 0 rgba(0,0,0,0.5);
-            display: none; /* Hidden until stream starts */
+            text-shadow:
+                -2px -2px 0 rgba(0, 0, 0, 0.5),
+                2px -2px 0 rgba(0, 0, 0, 0.5),
+                -2px 2px 0 rgba(0, 0, 0, 0.5),
+                2px 2px 0 rgba(0, 0, 0, 0.5);
+            display: none;
+            /* Hidden until stream starts */
         }
+
         .detected {
             background-color: rgba(0, 255, 0, 0.3);
             color: #00ff00;
         }
+
         .not-detected {
             background-color: rgba(255, 0, 0, 0.3);
             color: #ff0000;
         }
+
         #startButton {
             position: absolute;
             top: 50%;
@@ -69,13 +80,15 @@
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
         }
+
         #startButton:hover {
             background-color: #45a049;
             transform: translate(-50%, -50%) scale(1.05);
         }
+
         #startButton:disabled {
             background-color: #cccccc;
             cursor: not-allowed;
@@ -83,6 +96,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="container">
         <video id="video" playsinline autoplay></video>
@@ -93,6 +107,10 @@
 
     <script src="Posemesh.js"></script>
     <script>
+        let currentResizeMultiplier = 1;
+        let currentCorners = [];
+        let hasDetectedQR = false;
+
         let processingFrame = false;
 
         async function initPosemesh() {
@@ -106,7 +124,7 @@
                 if (permissionResult.state === 'granted') {
                     return true;
                 }
-                
+
                 // If not granted, request it
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -144,17 +162,17 @@
                 video.style.display = 'block';
                 document.getElementById('status').style.display = 'block';
                 document.getElementById('startButton').style.display = 'none';
-                
+
                 // Start processing frames
                 console.log("Starting frame processing...");
-                setInterval(processFrame, 1000);
+                // setInterval(processFrame, 1000);
+                setInterval(processFrameLuminance, 1000);
                 //setTimeout(processFrame, 1000);
             } catch (err) {
                 console.error('Error starting camera:', err);
                 alert('Could not start camera. Please ensure camera permissions are granted.');
             }
         }
-
 
         let image;
         function processFrame() {
@@ -169,14 +187,14 @@
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            
+
             // Match canvas size to video
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
+
             // Draw video frame to canvas
             ctx.drawImage(video, 0, 0);
-            
+
             // Get image data and convert to Vector3fArray
             const imageData = ctx.getImageData(0, 0, video.videoWidth, video.videoHeight);
             const aspectRatio = video.videoWidth / video.videoHeight;
@@ -222,7 +240,7 @@
             function printColor(vec) {
                 console.log(`(${vec.x.toFixed(2)}, ${vec.y.toFixed(2)}, ${vec.z.toFixed(2)})`);
             }
-            for(let i = 0; i < 5; i++) {
+            for (let i = 0; i < 5; i++) {
                 printColor(image.get(i));
             }
 
@@ -251,15 +269,109 @@
             processingFrame = false;
         }
 
+        function processFrameLuminance() {
+            console.log(`Processing frame... (timestamp = ${new Date().toISOString()})`);
+            if (processingFrame) {
+                console.log("Already processing frame. Skip processing.");
+                return;
+            }
+
+            processingFrame = true;
+            console.log("Processing frame...");
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            // Match canvas size to video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            let imageWidth = video.videoWidth;
+            let imageHeight = video.videoHeight;
+            const originalWidth = imageWidth;
+            const originalHeight = imageHeight;
+
+            const encodedImageInBytes = imageWidth * imageHeight * 8;
+            const currentMaxBytes = 17760256; // bytes, value taken from error message
+            const diff = currentMaxBytes - encodedImageInBytes;
+            console.log(`Encoded size will be ${(encodedImageInBytes / 1000000).toFixed(2)} MB, limit is ${currentMaxBytes / 1000000} MB.`);
+            if (diff < 0) {
+                const aspectRatio = originalWidth / originalHeight;
+                imageWidth = imageWidth / 4; // WIP: Downsample 5 times (should be calculated).
+                imageHeight = imageWidth / aspectRatio;
+                console.log(`Resizing image ${originalWidth}x${originalHeight} -> ${imageWidth}x${imageHeight} (${(imageWidth * imageHeight * 8 / 1000000).toFixed(2)} MB)`);
+                console.log(`Don't forget to scale the corner coordinates by a factor of ${originalWidth / imageWidth}!`);
+            }
+
+            canvas.width = imageWidth;
+            canvas.height = imageHeight;
+            ctx.drawImage(video, 0, 0, imageWidth, imageHeight);
+          
+            currentResizeMultiplier = originalWidth / imageWidth;
+
+            processImageDataBytes(ctx.getImageData(0, 0, imageWidth, imageHeight), imageWidth, imageHeight);
+            processingFrame = false;
+        };
+
+        function getGreyEncodedImage(imageData, width, height) {
+            const startTime = performance.now();
+            const byteData = imageData.data;
+            const greyEncodedImageData = new Posemesh.VectorUint8();
+            for (let i = 0; i < 4 * width * height; i += 4) { // 4 for each RGBA component.
+                const greyValue = 0.299 * (byteData[i + 2] / 255.0) + 0.587 * (byteData[i + 1] / 255.0) + 0.114 * (byteData[i] / 255.0);
+                greyEncodedImageData.push_back(greyValue * 255.0);
+            }
+
+            const endTime = performance.now();
+            console.log(`Encoding image data took ${(endTime - startTime).toFixed(2)}ms`);
+            return greyEncodedImageData;
+        }
+
+        function processImageDataBytes(imageData, width, height) {
+            const imageBytes = getGreyEncodedImage(imageData, width, height);
+            const contents = new Posemesh.VectorString();
+            const corners = new Posemesh.Vector2fArray();
+
+            const startTime = performance.now();
+            const detected = Posemesh.QRDetection.detectQRFromLuminance(imageBytes, width, height, contents, corners);
+            const endTime = performance.now();
+
+            console.log(`QR detection took ${(endTime - startTime).toFixed(2)}ms`);
+            console.log("detected? = ", detected);
+
+            hasDetectedQR = detected;
+            if (detected) {
+                console.log(`Found contents = ${contents.get(0)}`);
+                currentCorners = [];
+                for (let i = 0; i < 4; i++) {
+                    currentCorners.push({ x: corners.get(i).x, y: corners.get(i).y });
+                }
+            }
+
+            // Update status display
+            const status = document.getElementById('status');
+            if (detected) {
+                status.textContent = 'QR Code Detected';
+                status.className = 'detected';
+            } else {
+                status.textContent = 'No QR Code Detected';
+                status.className = 'not-detected';
+            }
+
+            imageBytes.delete();
+            contents.delete();
+            corners.delete();
+        }
+
         // Initialize
         initPosemesh();
-        
+
         // Add click handler to start button
         document.getElementById('startButton').onclick = async () => {
             const button = document.getElementById('startButton');
             button.disabled = true;
             button.textContent = 'Requesting Permission...';
-            
+
             if (await requestCameraPermission()) {
                 startCamera();
             } else {
@@ -270,4 +382,5 @@
         };
     </script>
 </body>
+
 </html>
