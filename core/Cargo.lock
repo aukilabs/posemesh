@@ -592,7 +592,6 @@ dependencies = [
  "domain",
  "futures",
  "networking",
- "protobuf",
  "quick-protobuf",
  "tokio",
 ]
@@ -783,7 +782,6 @@ dependencies = [
  "jsonwebtoken",
  "libp2p",
  "networking",
- "protobuf",
  "quick-protobuf",
  "serde",
  "tokio",
@@ -892,12 +890,12 @@ dependencies = [
 name = "domain-manager"
 version = "0.1.0"
 dependencies = [
+ "domain",
  "futures",
  "hex",
  "jsonwebtoken",
  "libp2p",
  "networking",
- "protobuf",
  "quick-protobuf",
  "serde",
  "sha2",
@@ -3055,15 +3053,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "protobuf"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "quick-protobuf",
-]
-
-[[package]]
 name = "pyo3"
 version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3335,7 +3324,6 @@ dependencies = [
  "jsonwebtoken",
  "libp2p",
  "networking",
- "protobuf",
  "quick-protobuf",
  "rand 0.9.0",
  "serde",

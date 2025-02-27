@@ -56,7 +56,7 @@ impl InnerDomainCluster {
                                                 from: from,
                                                 result: TaskUpdateResult::Ok(task.clone()),
                                             }).await {
-                                                println!("Error sending task update: {:?}", e);
+                                                tracing::error!("Error sending task update: {:?}", e);
                                                 task.status = Status::FAILED;
                                                 self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
                                             }

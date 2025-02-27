@@ -490,8 +490,7 @@ impl MessageWrite for StoreDataOutputV1 {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct LocalRefinementOutputV1 {
-    pub recording_id: String,
-    pub result_id: String,
+    pub result_ids: Vec<String>,
 }
 
 impl<'a> MessageRead<'a> for LocalRefinementOutputV1 {
@@ -499,8 +498,7 @@ impl<'a> MessageRead<'a> for LocalRefinementOutputV1 {
         let mut msg = Self::default();
         while !r.is_eof() {
             match r.next_tag(bytes) {
-                Ok(10) => msg.recording_id = r.read_string(bytes)?.to_owned(),
-                Ok(18) => msg.result_id = r.read_string(bytes)?.to_owned(),
+                Ok(10) => msg.result_ids.push(r.read_string(bytes)?.to_owned()),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -512,13 +510,11 @@ impl<'a> MessageRead<'a> for LocalRefinementOutputV1 {
 impl MessageWrite for LocalRefinementOutputV1 {
     fn get_size(&self) -> usize {
         0
-        + if self.recording_id == String::default() { 0 } else { 1 + sizeof_len((&self.recording_id).len()) }
-        + if self.result_id == String::default() { 0 } else { 1 + sizeof_len((&self.result_id).len()) }
+        + self.result_ids.iter().map(|s| 1 + sizeof_len((s).len())).sum::<usize>()
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
-        if self.recording_id != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.recording_id))?; }
-        if self.result_id != String::default() { w.write_with_tag(18, |w| w.write_string(&**&self.result_id))?; }
+        for s in &self.result_ids { w.write_with_tag(10, |w| w.write_string(&**s))?; }
         Ok(())
     }
 }
@@ -586,7 +582,7 @@ impl MessageWrite for Task {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct LocalRefinementInputV1 {
-    pub recording_id: String,
+    pub query: Option<domain_data::Query>,
 }
 
 impl<'a> MessageRead<'a> for LocalRefinementInputV1 {
@@ -594,7 +590,7 @@ impl<'a> MessageRead<'a> for LocalRefinementInputV1 {
         let mut msg = Self::default();
         while !r.is_eof() {
             match r.next_tag(bytes) {
-                Ok(10) => msg.recording_id = r.read_string(bytes)?.to_owned(),
+                Ok(10) => msg.query = Some(r.read_message::<domain_data::Query>(bytes)?),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -606,11 +602,11 @@ impl<'a> MessageRead<'a> for LocalRefinementInputV1 {
 impl MessageWrite for LocalRefinementInputV1 {
     fn get_size(&self) -> usize {
         0
-        + if self.recording_id == String::default() { 0 } else { 1 + sizeof_len((&self.recording_id).len()) }
+        + self.query.as_ref().map_or(0, |m| 1 + sizeof_len((m).get_size()))
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
-        if self.recording_id != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.recording_id))?; }
+        if let Some(ref s) = self.query { w.write_with_tag(10, |w| w.write_message(s))?; }
         Ok(())
     }
 }

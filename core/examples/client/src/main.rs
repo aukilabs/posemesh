@@ -1,10 +1,9 @@
 use networking::{context, network};
 use tokio;
-use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}};
+use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Data, Metadata, Query}};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
@@ -81,11 +80,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     content
                 };
 
-                println!("Pushing data {}", data.metadata.name);
                 let id = producer.push(&data).await.expect("cant push data");
 
                 let input = task::LocalRefinementInputV1 {
-                    recording_id: id.clone(),
+                    query: Some(Query {
+                        ids: vec![id.clone()],
+                        name_regexp: None,
+                        data_type_regexp: None,
+                        names: vec![],
+                        data_types: vec![],
+                    }),
                 };
                 let task = task::TaskRequest {
                     needs: vec![],
@@ -123,10 +127,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     producer.close().await;
     
     let dependencies = uploaded.iter().map(|t| t.name.clone()).collect::<Vec<String>>();
-    // let output = uploaded.iter().map(|t| LocalRefinementOutputV1 {
-    //     recording_id: format!("${{tasks.{}.outputs.recording_id}}", t.name.clone()),
-    //     result_id: format!("${{tasks.{}.outputs.result_id}}", t.name.clone()),
-    // }).collect::<Vec<task::LocalRefinementOutputV1>>();
     uploaded.push(task::TaskRequest {
         needs: dependencies,
         resource_recruitment: Some(task::ResourceRecruitment {

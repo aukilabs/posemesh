@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::domain_data::Query};
+use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::{domain_data::Query,task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{context, network::NetworkingConfig};
@@ -6,7 +6,6 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, time::{sleep, Duration}};
 use futures::{AsyncReadExt, StreamExt};
 use uuid::Uuid;
-use protobuf::task::{self, LocalRefinementOutputV1};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,7 +31,6 @@ async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::e
     stream.read_exact(&mut buffer).await?;
         
     let header = deserialize_from_slice::<task::DomainClusterHandshake>(&buffer)?;
-    println!("Received handshake: {:?}", header);
 
     decode_jwt(header.access_token.as_str())
 }
@@ -53,7 +51,7 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
 
     println!("Start executing {}", claim.task_name);
 
-    let mut downloader = datastore.consume("".to_string(), Query { ids: vec![], name: None, data_type: None }).await;
+    let mut downloader = datastore.consume("".to_string(), Query { ids: vec![Uuid::new_v4().to_string()], name_regexp: None, data_type_regexp: None, names: vec![], data_types: vec![] }, false).await;
     loop {
         match downloader.next().await {
             Some(Ok(data)) => {
@@ -63,14 +61,15 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
                 println!("Error: {:?}", e);
             }
             None => {
+                println!("No more data");
                 break;
             }
         }
     }
+    println!("Finished downloading {}", claim.task_name);
 
     let output = LocalRefinementOutputV1 {
-        recording_id: input.recording_id.clone(),
-        result_id: Uuid::new_v4().to_string(),
+        result_ids: vec![Uuid::new_v4().to_string()],
     };
     let event = task::Task {
         name: claim.task_name.clone(),
