@@ -90,7 +90,12 @@ function(MERGE_FILES NAME)
         math(EXPR FOREACH_INDEX_NEXT "${FOREACH_INDEX} + 1")
         list(GET INPUT_TUPLES ${FOREACH_INDEX_NEXT} IS_TARGET)
         if(IS_TARGET)
-            list(APPEND COMMAND_ARGS "$<TARGET_FILE:${TARGET_OR_FILE}>")
+            get_target_property(CUSTOM_TARGET_OUTPUT ${TARGET_OR_FILE} CUSTOM_TARGET_OUTPUT)
+            if(CUSTOM_TARGET_OUTPUT)
+                list(APPEND COMMAND_ARGS "${CUSTOM_TARGET_OUTPUT}")
+            else()
+                list(APPEND COMMAND_ARGS "$<TARGET_FILE:${TARGET_OR_FILE}>")
+            endif()
             list(APPEND DEPENDS_ARGS "${TARGET_OR_FILE}")
         else()
             list(APPEND COMMAND_ARGS "${TARGET_OR_FILE}")
@@ -129,5 +134,10 @@ function(MERGE_FILES NAME)
         ${NAME} ALL
         DEPENDS
             "${OUTPUT_ABSOLUTE}"
+    )
+    set_target_properties(
+        ${NAME}
+        PROPERTIES
+            CUSTOM_TARGET_OUTPUT "${OUTPUT_ABSOLUTE}"
     )
 endfunction()

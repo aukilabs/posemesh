@@ -4,7 +4,7 @@ members = [
     "protobuf",
     "domain",
     "runtime"
-, "examples/client", "examples/domain-manager", "examples/reconstruction-node"]
+, "examples/client", "examples/domain-manager", "examples/reconstruction-node", "base"]
 resolver = "2"
 
 [workspace.package]
@@ -32,3 +32,4 @@ protobuf = { path = "protobuf" }
 networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
+base = { path = "base" }

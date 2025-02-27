@@ -124,7 +124,7 @@ Switch($Platform) {
         }
         $RustToolchain = '1.81.0'
         $RustTarget = 'wasm32-unknown-unknown'
-        $WASMTarget = 'no-modules'
+        $WASMTarget = 'bundler'
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -188,6 +188,9 @@ If(-Not $CargoCommand) {
     Exit 1
 }
 
+$NewCC = $Null
+$NewCXX = $Null
+
 $WASMPackCommand = $Null
 If($RustTarget -Eq 'wasm32-unknown-unknown') {
     $WASMPackCommand = (Get-Command -Name 'wasm-pack') 2> $Null
@@ -195,10 +198,54 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
         Write-Error -Message "Could not find 'wasm-pack' command. Is WASM-Pack installed on your machine?"
         Exit 1
     }
+    If($IsMacOS) {
+        $BrewCommand = (Get-Command -Name 'brew') 2> $Null
+        If(-Not $BrewCommand) {
+            Write-Error -Message "Could not find 'brew' command. Is Homebrew installed on your machine?"
+            Exit 1
+        }
+        $BrewListResult = (& $BrewCommand list llvm) 2> $Null
+        If($LastExitCode -Ne 0) {
+            Write-Error -Message "Could not find 'llvm' package. Is LLVM installed on your machine via Homebrew? If not, please run the 'brew install llvm' command."
+            Exit 1
+        }
+        $BrewListVersionsResult = & $BrewCommand list --versions llvm
+        $FoundGreatestVersionNumber = $Null
+        ForEach($PotentialVersionNumber In ($BrewListVersionsResult -Split ' ')) {
+            Try {
+                $VersionNumber = [System.Version]$PotentialVersionNumber
+                If($FoundGreatestVersionNumber) {
+                    If($VersionNumber -Gt $FoundGreatestVersionNumber) {
+                        $FoundGreatestVersionNumber = $VersionNumber
+                    }
+                } Else {
+                    $FoundGreatestVersionNumber = $VersionNumber
+                }
+            } Catch {
+                Continue
+            }
+        }
+        If($FoundGreatestVersionNumber) {
+            $MinRequiredVersionNumber = [System.Version]'16.0.0'
+            If($MinRequiredVersionNumber -Gt $FoundGreatestVersionNumber) {
+                Write-Error -Message "Minimum required LLVM package version is $MinRequiredVersionNumber but the installed version is $FoundGreatestVersionNumber. Please run the 'brew upgrade llvm' command."
+                Exit 1
+            }
+        } Else {
+            Write-Error -Message 'Could not determine the installed LLVM package version.'
+            Exit 1
+        }
+        $PkgDirPrefix = & $BrewCommand --prefix llvm
+        $NewCC = "$PkgDirPrefix/bin/clang"
+        $NewCXX = "$PkgDirPrefix/bin/clang++"
+    }
 } ElseIf(($RustTarget -Match "^wasm32-") -Or ($RustTarget -Match "^wasm64-")) {
     Write-Error -Message "Unsupported Rust '$RustTarget' web target."
     Exit 1
 }
+
+$OldCC = $env:CC
+$OldCXX = $env:CXX
 
 $PushLocationResult = (Push-Location -Path "$PSScriptRoot/.." -PassThru) 2> $Null
 If(-Not $PushLocationResult) {
@@ -206,6 +253,12 @@ If(-Not $PushLocationResult) {
     Exit 1
 }
 Try {
+    If($NewCC) {
+        $env:CC = $NewCC
+    }
+    If($NewCXX) {
+        $env:CXX = $NewCXX
+    }
     $RustToolchainList = & $RustUpCommand toolchain list
     $RustToolchainInstalled = $False
     ForEach($RustToolchainListItem In $RustToolchainList) {
@@ -255,7 +308,7 @@ Try {
         & $CargoCommand "+$RustToolchain" build --target $RustTarget @($RustBuildTypeFlag | Where-Object { $_ }) --features "cpp" --package $Package
     }
     If($LastExitCode -Ne 0) {
-        Write-Error -Message 'Failed to build Posemesh Networking library.'
+        Write-Error -Message 'Failed to build Posemesh Core library.'
         Exit 1
     }
     If(-Not $WASMPackCommand) {
@@ -279,5 +332,11 @@ Try {
         }
     }
 } Finally {
+    If($NewCC) {
+        $env:CC = $OldCC
+    }
+    If($NewCXX) {
+        $env:CXX = $OldCXX
+    }
     Pop-Location
 }

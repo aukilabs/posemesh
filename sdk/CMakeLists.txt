@@ -108,16 +108,19 @@ endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 
-include(LinkNetworkingLibrary)
-link_networking_library(Posemesh)
+include(LinkBaseLibrary)
+link_base_library(Posemesh)
 
 include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
 
-include(LinkDomainLibrary)
-link_domain_library(Posemesh)
-
 if(EMSCRIPTEN)
+    include(ReplaceJavaScriptSymbols)
+    replace_javascript_symbols(
+        Posemesh_ReplacedJavaScriptSymbols
+        "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_ReplacedJavaScriptSymbols.js"
+        Posemesh
+    )
     configure_file(
         "${CMAKE_CURRENT_LIST_DIR}/platform/Web/VerifyCommitId.js.in"
         "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
@@ -130,12 +133,16 @@ if(EMSCRIPTEN)
         PREPEND_STRING "/* Copyright (c) Auki Labs Limited ${POSEMESH_COPYRIGHT_YEAR}, ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}, ${POSEMESH_COMMIT_ID} */"
         NEW_LINE_AFTER_PREPENDED_STRING
         INPUTS
-            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
-            Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Pre.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_PosemeshBasePre.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshBase_TextReplaced.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_PosemeshBasePost.js"
+            Posemesh_ReplacedJavaScriptSymbols
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"
     )
     if(USE_BABEL_JS)
         include(TranspileMinifyJavaScript)
