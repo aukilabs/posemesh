@@ -52,7 +52,11 @@ var Posemesh = {
                     Posemesh.Vector2fArray = mainModule.Vector2fArray;
                     Posemesh.Vector3f = mainModule.Vector3f;
                     Posemesh.Vector3fArray = mainModule.Vector3fArray;
+                    Posemesh.Vector4f = mainModule.Vector4f;
                     Posemesh.Matrix3x3f = mainModule.Matrix3x3f;
+                    Posemesh.Matrix4x4f = mainModule.Matrix4x4f;
+                    Posemesh.VectorUint8 = mainModule.VectorUint8;
+                    Posemesh.VectorString = mainModule.VectorString;
                     Posemesh.PoseEstimation = mainModule.PoseEstimation;
                     Posemesh.QRDetection = mainModule.QRDetection;
                     for (let builderFunction of __internalPosemeshAPI.builderFunctions) {
