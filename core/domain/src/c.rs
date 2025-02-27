@@ -9,8 +9,7 @@ use runtime::get_runtime;
 use tokio::sync::mpsc;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::Datastore;
-use crate::remote::RemoteDatastore;
+use crate::datastore::{common::Datastore, remote::RemoteDatastore};
 use crate::binding_helper::init_r_remote_storage;
 use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
 
@@ -216,12 +215,12 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper) {
 }
 
 pub struct DatastoreWrapper {
-    pub store: Box<dyn Datastore>,
+    pub inner: Box<dyn Datastore>,
 }
 
 impl DatastoreWrapper {
     fn new(store: Box<dyn Datastore>) -> Self {
-        DatastoreWrapper { store }
+        DatastoreWrapper { inner: store }
     }
 }
 
@@ -252,7 +251,7 @@ pub extern "C" fn find_domain_data(
 
     // Spawn a Tokio task to process the receiver
     get_runtime().spawn(async move {
-        let stream = store_wrapper.store.find(domain_id, query_clone).await;
+        let stream = store_wrapper.inner.consume(domain_id, query_clone).await;
         let mut stream = Box::pin(stream);
 
         while let Some(result) = stream.next().await {

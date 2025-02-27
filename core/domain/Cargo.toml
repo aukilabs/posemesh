@@ -12,22 +12,30 @@ pb-rs = "0.10.0"
 futures = { workspace = true } 
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-networking = { workspace = true, features = ["rust"] }
 protobuf = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
 async-trait = "0.1.86"
 jsonwebtoken = "9.3.0"
+tracing = { workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
 tokio = { workspace = true, features = ["full"] }
 runtime = { workspace = true }
+networking = { workspace = true, features = ["rust"] }
+uuid = { version = "1.13.2", features = ["v4"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-libp2p = { workspace = true, features = [ "tokio", "gossipsub" ] }
+libp2p = { workspace = true, features = [ "wasm-bindgen", "gossipsub" ] }
+serde-wasm-bindgen = { workspace = true }
+networking = { workspace = true }
+uuid = { version = "1.13.2", features = ["v4", "js"] }
+tracing-wasm = { workspace = true }
+console_error_panic_hook = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]

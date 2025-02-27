@@ -5,6 +5,7 @@ on:
       - '**/examples/**'
       - '*.md'
       - '.vscode/**'
+      - '.github/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,9 +15,6 @@ jobs:
   build_apple_frameworks:
     name: Build Apple SDK
     runs-on: [self-hosted, macOS]
-    env:
-      CC_x86_64-apple-ios-macabi: "clang"
-      CC_x86_64_apple_ios_macabi: "clang"
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +32,9 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      
+      - name: check clang version
+        run: clang --version
 
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4
@@ -41,7 +42,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 
@@ -49,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./core/target
-          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
@@ -137,7 +138,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ./core/target
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 

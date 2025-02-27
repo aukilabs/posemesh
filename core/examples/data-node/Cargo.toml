@@ -1,0 +1,17 @@
+[package]
+name = "data-node"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
+networking = { workspace = true, features = ["rust"] }
+quick-protobuf = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+protobuf = { workspace = true }
+jsonwebtoken = "9.3.0"
+uuid = "1.13.2"
+domain = {workspace = true}
