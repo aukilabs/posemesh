@@ -12,6 +12,25 @@ const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Posemesh'
 ]);
 
+const args = process.argv.slice(2);
+
+if (args.length > 1) {
+    console.error('Invalid usage.');
+    process.exit(1);
+    return;
+}
+
+const [option] = args;
+let dontGitignoreCodeFiles = false;
+if (typeof option !== 'undefined') {
+  if (option !== 'dont-gitignore-code-files') {
+    console.error('Invalid usage.');
+    process.exit(1);
+    return;
+  }
+  dontGitignoreCodeFiles = true;
+}
+
 function validateInterfaceRecursive(path, interfaceName, json) {
   if (Array.isArray(json)) {
     let index = 0;
@@ -100,10 +119,12 @@ function generate() {
   gitignore += '\n';
   gitignore += '# CMake files\n';
   gitignore += '/cmake/GeneratedInterfaceFiles.cmake\n';
-  gitignore += '\n';
-  gitignore += '# Generated Apple umbrella and bridging headers\n';
-  gitignore += '/platform/Apple/include/Posemesh/Posemesh-Umbrella-Header.h\n';
-  gitignore += '/platform/Apple/src/Posemesh-Bridging-Header.h\n';
+  if (!dontGitignoreCodeFiles) {
+    gitignore += '\n';
+    gitignore += '# Generated Apple umbrella and bridging headers\n';
+    gitignore += '/platform/Apple/include/Posemesh/Posemesh-Umbrella-Header.h\n';
+    gitignore += '/platform/Apple/src/Posemesh-Bridging-Header.h\n';
+  }
   let generatedCHeaders = new Set([]);
   let generatedCXXHeaders = new Set([]);
   let generatedCSources = new Set([]);
@@ -127,28 +148,31 @@ function generate() {
     } catch (error) {
       console.error(`Failed to generate '${interfaceName}.json' interface code:\n`, error);
     }
-    gitignore += '\n';
-    gitignore += `# Generated ${interfaceName} files\n`;
 
-    // C
-    gitignore += `/include/Posemesh/C/${interfaceName}.h\n`;
-    gitignore += `/src/C/${interfaceName}.cpp\n`;
+    if (!dontGitignoreCodeFiles) {
+      gitignore += '\n';
+      gitignore += `# Generated ${interfaceName} files\n`;
 
-    // CXX
-    gitignore += `/include/Posemesh/${interfaceName}.hpp\n`;
-    gitignore += `/src/${interfaceName}.gen.cpp\n`;
+      // C
+      gitignore += `/include/Posemesh/C/${interfaceName}.h\n`;
+      gitignore += `/src/C/${interfaceName}.cpp\n`;
 
-    // JS
-    gitignore += `/platform/Web/transform-typescript-definition-${interfaceName}.js\n`;
-    gitignore += `/platform/Web/${interfaceName}.js\n`;
-    gitignore += `/platform/Web/src/${interfaceName}.cpp\n`;
+      // CXX
+      gitignore += `/include/Posemesh/${interfaceName}.hpp\n`;
+      gitignore += `/src/${interfaceName}.gen.cpp\n`;
 
-    // ObjC
-    gitignore += `/platform/Apple/include/Posemesh/${interfaceName}.h\n`;
-    gitignore += `/platform/Apple/src/${interfaceName}.mm\n`;
+      // JS
+      gitignore += `/platform/Web/transform-typescript-definition-${interfaceName}.js\n`;
+      gitignore += `/platform/Web/${interfaceName}.js\n`;
+      gitignore += `/platform/Web/src/${interfaceName}.cpp\n`;
 
-    // Swift
-    gitignore += `/platform/Apple/src/${interfaceName}.swift\n`;
+      // ObjC
+      gitignore += `/platform/Apple/include/Posemesh/${interfaceName}.h\n`;
+      gitignore += `/platform/Apple/src/${interfaceName}.mm\n`;
+
+      // Swift
+      gitignore += `/platform/Apple/src/${interfaceName}.swift\n`;
+    }
 
     // Generated files
     generatedCHeaders.add(`/include/Posemesh/C/${interfaceName}.h`);
@@ -175,7 +199,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_C_HEADERS\n';
   for (const generatedCHeader of Array.from(generatedCHeaders).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedCHeader}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedCHeader}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -184,7 +208,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_CXX_HEADERS\n';
   for (const generatedCXXHeader of Array.from(generatedCXXHeaders).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedCXXHeader}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedCXXHeader}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -193,7 +217,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_C_SOURCES\n';
   for (const generatedCSource of Array.from(generatedCSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedCSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedCSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -202,7 +226,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_CXX_SOURCES\n';
   for (const generatedCXXSource of Array.from(generatedCXXSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedCXXSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedCXXSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -211,7 +235,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_OBJC_HEADERS\n';
   for (const generatedObjCHeader of Array.from(generatedObjCHeaders).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedObjCHeader}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedObjCHeader}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -220,7 +244,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_OBJC_SOURCES\n';
   for (const generatedObjCSource of Array.from(generatedObjCSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedObjCSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedObjCSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -229,7 +253,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_SWIFT_SOURCES\n';
   for (const generatedSwiftSource of Array.from(generatedSwiftSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedSwiftSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedSwiftSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -238,7 +262,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_WEB_CXX_SOURCES\n';
   for (const generatedWebCXXSource of Array.from(generatedWebCXXSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedWebCXXSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedWebCXXSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
@@ -247,7 +271,7 @@ function generate() {
   generatedInterfaceFilesCMakeContent += 'list(\n';
   generatedInterfaceFilesCMakeContent += '    APPEND POSEMESH_GENERATED_WEB_JS_SOURCES\n';
   for (const generatedWebJSSource of Array.from(generatedWebJSSources).sort()) {
-    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}${generatedWebJSSource}"\n`;
+    generatedInterfaceFilesCMakeContent += `        "\${CMAKE_CURRENT_LIST_DIR}/..${generatedWebJSSource}"\n`;
   }
   generatedInterfaceFilesCMakeContent += ')\n';
 
