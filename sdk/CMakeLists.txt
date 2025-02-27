@@ -114,6 +114,7 @@ elseif(EMSCRIPTEN)
         Posemesh
         CXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API2.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
@@ -153,6 +154,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_PosemeshBasePost.js"
             Posemesh_ReplacedJavaScriptSymbols
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API2.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
