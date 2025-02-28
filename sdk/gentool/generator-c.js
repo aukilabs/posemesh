@@ -1,10 +1,11 @@
-const fs = require('fs');
 const path = require('path');
 const util = require('./util');
 
 function generateHeader(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
+  const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
+  const nameRef = `${nameRefWithoutTSuffix}_t`;
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const headerGuardName = util.getHeaderGuardName(interfaceJson);
   const headerGuard = `__POSEMESH_C_${headerGuardName}_H__`;
@@ -19,15 +20,29 @@ function generateHeader(interfaceName, interfaceJson) {
   code += `#define ${headerGuard}\n`;
   code += '%INCLUDES%\n';
   code += '#if defined(__cplusplus)\n';
+  if (!static) {
+    code += `#include <memory>\n`;
+  }
   code += `namespace psm {\n`;
   code += `class ${nameCxx};\n`;
   code += `}\n`;
   code += `typedef psm::${nameCxx} ${name};\n`;
+  if (!static) {
+    code += `typedef std::shared_ptr<${name}> ${nameRef};\n`;
+  }
   code += '#else\n';
   code += `typedef struct ${nameWithoutTSuffix} ${name};\n`;
+  if (!static) {
+    code += `typedef struct ${nameRefWithoutTSuffix} ${nameRef};\n`;
+  }
   code += '#endif\n';
   for (const alias of util.getLangAliases(interfaceJson, util.C)) {
     code += `typedef ${name} ${alias};\n`;
+  }
+  if (!static) {
+    for (const alias of util.getLangAliases(interfaceJson, util.C)) {
+      code += `typedef ${nameRef} ${alias.substring(0, alias.length - 2)}_ref_t;\n`;
+    }
   }
 
   code += `\n`;
@@ -177,6 +192,31 @@ function generateHeader(interfaceName, interfaceJson) {
     code += public;
   }
 
+  if (!static) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    code += `\n`;
+    code += `${nameRef}* PSM_API ${nameRefWithoutTSuffix}_make(${name}* ${mainArgName});\n`;
+    funcAliases.push({
+      name: `${nameRefWithoutTSuffix}_make`,
+      args: [mainArgName]
+    });
+    code += `${nameRef}* PSM_API ${nameRefWithoutTSuffix}_clone(const ${nameRef}* ${mainArgName}_ref);\n`;
+    funcAliases.push({
+      name: `${nameRefWithoutTSuffix}_clone`,
+      args: [`${mainArgName}_ref`]
+    });
+    code += `${name}* PSM_API ${nameRefWithoutTSuffix}_get(const ${nameRef}* ${mainArgName}_ref);\n`;
+    funcAliases.push({
+      name: `${nameRefWithoutTSuffix}_get`,
+      args: [`${mainArgName}_ref`]
+    });
+    code += `void PSM_API ${nameRefWithoutTSuffix}_delete(${nameRef}* ${mainArgName}_ref);\n`;
+    funcAliases.push({
+      name: `${nameRefWithoutTSuffix}_delete`,
+      args: [`${mainArgName}_ref`]
+    });
+  }
+
   code += `\n`;
   code += '#if defined(__cplusplus)\n';
   code += '}\n';
@@ -228,6 +268,8 @@ function generateHeader(interfaceName, interfaceJson) {
 function generateSource(interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
+  const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
+  const nameRef = `${nameRefWithoutTSuffix}_t`;
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const static = util.getClassStatic(interfaceJson);
   const copyable = util.getClassCopyable(interfaceJson);
@@ -489,6 +531,43 @@ function generateSource(interfaceName, interfaceJson) {
     code += private;
   }
 
+  if (!static) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    code += `\n`;
+    code += `${nameRef}* ${nameRefWithoutTSuffix}_make(${name}* ${mainArgName})\n`;
+    code += `{\n`;
+    code += `    return new (std::nothrow) ${nameRef}(${mainArgName}, &${nameWithoutTSuffix}_destroy);\n`;
+    code += `}\n`;
+
+    includesFirst.add('#include <new>');
+
+    code += `\n`;
+    code += `${nameRef}* ${nameRefWithoutTSuffix}_clone(const ${nameRef}* ${mainArgName}_ref)\n`;
+    code += `{\n`;
+    code += `    if (!${mainArgName}_ref) {\n`;
+    code += `        return nullptr;\n`;
+    code += `    }\n`;
+    code += `    return new (std::nothrow) ${nameRef}(*${mainArgName}_ref);\n`;
+    code += `}\n`;
+
+    includesFirst.add('#include <new>');
+
+    code += `\n`;
+    code += `${name}* ${nameRefWithoutTSuffix}_get(const ${nameRef}* ${mainArgName}_ref)\n`;
+    code += `{\n`;
+    code += `    if (!${mainArgName}_ref) {\n`;
+    code += `        return nullptr;\n`;
+    code += `    }\n`;
+    code += `    return ${mainArgName}_ref->get();\n`;
+    code += `}\n`;
+
+    code += `\n`;
+    code += `void ${nameRefWithoutTSuffix}_delete(${nameRef}* ${mainArgName}_ref)\n`;
+    code += `{\n`;
+    code += `    delete ${mainArgName}_ref;\n`;
+    code += `}\n`;
+  }
+
   includesFirst = Array.from(includesFirst).sort();
   includesSecond = Array.from(includesSecond).sort();
   let includes = '';
@@ -516,8 +595,8 @@ function generateInterfaceC(interfaceName, interfaceJson) {
   let headerCode = generateHeader(interfaceName, interfaceJson);
   let sourceCode = generateSource(interfaceName, interfaceJson);
 
-  fs.writeFileSync(headerFilePath, headerCode, 'utf8');
-  fs.writeFileSync(sourceFilePath, sourceCode, 'utf8');
+  util.writeFileContentIfDifferent(headerFilePath, headerCode);
+  util.writeFileContentIfDifferent(sourceFilePath, sourceCode);
 }
 
 module.exports = generateInterfaceC;

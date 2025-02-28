@@ -56,14 +56,14 @@ impl InnerDomainCluster {
                                                 from: from,
                                                 result: TaskUpdateResult::Ok(task.clone()),
                                             }).await {
-                                                println!("Error sending task update: {:?}", e);
+                                                tracing::error!("Error sending task update: {:?}", e);
                                                 task.status = Status::FAILED;
                                                 self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
                                             }
                                         }
                                     }
                                     PubsubResult::Err(e) => {
-                                        println!("Error receiving message: {:?}", e);
+                                        eprintln!("Error receiving message: {:?}", e);
                                     }
                                 }
                             }
@@ -84,7 +84,6 @@ impl InnerDomainCluster {
         let mut s = res.unwrap();
         s.close().await.expect("can't close stream");
 
-        println!("Sent job request");
         let mut out = Vec::new();
         let _ = s.read_to_end(&mut out).await.expect("can't read from stream");
         let job = {
@@ -92,7 +91,6 @@ impl InnerDomainCluster {
             reader.read_message::<task::SubmitJobResponse>(&out).expect("can't read job")
         };
 
-        println!("Received job response: {:?}", job);
         let job_id = job.job_id.clone();
 
         self.peer.subscribe(job_id.clone()).await.unwrap();
@@ -271,7 +269,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         break;
                     }
                     written += n;
-                    println!("Wrote chunk: {}/{}", written, metadata.size);
                     upload_stream.write(&buf[..n]).await.expect("cant write chunk");
                     upload_stream.flush().await.expect("cant flush chunk");
                 }

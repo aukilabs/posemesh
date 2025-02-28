@@ -9,12 +9,15 @@
 #include "API.h"
 
 #if defined(__cplusplus)
+#include <memory>
 namespace psm {
 class Matrix4x4f;
 }
 typedef psm::Matrix4x4f psm_matrix4x4f_t;
+typedef std::shared_ptr<psm_matrix4x4f_t> psm_matrix4x4f_ref_t;
 #else
 typedef struct psm_matrix4x4f psm_matrix4x4f_t;
+typedef struct psm_matrix4x4f_ref psm_matrix4x4f_ref_t;
 #endif
 
 #if defined(__cplusplus)
@@ -78,6 +81,11 @@ float PSM_API psm_matrix4x4f_get_m43(const psm_matrix4x4f_t* matrix4x4f);
 void PSM_API psm_matrix4x4f_set_m43(psm_matrix4x4f_t* matrix4x4f, float m43);
 float PSM_API psm_matrix4x4f_get_m44(const psm_matrix4x4f_t* matrix4x4f);
 void PSM_API psm_matrix4x4f_set_m44(psm_matrix4x4f_t* matrix4x4f, float m44);
+
+psm_matrix4x4f_ref_t* PSM_API psm_matrix4x4f_ref_make(psm_matrix4x4f_t* matrix4x4f);
+psm_matrix4x4f_ref_t* PSM_API psm_matrix4x4f_ref_clone(const psm_matrix4x4f_ref_t* matrix4x4f_ref);
+psm_matrix4x4f_t* PSM_API psm_matrix4x4f_ref_get(const psm_matrix4x4f_ref_t* matrix4x4f_ref);
+void PSM_API psm_matrix4x4f_ref_delete(psm_matrix4x4f_ref_t* matrix4x4f_ref);
 
 #if defined(__cplusplus)
 }

@@ -9,14 +9,18 @@
 #include "API.h"
 
 #if defined(__cplusplus)
+#include <memory>
 namespace psm {
 class Vector4f;
 }
 typedef psm::Vector4f psm_vector4f_t;
+typedef std::shared_ptr<psm_vector4f_t> psm_vector4f_ref_t;
 #else
 typedef struct psm_vector4f psm_vector4f_t;
+typedef struct psm_vector4f_ref psm_vector4f_ref_t;
 #endif
 typedef psm_vector4f_t psm_quaternion_t;
+typedef psm_vector4f_ref_t psm_quaternion_ref_t;
 
 #if defined(__cplusplus)
 extern "C" {
@@ -38,6 +42,11 @@ void PSM_API psm_vector4f_set_z(psm_vector4f_t* vector4f, float z);
 float PSM_API psm_vector4f_get_w(const psm_vector4f_t* vector4f);
 void PSM_API psm_vector4f_set_w(psm_vector4f_t* vector4f, float w);
 
+psm_vector4f_ref_t* PSM_API psm_vector4f_ref_make(psm_vector4f_t* vector4f);
+psm_vector4f_ref_t* PSM_API psm_vector4f_ref_clone(const psm_vector4f_ref_t* vector4f_ref);
+psm_vector4f_t* PSM_API psm_vector4f_ref_get(const psm_vector4f_ref_t* vector4f_ref);
+void PSM_API psm_vector4f_ref_delete(psm_vector4f_ref_t* vector4f_ref);
+
 #if defined(__cplusplus)
 }
 #endif
@@ -55,5 +64,9 @@ void PSM_API psm_vector4f_set_w(psm_vector4f_t* vector4f, float w);
 #define psm_quaternion_set_z(_vector4f, _z) (psm_vector4f_set_z((_vector4f), (_z)))
 #define psm_quaternion_get_w(_vector4f) (psm_vector4f_get_w((_vector4f)))
 #define psm_quaternion_set_w(_vector4f, _w) (psm_vector4f_set_w((_vector4f), (_w)))
+#define psm_quaternion_ref_make(_vector4f) (psm_vector4f_ref_make((_vector4f)))
+#define psm_quaternion_ref_clone(_vector4f_ref) (psm_vector4f_ref_clone((_vector4f_ref)))
+#define psm_quaternion_ref_get(_vector4f_ref) (psm_vector4f_ref_get((_vector4f_ref)))
+#define psm_quaternion_ref_delete(_vector4f_ref) (psm_vector4f_ref_delete((_vector4f_ref)))
 
 #endif // __POSEMESH_C_VECTOR4F_H__

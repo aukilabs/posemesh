@@ -8,6 +8,7 @@ use std::error::Error;
 use futures::{StreamExt, channel::mpsc::{Receiver, channel}};
 use futures::lock::Mutex;
 use libp2p::{Stream, PeerId};
+use libp2p_stream::IncomingStreams;
 use std::sync::Arc;
 
 #[cfg(not(target_family="wasm"))]
@@ -257,7 +258,7 @@ impl Context {
     }
 
     #[cfg(feature="cpp")]
-    pub fn set_stream_handler(
+    pub fn set_stream_handler_cpp(
         &mut self,
         protocol: String,
         callback: extern "C" fn(status: u8)
@@ -304,12 +305,8 @@ impl Context {
                             let py_message = Python::with_gil(|py| Py::new(py, NewNodeRegisteredEvent::new(node)).unwrap().into_py(py));
                             Ok(py_message)
                         }
-                        event::Event::StreamMessageReceivedEvent { protocol, msg_reader, peer } => {
-                            let py_message = Python::with_gil(|py| Py::new(py, PyStream::new(protocol.to_string(), peer.to_string(), msg_reader)).unwrap().into_py(py));
-                            Ok(py_message)
-                        }
-                        event::Event::PubSubMessageReceivedEvent { topic, result } => {
-                            let py_message = Python::with_gil(|py| Py::new(py, PubSubMessageReceivedEvent {topic, result}).unwrap().into_py(py));
+                        event::Event::PubSubMessageReceivedEvent { topic, message, .. } => {
+                            let py_message = Python::with_gil(|py| Py::new(py, PubSubMessageReceivedEvent {topic, message}).unwrap().into_py(py));
                             Ok(py_message) 
                         }
                     }
@@ -351,7 +348,7 @@ impl Context {
         receiver.next().await
     }
 
-    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<IncomingStreams, Box<dyn Error + Send + Sync>> {
         let mut sender = self.client.clone();
         sender.set_stream_handler(protocol).await
     }
@@ -374,10 +371,10 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let cfg = config.clone();
     let mut id: String = PeerId::random().to_string();
 
-    #[cfg(any(target_family="wasm", feature="rust"))]
+    #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
     let networking = Networking::new(&cfg, receiver, event_sender)?;
     
-    #[cfg(any(target_family="wasm", feature="rust"))]
+    #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
     let id = networking.node.id.clone();
 
     #[cfg(any(feature="cpp", feature="py"))]
@@ -394,7 +391,7 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
         let _ = networking.run().await.expect("Failed to run networking");
     });
 
-    #[cfg(all(feature="rust", not(target_arch = "wasm32")))]
+    #[cfg(all(feature="rust", not(target_arch = "wasm32"), not(any(feature="cpp", feature="py"))))]
     tokio::spawn(async move {
         let _ = networking.run().await.expect("Failed to run networking");
     });

@@ -99,3 +99,29 @@ void psm_vector3f_set_z(psm_vector3f_t* vector3f, float z)
     }
     vector3f->setZ(z);
 }
+
+psm_vector3f_ref_t* psm_vector3f_ref_make(psm_vector3f_t* vector3f)
+{
+    return new (std::nothrow) psm_vector3f_ref_t(vector3f, &psm_vector3f_destroy);
+}
+
+psm_vector3f_ref_t* psm_vector3f_ref_clone(const psm_vector3f_ref_t* vector3f_ref)
+{
+    if (!vector3f_ref) {
+        return nullptr;
+    }
+    return new (std::nothrow) psm_vector3f_ref_t(*vector3f_ref);
+}
+
+psm_vector3f_t* psm_vector3f_ref_get(const psm_vector3f_ref_t* vector3f_ref)
+{
+    if (!vector3f_ref) {
+        return nullptr;
+    }
+    return vector3f_ref->get();
+}
+
+void psm_vector3f_ref_delete(psm_vector3f_ref_t* vector3f_ref)
+{
+    delete vector3f_ref;
+}

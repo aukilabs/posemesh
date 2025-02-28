@@ -1,7 +1,7 @@
-__internalPosemeshAPI.verifyNetworkingCommitId = function() {
-    return __internalPosemeshNetworking.posemeshNetworkingGetCommitId() === '@POSEMESH_COMMIT_ID@';
+__internalPosemeshAPI.verifyBaseCommitId = function() {
+    return __internalPosemeshBase.posemeshNetworkingGetCommitId() === '@POSEMESH_COMMIT_ID@';
 };
 
-__internalPosemeshAPI.verifySDKCommitId = function(mainModule) {
-    return mainModule.Posemesh.getCommitId() === '@POSEMESH_COMMIT_ID@';
+__internalPosemeshAPI.verifyMainCommitId = function() {
+    return __internalPosemesh.Posemesh.getCommitId() === '@POSEMESH_COMMIT_ID@';
 };

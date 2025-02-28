@@ -495,3 +495,29 @@ void psm_matrix4x4f_set_m44(psm_matrix4x4f_t* matrix4x4f, float m44)
     }
     matrix4x4f->setM44(m44);
 }
+
+psm_matrix4x4f_ref_t* psm_matrix4x4f_ref_make(psm_matrix4x4f_t* matrix4x4f)
+{
+    return new (std::nothrow) psm_matrix4x4f_ref_t(matrix4x4f, &psm_matrix4x4f_destroy);
+}
+
+psm_matrix4x4f_ref_t* psm_matrix4x4f_ref_clone(const psm_matrix4x4f_ref_t* matrix4x4f_ref)
+{
+    if (!matrix4x4f_ref) {
+        return nullptr;
+    }
+    return new (std::nothrow) psm_matrix4x4f_ref_t(*matrix4x4f_ref);
+}
+
+psm_matrix4x4f_t* psm_matrix4x4f_ref_get(const psm_matrix4x4f_ref_t* matrix4x4f_ref)
+{
+    if (!matrix4x4f_ref) {
+        return nullptr;
+    }
+    return matrix4x4f_ref->get();
+}
+
+void psm_matrix4x4f_ref_delete(psm_matrix4x4f_ref_t* matrix4x4f_ref)
+{
+    delete matrix4x4f_ref;
+}

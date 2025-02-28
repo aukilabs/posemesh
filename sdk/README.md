@@ -9,7 +9,7 @@ The purpose of the SDK is to allow a device to exchange spatial data and compute
 Any application, device or server interacting with the posemesh will use the Posemesh SDK to communicate with other devices in a standardised way.
 
 ## SDK Architecture
-For the posemesh to work on a wide range of devices and software stacks, cross-platform support is a big part of the architecture. The majority of code is written in C++ and then cross-compiled with bindings to other languages. The only exception is the networking code, which is written in Rust because the libp2p library for C++ doesn't support all required features yet.
+For the posemesh to work on a wide range of devices and software stacks, cross-platform support is a big part of the architecture. The majority of code is written in C++ and then cross-compiled with bindings to other languages. The only exception is the core networking base code, which is written in Rust because the libp2p library for C++ doesn't support all required features yet.
 
 This approach avoids code duplication and makes sure the SDK works the same regardless of platform or programming language.
 
@@ -73,7 +73,8 @@ are not possible. The relay server is only used as a last resort.
 git clone https://github.com/emscripten-core/emsdk.git
 ./emsdk/emsdk install 3.1.69
 ./emsdk/emsdk activate 3.1.69
-# Refer to the 'Next steps' instructions from the activate command to add Emscripten to the environment variables, or run:
+# Refer to the 'Next steps' instructions from the activate command to add Emscripten to the environment variables,
+# or run:
 # source emsdk/emsdk_env.sh
 ```
 
@@ -83,27 +84,22 @@ git clone https://github.com/emscripten-core/emsdk.git
 git submodule update --init --recursive
 ```
 
-2. Build networking library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
+2. Build base library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
 ```sh
-./core/scripts/Build-Library.ps1 macOS ARM64 Debug networking
+./core/scripts/Build-Library.ps1 macOS ARM64 Debug base
 ```
 
-3. Build domain library (example debug build for ARM64 macOS, [details about building for different platforms & architectures here](https://github.com/aukilabs/posemesh/tree/main/core#building)):
-```sh
-./core/scripts/Build-Library.ps1 macOS ARM64 Debug domain
-```
-
-4. Build OpenCV
+3. Build OpenCV
 ```sh
 ./third-party/scripts/Build-OpenCV-Library.ps1 macOS ARM64 Debug
 ```
 
-5. Build SDK library (example debug build for macOS, same supported platforms & architectures as the networking library from step 2):
+4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
 ```sh
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-6. Build output can be found int `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
+5. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
 
 # Apple entitlements
 

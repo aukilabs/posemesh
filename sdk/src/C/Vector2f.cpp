@@ -81,3 +81,29 @@ void psm_vector2f_set_y(psm_vector2f_t* vector2f, float y)
     }
     vector2f->setY(y);
 }
+
+psm_vector2f_ref_t* psm_vector2f_ref_make(psm_vector2f_t* vector2f)
+{
+    return new (std::nothrow) psm_vector2f_ref_t(vector2f, &psm_vector2f_destroy);
+}
+
+psm_vector2f_ref_t* psm_vector2f_ref_clone(const psm_vector2f_ref_t* vector2f_ref)
+{
+    if (!vector2f_ref) {
+        return nullptr;
+    }
+    return new (std::nothrow) psm_vector2f_ref_t(*vector2f_ref);
+}
+
+psm_vector2f_t* psm_vector2f_ref_get(const psm_vector2f_ref_t* vector2f_ref)
+{
+    if (!vector2f_ref) {
+        return nullptr;
+    }
+    return vector2f_ref->get();
+}
+
+void psm_vector2f_ref_delete(psm_vector2f_ref_t* vector2f_ref)
+{
+    delete vector2f_ref;
+}

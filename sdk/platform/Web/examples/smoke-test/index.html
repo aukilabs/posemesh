@@ -7,10 +7,10 @@
         <script>
             var posemesh;
             async function smokeTest() {
-                await Posemesh.initialize();
+                await Posemesh.initializePosemesh();
                 let config = new Posemesh.Config();
                 try {
-                    posemesh = new Posemesh(config);
+                    posemesh = new Posemesh.Posemesh(config);
                 } finally {
                     config.delete();
                 }

@@ -15,13 +15,24 @@ function(TRANSFORM_TYPESCRIPT_DEFINITIONS NAME OUTPUT INPUT)
     endif()
 
     file(REAL_PATH "${OUTPUT}" OUTPUT_ABSOLUTE BASE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-    file(REAL_PATH "${INPUT}" INPUT_ABSOLUTE BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(TARGET "${INPUT}")
+        get_target_property(CUSTOM_TARGET_OUTPUT ${INPUT} CUSTOM_TARGET_OUTPUT)
+        if(CUSTOM_TARGET_OUTPUT)
+            set(INPUT_ABSOLUTE "${CUSTOM_TARGET_OUTPUT}")
+        else()
+            set(INPUT_ABSOLUTE "$<TARGET_FILE:${INPUT}>")
+        endif()
+        set(INPUT_DEPENDS "${INPUT}")
+    else()
+        file(REAL_PATH "${INPUT}" INPUT_ABSOLUTE BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        set(INPUT_DEPENDS "${INPUT_ABSOLUTE}")
+    endif()
 
     add_custom_command(
         OUTPUT "${OUTPUT_ABSOLUTE}"
         COMMAND "${NODE_EXECUTABLE_PATH}" transform-typescript-definitions.js "${INPUT_ABSOLUTE}" "${OUTPUT_ABSOLUTE}" "${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}" "${POSEMESH_COMMIT_ID}"
         DEPENDS
-            "${INPUT_ABSOLUTE}"
+            "${INPUT_DEPENDS}"
         WORKING_DIRECTORY "${WEB_PLATFORM_ROOT}"
     )
 
@@ -29,5 +40,10 @@ function(TRANSFORM_TYPESCRIPT_DEFINITIONS NAME OUTPUT INPUT)
         ${NAME} ALL
         DEPENDS
             "${OUTPUT_ABSOLUTE}"
+    )
+    set_target_properties(
+        ${NAME}
+        PROPERTIES
+            CUSTOM_TARGET_OUTPUT "${OUTPUT_ABSOLUTE}"
     )
 endfunction()

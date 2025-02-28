@@ -9,12 +9,15 @@
 #include "API.h"
 
 #if defined(__cplusplus)
+#include <memory>
 namespace psm {
 class Vector2f;
 }
 typedef psm::Vector2f psm_vector2f_t;
+typedef std::shared_ptr<psm_vector2f_t> psm_vector2f_ref_t;
 #else
 typedef struct psm_vector2f psm_vector2f_t;
+typedef struct psm_vector2f_ref psm_vector2f_ref_t;
 #endif
 
 #if defined(__cplusplus)
@@ -32,6 +35,11 @@ float PSM_API psm_vector2f_get_x(const psm_vector2f_t* vector2f);
 void PSM_API psm_vector2f_set_x(psm_vector2f_t* vector2f, float x);
 float PSM_API psm_vector2f_get_y(const psm_vector2f_t* vector2f);
 void PSM_API psm_vector2f_set_y(psm_vector2f_t* vector2f, float y);
+
+psm_vector2f_ref_t* PSM_API psm_vector2f_ref_make(psm_vector2f_t* vector2f);
+psm_vector2f_ref_t* PSM_API psm_vector2f_ref_clone(const psm_vector2f_ref_t* vector2f_ref);
+psm_vector2f_t* PSM_API psm_vector2f_ref_get(const psm_vector2f_ref_t* vector2f_ref);
+void PSM_API psm_vector2f_ref_delete(psm_vector2f_ref_t* vector2f_ref);
 
 #if defined(__cplusplus)
 }

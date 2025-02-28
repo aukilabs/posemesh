@@ -40,7 +40,7 @@ extern "C" {
             let maxSize = HEAPU32[size >> 2];
             if (maxSize == 0)
                 return;
-            let commitId = __internalPosemeshNetworking.posemeshNetworkingGetCommitId();
+            let commitId = __internalPosemeshBase.posemeshNetworkingGetCommitId();
             let copySize = maxSize > 1 ? Math.min(lengthBytesUTF8(commitId), maxSize - 1) : 0;
             stringToUTF8(commitId, buffer, copySize + 1);
             HEAPU32[size >> 2] = copySize + 1;
@@ -65,11 +65,11 @@ extern "C" {
             let relays = UTF8ToString($1);
             let privateKey = $2;
             let privateKeySize = $3;
-            let config = new __internalPosemeshNetworking.Config(
+            let config = new __internalPosemeshBase.Config(
                 bootstraps, relays, new Uint8Array(HEAPU8.buffer, privateKey, privateKeySize)
             );
             try {
-                return __internalPosemeshNetworking.posemeshNetworkingContextCreate(config);
+                return __internalPosemeshBase.posemeshNetworkingContextCreate(config);
             } finally {
                 config.free();
             }
@@ -84,7 +84,7 @@ extern "C" {
     static void psm_posemesh_networking_context_destroy(psm_posemesh_networking_context_t* context) {
         assert(context);
         EM_ASM({
-            __internalPosemeshNetworking.posemeshNetworkingContextDestroy($0);
+            __internalPosemeshBase.posemeshNetworkingContextDestroy($0);
         }, context);
     }
 #endif
@@ -125,7 +125,7 @@ extern "C" {
             let userData = $5;
             let timeout = $6;
             let callback = $7;
-            __internalPosemeshNetworking.posemeshNetworkingContextSendMessage(
+            __internalPosemeshBase.posemeshNetworkingContextSendMessage(
                 context, new Uint8Array(HEAPU8.buffer, message, messageSize), peerId, protocol, timeout
             ).then(function(status) {
                 if (callback) {

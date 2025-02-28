@@ -9,8 +9,7 @@ use runtime::get_runtime;
 use tokio::sync::mpsc;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::Datastore;
-use crate::remote::RemoteDatastore;
+use crate::datastore::{common::Datastore, remote::RemoteDatastore};
 use crate::binding_helper::init_r_remote_storage;
 use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
 
@@ -99,31 +98,56 @@ fn from_rust(r_domain_data: &Data) -> DomainData {
 }
 
 #[no_mangle]
-pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c_int, name: *const c_char, data_type: *const c_char) -> *mut domain_data::Query {
-    let name = unsafe { 
-        if name.is_null() {
-            None
-        } else {
-            Some(CStr::from_ptr(name).to_string_lossy().into_owned())
-        }
-    };
-    let data_type = unsafe { 
-        if data_type.is_null() {
-            None
-        } else {
-            Some(CStr::from_ptr(data_type).to_string_lossy().into_owned())
-        }
-    };
+pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c_int, name_regexp: *const c_char, data_type_regexp: *const c_char, names: *const *const c_char, names_len: c_int, data_types: *const *const c_char, data_types_len: c_int) -> *mut domain_data::Query {
     let ids = unsafe {
         assert!(!ids_ptr.is_null());
-        let ids_slice = std::slice::from_raw_parts(ids_ptr, len as usize);
-        ids_slice.iter().map(|&id| CStr::from_ptr(id).to_string_lossy().into_owned()).collect()
+        std::slice::from_raw_parts(ids_ptr, len as usize)
+            .iter()
+            .map(|&id| {
+                assert!(!id.is_null());
+                CStr::from_ptr(id).to_string_lossy().into_owned()
+            })
+            .collect()
+    };
+
+    let names = unsafe {
+        assert!(!names.is_null());
+        std::slice::from_raw_parts(names, names_len as usize)
+            .iter()
+            .map(|&name| {
+                assert!(!name.is_null());
+                CStr::from_ptr(name).to_string_lossy().into_owned()
+            })
+            .collect()
+    };
+
+    let data_types = unsafe {
+        assert!(!data_types.is_null());
+        std::slice::from_raw_parts(data_types, data_types_len as usize)
+            .iter()
+            .map(|&data_type| {
+                assert!(!data_type.is_null());
+                CStr::from_ptr(data_type).to_string_lossy().into_owned()
+            })
+            .collect()
+    };
+
+    let name_regexp = unsafe {
+        assert!(!name_regexp.is_null());
+        CStr::from_ptr(name_regexp).to_string_lossy().into_owned()
+    };
+
+    let data_type_regexp = unsafe {
+        assert!(!data_type_regexp.is_null());
+        CStr::from_ptr(data_type_regexp).to_string_lossy().into_owned()
     };
 
     let query = domain_data::Query {
         ids,
-        name,
-        data_type,
+        name_regexp: Some(name_regexp),
+        data_type_regexp: Some(data_type_regexp),
+        names,
+        data_types,
     };
 
     Box::into_raw(Box::new(query))
@@ -216,12 +240,12 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper) {
 }
 
 pub struct DatastoreWrapper {
-    pub store: Box<dyn Datastore>,
+    pub inner: Box<dyn Datastore>,
 }
 
 impl DatastoreWrapper {
     fn new(store: Box<dyn Datastore>) -> Self {
-        DatastoreWrapper { store }
+        DatastoreWrapper { inner: store }
     }
 }
 
@@ -230,6 +254,7 @@ pub extern "C" fn find_domain_data(
     store: *mut DatastoreWrapper, // Pointer to Rust struct
     domain_id: *const c_char,    // C string
     query: *mut domain_data::Query, // Pointer to query struct
+    keep_alive: bool,
     callback: FindCallback,      // C function pointer
     user_data: *mut c_void       // Custom user data (optional)
 ) {
@@ -252,7 +277,7 @@ pub extern "C" fn find_domain_data(
 
     // Spawn a Tokio task to process the receiver
     get_runtime().spawn(async move {
-        let stream = store_wrapper.store.find(domain_id, query_clone).await;
+        let stream = store_wrapper.inner.consume(domain_id, query_clone, keep_alive).await;
         let mut stream = Box::pin(stream);
 
         while let Some(result) = stream.next().await {

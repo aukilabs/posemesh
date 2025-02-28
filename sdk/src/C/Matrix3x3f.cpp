@@ -333,3 +333,29 @@ void psm_matrix3x3f_set_m33(psm_matrix3x3f_t* matrix3x3f, float m33)
     }
     matrix3x3f->setM33(m33);
 }
+
+psm_matrix3x3f_ref_t* psm_matrix3x3f_ref_make(psm_matrix3x3f_t* matrix3x3f)
+{
+    return new (std::nothrow) psm_matrix3x3f_ref_t(matrix3x3f, &psm_matrix3x3f_destroy);
+}
+
+psm_matrix3x3f_ref_t* psm_matrix3x3f_ref_clone(const psm_matrix3x3f_ref_t* matrix3x3f_ref)
+{
+    if (!matrix3x3f_ref) {
+        return nullptr;
+    }
+    return new (std::nothrow) psm_matrix3x3f_ref_t(*matrix3x3f_ref);
+}
+
+psm_matrix3x3f_t* psm_matrix3x3f_ref_get(const psm_matrix3x3f_ref_t* matrix3x3f_ref)
+{
+    if (!matrix3x3f_ref) {
+        return nullptr;
+    }
+    return matrix3x3f_ref->get();
+}
+
+void psm_matrix3x3f_ref_delete(psm_matrix3x3f_ref_t* matrix3x3f_ref)
+{
+    delete matrix3x3f_ref;
+}

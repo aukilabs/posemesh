@@ -33,8 +33,12 @@ extern "C" {
 
 struct Query *create_domain_data_query(const char *const *ids_ptr,
                                        int len,
-                                       const char *name,
-                                       const char *data_type);
+                                       const char *name_regexp,
+                                       const char *data_type_regexp,
+                                       const char *const *names,
+                                       int names_len,
+                                       const char *const *data_types,
+                                       int data_types_len);
 
 void free_domain_data_query(struct Query *query);
 
@@ -54,6 +58,7 @@ void free_datastore(struct DatastoreWrapper *store);
 void find_domain_data(struct DatastoreWrapper *store,
                       const char *domain_id,
                       struct Query *query,
+                      bool keep_alive,
                       FindCallback callback,
                       void *user_data);
 

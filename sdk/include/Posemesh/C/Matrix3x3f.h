@@ -9,12 +9,15 @@
 #include "API.h"
 
 #if defined(__cplusplus)
+#include <memory>
 namespace psm {
 class Matrix3x3f;
 }
 typedef psm::Matrix3x3f psm_matrix3x3f_t;
+typedef std::shared_ptr<psm_matrix3x3f_t> psm_matrix3x3f_ref_t;
 #else
 typedef struct psm_matrix3x3f psm_matrix3x3f_t;
+typedef struct psm_matrix3x3f_ref psm_matrix3x3f_ref_t;
 #endif
 
 #if defined(__cplusplus)
@@ -60,6 +63,11 @@ float PSM_API psm_matrix3x3f_get_m32(const psm_matrix3x3f_t* matrix3x3f);
 void PSM_API psm_matrix3x3f_set_m32(psm_matrix3x3f_t* matrix3x3f, float m32);
 float PSM_API psm_matrix3x3f_get_m33(const psm_matrix3x3f_t* matrix3x3f);
 void PSM_API psm_matrix3x3f_set_m33(psm_matrix3x3f_t* matrix3x3f, float m33);
+
+psm_matrix3x3f_ref_t* PSM_API psm_matrix3x3f_ref_make(psm_matrix3x3f_t* matrix3x3f);
+psm_matrix3x3f_ref_t* PSM_API psm_matrix3x3f_ref_clone(const psm_matrix3x3f_ref_t* matrix3x3f_ref);
+psm_matrix3x3f_t* PSM_API psm_matrix3x3f_ref_get(const psm_matrix3x3f_ref_t* matrix3x3f_ref);
+void PSM_API psm_matrix3x3f_ref_delete(psm_matrix3x3f_ref_t* matrix3x3f_ref);
 
 #if defined(__cplusplus)
 }

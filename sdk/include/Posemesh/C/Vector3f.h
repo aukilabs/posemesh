@@ -9,12 +9,15 @@
 #include "API.h"
 
 #if defined(__cplusplus)
+#include <memory>
 namespace psm {
 class Vector3f;
 }
 typedef psm::Vector3f psm_vector3f_t;
+typedef std::shared_ptr<psm_vector3f_t> psm_vector3f_ref_t;
 #else
 typedef struct psm_vector3f psm_vector3f_t;
+typedef struct psm_vector3f_ref psm_vector3f_ref_t;
 #endif
 
 #if defined(__cplusplus)
@@ -34,6 +37,11 @@ float PSM_API psm_vector3f_get_y(const psm_vector3f_t* vector3f);
 void PSM_API psm_vector3f_set_y(psm_vector3f_t* vector3f, float y);
 float PSM_API psm_vector3f_get_z(const psm_vector3f_t* vector3f);
 void PSM_API psm_vector3f_set_z(psm_vector3f_t* vector3f, float z);
+
+psm_vector3f_ref_t* PSM_API psm_vector3f_ref_make(psm_vector3f_t* vector3f);
+psm_vector3f_ref_t* PSM_API psm_vector3f_ref_clone(const psm_vector3f_ref_t* vector3f_ref);
+psm_vector3f_t* PSM_API psm_vector3f_ref_get(const psm_vector3f_ref_t* vector3f_ref);
+void PSM_API psm_vector3f_ref_delete(psm_vector3f_ref_t* vector3f_ref);
 
 #if defined(__cplusplus)
 }

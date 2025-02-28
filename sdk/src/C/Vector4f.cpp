@@ -117,3 +117,29 @@ void psm_vector4f_set_w(psm_vector4f_t* vector4f, float w)
     }
     vector4f->setW(w);
 }
+
+psm_vector4f_ref_t* psm_vector4f_ref_make(psm_vector4f_t* vector4f)
+{
+    return new (std::nothrow) psm_vector4f_ref_t(vector4f, &psm_vector4f_destroy);
+}
+
+psm_vector4f_ref_t* psm_vector4f_ref_clone(const psm_vector4f_ref_t* vector4f_ref)
+{
+    if (!vector4f_ref) {
+        return nullptr;
+    }
+    return new (std::nothrow) psm_vector4f_ref_t(*vector4f_ref);
+}
+
+psm_vector4f_t* psm_vector4f_ref_get(const psm_vector4f_ref_t* vector4f_ref)
+{
+    if (!vector4f_ref) {
+        return nullptr;
+    }
+    return vector4f_ref->get();
+}
+
+void psm_vector4f_ref_delete(psm_vector4f_ref_t* vector4f_ref)
+{
+    delete vector4f_ref;
+}

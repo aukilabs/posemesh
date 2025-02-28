@@ -1,10 +1,9 @@
 [workspace]
 members = [
     "networking",
-    "protobuf",
     "domain",
     "runtime"
-, "examples/client", "examples/domain-manager"]
+, "examples/client", "examples/domain-manager", "examples/data-node", "examples/reconstruction-node", "base"]
 resolver = "2"
 
 [workspace.package]
@@ -28,7 +27,8 @@ serde-wasm-bindgen = "0.6.5"
 gloo-timers = "0.3.0"
 quick-protobuf = "0.8.1"
 quick-protobuf-codec = "0.3.1"
-protobuf = { path = "protobuf" }
+console_error_panic_hook = "0.1.7"
 networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
+base = { path = "base" }
