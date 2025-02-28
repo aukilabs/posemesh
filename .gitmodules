@@ -6,3 +6,7 @@
 	path = third-party/opencv
 	url = https://github.com/aukilabs/opencv.git
 	branch = release/v4.10.0
+[submodule "third-party/glm"]
+	path = third-party/glm
+	url = https://github.com/g-truc/glm.git
+	branch = master
