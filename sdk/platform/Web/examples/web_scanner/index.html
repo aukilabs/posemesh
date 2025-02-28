@@ -34,27 +34,7 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            display: none;
-            /* Hidden canvas for processing */
-        }
-
-        #status {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
-            font-weight: bold;
-            padding: 10px 20px;
-            border-radius: 8px;
-            text-align: center;
-            text-shadow:
-                -2px -2px 0 rgba(0, 0, 0, 0.5),
-                2px -2px 0 rgba(0, 0, 0, 0.5),
-                -2px 2px 0 rgba(0, 0, 0, 0.5),
-                2px 2px 0 rgba(0, 0, 0, 0.5);
-            display: none;
-            /* Hidden until stream starts */
+            object-fit: cover;
         }
 
         .detected {
@@ -101,7 +81,6 @@
     <div id="container">
         <video id="video" playsinline autoplay></video>
         <canvas id="canvas"></canvas>
-        <div id="status" class="not-detected">No QR Code Detected</div>
         <button id="startButton">Start Camera</button>
     </div>
 
@@ -158,115 +137,19 @@
                 await video.play();
                 console.log("Camera feed started!");
 
-                // Show video and status, hide start button
+                // Show video, hide start button
                 video.style.display = 'block';
-                document.getElementById('status').style.display = 'block';
                 document.getElementById('startButton').style.display = 'none';
 
                 // Start processing frames
                 console.log("Starting frame processing...");
                 // setInterval(processFrame, 1000);
-                setInterval(processFrameLuminance, 1000);
+                setInterval(processFrameLuminance, 16);
                 //setTimeout(processFrame, 1000);
             } catch (err) {
                 console.error('Error starting camera:', err);
                 alert('Could not start camera. Please ensure camera permissions are granted.');
             }
-        }
-
-        let image;
-        function processFrame() {
-            console.log(`Processing frame... (timestamp = ${new Date().toISOString()})`);
-            if (processingFrame) {
-                console.log("Already processing frame. Skip processing.");
-                return;
-            }
-
-            processingFrame = true;
-            console.log("Processing frame...");
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-            // Match canvas size to video
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            // Draw video frame to canvas
-            ctx.drawImage(video, 0, 0);
-
-            // Get image data and convert to Vector3fArray
-            const imageData = ctx.getImageData(0, 0, video.videoWidth, video.videoHeight);
-            const aspectRatio = video.videoWidth / video.videoHeight;
-            const imageHeight = 320;
-            const imageWidth = Math.floor(imageHeight * aspectRatio);
-
-            console.log("imageData.data.length =", imageData.data.length);
-
-            if (!image) {
-                image = new Posemesh.Vector3fArray();
-                image.resize(imageWidth * imageHeight, new Posemesh.Vector3f());
-            }
-            console.log("width =", imageWidth);
-            console.log("height =", imageHeight);
-            console.log("aspectRatio =", aspectRatio);
-            console.log("image resized to size", imageWidth * imageHeight);
-            console.log("image.size() =", image.size());
-
-            // Convert RGB data to Vector3f array
-            const startTime = performance.now();
-            for (let x = 0; x < imageWidth; x++) {
-                for (let y = 0; y < imageHeight; y++) {
-                    // Downsampled size
-                    const camX = Math.floor(x * video.videoWidth / imageWidth);
-                    const camY = Math.floor(y * video.videoHeight / imageHeight);
-
-                    const vec = image.get(y * imageWidth + x);
-                    const i = camY * video.videoWidth + camX;
-                    vec.x = imageData.data[i] / 255.0;     // R
-                    vec.y = imageData.data[i + 1] / 255.0; // G
-                    vec.z = imageData.data[i + 2] / 255.0; // B
-                    const outIndex = y * imageWidth + x;
-                    //console.log(`Setting index ${outIndex} to color %c(${vec.x.toFixed(2)}, ${vec.y.toFixed(2)}, ${vec.z.toFixed(2)})`, `color: rgb(${vec.x * 255}, ${vec.y * 255}, ${vec.z * 255})`);
-                    image.set(outIndex, vec);
-                    vec.delete();
-                }
-            }
-            const endTime = performance.now();
-            console.log(`Image copy took ${(endTime - startTime).toFixed(2)}ms`);
-
-            console.log("image.size() =", image.size());
-            console.log("First 5 pixels:");
-            function printColor(vec) {
-                console.log(`(${vec.x.toFixed(2)}, ${vec.y.toFixed(2)}, ${vec.z.toFixed(2)})`);
-            }
-            for (let i = 0; i < 5; i++) {
-                printColor(image.get(i));
-            }
-
-            // Detect QR code
-            const startTime2 = performance.now();
-            const detected = Posemesh.QRDetection.detectQR(image, imageWidth, imageHeight);
-            const endTime2 = performance.now();
-            console.log(`QR detection took ${(endTime2 - startTime2).toFixed(2)}ms`);
-            console.log("detected? =", detected);
-            // Update status display
-            const status = document.getElementById('status');
-            if (detected) {
-                status.textContent = 'QR Code Detected';
-                status.className = 'detected';
-            } else {
-                status.textContent = 'No QR Code Detected';
-                status.className = 'not-detected';
-            }
-
-            // Cleanup
-            //for (let i = 0; i < image.size(); i++) {
-            //    const vec = image.get(i);
-            //    vec.delete();
-            //}
-            //image.delete();
-            processingFrame = false;
         }
 
         function processFrameLuminance() {
@@ -292,24 +175,29 @@
             const originalHeight = imageHeight;
 
             const encodedImageInBytes = imageWidth * imageHeight * 8;
-            const currentMaxBytes = 17760256; // bytes, value taken from error message
+            const currentMaxBytes = 17760256; // bytes, value taken from error message. Reduce to force image resulution reduction.
             const diff = currentMaxBytes - encodedImageInBytes;
             console.log(`Encoded size will be ${(encodedImageInBytes / 1000000).toFixed(2)} MB, limit is ${currentMaxBytes / 1000000} MB.`);
             if (diff < 0) {
                 const aspectRatio = originalWidth / originalHeight;
-                imageWidth = imageWidth / 4; // WIP: Downsample 5 times (should be calculated).
+                imageWidth = imageWidth / 2;
                 imageHeight = imageWidth / aspectRatio;
                 console.log(`Resizing image ${originalWidth}x${originalHeight} -> ${imageWidth}x${imageHeight} (${(imageWidth * imageHeight * 8 / 1000000).toFixed(2)} MB)`);
                 console.log(`Don't forget to scale the corner coordinates by a factor of ${originalWidth / imageWidth}!`);
             }
-
+            
             canvas.width = imageWidth;
             canvas.height = imageHeight;
-            ctx.drawImage(video, 0, 0, imageWidth, imageHeight);
-          
+            
+            // Store image size reduction factor so it can be used to calculate corner positions in the full resolution image.
             currentResizeMultiplier = originalWidth / imageWidth;
-
+            
+            // Draw camera feed on camera canvas.
+            ctx.drawImage(video, 0, 0, imageWidth, imageHeight);
             processImageDataBytes(ctx.getImageData(0, 0, imageWidth, imageHeight), imageWidth, imageHeight);
+            
+            drawCorners(ctx, currentCorners);
+
             processingFrame = false;
         };
 
@@ -344,23 +232,29 @@
                 console.log(`Found contents = ${contents.get(0)}`);
                 currentCorners = [];
                 for (let i = 0; i < 4; i++) {
-                    currentCorners.push({ x: corners.get(i).x, y: corners.get(i).y });
+                    const corner = corners.get(i);
+                    currentCorners.push({ x: corner.x, y: corner.y });
                 }
-            }
-
-            // Update status display
-            const status = document.getElementById('status');
-            if (detected) {
-                status.textContent = 'QR Code Detected';
-                status.className = 'detected';
-            } else {
-                status.textContent = 'No QR Code Detected';
-                status.className = 'not-detected';
             }
 
             imageBytes.delete();
             contents.delete();
             corners.delete();
+        }
+
+        function drawCorners(ctx, corners) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (corners.length == 0) return;
+            
+            // Circles
+            const radius = 5;
+            ctx.fillStyle = 'red';
+            corners.forEach(corner => {
+                ctx.beginPath(); // Start a new path
+                ctx.arc(corner.x, corner.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
         }
 
         // Initialize
