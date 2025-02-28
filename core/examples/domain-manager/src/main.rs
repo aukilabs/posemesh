@@ -6,7 +6,7 @@ use serde::de;
 use tokio::{self, select, signal, time::sleep};
 use futures::{channel::mpsc::{channel, Receiver, Sender}, AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
 use std::{any::Any, borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, time::{Duration, SystemTime, UNIX_EPOCH}};
-use protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
+use domain::protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
 use sha2::{Digest, Sha256};
 use hex;
 use std::fs;
@@ -57,10 +57,6 @@ pub async fn start_task(task: &mut task::Task,  c: &mut context::Context) -> Res
     let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect(&format!("cant send handshake with {}", task.receiver.clone()));
     upload_stream.write_all(&m_buf).await.expect("cant write handshake");
     upload_stream.flush().await.expect("cant flush handshake");
-    task.status = task::Status::STARTED;
-
-    let task_update = serialize_into_vec(task).expect("cant serialize task update");
-    c.publish(task.job_id.clone(), task_update).await.expect("cant publish task update");
 
     Ok(upload_stream)
 }
@@ -148,7 +144,7 @@ impl DomainManager {
         loop {
             select! {
                 Some((_, stream)) = job_handler.next() => {
-                    self.accept_job(stream).await?;
+                    self.accept_job(stream).await.expect("Error accepting job");
                 }
                 e = self.peer.poll() => {
                     match e {
@@ -170,7 +166,6 @@ impl DomainManager {
                                         }
                                     }
                                 }
-                                _ => {}
                             }
                         }
                         None => break

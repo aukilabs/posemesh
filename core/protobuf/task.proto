@@ -1,5 +1,5 @@
 syntax = "proto3";
-
+import "domain_data.proto";
 package task;
 
 message Any {
@@ -63,13 +63,17 @@ message ResourceRecruitment {
     TerminationPolicy termination_policy = 2;
 }
 
+message ConsumeDataInputV1 {
+  domain_data.Query query = 1;
+  bool keep_alive = 2;
+}
+
 message StoreDataOutputV1 {
   repeated string ids = 1;
 }
 
 message LocalRefinementOutputV1 {
-  string recording_id = 1;
-  string result_id = 2;
+  repeated string result_ids = 1;
 }
 
 enum Status {
@@ -92,7 +96,7 @@ message Task {
 }
 
 message LocalRefinementInputV1 {
-  string recording_id = 1;
+  domain_data.Query query = 1;
 }
 
 message DomainClusterHandshake {

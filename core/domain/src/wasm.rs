@@ -17,12 +17,14 @@ pub struct Query {
 #[wasm_bindgen]
 impl Query {
     #[wasm_bindgen(constructor)]
-    pub fn new(ids: Vec<String>, name: Option<String>, data_type: Option<String>) -> Self {
+    pub fn new(ids: Vec<String>, names: Vec<String>, data_types: Vec<String>, name_regexp: Option<String>, data_type_regexp: Option<String>) -> Self {
         Self {
             inner: domain_data::Query {
                 ids,
-                name,
-                data_type,
+                names,
+                data_types,
+                name_regexp,
+                data_type_regexp,
             }
         }
     }
@@ -238,8 +240,7 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.consume(domain_id, query.inner).await;
-            tracing::debug!("download stream");
+            let stream = inner.consume(domain_id, query.inner, false).await;
             let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
             
             Ok(JsValue::from(stream))
