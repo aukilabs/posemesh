@@ -213,6 +213,11 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
         $FoundGreatestVersionNumber = $Null
         ForEach($PotentialVersionNumber In ($BrewListVersionsResult -Split ' ')) {
             Try {
+                If($PotentialVersionNumber -Match '[0-9]+\.[0-9]+(\.[0-9]+(\.[0-9]+)?)?') {
+                    $PotentialVersionNumber = $Matches[0]
+                } Else {
+                    Continue
+                }
                 $VersionNumber = [System.Version]$PotentialVersionNumber
                 If($FoundGreatestVersionNumber) {
                     If($VersionNumber -Gt $FoundGreatestVersionNumber) {
