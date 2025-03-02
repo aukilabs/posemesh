@@ -1,5 +1,10 @@
 {
-  "name": "Vector3f",
+  "name": "Vector4f",
+  "aliases": [
+    {
+      "name": "Quaternion"
+    }
+  ],
   "properties": [
     {
       "name": "X",
@@ -11,6 +16,10 @@
     },
     {
       "name": "Z",
+      "type": "float"
+    },
+    {
+      "name": "W",
       "type": "float"
     }
   ]

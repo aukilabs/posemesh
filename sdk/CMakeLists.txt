@@ -56,18 +56,22 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
         "${POSEMESH_GENERATED_C_HEADERS}"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
         "${POSEMESH_GENERATED_C_SOURCES}"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
+        "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
@@ -88,6 +92,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
         OBJCXX_SOURCES
@@ -95,9 +100,11 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
         set_apple_platform_umbrella_header(

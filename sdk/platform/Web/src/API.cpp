@@ -1,3 +1,5 @@
+#include <Posemesh/Vector2f.hpp>
+#include <Posemesh/Vector3f.hpp>
 #include <cstdint>
 #include <emscripten/bind.h>
 #include <string>
@@ -18,4 +20,6 @@ EMSCRIPTEN_BINDINGS(API)
     register_vector<double>("VectorDouble");
     // VectorBoolean is an alias for VectorUint8
     register_vector<std::string>("VectorString");
+    register_vector<psm::Vector2f>("Vector2fArray");
+    register_vector<psm::Vector3f>("Vector3fArray");
 }
