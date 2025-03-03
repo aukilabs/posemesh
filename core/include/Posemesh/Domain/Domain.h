@@ -47,11 +47,11 @@ void free_domain_data_query(struct Query *query);
  */
 void free_domain_data(struct DomainData *data);
 
-struct DomainCluster *init_domain_cluster(const char *domain_manager_id, Context *peer);
+struct DomainCluster *init_domain_cluster(const char *domain_manager_addr, const char *name);
 
 void free_domain_cluster(struct DomainCluster *cluster);
 
-struct DatastoreWrapper *init_remote_storage(struct DomainCluster *cluster, Context *peer);
+struct DatastoreWrapper *init_remote_storage(struct DomainCluster *cluster);
 
 void free_datastore(struct DatastoreWrapper *store);
 
