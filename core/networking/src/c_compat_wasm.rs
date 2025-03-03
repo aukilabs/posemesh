@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::{posemesh_networking_context_destroy, posemesh_networking_get_commit_id}, network::{Networking, NetworkingConfig}};
+use crate::{binding_helper::{posemesh_networking_context_destroy, posemesh_networking_get_commit_id}, libp2p::{Networking, NetworkingConfig}};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Error}, spawn_local};
 
 #[wasm_bindgen(getter_with_clone)]

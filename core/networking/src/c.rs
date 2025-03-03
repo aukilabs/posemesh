@@ -1,7 +1,7 @@
-use crate::network::{Networking, NetworkingConfig};
+use crate::libp2p::{Networking, NetworkingConfig};
 use crate::binding_helper::{posemesh_networking_get_commit_id, posemesh_networking_context_destroy};
 use std::os::raw::{c_char, c_uchar, c_void, c_uint};
-use std::ffi::{CStr};
+use std::ffi::CStr;
 use std::slice;
 use runtime::get_runtime;
 

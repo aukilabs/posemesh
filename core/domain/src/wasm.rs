@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
 use futures::{SinkExt, StreamExt};
-use networking::context::Context;
+use networking::libp2p::Networking;
 use quick_protobuf::serialize_into_vec;
 use serde::de;
 use serde_wasm_bindgen::{from_value, to_value};
@@ -157,7 +157,7 @@ pub struct DomainCluster {
 #[wasm_bindgen]
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_manager_id: String, context: *mut Context) -> Self {
+    pub fn new(domain_manager_id: String, context: *mut Networking) -> Self {
         let context = Box::new(unsafe { (*context).clone() });
         Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_id, context))) }   
     }
@@ -221,7 +221,7 @@ pub struct RemoteDatastore {
 #[wasm_bindgen]
 impl RemoteDatastore {
     #[wasm_bindgen(constructor)]
-    pub fn new(cluster: DomainCluster, peer: *mut Context) -> Self {
+    pub fn new(cluster: DomainCluster, peer: *mut Networking) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
 

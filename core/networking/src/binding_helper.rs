@@ -1,4 +1,4 @@
-use crate::network::Networking;
+use crate::libp2p::Networking;
 
 pub fn posemesh_networking_get_commit_id() -> String {
     return env!("COMMIT_ID").to_string();

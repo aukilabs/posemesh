@@ -1,6 +1,6 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use libp2p::{gossipsub::{PublishError, TopicHash}, Stream};
-use networking::{context, event, network::{self, Node}};
+use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
 use serde::de;
 use tokio::{self, select, signal, time::sleep};
@@ -47,7 +47,7 @@ fn encode_jwt(job_id: &str, task_name: &str, sender: &str, receiver: &str, secre
     Ok(token)
 }
 
-pub async fn start_task(task: &mut task::Task,  c: &mut context::Context) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+pub async fn start_task(task: &mut task::Task,  c: &mut Client) -> Result<Stream, Box<dyn Error + Send + Sync>> {
     let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
         access_token: task.access_token.clone(),
     })?;
@@ -120,16 +120,16 @@ struct JobHandler {
 }
 
 struct DomainManager {
-    peer: context::Context,
+    peer: Networking,
     task_req_queue: Queue<TaskHandler>,
     jobs: HashMap<String, JobHandler>,
     nodes: HashMap<String, Node>,
 }
 
 impl DomainManager {
-    fn new(peer: context::Context) -> Self {
+    fn new(peer: Networking) -> Self {
         DomainManager {
-            peer: peer,
+            peer,
             task_req_queue: Queue::new(),
             jobs: HashMap::new(),
             nodes: HashMap::new(),
@@ -137,16 +137,18 @@ impl DomainManager {
     }
 
     async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut job_handler = self.peer.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
+        let mut job_handler = self.peer.client.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
         // periodically print latest status of tasks
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        let event_receiver = self.peer.event_receiver.clone();
 
         loop {
+            let mut rx_guard = event_receiver.lock().await;
             select! {
                 Some((_, stream)) = job_handler.next() => {
                     self.accept_job(stream).await.expect("Error accepting job");
                 }
-                e = self.peer.poll() => {
+                e = rx_guard.next() => {
                     match e {
                         Some(e) => {
                             match e {
@@ -217,7 +219,7 @@ impl DomainManager {
         };
         stream.write_all(&serialize_into_vec(&resp).unwrap()).await?;
         stream.flush().await?;
-        self.peer.subscribe(job_id.clone()).await?;
+        self.peer.client.subscribe(job_id.clone()).await?;
 
         for task_req in job.tasks.iter() {
             let mut task = task::Task {
@@ -312,7 +314,7 @@ impl DomainManager {
         
         t.access_token = encode_jwt(&t.job_id, &t.name, &t.sender, &t.receiver, "secret")?;
         if t.sender == self.peer.id {
-            let mut s = start_task(t, &mut self.peer).await?;
+            let mut s = start_task(t, &mut self.peer.client).await?;
             let mut length_buf = [0u8; 4];
             let length = serialized_input.len() as u32;
             length_buf.copy_from_slice(&length.to_be_bytes());
@@ -320,7 +322,7 @@ impl DomainManager {
             s.write_all(&serialized_input).await?;
             s.flush().await?;
         } else {
-            if let Err(e) = self.peer.publish(t.job_id.clone(), serialize_into_vec(&t.clone())?).await {
+            if let Err(e) = self.peer.client.publish(t.job_id.clone(), serialize_into_vec(&t.clone())?).await {
                 println!("Error publishing message: {:?}", e);
                 return Err(e);
             }
@@ -380,8 +382,8 @@ impl DomainManager {
 
 /*
     * This is a simple example of a domain_manager node. It will connect to a set of bootstraps and accept tasks.
-    * Usage: cargo run --example domain_manager --features rust <port> <name> [private_key_path]
-    * Example: cargo run --example domain_manager --features rust 18804 domain_manager 
+    * Usage: cargo run --example domain_manager <port> <name> [private_key_path]
+    * Example: cargo run --example domain_manager 18804 domain_manager 
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -398,20 +400,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         private_key_path = args[3].clone();
     }
 
-    let cfg = &network::NetworkingConfig{
+    let cfg = &NetworkingConfig{
         port: port,
         bootstrap_nodes: vec![],
         enable_relay_server: false,
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: private_key_path,
+        private_key: None,
+        private_key_path: Some(private_key_path),
         name: name,
-        // node_capabilities: vec![],
-        // node_types: vec!["relay".to_string()],
     };
-    let c = context::context_create(cfg)?;
+    let c = Networking::new(cfg)?;
     let mut domain_manager = DomainManager::new(c);
     
     domain_manager.start().await
