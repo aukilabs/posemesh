@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
 use crate::protobuf::task::{self, Job, Status, SubmitJobResponse, Task};
-use networking::{event, libp2p::Networking};
+use networking::{event, libp2p::{Networking, NetworkingConfig}};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
@@ -143,17 +143,32 @@ impl InnerDomainCluster {
 #[derive(Clone)]
 pub struct DomainCluster {
     sender: Sender<Command>,
+    pub peer: Networking,
+    pub manager_id: String,
 }
 
 impl DomainCluster {
-    pub fn new(manager: String, peer: Box<Networking>) -> Self {
+    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+        let networking = Networking::new(&NetworkingConfig {
+            bootstrap_nodes: vec![manager_addr.clone()],
+            relay_nodes: vec![],
+            private_key,
+            private_key_path,
+            enable_mdns: false,
+            enable_kdht: true,
+            enable_relay_server: join_as_relay,
+            name: node_name,
+            port: 0,
+        }).unwrap();
+        let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
+
         #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
         let (tx, rx) = channel::<Command>(100);
         let dc = InnerDomainCluster {
-            manager: manager,
-            peer: peer,
+            manager: domain_manager_id.clone(),
+            peer: Box::new(networking.clone()),
             jobs: HashMap::new(),
             command_rx: rx,
         };
@@ -161,6 +176,8 @@ impl DomainCluster {
 
         DomainCluster {
             sender: tx,
+            peer: networking.clone(),
+            manager_id: domain_manager_id.clone(),
         }
     }
 

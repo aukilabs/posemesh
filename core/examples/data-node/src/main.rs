@@ -177,24 +177,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &NetworkingConfig{
-        port: port,
-        bootstrap_nodes: vec![domain_manager.clone()],
-        enable_relay_server: false,
-        enable_kdht: true,
-        enable_mdns: false,
-        relay_nodes: vec![],
-        private_key: None,
-        private_key_path: Some(private_key_path),
-        name: name,
-    };
-    let mut n = Networking::new(cfg)?;
-    let n_clone = n.clone();
-    let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-    let domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(n_clone));
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
+    let mut n = domain_cluster.peer;
+    let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
+    let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
 
     loop {
         select! {
