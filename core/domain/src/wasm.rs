@@ -157,9 +157,8 @@ pub struct DomainCluster {
 #[wasm_bindgen]
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_manager_id: String, context: *mut Networking) -> Self {
-        let context = Box::new(unsafe { (*context).clone() });
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_id, context))) }   
+    pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, private_key, private_key_path))) }   
     }
 }
 
@@ -221,11 +220,11 @@ pub struct RemoteDatastore {
 #[wasm_bindgen]
 impl RemoteDatastore {
     #[wasm_bindgen(constructor)]
-    pub fn new(cluster: DomainCluster, peer: *mut Networking) -> Self {
+    pub fn new(cluster: DomainCluster) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
 
-        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster)), peer) }
+        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))) }
     }
 
     #[wasm_bindgen]

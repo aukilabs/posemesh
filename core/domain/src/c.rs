@@ -201,13 +201,10 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_domain_cluster(domain_manager_id: *const c_char, peer: *mut Networking) -> *mut DomainCluster {
-    if domain_manager_id.is_null() || peer.is_null() {
-        return ptr::null_mut();
-    }
-    let domain_manager_id = unsafe { CStr::from_ptr(domain_manager_id).to_string_lossy().into_owned() };
-    let peer = unsafe { Box::from_raw(peer) };
-    let cluster = DomainCluster::new(domain_manager_id, peer);
+pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: *const c_char) -> *mut DomainCluster {
+    let name = unsafe { CStr::from_ptr(name).to_string_lossy().into_owned() };
+    let domain_manager_addr = unsafe { CStr::from_ptr(domain_manager_addr).to_string_lossy().into_owned() };
+    let cluster = DomainCluster::new(domain_manager_addr, name, false, None, None);
     Box::into_raw(Box::new(cluster))
 }
 
@@ -223,8 +220,8 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster, peer: *mut Networking) -> *mut DatastoreWrapper {
-    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster, peer)))))
+pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper {
+    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)))))
 }
 
 #[no_mangle]

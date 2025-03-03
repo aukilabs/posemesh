@@ -25,31 +25,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &NetworkingConfig {
-        port: port,
-        bootstrap_nodes: vec![domain_manager.clone()],
-        enable_relay_server: false,
-        enable_kdht: true,
-        enable_mdns: false,
-        relay_nodes: vec![domain_manager.clone()],
-        private_key: None,
-        private_key_path: Some(private_key_path),
-        name: name,
-    };
-    let c = Networking::new(cfg)?;
-    let peer_id = c.id.clone();
-    let c_clone = c.clone();
-
-    let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-
-    let mut domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c_clone));
-    let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone(), c.clone());
+    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
+    let peer_id = domain_cluster.peer.id.clone();
+    let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
 
-    let mut producer = remote_datastore.produce(domain_manager_id.clone()).await;
+    let mut producer = remote_datastore.produce("".to_string()).await;
     let mut uploaded = Vec::<task::TaskRequest>::new();
 
     for entry in dir {
@@ -75,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 f.read_exact(&mut content).expect("cant read file");
 
                 let data = Data {
-                    domain_id: domain_manager_id.clone(),
+                    domain_id: "".to_string(),
                     metadata: metadata.clone(),
                     content
                 };
@@ -109,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         type_url: "LocalRefinementInputV1".to_string(), // TODO: use actual type url
                         value: serialize_into_vec(&input).expect("cant serialize input"),
                     }),
-                    sender: domain_manager_id.clone(),
+                    sender: domain_cluster.manager_id.clone(),
                     receiver: "".to_string(),
                 };
                 uploaded.push(task);
@@ -145,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             type_url: "GlobalRefinementInputV1".to_string(), // TODO: use actual type url
             value: vec![],
         }),
-        sender: domain_manager_id.clone(),
+        sender: domain_cluster.manager_id.clone(),
         receiver: "".to_string(),
     });
 

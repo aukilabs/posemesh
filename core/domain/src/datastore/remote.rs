@@ -1,4 +1,3 @@
-use networking::libp2p::Networking;
 use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
 
 #[cfg(not(target_family = "wasm"))]
@@ -60,12 +59,11 @@ impl TaskHandler {
 #[derive(Clone)]
 pub struct RemoteDatastore {
     cluster: DomainCluster,
-    peer: Networking,
 }
 
 impl RemoteDatastore {
-    pub fn new(cluster: DomainCluster, peer: Networking ) -> Self {
-        Self { cluster, peer }
+    pub fn new(cluster: DomainCluster) -> Self {
+        Self { cluster }
     }
 
     // TODO: error handling
@@ -178,8 +176,8 @@ impl Datastore for RemoteDatastore {
     {
         let mut download_task = TaskHandler::new();
         let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
-        let peer_id = self.peer.id.clone();
-        let mut peer = self.peer.client.clone();
+        let peer_id = self.cluster.peer.id.clone();
+        let mut peer = self.cluster.peer.client.clone();
         let domain_id = domain_id.clone();
         let query = query.clone();
         let data = ConsumeDataInputV1 {
@@ -297,13 +295,13 @@ impl Datastore for RemoteDatastore {
                         min_cpu: 0,
                     }),
                     data: None,
-                    sender: self.peer.id.clone(),
+                    sender: self.cluster.peer.id.clone(),
                     receiver: "".to_string(),
                 }
             ],
         }).await;
 
-        let mut peer = self.peer.client.clone();
+        let mut peer = self.cluster.peer.client.clone();
         let data_receiver = Arc::new(Mutex::new(data_receiver));
         let (tx, rx) = oneshot::channel::<bool>();
         spawn(async move{
