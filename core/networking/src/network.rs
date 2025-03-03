@@ -1,10 +1,10 @@
-use futures::{channel::{mpsc, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{channel::{mpsc::{self, channel}, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::{Arc, Mutex}, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
-use crate::{client, event};
+use crate::{client::{self, Client}, event};
 
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
@@ -14,6 +14,11 @@ use libp2p::{mdns, noise, tcp, yamux};
 use tracing_subscriber::EnvFilter;
 #[cfg(not(target_family="wasm"))]
 use std::{fs, path::Path, net::Ipv4Addr};
+
+#[cfg(not(target_family="wasm"))]
+use tokio::spawn;
+#[cfg(target_family="wasm")]
+use wasm_bindgen_futures::spawn_local as spawn;
 
 #[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
@@ -47,8 +52,8 @@ pub struct NetworkingConfig {
     pub bootstrap_nodes: Vec<String>,
     pub relay_nodes: Vec<String>,
     pub enable_mdns: bool,
-    pub private_key: Vec<u8>,
-    pub private_key_path: String,
+    pub private_key: Option<Vec<u8>>,
+    pub private_key_path: Option<String>,
     pub enable_kdht: bool,
     pub name: String,
 }
@@ -62,9 +67,9 @@ impl Default for NetworkingConfig {
             enable_kdht: false,
             enable_mdns: true,
             relay_nodes: vec![],
-            private_key: vec![],
-            private_key_path: "./volume/pkey".to_string(),
-            name: "c++ server".to_string(), // placeholder
+            private_key: None,
+            private_key_path: Some("/volume/pkey".to_string()),
+            name: "Placeholder".to_string(), // placeholder
         }
     }
 }
@@ -79,7 +84,7 @@ pub struct Node {
 
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
-pub struct Networking {
+struct InnerNetworking {
     // nodes_map: HashMap<String, Node>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
@@ -125,17 +130,18 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
 }
 
 fn parse_or_create_keypair(
-    private_key: &mut [u8],
-    private_key_path: &String,
+    private_key: Option<Vec<u8>>,
+    private_key_path: Option<String>,
 ) -> libp2p::identity::Keypair {
+    let private_key = private_key.unwrap_or_default();
     // load private key into keypair
     if let Ok(keypair) = libp2p::identity::Keypair::ed25519_from_bytes(private_key) {
         return keypair;
     }
 
     #[cfg(not(target_family="wasm"))]
-    if !private_key_path.is_empty() {
-        return keypair_file(private_key_path);
+    if !private_key_path.is_none() {
+        return keypair_file(private_key_path.as_ref().unwrap());
     }
 
     return libp2p::identity::Keypair::generate_ed25519();
@@ -281,12 +287,10 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
     ];
 }
 
-impl Networking {
-    pub(crate) fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Self, Box<dyn Error + Send + Sync>> {
-
-        let mut private_key = cfg.private_key.clone();
-        let mut private_key_bytes = &mut private_key;
-        let key = parse_or_create_keypair(private_key_bytes, &cfg.private_key_path);
+impl InnerNetworking {
+    pub fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
+        let private_key = cfg.private_key.clone();
+        let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
         println!("Local peer id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
@@ -321,37 +325,32 @@ impl Networking {
             capabilities: vec![],
         };
 
-        Ok(Networking {
+        let networking = InnerNetworking {
             cfg: cfg.clone(),
             // nodes_map: nodes_map,
             swarm: swarm,
             command_receiver: command_receiver,
-            node: node,
+            node: node.clone(),
             // node_regsiter_topic: topic,
             event_sender: event_sender,
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
-        })
+        };
+
+        spawn(async move {
+            let _ = networking.run().await;
+        });
+
+        Ok(node)
     }
 
-    pub async fn run(mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn run(mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
         tracing::info!("Starting networking");
         
-        // #[cfg(not(target_family="wasm"))]
-        // let mut node_register_interval = interval(Duration::from_secs(10));
-
         #[cfg(not(target_family="wasm"))]
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
                 command = self.command_receiver.select_next_some() => self.handle_command(command).await,
-                // _ = node_register_interval.tick() => {
-                //     match self.register_node() {
-                //         Ok(_) => {},
-                //         Err(e) => {
-                //             tracing::warn!("Failed to register node: {e}");
-                //         }
-                //     }
-                // }
                 else => break,
             }
         };
@@ -638,6 +637,30 @@ impl Networking {
             let q = dht.get_closest_peers(peer_id.clone());
             find_peer_requests_lock.unwrap().insert(q, sender);
         });
+    }
+}
+
+#[derive(Clone)]
+pub struct Networking {
+    pub client: Client,
+    pub event_receiver: Arc<Mutex<mpsc::Receiver<event::Event>>>,
+    pub id: String,
+}
+
+impl Networking {
+    pub fn new(cfg: &NetworkingConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = channel::<client::Command>(8);
+        let (event_sender, event_receiver) = channel::<event::Event>(8);
+        let cfg = cfg.clone();
+        let client = Client::new(sender);
+        
+        let node = InnerNetworking::new(&cfg, receiver, event_sender)?;
+
+        Ok(Networking {
+            client,
+            event_receiver: Arc::new(Mutex::new(event_receiver)),
+            id: node.id,
+        })
     }
 }
 

@@ -22,7 +22,7 @@ tracing = { workspace = true }
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
 tokio = { workspace = true, features = ["full"] }
 runtime = { workspace = true }
-networking = { workspace = true, features = ["rust"] }
+networking = { workspace = true }
 uuid = { version = "1.13.2", features = ["v4"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
@@ -41,4 +41,4 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 default = []
-cpp = []
+c = []

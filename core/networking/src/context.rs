@@ -1,7 +1,7 @@
 use crate::client;
 use crate::event;
 use crate::network::Node;
-use crate::network::{Networking, NetworkingConfig};
+use crate::network::{InnerNetworking, NetworkingConfig};
 use core::time;
 use std::collections::HashMap;
 use std::error::Error;
@@ -372,14 +372,14 @@ pub fn context_create(config: &NetworkingConfig) -> Result<Context, Box<dyn Erro
     let mut id: String = PeerId::random().to_string();
 
     #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
-    let networking = Networking::new(&cfg, receiver, event_sender)?;
+    let networking = InnerNetworking::new(&cfg, receiver, event_sender)?;
     
     #[cfg(all(any(target_family="wasm", feature="rust"), not(any(feature="cpp", feature="py"))))]
     let id = networking.node.id.clone();
 
     #[cfg(any(feature="cpp", feature="py"))]
     get_runtime().block_on(async {
-        let networking = Networking::new(&cfg, receiver, event_sender).unwrap();
+        let networking = InnerNetworking::new(&cfg, receiver, event_sender).unwrap();
         id = networking.node.id.clone();
         tokio::spawn(async move {
             let _ = networking.run().await.expect("Failed to run networking");

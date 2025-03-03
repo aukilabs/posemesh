@@ -13,5 +13,4 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
 default = ["domain/default", "networking/default"]
-cpp = ["domain/cpp", "networking/cpp"]
-py = ["networking/py"]
+c = ["domain/c", "networking/c"]
