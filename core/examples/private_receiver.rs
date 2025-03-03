@@ -6,8 +6,8 @@ use futures::AsyncReadExt;
     * This is a simple client that registers with a relay server.
     * Other clients can send messages to this client by sending messages to the relay server.
 
-    * Usage: cargo run --example receiver --features rust <port> <name> <bootstraps>
-    * Example: cargo run --example receiver --features rust 0 relay_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Usage: cargo run --example receiver <port> <name> <bootstraps>
+    * Example: cargo run --example receiver 0 relay_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();

@@ -3,10 +3,9 @@ use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::{Arc, Mutex};
-use networking::context::Context;
+use networking::libp2p::Networking;
 use futures::stream::StreamExt;
 use runtime::get_runtime;
-use tokio::sync::mpsc;
 
 use crate::cluster::DomainCluster;
 use crate::datastore::{common::Datastore, remote::RemoteDatastore};
@@ -202,7 +201,7 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_domain_cluster(domain_manager_id: *const c_char, peer: *mut Context) -> *mut DomainCluster {
+pub extern "C" fn init_domain_cluster(domain_manager_id: *const c_char, peer: *mut Networking) -> *mut DomainCluster {
     if domain_manager_id.is_null() || peer.is_null() {
         return ptr::null_mut();
     }
@@ -224,7 +223,7 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster, peer: *mut Context) -> *mut DatastoreWrapper {
+pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster, peer: *mut Networking) -> *mut DatastoreWrapper {
     Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster, peer)))))
 }
 

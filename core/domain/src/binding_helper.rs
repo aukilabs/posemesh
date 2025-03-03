@@ -1,8 +1,8 @@
-use networking::context::Context;
+use networking::libp2p::Networking;
 
 use crate::{cluster::DomainCluster, datastore::remote::RemoteDatastore};
 
-pub(crate) fn init_r_remote_storage(cluster: *mut DomainCluster, peer: *mut Context) -> RemoteDatastore {
+pub(crate) fn init_r_remote_storage(cluster: *mut DomainCluster, peer: *mut Networking) -> RemoteDatastore {
     unsafe {
         // Ensure the pointers are not null
         assert!(!cluster.is_null(), "init_r_remote_storage(): cluster is null");

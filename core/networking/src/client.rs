@@ -12,11 +12,10 @@ pub struct Client {
     sender: mpsc::Sender<Command>,
 }
 
-pub fn new_client(sender: mpsc::Sender<Command>) -> Client {
-    return Client { sender };
-}
-
 impl Client {
+    pub fn new(sender: mpsc::Sender<Command>) -> Self {
+        Self { sender }
+    }
     // timeout is in milliseconds
     pub async fn send(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
         let (sender, receiver) = oneshot::channel::<Result<Stream, Box<dyn Error + Send + Sync>>>();

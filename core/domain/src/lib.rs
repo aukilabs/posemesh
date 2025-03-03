@@ -6,7 +6,7 @@ pub mod protobuf {
     include!("protobuf/mod.rs");
 }
 
-#[cfg(feature="cpp")]
+#[cfg(all(feature="c", not(target_family="wasm")))]
 mod c;
 
 #[cfg(target_family = "wasm")]

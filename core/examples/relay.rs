@@ -4,8 +4,8 @@ use futures::AsyncReadExt;
 
 /*
     * This is a simple example of a relay node. It will connect to a set of bootstraps and relay messages between them.
-    * Usage: cargo run --example relay --features rust <port> <name> [private_key_path]
-    * Example: cargo run --example relay --features rust 18804 relay
+    * Usage: cargo run --example relay <port> <name> [private_key_path]
+    * Example: cargo run --example relay 18804 relay
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
