@@ -1,4 +1,4 @@
-use networking::{context, network};
+use networking::libp2p::{Networking, NetworkingConfig};
 use tokio;
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
@@ -9,8 +9,8 @@ const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
-    * Usage: cargo run --example dmt --features rust <port> <name> <domain_manager>
-    * Example: cargo run --example dmt --features rust 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Usage: cargo run --example dmt <port> <name> <domain_manager>
+    * Example: cargo run --example dmt 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -25,18 +25,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &network::NetworkingConfig{
+    let cfg = &NetworkingConfig {
         port: port,
         bootstrap_nodes: vec![domain_manager.clone()],
         enable_relay_server: false,
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![domain_manager.clone()],
-        private_key: vec![],
-        private_key_path: private_key_path,
+        private_key: None,
+        private_key_path: Some(private_key_path),
         name: name,
     };
-    let mut c = context::context_create(cfg)?;
+    let c = Networking::new(cfg)?;
     let peer_id = c.id.clone();
     let c_clone = c.clone();
 

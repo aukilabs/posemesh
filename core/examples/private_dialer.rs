@@ -133,8 +133,8 @@ impl DomainCluster {
 
 /*
     * This is a client that sends requests in domain cluster
-    * Usage: cargo run --example sender --features rust <port> <name> <domain_manager>
-    * Example: cargo run --example sender --features rust 0 rust_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Usage: cargo run --example sender <port> <name> <domain_manager>
+    * Example: cargo run --example sender 0 rust_client /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

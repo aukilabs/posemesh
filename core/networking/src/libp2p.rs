@@ -1,6 +1,6 @@
-use futures::{channel::{mpsc::{self, channel}, oneshot}, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
@@ -84,7 +84,7 @@ pub struct Node {
 
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
-struct InnerNetworking {
+struct Libp2p {
     // nodes_map: HashMap<String, Node>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
@@ -287,7 +287,7 @@ fn build_listeners(port: u16) -> [Multiaddr; 3] {
     ];
 }
 
-impl InnerNetworking {
+impl Libp2p {
     pub fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
@@ -325,7 +325,7 @@ impl InnerNetworking {
             capabilities: vec![],
         };
 
-        let networking = InnerNetworking {
+        let networking = Libp2p {
             cfg: cfg.clone(),
             // nodes_map: nodes_map,
             swarm: swarm,
@@ -392,22 +392,16 @@ impl InnerNetworking {
                         });
                     }
                 }
-                match self.find_peer_requests.lock() {
-                    Ok(mut find_peer_requests) => {
-                        if find_peer_requests.contains_key(&id) {
-                            let sender = find_peer_requests.remove(&id);
-                            if sender.is_none() {
-                                return;
-                            }
-                            let _ = sender.unwrap().send(Ok(()));
-                            return;
-                        } else if last {
-                            tracing::error!("Failed to find peer: {peer_id}");
-                        }
-                    },
-                    Err(e) => {
-                        tracing::error!("Failed to lock find peer requests: {e}");
+                let mut find_peer_requests =  self.find_peer_requests.lock().await;
+                if find_peer_requests.contains_key(&id) {
+                    let sender = find_peer_requests.remove(&id);
+                    if sender.is_none() {
+                        return;
                     }
+                    let _ = sender.unwrap().send(Ok(()));
+                    return;
+                } else if last {
+                    tracing::error!("Failed to find peer: {peer_id}");
                 }
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
@@ -559,7 +553,7 @@ impl InnerNetworking {
                 let (sender, mut receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
 
                 if !Swarm::is_connected(&self.swarm, &peer_id) {
-                    self.find_peer(peer_id, sender);
+                    self.find_peer(peer_id, sender).await;
                 } else {
                     receiver.close();
                 }
@@ -625,42 +619,13 @@ impl InnerNetworking {
         let _ = sender.send(Ok(incoming_stream));
     }
 
-    fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
-        let find_peer_requests_lock = self.find_peer_requests.try_lock();
-        if let Err(e) = find_peer_requests_lock {
-            tracing::error!("Failed to obtain lock {}", e);
-            let _ = sender.send(Err(Box::new(io::Error::new(io::ErrorKind::Other, "failed to obtain lock"))));
-            return;
-        }
+    async fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+        let mut find_peer_requests_lock = self.find_peer_requests.lock().await;
         // TODO: add timeout to the query
         self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
             let q = dht.get_closest_peers(peer_id.clone());
-            find_peer_requests_lock.unwrap().insert(q, sender);
+            find_peer_requests_lock.insert(q, sender);
         });
-    }
-}
-
-#[derive(Clone)]
-pub struct Networking {
-    pub client: Client,
-    pub event_receiver: Arc<Mutex<mpsc::Receiver<event::Event>>>,
-    pub id: String,
-}
-
-impl Networking {
-    pub fn new(cfg: &NetworkingConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let (sender, receiver) = channel::<client::Command>(8);
-        let (event_sender, event_receiver) = channel::<event::Event>(8);
-        let cfg = cfg.clone();
-        let client = Client::new(sender);
-        
-        let node = InnerNetworking::new(&cfg, receiver, event_sender)?;
-
-        Ok(Networking {
-            client,
-            event_receiver: Arc::new(Mutex::new(event_receiver)),
-            id: node.id,
-        })
     }
 }
 
@@ -701,5 +666,30 @@ async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProt
     
     if let Err(send_err) = send_response.send(Ok(stream)) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
+    }
+}
+
+
+#[derive(Clone)]
+pub struct Networking {
+    pub client: Client,
+    pub event_receiver: Arc<Mutex<Receiver<event::Event>>>,
+    pub id: String,
+}
+
+impl Networking {
+    pub fn new(cfg: &NetworkingConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = channel::<client::Command>(8);
+        let (event_sender, event_receiver) = channel::<event::Event>(8);
+        let cfg = cfg.clone();
+        let client = Client::new(sender);
+        
+        let node = Libp2p::new(&cfg, receiver, event_sender)?;
+
+        Ok(Networking {
+            client,
+            event_receiver: Arc::new(Mutex::new(event_receiver)),
+            id: node.id,
+        })
     }
 }
