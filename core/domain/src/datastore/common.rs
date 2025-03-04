@@ -23,6 +23,8 @@ pub enum DomainError {
     NotFound,
     Interrupted,
     Cancelled,
+    IoError(std::io::Error),
+    PostgresError(tokio_postgres::Error),
 }
 
 impl Error for DomainError {}
@@ -32,6 +34,8 @@ impl std::fmt::Display for DomainError {
             DomainError::NotFound => write!(f, "Not found"),
             DomainError::Interrupted => write!(f, "Interrupted"),
             DomainError::Cancelled => write!(f, "Cancelled"),
+            DomainError::IoError(e) => write!(f, "IO error: {}", e),
+            DomainError::PostgresError(e) => write!(f, "Postgres error: {}", e),
         }
     }
 }
@@ -119,4 +123,11 @@ impl ReliableDataProducer {
         self.progress.lock().await.close();
         self.pendings.lock().await.clear();
     }
+}
+
+#[async_trait]
+pub trait ReliableDataProducer {
+    async fn push(&mut self, data: &domain_data::Data) -> Result<String, DomainError>;
+    async fn is_completed(&self) -> bool;
+    async fn close(self) -> ();
 }

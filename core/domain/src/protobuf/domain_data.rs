@@ -23,6 +23,8 @@ pub struct Metadata {
     pub size: u32,
     pub id: Option<String>,
     pub properties: KVMap<String, String>,
+    pub link: Option<String>,
+    pub hash: Option<String>,
 }
 
 impl<'a> MessageRead<'a> for Metadata {
@@ -38,6 +40,8 @@ impl<'a> MessageRead<'a> for Metadata {
                     let (key, value) = r.read_map(bytes, |r, bytes| Ok(r.read_string(bytes)?.to_owned()), |r, bytes| Ok(r.read_string(bytes)?.to_owned()))?;
                     msg.properties.insert(key, value);
                 }
+                Ok(50) => msg.link = Some(r.read_string(bytes)?.to_owned()),
+                Ok(58) => msg.hash = Some(r.read_string(bytes)?.to_owned()),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -54,6 +58,8 @@ impl MessageWrite for Metadata {
         + 1 + sizeof_varint(*(&self.size) as u64)
         + self.id.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
         + self.properties.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_len((v).len()))).sum::<usize>()
+        + self.link.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
+        + self.hash.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
@@ -62,6 +68,8 @@ impl MessageWrite for Metadata {
         w.write_with_tag(24, |w| w.write_uint32(*&self.size))?;
         if let Some(ref s) = self.id { w.write_with_tag(34, |w| w.write_string(&**s))?; }
         for (k, v) in self.properties.iter() { w.write_with_tag(42, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_len((v).len()), 10, |w| w.write_string(&**k), 18, |w| w.write_string(&**v)))?; }
+        if let Some(ref s) = self.link { w.write_with_tag(50, |w| w.write_string(&**s))?; }
+        if let Some(ref s) = self.hash { w.write_with_tag(58, |w| w.write_string(&**s))?; }
         Ok(())
     }
 }
