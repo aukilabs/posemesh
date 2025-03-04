@@ -123,6 +123,9 @@ endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 
+include(AddGLMHeaders)
+add_glm_headers()
+
 include(LinkBaseLibrary)
 link_base_library(Posemesh)
 
