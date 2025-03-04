@@ -30,10 +30,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let input_dir = format!("{}/input", base_path);
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
-
-    let mut producer = remote_datastore.produce("".to_string()).await;
     let scan = "2025-02-26_11-19-47".to_string();
-    let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
+
+    let domain_id = data_id_generator();
+    let query = Query {
+        ids: vec![],
+        names: vec![],
+        data_types: vec![],
+        name_regexp: Some(format!(".*_{}", scan)),
+        data_type_regexp: None,
+    };
+
+    let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await;
+
+    let mut name_to_id = HashMap::new();
+    loop {
+        let data = downloader.next().await;
+        if data.is_none() {
+            break;
+        }
+        let data = data.unwrap().unwrap();
+        name_to_id.insert(data.metadata.name, data.metadata.id.unwrap());
+    }
+
+    println!("downloaded {} files", name_to_id.len());
+
+    let mut producer = remote_datastore.upsert(domain_id.clone()).await;
 
     for entry in dir {
         let entry = entry.unwrap();
@@ -55,24 +77,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let data_type = parts.last().unwrap();
                 let name = format!("{}_{}", parts[..parts.len()-1].join("."), scan);
 
+                let id = name_to_id.get(&name).map(|id| id.clone());
                 let metadata = Metadata {
-                    id: Some(data_id_generator()),
+                    id,
                     name,
                     data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
                     properties: HashMap::new(),
+                    link: None,
+                    hash: None,
                 };
 
                 let mut content = vec![0u8; metadata.size as usize];
                 f.read_exact(&mut content).expect("cant read file");
 
-                let data = Data {
-                    domain_id: "".to_string(),
-                    metadata: metadata.clone(),
-                    content
-                };
-
-                let _ = producer.push(&data).await.expect("cant push data");
+                let mut writer = producer.push(&metadata).await.expect("cant push data");
+                writer.push_chunk(&content, false).await.expect("cant push chunk");
             }
             Err(e) => {
                 println!("Error reading file: {:?}", e);
@@ -80,26 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    loop {
-        let producer_clone = producer.clone();
-        let mut progress = producer.progress.lock().await;
-        select! {
-            event = progress.next() => {
-                drop(progress);
-                match event {
-                    Some(progress) => {
-                        if progress >= 100 {
-                            producer_clone.close().await;
-                            break;
-                        }
-                    }
-                    None => {
-                        producer_clone.close().await;
-                        break;
-                    }
-                }
-            }
-        }
+    while !producer.is_completed().await {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 
     println!("producer closed");
