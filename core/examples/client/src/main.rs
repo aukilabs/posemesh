@@ -63,6 +63,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
                     properties: HashMap::new(),
+                    link: None,
+                    hash: None,
                 };
 
                 let mut content = vec![0u8; metadata.size as usize];

@@ -18,6 +18,67 @@ use super::common::{ReliableDataProducer, Writer};
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";
 
+#[derive(Clone)]
+pub struct RemoteReliableDataProducer {
+    writer: DataWriter,
+    pendings: Arc<Mutex<HashSet<String>>>,
+}
+
+impl RemoteReliableDataProducer {
+    pub fn new(mut response: Reader<domain_data::Metadata>, writer: DataWriter) -> Self {
+        let pendings = Arc::new(Mutex::new(HashSet::new()));
+        let pending_clone = pendings.clone();
+
+        spawn(async move {
+            while let Some(m) = response.next().await {
+                match m {
+                    Ok(metadata) => {
+                        let id = metadata.id.unwrap_or("why no id".to_string());
+                        let mut pendings = pending_clone.lock().await;
+                        pendings.remove(&id);
+                    }
+                    Err(e) => {
+                        eprintln!("{}", e);
+                    }
+                }
+            }
+        });
+
+        Self {
+            writer, pendings
+        }
+    }
+}
+
+#[async_trait]
+impl ReliableDataProducer for RemoteReliableDataProducer {
+    async fn push(&mut self, data: &domain_data::Data) -> Result<String, DomainError> {
+        let res = self.writer.send(Ok(data.clone())).await;
+        match res {
+            Ok(_) => {
+                let id = data.metadata.id.clone().unwrap_or("no id?".to_string());
+                let mut pendings = self.pendings.lock().await;
+                pendings.insert(id.clone());
+                Ok(id)
+            },
+            Err(e) => {
+                eprintln!("{}", e);
+                Err(DomainError::Interrupted)
+            },
+        }
+    }
+
+    async fn is_completed(&self) -> bool {
+        let pendings = self.pendings.lock();
+        pendings.await.is_empty()
+    }
+
+    async fn close(mut self) {
+        self.writer.close().await.expect("can't close writer");
+    }
+}
+
+
 #[derive(Debug)]
 struct TaskHandler {
     #[cfg(not(target_family = "wasm"))]
@@ -290,8 +351,8 @@ impl Datastore for RemoteDatastore {
         data_receiver
     }
 
-    async fn produce(&mut self, domain_id: String) -> ReliableDataProducer {
-        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(3072);
+    async fn produce(&mut self, domain_id: String) -> RemoteReliableDataProducer {
+        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(3720);
         let mut upload_task_handler = TaskHandler::new();
         let (uploaded_data_sender, uploaded_data_receiver) = channel::<Result<Metadata, DomainError>>(3072);
         let mut upload_job_recv = self.cluster.submit_job(&task::JobRequest {
@@ -389,6 +450,6 @@ impl Datastore for RemoteDatastore {
         });
 
         let _ = rx.await;
-        ReliableDataProducer::new(uploaded_data_receiver, data_sender)
+        RemoteReliableDataProducer::new(uploaded_data_receiver, data_sender)
     }
 }
