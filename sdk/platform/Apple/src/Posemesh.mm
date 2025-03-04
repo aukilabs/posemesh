@@ -80,7 +80,7 @@
     NSAssert(message, @"message is null");
     NSAssert(peerId, @"peerId is null");
     NSAssert(protocol, @"protocol is null");
-    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String]));
+    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], static_cast<std::uint32_t>([message length]), [peerId UTF8String], [protocol UTF8String]));
 }
 
 - (BOOL)sendMessage:(NSData*)message toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback
@@ -89,10 +89,10 @@
     NSAssert(message, @"message is null");
     NSAssert(peerId, @"peerId is null");
     NSAssert(protocol, @"protocol is null");
-    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], [message length], [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
+    return static_cast<BOOL>(m_posemesh->sendMessage([message bytes], static_cast<std::uint32_t>([message length]), [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
         callback(static_cast<BOOL>(status));
     }
-                                                                                                                                             : std::function<void(bool status)> {}));
+                                                                                                                                                                         : std::function<void(bool status)> {}));
 }
 
 - (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol
@@ -103,7 +103,7 @@
     NSAssert(protocol, @"protocol is null");
     const char* message = [string UTF8String];
     const std::size_t length = std::strlen(message);
-    return static_cast<BOOL>(m_posemesh->sendMessage(message, length + (appendTerminatingNullCharacter ? 1 : 0), [peerId UTF8String], [protocol UTF8String]));
+    return static_cast<BOOL>(m_posemesh->sendMessage(message, static_cast<std::uint32_t>(length + (appendTerminatingNullCharacter ? 1 : 0)), [peerId UTF8String], [protocol UTF8String]));
 }
 
 - (BOOL)sendString:(NSString*)string withAppendedTerminatingNullCharacter:(BOOL)appendTerminatingNullCharacter toPeerId:(NSString*)peerId usingProtocol:(NSString*)protocol withCallback:(PSMPosemeshSendMessageCallback)callback
@@ -114,10 +114,10 @@
     NSAssert(protocol, @"protocol is null");
     const char* message = [string UTF8String];
     const std::size_t length = std::strlen(message);
-    return static_cast<BOOL>(m_posemesh->sendMessage(message, length + (appendTerminatingNullCharacter ? 1 : 0), [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
+    return static_cast<BOOL>(m_posemesh->sendMessage(message, static_cast<std::uint32_t>(length + (appendTerminatingNullCharacter ? 1 : 0)), [peerId UTF8String], [protocol UTF8String], callback ? [callback = std::move(callback)](bool status) -> void {
         callback(static_cast<BOOL>(status));
     }
-                                                                                                                                                                      : std::function<void(bool status)> {}));
+                                                                                                                                                                                                  : std::function<void(bool status)> {}));
 }
 
 - (void*)nativePosemesh

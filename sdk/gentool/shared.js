@@ -1,4 +1,5 @@
 let requiredVectorsOfClasses = new Set([
+  'Vector2f',
   'Vector3f'
 ]);
 

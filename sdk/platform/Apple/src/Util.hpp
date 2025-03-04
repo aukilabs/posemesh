@@ -3,10 +3,12 @@
 
 #include <string>
 
-namespace psm::util {
+namespace psm {
+namespace util {
 
-std::string getAppSupportDirectoryPath();
+    std::string getAppSupportDirectoryPath();
 
+}
 }
 
 #endif // __POSEMESH_APPLE_UTIL_HPP__

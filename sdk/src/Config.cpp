@@ -35,7 +35,17 @@ bool Config::operator==(const Config& config) const noexcept
     if (m_serveAsRelay != config.m_serveAsRelay)
         return false;
 #endif
-    return m_bootstraps == config.m_bootstraps;
+    if (m_bootstraps != config.m_bootstraps)
+        return false;
+    if (m_relays != config.m_relays)
+        return false;
+    if (m_privateKey != config.m_privateKey)
+        return false;
+#if !defined(__EMSCRIPTEN__)
+    if (m_privateKeyPath != config.m_privateKeyPath)
+        return false;
+#endif
+    return true;
 }
 
 bool Config::operator!=(const Config& config) const noexcept

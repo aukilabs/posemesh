@@ -1,9 +1,9 @@
 {
-  "name": "Vector3f",
+  "name": "Vector2f",
   "aliases": [
-    {"name": "Vec3f"},
-    {"name": "Vector3"},
-    {"name": "Vec3"}
+    {"name": "Vec2f"},
+    {"name": "Vector2"},
+    {"name": "Vec2"}
   ],
   "properties": [
     {
@@ -12,10 +12,6 @@
     },
     {
       "name": "Y",
-      "type": "float"
-    },
-    {
-      "name": "Z",
       "type": "float"
     },
     {
