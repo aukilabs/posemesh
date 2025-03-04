@@ -83,7 +83,7 @@ uint8_t psm_posemesh_send_string(
     return psm_posemesh_send_message(
         posemesh,
         string,
-        length + (append_terminating_null_character ? 1 : 0),
+        static_cast<std::uint32_t>(length + (append_terminating_null_character ? 1 : 0)),
         peer_id,
         protocol,
         user_data,

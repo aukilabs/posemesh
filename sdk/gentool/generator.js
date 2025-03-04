@@ -10,6 +10,7 @@ const util = require('./util');
 
 const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Config',
+  'PoseEstimation',
   'Posemesh'
 ]);
 
