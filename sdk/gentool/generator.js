@@ -10,7 +10,8 @@ const util = require('./util');
 
 const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Config',
-  'Posemesh'
+  'Posemesh',
+  'PoseEstimation'
 ]);
 
 const args = process.argv.slice(2);
