@@ -63,8 +63,9 @@ are not possible. The relay server is only used as a last resort.
 
 * Rust - ([installation instructions](https://www.rust-lang.org/tools/install)) 
 * Powershell - (`brew install powershell`)
-* Typescript - (`npm install typescript`) (required for Web/WASM32 builds only)
+* Typescript - (`npm install --global typescript`) (required for Web/WASM32 builds only)
 * wasm-pack - (`brew install wasm-pack`) (required for Web/WASM32 builds only)
+* LLVM - (`brew install llvm`) (required for Web/WASM32 builds only when building on macOS)
 * Emscripten - see below (required for Web/WASM32 builds only)
 
 #### Emscripten installation
@@ -97,7 +98,7 @@ git submodule update --init --recursive
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-5. Build output can be found int `./sdk/build-macOS-ARM64-Debug/` (the general case is `./sdk/build-[platform]-[architecture]-[Debug|Release]/`)
+5. Build output can be found in `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
 
 # Apple entitlements
 
