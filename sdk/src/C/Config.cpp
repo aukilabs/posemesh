@@ -235,7 +235,7 @@ const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* 
     auto* result = new (std::nothrow) std::uint8_t[private_key.size()];
     std::memcpy(result, private_key.data(), private_key.size());
     if (out_private_key_size) {
-        *out_private_key_size = private_key.size();
+        *out_private_key_size = static_cast<std::uint32_t>(private_key.size());
     }
     return result;
 }

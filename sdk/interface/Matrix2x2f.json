@@ -1,0 +1,30 @@
+{
+  "name": "Matrix2x2f",
+  "aliases": [
+    {"name": "Mat2x2f"},
+    {"name": "Matrix2x2"},
+    {"name": "Mat2x2"},
+    {"name": "Matrix2f"},
+    {"name": "Mat2f"},
+    {"name": "Matrix2"},
+    {"name": "Mat2"}
+  ],
+  "properties": [
+    {
+      "name": "M00",
+      "type": "float"
+    },
+    {
+      "name": "M01",
+      "type": "float"
+    },
+    {
+      "name": "M10",
+      "type": "float"
+    },
+    {
+      "name": "M11",
+      "type": "float"
+    }
+  ]
+}

@@ -130,7 +130,7 @@ bool Posemesh::sendString(
 {
     return sendMessage(
         string.c_str(),
-        string.size() + (appendTerminatingNullCharacter ? 1 : 0),
+        static_cast<std::uint32_t>(string.size() + (appendTerminatingNullCharacter ? 1 : 0)),
         peerId,
         protocol,
         callback);
