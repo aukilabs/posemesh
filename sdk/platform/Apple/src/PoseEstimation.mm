@@ -7,9 +7,9 @@
 + (BOOL)solvePnPForObjectPoints:(NSArray<PSMVector3f*>*)objectPoints andImagePoints:(NSArray<PSMVector2f*>*)imagePoints andCameraMatrix:(PSMMatrix3x3f*)cameraMatrix withOutR:(PSMMatrix3x3f*)outR andOutT:(PSMVector3f*)outT;
 {
     NSAssert(objectPoints, @"objectPoints is null");
-    NSAssert([objectPoints count] != 4, @"objectPoints array count is not 4");
+    NSAssert([objectPoints count] == 4, @"objectPoints array count is not 4");
     NSAssert(imagePoints, @"imagePoints is null");
-    NSAssert([imagePoints count] != 4, @"imagePoints array count is not 4");
+    NSAssert([imagePoints count] == 4, @"imagePoints array count is not 4");
     NSAssert(cameraMatrix, @"cameraMatrix is null");
     NSAssert(outR, @"outR is null");
     NSAssert(outT, @"outT is null");
