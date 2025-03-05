@@ -12,16 +12,8 @@ uint8_t psm_pose_estimation_solve_pnp(
     psm::Vector2f iPoints[4];
 
     for (int i = 0; i < 4; i++) {
-        psm::Vector2f ip;
-        ip.setX(imagePoints[i]->getX());
-        ip.setY(imagePoints[i]->getY());
-        iPoints[i] = ip;
-
-        psm::Vector3f op;
-        op.setX(objectPoints[i]->getX());
-        op.setY(objectPoints[i]->getY());
-        op.setZ(objectPoints[i]->getZ());
-        oPoints[i] = op;
+        iPoints[i] = *(imagePoints[i]);
+        oPoints[i] = *(objectPoints[i]);
     }
 
     return static_cast<uint8_t>(psm::PoseEstimation::solvePnP(
