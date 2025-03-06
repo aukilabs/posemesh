@@ -1,10 +1,5 @@
 {
-  "name": "Vector4f",
-  "aliases": [
-    {"name": "Vec4f"},
-    {"name": "Vector4"},
-    {"name": "Vec4"}
-  ],
+  "name": "Vector4",
   "properties": [
     {
       "name": "X",

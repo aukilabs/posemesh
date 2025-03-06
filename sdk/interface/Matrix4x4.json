@@ -1,14 +1,5 @@
 {
-  "name": "Matrix4x4f",
-  "aliases": [
-    {"name": "Mat4x4f"},
-    {"name": "Matrix4x4"},
-    {"name": "Mat4x4"},
-    {"name": "Matrix4f"},
-    {"name": "Mat4f"},
-    {"name": "Matrix4"},
-    {"name": "Mat4"}
-  ],
+  "name": "Matrix4x4",
   "properties": [
     {
       "name": "M00",

@@ -6,11 +6,11 @@
 namespace psm {
 
 bool PoseEstimation::solvePnP(
-    const Vector3f objectPoints[],
-    const Vector2f imagePoints[],
-    const Matrix3x3f& cameraMatrix,
-    Matrix3x3f& outR,
-    Vector3f& outT)
+    const Vector3 objectPoints[],
+    const Vector2 imagePoints[],
+    const Matrix3x3& cameraMatrix,
+    Matrix3x3& outR,
+    Vector3& outT)
 {
     std::vector<cv::Point3f> cvObjectPoints;
     cvObjectPoints.reserve(4);

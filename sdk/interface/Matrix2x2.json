@@ -1,14 +1,5 @@
 {
-  "name": "Matrix2x2f",
-  "aliases": [
-    {"name": "Mat2x2f"},
-    {"name": "Matrix2x2"},
-    {"name": "Mat2x2"},
-    {"name": "Matrix2f"},
-    {"name": "Mat2f"},
-    {"name": "Matrix2"},
-    {"name": "Mat2"}
-  ],
+  "name": "Matrix2x2",
   "properties": [
     {
       "name": "M00",

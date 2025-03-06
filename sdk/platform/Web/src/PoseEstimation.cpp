@@ -8,11 +8,11 @@ using namespace emscripten;
 using namespace psm;
 
 namespace {
-bool solvePnP(const std::vector<std::shared_ptr<Vector3f>>& objectPoints,
-    const std::vector<std::shared_ptr<Vector2f>>& imagePoints,
-    const Matrix3x3f& cameraMatrix,
-    Matrix3x3f& outR,
-    Vector3f& outT)
+bool solvePnP(const std::vector<std::shared_ptr<Vector3>>& objectPoints,
+    const std::vector<std::shared_ptr<Vector2>>& imagePoints,
+    const Matrix3x3& cameraMatrix,
+    Matrix3x3& outR,
+    Vector3& outT)
 {
     if (objectPoints.size() != 4) {
         std::cerr << "Posemesh.solvePnP(): objectPoints array length is not 4" << std::endl;
@@ -23,12 +23,12 @@ bool solvePnP(const std::vector<std::shared_ptr<Vector3f>>& objectPoints,
         return false;
     }
 
-    Vector3f objectPointsRaw[4];
+    Vector3 objectPointsRaw[4];
     for (int i = 0; i < 4; ++i) {
         objectPointsRaw[i] = *(objectPoints[i]);
     }
 
-    Vector2f imagePointsRaw[4];
+    Vector2 imagePointsRaw[4];
     for (int i = 0; i < 4; ++i) {
         imagePointsRaw[i] = *(imagePoints[i]);
     }

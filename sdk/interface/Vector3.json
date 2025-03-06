@@ -1,10 +1,5 @@
 {
-  "name": "Quaternionf",
-  "aliases": [
-    {"name": "Quatf"},
-    {"name": "Quaternion"},
-    {"name": "Quat"}
-  ],
+  "name": "Vector3",
   "properties": [
     {
       "name": "X",
@@ -19,8 +14,11 @@
       "type": "float"
     },
     {
-      "name": "W",
-      "type": "float"
+      "name": "Length",
+      "type": "float",
+      "getterCustom": true,
+      "hasSetter": false,
+      "hasMemberVar": false
     }
   ]
 }

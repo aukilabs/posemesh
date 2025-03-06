@@ -12,55 +12,55 @@
                 try {
                     let squareLength = 0.05;
 
-                    let o0 = new Posemesh.Vector3f();
+                    let o0 = new Posemesh.Vector3();
                     objectPoints.push(o0);
                     o0.x = -squareLength / 2;
                     o0.y = squareLength / 2;
 
-                    let o1 = new Posemesh.Vector3f();
+                    let o1 = new Posemesh.Vector3();
                     objectPoints.push(o1);
                     o1.x = squareLength / 2;
                     o1.y = squareLength / 2;
 
-                    let o2 = new Posemesh.Vector3f();
+                    let o2 = new Posemesh.Vector3();
                     objectPoints.push(o2);
                     o2.x = squareLength / 2;
                     o2.y = -squareLength / 2;
                     
-                    let o3 = new Posemesh.Vector3f();
+                    let o3 = new Posemesh.Vector3();
                     objectPoints.push(o3);
                     o3.x = -squareLength / 2;
                     o3.y = -squareLength / 2;
 
-                    let i0 = new Posemesh.Vector2f();
+                    let i0 = new Posemesh.Vector2();
                     imagePoints.push(i0);
                     i0.x = 358.8713;
                     i0.y = 1128.691;
 
-                    let i1 = new Posemesh.Vector2f();
+                    let i1 = new Posemesh.Vector2();
                     imagePoints.push(i1);
                     i1.x = 542.3757;
                     i1.y = 1105.69;
 
-                    let i2 = new Posemesh.Vector2f();
+                    let i2 = new Posemesh.Vector2();
                     imagePoints.push(i2);
                     i2.x = 560.4747;
                     i2.y = 1267.68;
 
-                    let i3 = new Posemesh.Vector2f();
+                    let i3 = new Posemesh.Vector2();
                     imagePoints.push(i3);
                     i3.x = 361.8601;
                     i3.y = 1295.745;
 
-                    cameraMatrix = new Posemesh.Matrix3x3f();
+                    cameraMatrix = new Posemesh.Matrix3x3();
                     cameraMatrix.m00 = 1444.07;
                     cameraMatrix.m02 = 723.0972;
                     cameraMatrix.m11 = 1444.07;
                     cameraMatrix.m12 = 961.7217;
                     cameraMatrix.m22 = 1;
 
-                    outR = new Posemesh.Matrix3x3f();
-                    outT = new Posemesh.Vector3f();
+                    outR = new Posemesh.Matrix3x3();
+                    outT = new Posemesh.Vector3();
 
                     let estimationSuccess = Posemesh.PoseEstimation.solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT);
                     console.log('Estimation success =', estimationSuccess);

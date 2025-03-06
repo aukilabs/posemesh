@@ -1,14 +1,5 @@
 {
-  "name": "Matrix3x3f",
-  "aliases": [
-    {"name": "Mat3x3f"},
-    {"name": "Matrix3x3"},
-    {"name": "Mat3x3"},
-    {"name": "Matrix3f"},
-    {"name": "Mat3f"},
-    {"name": "Matrix3"},
-    {"name": "Mat3"}
-  ],
+  "name": "Matrix3x3",
   "properties": [
     {
       "name": "M00",
