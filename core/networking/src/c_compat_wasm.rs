@@ -31,7 +31,7 @@ impl Config {
 
 #[wasm_bindgen]
 #[allow(non_snake_case)]
-pub fn posemeshNetworkingContextCreate(config: &Config) -> *mut Networking {
+pub fn posemeshNetworkingContextCreate(config: Config) -> *mut Networking {
     let config = NetworkingConfig {
         bootstrap_nodes: config.bootstraps.clone(),
         relay_nodes: config.relays.clone(),

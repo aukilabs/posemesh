@@ -65,15 +65,11 @@ extern "C" {
             let relays = UTF8ToString($1).split(';');
             let privateKey = $2;
             let privateKeySize = $3;
-            let name = $4;
+            let name = UTF8ToString($4);
             let config = new __internalPosemeshBase.Config(
                 bootstraps, relays, new Uint8Array(HEAPU8.buffer, privateKey, privateKeySize), name
             );
-            try {
-                return __internalPosemeshBase.posemeshNetworkingContextCreate(config);
-            } finally {
-                config.free();
-            }
+            return __internalPosemeshBase.posemeshNetworkingContextCreate(config);
         }, bootstraps, relays, private_key, private_key_size, name);
         return (psm_posemesh_networking_context_t*)context;
     }
