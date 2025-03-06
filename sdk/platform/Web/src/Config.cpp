@@ -26,5 +26,7 @@ EMSCRIPTEN_BINDINGS(Config)
         .function("__setRelays(relays)", &Config::setRelays)
         .function("__getPrivateKey()", &Config::getPrivateKey)
         .function("__setPrivateKey(privateKey)", &Config::setPrivateKey)
+        .function("getName()", &Config::getName)
+        .function("setName(name)", &Config::setName)
         .class_function("createDefault", &createDefault, nonnull<ret_val>());
 }

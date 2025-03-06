@@ -10,8 +10,7 @@ namespace psm {
 Config::Config()
 {
 #if !defined(__EMSCRIPTEN__)
-    m_serveAsBootstrap = false;
-    m_serveAsRelay = false;
+    m_enableMDNS = false;
 #endif
 }
 
@@ -29,12 +28,6 @@ bool Config::operator==(const Config& config) const noexcept
 {
     if (this == &config)
         return true;
-#if !defined(__EMSCRIPTEN__)
-    if (m_serveAsBootstrap != config.m_serveAsBootstrap)
-        return false;
-    if (m_serveAsRelay != config.m_serveAsRelay)
-        return false;
-#endif
     if (m_bootstraps != config.m_bootstraps)
         return false;
     if (m_relays != config.m_relays)
@@ -44,7 +37,11 @@ bool Config::operator==(const Config& config) const noexcept
 #if !defined(__EMSCRIPTEN__)
     if (m_privateKeyPath != config.m_privateKeyPath)
         return false;
+    if (m_enableMDNS != config.m_enableMDNS)
+        return false;
 #endif
+    if (m_name != config.m_name)
+        return false;
     return true;
 }
 
@@ -52,28 +49,6 @@ bool Config::operator!=(const Config& config) const noexcept
 {
     return !(*this == config);
 }
-
-#if !defined(__EMSCRIPTEN__)
-bool Config::getServeAsBootstrap() const noexcept
-{
-    return m_serveAsBootstrap;
-}
-
-void Config::setServeAsBootstrap(bool serveAsBootstrap) noexcept
-{
-    m_serveAsBootstrap = serveAsBootstrap;
-}
-
-bool Config::getServeAsRelay() const noexcept
-{
-    return m_serveAsRelay;
-}
-
-void Config::setServeAsRelay(bool serveAsRelay) noexcept
-{
-    m_serveAsRelay = serveAsRelay;
-}
-#endif
 
 std::vector<std::string> Config::getBootstraps() const
 {
@@ -147,7 +122,27 @@ void Config::setPrivateKeyPath(std::string privateKeyPath) noexcept
 {
     m_privateKeyPath = std::move(privateKeyPath);
 }
+
+bool Config::getEnableMDNS() const noexcept
+{
+    return m_enableMDNS;
+}
+
+void Config::setEnableMDNS(bool enableMDNS) noexcept
+{
+    m_enableMDNS = enableMDNS;
+}
 #endif
+
+std::string Config::getName() const
+{
+    return m_name;
+}
+
+void Config::setName(std::string name) noexcept
+{
+    m_name = std::move(name);
+}
 
 Config Config::createDefault()
 {

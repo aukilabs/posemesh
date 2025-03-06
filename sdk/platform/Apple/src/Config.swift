@@ -1,22 +1,4 @@
 extension Config {
-    public var serveAsBootstrap: Bool {
-        get {
-            return __serveAsBootstrap()
-        }
-        set {
-            __setServeAsBootstrap(newValue)
-        }
-    }
-
-    public var serveAsRelay: Bool {
-        get {
-            return __serveAsRelay()
-        }
-        set {
-            __setServeAsRelay(newValue)
-        }
-    }
-
     public var bootstraps: [String] {
         get {
             return __bootstraps()
@@ -50,6 +32,24 @@ extension Config {
         }
         set {
             __setPrivateKeyPath(newValue)
+        }
+    }
+
+    public var enableMDNS: Bool {
+        get {
+            return __enableMDNS()
+        }
+        set {
+            __setEnableMDNS(newValue)
+        }
+    }
+
+    public var name: String {
+        get {
+            return __name()
+        }
+        set {
+            __setName(newValue)
         }
     }
 

@@ -24,14 +24,6 @@ psm_config_t* PSM_API psm_config_duplicate(const psm_config_t* config);
 uint8_t PSM_API psm_config_equals(const psm_config_t* config, const psm_config_t* other_config);
 void PSM_API psm_config_destroy(psm_config_t* config);
 
-#if !defined(__EMSCRIPTEN__)
-uint8_t PSM_API psm_config_get_serve_as_bootstrap(const psm_config_t* config);
-void PSM_API psm_config_set_serve_as_bootstrap(psm_config_t* config, uint8_t serve_as_bootstrap);
-
-uint8_t PSM_API psm_config_get_serve_as_relay(const psm_config_t* config);
-void PSM_API psm_config_set_serve_as_relay(psm_config_t* config, uint8_t serve_as_relay);
-#endif
-
 const char* const* PSM_API psm_config_get_bootstraps(const psm_config_t* config, uint32_t* out_bootstraps_count);
 void PSM_API psm_config_get_bootstraps_free(const char* const* bootstraps);
 uint8_t PSM_API psm_config_set_bootstraps(psm_config_t* config, const char* const* bootstraps, uint32_t bootstraps_count);
@@ -48,7 +40,14 @@ void PSM_API psm_config_set_private_key(psm_config_t* config, const uint8_t* pri
 const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config);
 void PSM_API psm_config_get_private_key_path_free(const char* private_key_path);
 void PSM_API psm_config_set_private_key_path(psm_config_t* config, const char* private_key_path);
+
+uint8_t PSM_API psm_config_get_enable_mdns(const psm_config_t* config);
+void PSM_API psm_config_set_enable_mdns(psm_config_t* config, uint8_t enable_mdns);
 #endif
+
+const char* PSM_API psm_config_get_name(const psm_config_t* config);
+void PSM_API psm_config_get_name_free(const char* name);
+void PSM_API psm_config_set_name(psm_config_t* config, const char* name);
 
 #if defined(__cplusplus)
 }
