@@ -1,0 +1,28 @@
+{
+  "name": "Vector4",
+  "properties": [
+    {
+      "name": "X",
+      "type": "float"
+    },
+    {
+      "name": "Y",
+      "type": "float"
+    },
+    {
+      "name": "Z",
+      "type": "float"
+    },
+    {
+      "name": "W",
+      "type": "float"
+    },
+    {
+      "name": "Length",
+      "type": "float",
+      "getterCustom": true,
+      "hasSetter": false,
+      "hasMemberVar": false
+    }
+  ]
+}

@@ -5,4 +5,8 @@
 [submodule "third-party/opencv"]
 	path = third-party/opencv
 	url = https://github.com/aukilabs/opencv.git
-	branch = release/v4.10.0
+	branch = release-fixed/v4.10.0-1
+[submodule "third-party/glm"]
+	path = third-party/glm
+	url = https://github.com/aukilabs/glm.git
+	branch = release/v1.0.0

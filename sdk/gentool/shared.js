@@ -1,5 +1,6 @@
 let requiredVectorsOfClasses = new Set([
-  'Vector3f'
+  'Vector2',
+  'Vector3'
 ]);
 
 module.exports = {

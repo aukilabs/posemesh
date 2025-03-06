@@ -1,0 +1,21 @@
+{
+  "name": "Matrix2x2",
+  "properties": [
+    {
+      "name": "M00",
+      "type": "float"
+    },
+    {
+      "name": "M01",
+      "type": "float"
+    },
+    {
+      "name": "M10",
+      "type": "float"
+    },
+    {
+      "name": "M11",
+      "type": "float"
+    }
+  ]
+}

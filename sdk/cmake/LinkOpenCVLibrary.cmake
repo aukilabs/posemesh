@@ -88,6 +88,13 @@ function(LINK_OPENCV_LIBRARY NAME)
             message(FATAL_ERROR "OpenCV library is not built for targeted platform, architecture and configuration (build type): Archive file is missing.")
         endif()
 
+        if(APPLE)
+            target_link_libraries(${NAME} PRIVATE "-framework Accelerate")
+            if(PLATFORM MATCHES "^(MAC|MAC_ARM64|MAC_CATALYST|MAC_CATALYST_ARM64)$")
+                target_link_libraries(${NAME} PRIVATE "-framework OpenCL")
+            endif()
+        endif()
+
         link_platform_libraries(
             ${NAME}
             HIDE_SYMBOLS
