@@ -12,7 +12,7 @@ pub struct Config {
     pub private_key: *const c_uchar, // private key can be null
     pub private_key_size: u32,
     pub private_key_path: *const c_char, // private key path can be null, but if private key is null, private key path must be provided
-    pub enable_mdns: bool,
+    pub enable_mdns: u8,
     pub name: *const c_char,
 }
 
@@ -21,13 +21,13 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
         CStr::from_ptr(config.bootstraps)
     }.to_str().expect("Context::new(): config.bootstraps is not a valid UTF-8 string");
-    let bootstraps = bootstraps_raw.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
+    let bootstraps = bootstraps_raw.split(';').map(|s| s.to_string()).collect::<Vec<String>>();
 
     let relays_raw = unsafe {
         assert!(!config.relays.is_null(), "Context::new(): config.relays is null");
         CStr::from_ptr(config.relays)
     }.to_str().expect("Context::new(): config.relays is not a valid UTF-8 string");
-    let relays = relays_raw.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
+    let relays = relays_raw.split(';').map(|s| s.to_string()).collect::<Vec<String>>();
 
     let private_key = if config.private_key.is_null() {
         None
@@ -57,7 +57,7 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         relay_nodes: relays,
         private_key,
         private_key_path,
-        enable_mdns: config.enable_mdns,
+        enable_mdns: config.enable_mdns != 0,
         enable_kdht: true,
         enable_relay_server: false,
         port: 0,
