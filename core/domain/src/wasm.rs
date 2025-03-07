@@ -3,10 +3,11 @@ use futures::{SinkExt, StreamExt};
 use networking::libp2p::Networking;
 use quick_protobuf::serialize_into_vec;
 use serde::de;
+use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
-use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise}, spawn_local};
+use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -159,6 +160,19 @@ impl DomainCluster {
     #[wasm_bindgen(constructor)]
     pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
         Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, private_key, private_key_path))) }   
+    }
+
+    #[wasm_bindgen]
+    pub fn monitor(&self, callback: Function) {
+        let inner = self.inner.clone();
+        spawn_local(async move {
+            let mut rx = inner.lock().unwrap().monitor_jobs().await;
+            while let Some(job) = rx.next().await {
+                let job_bytes = serialize_into_vec(&job).unwrap();
+                let js_arr = Uint8Array::from(&job_bytes[..]);
+                callback.call1(&JsValue::NULL, &js_arr).unwrap();
+            }
+        });
     }
 }
 

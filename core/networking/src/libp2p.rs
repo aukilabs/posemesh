@@ -350,7 +350,7 @@ impl Libp2p {
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => self.handle_event(event).await,
-                command = self.command_receiver.select_next_some() => self.handle_command(command).await,
+                Some(command) = self.command_receiver.next() => self.handle_command(command).await,
                 else => break,
             }
         };
@@ -450,7 +450,6 @@ impl Libp2p {
                 message: gossipsub::Message { source, data, topic, .. },
                 ..
             })) => {
-                tracing::info!("Received message from {:?} on topic {topic}", source);
                 if let Err(e) = self.event_sender.send(event::Event::PubSubMessageReceivedEvent { 
                         topic: topic.clone(),
                         message: data.clone(),
@@ -537,7 +536,7 @@ impl Libp2p {
                 };
 
                 // self.nodes_map.insert(node.id.clone(), node.clone());
-                self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap();
+                self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.expect(&format!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
                 
                 // #[cfg(target_family="wasm")]
                 // self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
@@ -558,10 +557,10 @@ impl Libp2p {
                     receiver.close();
                 }
                 #[cfg(target_family="wasm")]
-                wasm_bindgen_futures::spawn_local(stream(ctrl, peer_id, protocol, message, response, receiver));
+                wasm_bindgen_futures::spawn_local(open_stream(ctrl, peer_id, protocol, message, response, receiver));
 
                 #[cfg(not(target_family="wasm"))]
-                tokio::spawn(stream(ctrl, peer_id, protocol, message, response, receiver));
+                tokio::spawn(open_stream(ctrl, peer_id, protocol, message, response, receiver));
             },
             client::Command::SetStreamHandler { protocol, sender } => {
                 self.add_stream_protocol(protocol, sender);
@@ -629,13 +628,13 @@ impl Libp2p {
     }
 }
 
-async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
+async fn open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
     if let Ok(Err(e)) = find_response.await {
-        tracing::error!("{}", e);
+        tracing::error!("find peer response {}", e);
     }
 
-    let mut stream = match ctrl.open_stream(peer_id, protocol).await {
-        Ok(stream) => stream,
+    let mut s = match ctrl.open_stream(peer_id, protocol).await {
+        Ok(s) => s,
         Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
             if let Err(send_err) = send_response.send(Err(Box::new(error))) {
                 tracing::error!("Failed to send feedback: {:?}", send_err);
@@ -649,14 +648,17 @@ async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProt
             return;
         }
     };
+
     if message.len() != 0 {
-        if let Err(e) = stream.write_all(&message).await {
+        if let Err(e) = s.write_all(&message).await {
+            tracing::error!("Failed to send message: {:?}", e);
             if let Err(send_err) = send_response.send(Err(Box::new(e))) {
                 tracing::error!("Failed to send feedback: {:?}", send_err);
             }
             return;
         }
-        if let Err(e) = stream.flush().await {
+        if let Err(e) = s.flush().await {
+            tracing::error!("Failed to flush stream: {:?}", e);
             if let Err(send_err) = send_response.send(Err(Box::new(e))) {
                 tracing::error!("Failed to send feedback: {:?}", send_err);
             }
@@ -664,7 +666,7 @@ async fn stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProt
         }
     }
     
-    if let Err(send_err) = send_response.send(Ok(stream)) {
+    if let Err(send_err) = send_response.send(Ok(s)) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
     }
 }

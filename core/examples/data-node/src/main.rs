@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, StoreDataOutputV1, Task}}};
+use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, StoreDataOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
@@ -23,15 +23,7 @@ fn decode_jwt(token: &str) -> Result<TaskTokenClaim, Box<dyn std::error::Error +
 }
 
 async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let mut length_buf = [0u8; 4];
-    stream.read_exact(&mut length_buf).await?;
-
-    let length = u32::from_be_bytes(length_buf) as usize;
-    let mut buffer = vec![0u8; length];
-    stream.read_exact(&mut buffer).await?;
-        
-    let header = deserialize_from_slice::<DomainClusterHandshake>(&buffer)?;
-
+    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
     decode_jwt(header.access_token.as_str())
 }
 
@@ -42,23 +34,19 @@ fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking) {
         c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
         let mut data_ids = Vec::<String>::new();
 
+        println!("Storing data for job: {:?}", claim.task_name);
         loop {
             let mut length_buf = [0u8; 4];
-            
-             match stream.read_exact(&mut length_buf).await {
-                Ok(_) => 4,
-                Err(e) => {
-                    eprintln!("Failed to read message length: {:?}", e);
-                    break;
-                },
-            };
-    
+            stream.read_exact(&mut length_buf).await.expect("Failed to read length");
             let length = u32::from_be_bytes(length_buf) as usize;
+
+            println!("Received length: {}", length);
     
             // Read the data in chunks
             let mut buffer = vec![0u8; length];
             stream.read_exact(&mut buffer).await.expect("Failed to read buffer");
             let metadata = deserialize_from_slice::<Metadata>(&buffer).expect("Failed to deserialize metadata");
+            println!("Received buffer: {:?}", metadata);
     
             let data_id = metadata.id.expect("Failed to get data id");
     
@@ -70,7 +58,7 @@ fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking) {
             metadata_file.flush().expect("Failed to flush file");
 
             let mut content_file = OpenOptions::new().append(true).create(true).open(format!("{}/content.bin", path.clone())).expect("Failed to open file");
-            let default_chunk_size = 3 * 1024;
+            let default_chunk_size = 5 * 1024;
             let mut read_size: usize = 0;
             let data_size = metadata.size as usize;
             loop {
@@ -129,7 +117,7 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
 
         let mut f = fs::File::open(content_path).expect("Failed to open file");
         let mut written = 0;
-        let chunk_size = 7 * 1024;
+        let chunk_size = 2 * 1024;
         loop {
             let mut buf = vec![0; chunk_size];
             let n = f.read(&mut buf).expect("Failed to read chunk");
@@ -137,10 +125,11 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
                 break;
             }
             written += n;
-            println!("Served chunk: {}/{}", written, metadata.size);
+            // println!("Served chunk: {}/{}", written, metadata.size);
             stream.write_all(&buf[..n]).await.expect("cant write chunk");
             stream.flush().await.expect("cant flush chunk");
         }
+        println!("Served data: {}, size: {}", metadata.name, metadata.size);
     }
 
     if !input.keep_alive {
@@ -156,7 +145,6 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         };
         let buf = serialize_into_vec(&task).expect("Failed to serialize task update");
         c.client.publish(header.job_id.clone(), buf).await.expect("Failed to publish task update");
-        stream.close().await.expect("Failed to close stream");
     }
 }
 /*
@@ -183,6 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
+    let _ = std::fs::remove_dir_all(format!("{}/output/domain_data", base_path));
 
     loop {
         select! {
