@@ -93,7 +93,7 @@
         let processingFrame = false;
 
         async function initPosemesh() {
-            await Posemesh.initialize();
+            await Posemesh.initializePosemesh();
         }
 
         async function requestCameraPermission() {
@@ -204,10 +204,10 @@
         function getGreyEncodedImage(imageData, width, height) {
             const startTime = performance.now();
             const byteData = imageData.data;
-            const greyEncodedImageData = new Posemesh.VectorUint8();
+            const greyEncodedImageData = [];
             for (let i = 0; i < 4 * width * height; i += 4) { // 4 for each RGBA component.
                 const greyValue = 0.299 * (byteData[i + 2] / 255.0) + 0.587 * (byteData[i + 1] / 255.0) + 0.114 * (byteData[i] / 255.0);
-                greyEncodedImageData.push_back(greyValue * 255.0);
+                greyEncodedImageData.push(greyValue * 255.0);
             }
 
             const endTime = performance.now();
@@ -217,8 +217,8 @@
 
         function processImageDataBytes(imageData, width, height) {
             const imageBytes = getGreyEncodedImage(imageData, width, height);
-            const contents = new Posemesh.VectorString();
-            const corners = new Posemesh.Vector2fArray();
+            const contents = [];
+            const corners = [];
 
             const startTime = performance.now();
             const detected = Posemesh.QRDetection.detectQRFromLuminance(imageBytes, width, height, contents, corners);
@@ -229,17 +229,8 @@
 
             hasDetectedQR = detected;
             if (detected) {
-                console.log(`Found contents = ${contents.get(0)}`);
-                currentCorners = [];
-                for (let i = 0; i < 4; i++) {
-                    const corner = corners.get(i);
-                    currentCorners.push({ x: corner.x, y: corner.y });
-                }
+                currentCorners = corners;
             }
-
-            imageBytes.delete();
-            contents.delete();
-            corners.delete();
         }
 
         function drawCorners(ctx, corners) {
