@@ -3,15 +3,18 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_int
 #[cfg(not(target_family = "wasm"))]
 use tokio::task::spawn as spawn;
 
+use uuid::Uuid;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
 use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use super::common::{ReliableDataProducer, Writer};
+use networking::context::Context;
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::prefix_size_message, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
+use futures::{channel::{mpsc::channel, oneshot}, executor::block_on, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
+
+use super::common::{Reader, ReliableDataProducer, Writer};
 
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";
@@ -133,30 +136,26 @@ impl RemoteDatastore {
         while let Some(data) = src.next().await {
             match data {
                 Ok(data) => {
-                    let m_buf = serialize_into_vec(&data.metadata).expect("Failed to serialize metadata");
-                    let mut length_buf = [0u8; 4];
-                    let length = m_buf.len() as u32;
-                    length_buf.copy_from_slice(&length.to_be_bytes());
+                    let m_buf = prefix_size_message(&data.metadata);
 
-                    tracing::debug!("Uploading data {}, {}/{}, {}", data.metadata.name, data.metadata.size, data.content.len(), length);
+                    tracing::debug!("Uploading data {}, {}/{}", data.metadata.name, data.metadata.size, data.content.len());
                     assert_eq!(data.metadata.size as usize, data.content.len(), "size should match");
-                    
-                    writer.write_all(&length_buf).await.expect("Failed to write length");
+                
                     writer.write_all(&m_buf).await.expect("Failed to write metadata");
                     writer.flush().await.expect("Failed to flush");
 
-                    let default_chunk_size = 7 * 1024; // wasm allows 8192 = 8KB the most
+                    let default_chunk_size = 5 * 1024; // wasm allows 8192 = 8KB the most
                     let mut chunk_size = default_chunk_size;
                     let mut offset = 0;
                     while offset < data.content.len() {
                         if offset + chunk_size > data.content.len() {
                             chunk_size = data.content.len() - offset;
                         }
-                        tracing::debug!("Uploading");
+                        println!("Uploading chunk: {}/{}", offset, data.content.len());
                         writer.write_all(&data.content[offset..offset + chunk_size]).await.expect("Failed to write content");
                         writer.flush().await.expect("Failed to flush");
                         offset += chunk_size;
-                        tracing::debug!("Uploaded chunk: {}/{}", offset, data.content.len());
+                        println!("Uploaded");
                     }
                 },
                 Err(e) => {
@@ -166,7 +165,6 @@ impl RemoteDatastore {
             }
         }
         writer.flush().await.expect("Failed to flush");
-        writer.close().await.expect("Failed to close writer");
     }
 }
 
@@ -175,7 +173,7 @@ impl Datastore for RemoteDatastore {
     async fn consume(&mut self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader
     {
         let mut download_task = TaskHandler::new();
-        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
+        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(3072);
         let peer_id = self.cluster.peer.id.clone();
         let mut peer = self.cluster.peer.client.clone();
         let domain_id = domain_id.clone();
@@ -185,7 +183,7 @@ impl Datastore for RemoteDatastore {
             keep_alive,
         };
         let query_data = serialize_into_vec(&data).expect("cant serialize data length");
-        let job = &task::Job {
+        let job = &task::JobRequest {
             name: "stream download domain data".to_string(),
             tasks: vec![
                 task::TaskRequest {
@@ -207,11 +205,13 @@ impl Datastore for RemoteDatastore {
                     receiver: "".to_string(),
                 }
             ],
+            nonce: Uuid::new_v4().to_string(),
         };
 
         let mut download_task_recv = self.cluster.submit_job(job).await;
 
         let (tx, rx) = oneshot::channel::<bool>();
+        let mut data_sender_clone = data_sender.clone();
 
         spawn(async move {
             let data_sender = data_sender.clone();
@@ -248,36 +248,45 @@ impl Datastore for RemoteDatastore {
                         },
                         Status::FAILED => {
                             tracing::error!("Failed to download data: {:?}", task);
-                            download_task.cancel();
                             tx.send(false).expect("Failed to send completion signal");
+                            download_task.cancel();
                             return;
                         },
                         _ => ()
                     }
-                    None => {
-                        tracing::debug!("task update channel is closed");
-                        download_task.cancel();
+                    Some(TaskUpdateEvent {
+                        result: TaskUpdateResult::Err(e),
+                        ..
+                    }) => {
+                        eprintln!("Task update failure: {:?}", e);
                         tx.send(false).expect("Failed to send completion signal");
+                        download_task.cancel();
                         return;
                     }
-                    _ => ()
+                    None => {
+                        println!("task update channel is closed");
+                        tx.send(false).expect("Failed to send completion signal");
+                        download_task.cancel();
+                        return;
+                    }
                 }
             }
         });
 
-        let res = rx.await;
-        if let Err(e) = res {
-            tracing::error!("Failed to download data: {:?}", e);
+        let res = rx.await.unwrap();
+        if !res {
+            data_sender_clone.send(Err(DomainError::Interrupted)).await.expect("Failed to send error");
         }
         
         data_receiver
     }
 
     async fn produce(&mut self, domain_id: String) -> ReliableDataProducer {
-        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
+        let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(3072);
         let mut upload_task_handler = TaskHandler::new();
-        let (uploaded_data_sender, uploaded_data_receiver) = channel::<Result<Metadata, DomainError>>(100);
-        let mut upload_job_recv = self.cluster.submit_job(&task::Job {
+        let (uploaded_data_sender, uploaded_data_receiver) = channel::<Result<Metadata, DomainError>>(3072);
+        let mut upload_job_recv = self.cluster.submit_job(&task::JobRequest {
+            nonce: Uuid::new_v4().to_string(),
             name: "stream uploading recordings".to_string(),
             tasks: vec![
                 task::TaskRequest {
@@ -322,15 +331,9 @@ impl Datastore for RemoteDatastore {
                             }
 
                             let task = task.clone();
-                            let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
+                            let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
                                 access_token: task.access_token.clone(),
-                            }).unwrap();
-                            let mut length_buf = [0u8; 4];
-                            let length = m_buf.len() as u32;
-                            length_buf.copy_from_slice(&length.to_be_bytes());
-                            let mut upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake length");
-                            upload_stream.write_all(&m_buf).await.expect("cant write handshake");
-                            upload_stream.flush().await.expect("cant flush handshake");
+                            }), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
 
                             let data_receiver = data_receiver.clone();
                             let uploaded_data_sender = uploaded_data_sender.clone();

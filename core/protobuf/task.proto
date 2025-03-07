@@ -8,9 +8,16 @@ message Any {
 }
 
 // Job containing a list of tasks
-message Job {
+message JobRequest {
     string name = 1;
     repeated TaskRequest tasks = 2;
+    required string nonce = 3;
+}
+
+message Job {
+  string id = 1;
+  string name = 2;
+  repeated Task tasks = 3;
 }
 
 enum Code {

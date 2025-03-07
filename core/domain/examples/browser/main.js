@@ -9,6 +9,7 @@ export class UploadManager {
         this.libp2pReady = false;
         this.datastore = null;
         this.producer = null;
+        this.domainCluster = null;
     }
 
     async init(onFileSelect, onProgressUpdate, onUploadComplete) {
@@ -31,7 +32,7 @@ export class UploadManager {
             this.datastore = new RemoteDatastore(domainCluster);
             this.uploader = await this.datastore.produce("");
 
-            console.log("libp2p is ready!");
+            console.log("libp2p is ready!", this.domainCluster.monitor);
         } catch (error) {
             console.error("Failed to initialize libp2p:", error);
         }

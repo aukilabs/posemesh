@@ -3,17 +3,17 @@ members = [
     "networking",
     "domain",
     "runtime"
-, "examples/client", "examples/domain-manager", "examples/data-node", "examples/reconstruction-node", "base", "examples/relay"]
+, "examples/client", "examples/domain-manager", "examples/data-node", "examples/reconstruction-node", "base", "examples/relay", "examples/test-concurrent"]
 resolver = "2"
 
 [workspace.package]
 rust-version = "1.81.0"
 
 [workspace.dependencies]
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p = { path = "../../rust-libp2p/libp2p" }
+libp2p-stream = { path = "../../rust-libp2p/protocols/stream" }
+libp2p-webrtc = { path = "../../rust-libp2p/transports/webrtc" }
+libp2p-webrtc-websys = { path = "../../rust-libp2p/transports/webrtc-websys" }
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"
@@ -32,3 +32,4 @@ networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
 base = { path = "base" }
+asynchronous-codec = "0.7.0"

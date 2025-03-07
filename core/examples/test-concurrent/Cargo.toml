@@ -1,19 +1,18 @@
 [package]
-name = "domain-manager"
+name = "test-concurrent"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 
 [dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
-networking = { workspace = true }
+networking = { workspace = true, features = ["rust"] }
 quick-protobuf = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
-sha2 = { version = "0.10.8" }
-hex = { version = "0.4.3" }
 jsonwebtoken = "9.3.0"
-domain = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+uuid = "1.13.2"
+domain = {workspace = true}
+tracing = {workspace = true}
+tracing-subscriber = {workspace = true, features=["env-filter"]}

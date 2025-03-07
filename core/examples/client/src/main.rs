@@ -108,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     while !producer.is_completed().await {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
     }
+    println!("Closed producer");
     producer.close().await;
     
     let dependencies = uploaded.iter().map(|t| t.name.clone()).collect::<Vec<String>>();
@@ -133,10 +134,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         receiver: "".to_string(),
     });
 
-    let job = task::Job {
-        name: "local_refinement".to_string(),
+    let job = task::JobRequest {
+        name: "refinement job".to_string(),
         tasks: uploaded,
+        nonce: "".to_string(),
     };
+
+    println!("job has {} tasks", job.tasks.len());
 
     let mut recv = domain_cluster.submit_job(&job).await;
 

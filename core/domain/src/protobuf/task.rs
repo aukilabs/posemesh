@@ -130,9 +130,50 @@ impl MessageWrite for Any {
 
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Default, PartialEq, Clone)]
-pub struct Job {
+pub struct JobRequest {
     pub name: String,
     pub tasks: Vec<task::TaskRequest>,
+    pub nonce: String,
+}
+
+impl<'a> MessageRead<'a> for JobRequest {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Self::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes) {
+                Ok(10) => msg.name = r.read_string(bytes)?.to_owned(),
+                Ok(18) => msg.tasks.push(r.read_message::<task::TaskRequest>(bytes)?),
+                Ok(26) => msg.nonce = r.read_string(bytes)?.to_owned(),
+                Ok(t) => { r.read_unknown(bytes, t)?; }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(msg)
+    }
+}
+
+impl MessageWrite for JobRequest {
+    fn get_size(&self) -> usize {
+        0
+        + if self.name == String::default() { 0 } else { 1 + sizeof_len((&self.name).len()) }
+        + self.tasks.iter().map(|s| 1 + sizeof_len((s).get_size())).sum::<usize>()
+        + 1 + sizeof_len((&self.nonce).len())
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.name != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.name))?; }
+        for s in &self.tasks { w.write_with_tag(18, |w| w.write_message(s))?; }
+        w.write_with_tag(26, |w| w.write_string(&**&self.nonce))?;
+        Ok(())
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct Job {
+    pub id: String,
+    pub name: String,
+    pub tasks: Vec<task::Task>,
 }
 
 impl<'a> MessageRead<'a> for Job {
@@ -140,8 +181,9 @@ impl<'a> MessageRead<'a> for Job {
         let mut msg = Self::default();
         while !r.is_eof() {
             match r.next_tag(bytes) {
-                Ok(10) => msg.name = r.read_string(bytes)?.to_owned(),
-                Ok(18) => msg.tasks.push(r.read_message::<task::TaskRequest>(bytes)?),
+                Ok(10) => msg.id = r.read_string(bytes)?.to_owned(),
+                Ok(18) => msg.name = r.read_string(bytes)?.to_owned(),
+                Ok(26) => msg.tasks.push(r.read_message::<task::Task>(bytes)?),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -153,13 +195,15 @@ impl<'a> MessageRead<'a> for Job {
 impl MessageWrite for Job {
     fn get_size(&self) -> usize {
         0
+        + if self.id == String::default() { 0 } else { 1 + sizeof_len((&self.id).len()) }
         + if self.name == String::default() { 0 } else { 1 + sizeof_len((&self.name).len()) }
         + self.tasks.iter().map(|s| 1 + sizeof_len((s).get_size())).sum::<usize>()
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
-        if self.name != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.name))?; }
-        for s in &self.tasks { w.write_with_tag(18, |w| w.write_message(s))?; }
+        if self.id != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.id))?; }
+        if self.name != String::default() { w.write_with_tag(18, |w| w.write_string(&**&self.name))?; }
+        for s in &self.tasks { w.write_with_tag(26, |w| w.write_message(s))?; }
         Ok(())
     }
 }

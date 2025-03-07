@@ -39,6 +39,17 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
     let claim = handshake(&mut stream).await.expect("Failed to handshake");
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
+    let t = &mut task::Task {
+        name: claim.task_name.clone(),
+        receiver: claim.receiver.clone(),
+        sender: claim.sender.clone(),
+        endpoint: "/local-refinement/v1".to_string(),
+        status: task::Status::STARTED,
+        access_token: "".to_string(),
+        job_id: job_id.clone(),
+        output: None,
+    };
+    c.client.publish(job_id.clone(), serialize_into_vec(t).expect("failed to serialize task update")).await.expect("failed to publish task update");
 
     let mut length_buf = [0u8; 4];
     stream.read_exact(&mut length_buf).await.expect("Failed to read length");
@@ -52,21 +63,24 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
     println!("Start executing {}", claim.task_name);
 
     let mut downloader = datastore.consume("".to_string(), Query { ids: vec![Uuid::new_v4().to_string()], name_regexp: None, data_type_regexp: None, names: vec![], data_types: vec![] }, false).await;
+    let mut i = 0;
     loop {
         match downloader.next().await {
             Some(Ok(data)) => {
-                println!("Received data: {:?}", data.metadata);
+                i+=1;
             }
             Some(Err(e)) => {
-                println!("Error: {:?}", e);
+                t.status = task::Status::FAILED;
+                let message = serialize_into_vec(t).expect("failed to serialize task update");
+                c.publish(job_id.clone(), message).await.expect("failed to publish task update");
+                return;
             }
             None => {
-                println!("No more data");
                 break;
             }
         }
     }
-    println!("Finished downloading {}", claim.task_name);
+    println!("Finished downloading {} data for {}", i, claim.task_name);
 
     let output = LocalRefinementOutputV1 {
         result_ids: vec![Uuid::new_v4().to_string()],
@@ -117,6 +131,7 @@ async fn global_refinement_v1(mut stream: Stream, mut c: Networking) {
     };
     let buf = serialize_into_vec(&event).expect("failed to serialize task update");
     c.client.publish(job_id.clone(), buf).await.expect("failed to publish task update");
+    println!("Finished executing {}", claim.task_name);
 }
 /*
     * This is a simple example of a reconstruction node. It will connect to a set of bootstraps and execute reconstruction jobs.
