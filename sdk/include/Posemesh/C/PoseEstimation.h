@@ -4,9 +4,9 @@
 #include <stdint.h>
 
 #include "API.h"
-#include "Matrix3x3f.h"
-#include "Vector2f.h"
-#include "Vector3f.h"
+#include "Matrix3x3.h"
+#include "Vector2.h"
+#include "Vector3.h"
 
 #if defined(__cplusplus)
 namespace psm {
@@ -21,12 +21,12 @@ typedef struct psm_pose_estimation psm_pose_estimation_t;
 extern "C" {
 #endif
 
-bool PSM_API psm_pose_estimation_get_solve_pnp(
-    psm_vector3f_t* objectPoints[],
-    psm_vector2f_t* imagePoints[],
-    psm_matrix3x3f_t* cameraMatrix,
-    psm_matrix3x3f_t* outR,
-    psm_vector3f_t* outT);
+uint8_t PSM_API psm_pose_estimation_solve_pnp(
+    const psm_vector3_t* objectPoints[],
+    const psm_vector2_t* imagePoints[],
+    const psm_matrix3x3_t* cameraMatrix,
+    psm_matrix3x3_t* outR,
+    psm_vector3_t* outT);
 
 #if defined(__cplusplus)
 }

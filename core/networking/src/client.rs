@@ -1,9 +1,9 @@
 use libp2p::{PeerId, Stream, StreamProtocol};
+use libp2p_stream::IncomingStreams;
 use core::time;
 use std::error::Error;
 use futures::{channel::{mpsc::{self, Receiver}, oneshot}, future::{select, Either::{Left, Right}}, SinkExt};
 use std::str::FromStr;
-use crate::event;
 #[cfg(target_family = "wasm")]
 use gloo_timers::future::TimeoutFuture;
 
@@ -34,13 +34,13 @@ impl Client {
             }
         }
 
+
         #[cfg(target_family = "wasm")]
         match select(TimeoutFuture::new(timeout), receiver).await {
             Left(_) => {
                 return Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out")));
             }
-            Right((result, timer)) => {
-                drop(timer);
+            Right((result, _)) => {
                 return match result {
                     Ok(result) => result,
                     Err(e) => Err(Box::new(e)), 
@@ -62,8 +62,8 @@ impl Client {
         };
     }
 
-    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let (sender, receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
+    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<IncomingStreams, Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = oneshot::channel::<Result<IncomingStreams, Box<dyn Error + Send + Sync>>>();
         let pro = StreamProtocol::try_from_owned(protocol).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         self.sender
             .send(Command::SetStreamHandler { protocol: pro, sender })
@@ -114,7 +114,7 @@ pub enum Command {
     },
     SetStreamHandler {
         protocol: StreamProtocol,
-        sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>,
+        sender: oneshot::Sender<Result<IncomingStreams, Box<dyn Error + Send + Sync>>>,
     },
     Publish {
         topic: String,

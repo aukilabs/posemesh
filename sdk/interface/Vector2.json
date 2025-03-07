@@ -1,0 +1,20 @@
+{
+  "name": "Vector2",
+  "properties": [
+    {
+      "name": "X",
+      "type": "float"
+    },
+    {
+      "name": "Y",
+      "type": "float"
+    },
+    {
+      "name": "Length",
+      "type": "float",
+      "getterCustom": true,
+      "hasSetter": false,
+      "hasMemberVar": false
+    }
+  ]
+}

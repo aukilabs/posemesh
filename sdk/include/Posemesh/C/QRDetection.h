@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "API.h"
-#include "Vector2f.h"
-#include "Vector3f.h"
+#include "Vector2.h"
+#include "Vector3.h"
 
 #if defined(__cplusplus)
 namespace psm {
@@ -21,7 +21,7 @@ extern "C" {
 #endif
 
 bool PSM_API psm_qr_detection_detect_qr(
-    psm_vector3f_t image[],
+    psm_vector3_t image[],
     int width,
     int height);
 

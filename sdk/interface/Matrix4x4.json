@@ -1,0 +1,69 @@
+{
+  "name": "Matrix4x4",
+  "properties": [
+    {
+      "name": "M00",
+      "type": "float"
+    },
+    {
+      "name": "M01",
+      "type": "float"
+    },
+    {
+      "name": "M02",
+      "type": "float"
+    },
+    {
+      "name": "M03",
+      "type": "float"
+    },
+    {
+      "name": "M10",
+      "type": "float"
+    },
+    {
+      "name": "M11",
+      "type": "float"
+    },
+    {
+      "name": "M12",
+      "type": "float"
+    },
+    {
+      "name": "M13",
+      "type": "float"
+    },
+    {
+      "name": "M20",
+      "type": "float"
+    },
+    {
+      "name": "M21",
+      "type": "float"
+    },
+    {
+      "name": "M22",
+      "type": "float"
+    },
+    {
+      "name": "M23",
+      "type": "float"
+    },
+    {
+      "name": "M30",
+      "type": "float"
+    },
+    {
+      "name": "M31",
+      "type": "float"
+    },
+    {
+      "name": "M32",
+      "type": "float"
+    },
+    {
+      "name": "M33",
+      "type": "float"
+    }
+  ]
+}

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.30.2 FATAL_ERROR)
 
+set(GENERATED_INTERFACE_FILES_CMAKE_FILE "${CMAKE_CURRENT_LIST_DIR}/cmake/GeneratedInterfaceFiles.cmake")
+if(NOT EXISTS "${GENERATED_INTERFACE_FILES_CMAKE_FILE}" OR IS_DIRECTORY "${GENERATED_INTERFACE_FILES_CMAKE_FILE}")
+    message(FATAL_ERROR "Required generated file 'cmake/GeneratedInterfaceFiles.cmake' is missing. Did you run 'npm run generate' in 'sdk/gentool' directory?")
+endif()
+include("${GENERATED_INTERFACE_FILES_CMAKE_FILE}")
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(Platform)
 
@@ -48,44 +54,31 @@ add_platform_library(
     PUBLIC_C_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Vector2f.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Vector3f.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Vector4f.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Matrix3x3f.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Matrix4x4f.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Vector2f.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Vector3f.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Vector4f.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Matrix3x3f.hpp"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Matrix4x4f.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
+        "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Vector2f.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Vector3f.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Vector4f.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Matrix3x3f.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/C/Matrix4x4f.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Vector2f.gen.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Vector3f.gen.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Vector4f.gen.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Matrix3x3f.gen.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/src/Matrix4x4f.gen.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/QRDetection.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector2.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Vector4.cpp"
+        "${POSEMESH_GENERATED_CXX_SOURCES}"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
 
@@ -104,33 +97,21 @@ if(APPLE)
         PUBLIC_OBJC_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/API.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Vector2f.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Vector3f.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Vector4f.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Matrix3x3f.h"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Matrix4x4f.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
+            "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
         OBJCXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector2f.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector3f.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector4f.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix3x3f.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix4x4f.mm"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
+            "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector2f.swift"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector3f.swift"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Vector4f.swift"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix3x3f.swift"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Matrix4x4f.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
+            "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
         set_apple_platform_umbrella_header(
@@ -147,30 +128,33 @@ elseif(EMSCRIPTEN)
         Posemesh
         CXX_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API2.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector2f.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector3f.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Vector4f.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Matrix3x3f.cpp"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Matrix4x4f.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+            "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
 endif()
 
 target_compile_definitions(Posemesh PRIVATE POSEMESH_BUILD)
 
-include(LinkNetworkingLibrary)
-link_networking_library(Posemesh)
+include(AddGLMHeaders)
+add_glm_headers(Posemesh)
+
+include(LinkBaseLibrary)
+link_base_library(Posemesh)
 
 include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
 
-include(LinkDomainLibrary)
-link_domain_library(Posemesh)
-
 if(EMSCRIPTEN)
+    include(ReplaceJavaScriptSymbols)
+    replace_javascript_symbols(
+        Posemesh_ReplacedJavaScriptSymbols
+        "${CMAKE_CURRENT_BINARY_DIR}/Posemesh_ReplacedJavaScriptSymbols.js"
+        Posemesh
+    )
     configure_file(
         "${CMAKE_CURRENT_LIST_DIR}/platform/Web/VerifyCommitId.js.in"
         "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
@@ -183,19 +167,20 @@ if(EMSCRIPTEN)
         PREPEND_STRING "/* Copyright (c) Auki Labs Limited ${POSEMESH_COPYRIGHT_YEAR}, ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.${CMAKE_PROJECT_VERSION_PATCH}, ${POSEMESH_COMMIT_ID} */"
         NEW_LINE_AFTER_PREPENDED_STRING
         INPUTS
-            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshNetworking_TextReplaced.js"
-            Posemesh
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Pre.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_PosemeshBasePre.js"
+            "${CMAKE_CURRENT_BINARY_DIR}/PosemeshBase_TextReplaced.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_PosemeshBasePost.js"
+            Posemesh_ReplacedJavaScriptSymbols
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API2.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector2f.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector3f.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Vector4f.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Matrix3x3f.js"
-            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Matrix4x4f.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"
     )
     if(USE_BABEL_JS)
         include(TranspileMinifyJavaScript)

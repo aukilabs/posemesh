@@ -6,7 +6,7 @@ use serde::de;
 use tokio::{self, select, signal, time::sleep};
 use futures::{channel::mpsc::{channel, Receiver, Sender}, AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
 use std::{any::Any, borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, time::{Duration, SystemTime, UNIX_EPOCH}};
-use protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
+use domain::protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
 use sha2::{Digest, Sha256};
 use hex;
 use std::fs;
@@ -54,13 +54,9 @@ pub async fn start_task(task: &mut task::Task,  c: &mut context::Context) -> Res
     let mut length_buf = [0u8; 4];
     let length = m_buf.len() as u32;
     length_buf.copy_from_slice(&length.to_be_bytes());
-    let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect("cant send handshake");
+    let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect(&format!("cant send handshake with {}", task.receiver.clone()));
     upload_stream.write_all(&m_buf).await.expect("cant write handshake");
     upload_stream.flush().await.expect("cant flush handshake");
-    task.status = task::Status::STARTED;
-
-    let task_update = serialize_into_vec(task).expect("cant serialize task update");
-    c.publish(task.job_id.clone(), task_update).await.expect("cant publish task update");
 
     Ok(upload_stream)
 }
@@ -141,21 +137,19 @@ impl DomainManager {
     }
 
     async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.peer.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
+        let mut job_handler = self.peer.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
         // periodically print latest status of tasks
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
 
         loop {
             select! {
+                Some((_, stream)) = job_handler.next() => {
+                    self.accept_job(stream).await.expect("Error accepting job");
+                }
                 e = self.peer.poll() => {
                     match e {
                         Some(e) => {
                             match e {
-                                event::Event::StreamMessageReceivedEvent { msg_reader, protocol, .. } => {
-                                    if protocol.to_string() == "/jobs/v1" {
-                                        self.accept_job(msg_reader).await?;
-                                    }
-                                }
                                 event::Event::NewNodeRegistered { node } => {
                                     self.nodes.insert(node.id.clone(), node);
                                 }
@@ -172,7 +166,6 @@ impl DomainManager {
                                         }
                                     }
                                 }
-                                _ => {}
                             }
                         }
                         None => break
@@ -223,6 +216,7 @@ impl DomainManager {
             err_msg: "".to_string(),
         };
         stream.write_all(&serialize_into_vec(&resp).unwrap()).await?;
+        stream.flush().await?;
         self.peer.subscribe(job_id.clone()).await?;
 
         for task_req in job.tasks.iter() {

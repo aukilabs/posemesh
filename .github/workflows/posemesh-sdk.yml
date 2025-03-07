@@ -5,6 +5,7 @@ on:
       - '**/examples/**'
       - '*.md'
       - '.vscode/**'
+      - '.github/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,9 +15,6 @@ jobs:
   build_apple_frameworks:
     name: Build Apple SDK
     runs-on: [self-hosted, macOS]
-    env:
-      CC_x86_64-apple-ios-macabi: "clang"
-      CC_x86_64_apple_ios_macabi: "clang"
     strategy:
       fail-fast: false
       matrix:
@@ -30,10 +28,18 @@ jobs:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+
+      - name: Generate interfaces
+        run: |
+          cd sdk/gentool
+          npm run generate
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      
+      - name: check clang version
+        run: clang --version
 
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4
@@ -41,7 +47,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 
@@ -49,17 +55,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./core/target
-          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
-      - name: Build Posemesh Networking for ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Build Posemesh Base for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release networking -InstallNecessaryRustToolchainsAndTargets
-
-      - name: Build Posemesh Domain for ${{ matrix.platform }} ${{ matrix.arch }}
-        shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release domain -InstallNecessaryRustToolchainsAndTargets
+        run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release base -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
@@ -123,6 +125,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Generate interfaces
+        run: |
+          cd sdk/gentool
+          npm run generate
+
       - name: Install Emscripten
         run: |
           git clone https://github.com/emscripten-core/emsdk.git
@@ -141,20 +148,16 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ./core/target
-          key: rust-cache-cargo-${{ hashFiles('*/Cargo.toml') }}
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
           restore-keys: |
             rust-cache-cargo-
 
       - name: Install WASM-Pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build Posemesh Networking
+      - name: Build Posemesh Base
         shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release networking -InstallNecessaryRustToolchainsAndTargets
-
-      - name: Build Posemesh Domain
-        shell: pwsh
-        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release domain -InstallNecessaryRustToolchainsAndTargets
+        run: ./core/scripts/Build-Library.ps1 Web WASM32 Release base -InstallNecessaryRustToolchainsAndTargets
 
       - name: Build OpenCV
         run: |
@@ -185,6 +188,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Generate interfaces and commit changes locally
+        run: |
+          cd sdk/gentool
+          npm run generate dont-gitignore-code-files
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "temp: generate interfaces (local)"
 
       - name: Install PowerShell
         run: |

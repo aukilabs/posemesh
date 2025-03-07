@@ -1,6 +1,6 @@
 use networking::context::Context;
 
-use crate::{cluster::DomainCluster, remote::RemoteDatastore};
+use crate::{cluster::DomainCluster, datastore::remote::RemoteDatastore};
 
 pub(crate) fn init_r_remote_storage(cluster: *mut DomainCluster, peer: *mut Context) -> RemoteDatastore {
     unsafe {

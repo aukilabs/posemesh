@@ -1,0 +1,17 @@
+[package]
+name = "base"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+domain = { workspace = true }
+networking = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["domain/default", "networking/default"]
+cpp = ["domain/cpp", "networking/cpp"]
+py = ["networking/py"]

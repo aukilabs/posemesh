@@ -4,54 +4,31 @@
 
 @implementation PSMPoseEstimation
 
-+ (BOOL)solvePnPForObjectPoints:(NSArray*)objectPoints imagePoints:(NSArray*)imagePoints cameraMatrix:(PSMMatrix3x3f*)cameraMatrix outR:(PSMMatrix3x3f*)outR outT:(PSMVector3f*)outT
++ (BOOL)solvePnPForObjectPoints:(NSArray<PSMVector3*>*)objectPoints andImagePoints:(NSArray<PSMVector2*>*)imagePoints andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withOutR:(PSMMatrix3x3*)outR andOutT:(PSMVector3*)outT;
 {
-    psm::Vector3f oPoints[4];
-    for (int i = 0; i < 4; i++) {
-        oPoints[i].setX([objectPoints[i] x]);
-        oPoints[i].setY([objectPoints[i] y]);
-        oPoints[i].setZ([objectPoints[i] z]);
+    NSAssert(objectPoints, @"objectPoints is null");
+    NSAssert([objectPoints count] == 4, @"objectPoints array count is not 4");
+    NSAssert(imagePoints, @"imagePoints is null");
+    NSAssert([imagePoints count] == 4, @"imagePoints array count is not 4");
+    NSAssert(cameraMatrix, @"cameraMatrix is null");
+    NSAssert(outR, @"outR is null");
+    NSAssert(outT, @"outT is null");
+
+    psm::Vector3 objectPointsRaw[4];
+    for (int i = 0; i < 4; ++i) {
+        objectPointsRaw[i] = *static_cast<const psm::Vector3*>([objectPoints[i] nativeVector3]);
     }
 
-    psm::Vector2f iPoints[4];
-    for (int i = 0; i < 4; i++) {
-        iPoints[i].setX([imagePoints[i] x]);
-        iPoints[i].setY([imagePoints[i] y]);
+    psm::Vector2 imagePointsRaw[4];
+    for (int i = 0; i < 4; ++i) {
+        imagePointsRaw[i] = *static_cast<const psm::Vector2*>([imagePoints[i] nativeVector2]);
     }
 
-    psm::Matrix3x3f cMatrix;
-    cMatrix.setM00([cameraMatrix m00]);
-    cMatrix.setM01([cameraMatrix m01]);
-    cMatrix.setM02([cameraMatrix m02]);
-    cMatrix.setM10([cameraMatrix m10]);
-    cMatrix.setM11([cameraMatrix m11]);
-    cMatrix.setM12([cameraMatrix m12]);
-    cMatrix.setM20([cameraMatrix m20]);
-    cMatrix.setM21([cameraMatrix m21]);
-    cMatrix.setM22([cameraMatrix m22]);
+    const auto& cameraMatrixRaw = *static_cast<const psm::Matrix3x3*>([cameraMatrix nativeMatrix3x3]);
+    auto& outRRaw = *static_cast<psm::Matrix3x3*>([outR nativeMatrix3x3]);
+    auto& outTRaw = *static_cast<psm::Vector3*>([outT nativeVector3]);
 
-    psm::Vector3f translation;
-    psm::Matrix3x3f rotation;
-    bool estimationResult = psm::PoseEstimation::solvePnP(oPoints, iPoints, cMatrix, &rotation, &translation);
-    if (estimationResult == false) {
-        return false;
-    }
-
-    [outT setX:translation.getX()];
-    [outT setY:translation.getY()];
-    [outT setZ:translation.getZ()];
-
-    [outR setM00:rotation.getM00()];
-    [outR setM01:rotation.getM01()];
-    [outR setM02:rotation.getM02()];
-    [outR setM10:rotation.getM10()];
-    [outR setM11:rotation.getM11()];
-    [outR setM12:rotation.getM12()];
-    [outR setM20:rotation.getM20()];
-    [outR setM21:rotation.getM21()];
-    [outR setM22:rotation.getM22()];
-
-    return estimationResult;
+    return psm::PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrixRaw, outRRaw, outTRaw) ? YES : NO;
 }
 
 @end

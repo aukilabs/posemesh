@@ -1,18 +1,20 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use networking::{context::{self, Context}, event};
-use futures::{channel::mpsc::{channel, Receiver, SendError, Sender}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
-use protobuf::task::{self,Job, Status};
+use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
+use crate::protobuf::task::{self, Job, Status, SubmitJobResponse, Task};
 use std::collections::HashMap;
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec, BytesReader};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[derive(Debug)]
 pub enum TaskUpdateResult {
     Ok(task::Task),
     Err(Box<dyn std::error::Error + Send + Sync>),
 }
 
+#[derive(Debug)]
 pub struct TaskUpdateEvent {
     pub topic: TopicHash,
     pub from: Option<PeerId>,
@@ -29,7 +31,8 @@ struct InnerDomainCluster {
 enum Command {
     SubmitJob {
         job: Job,
-        response: Sender<TaskUpdateEvent>,
+        task_updates_channel: Sender<TaskUpdateEvent>,
+        response: oneshot::Sender<bool>,
     },
     UpdateTask {
         task: task::Task,
@@ -44,6 +47,7 @@ impl InnerDomainCluster {
                 tokio::select! {
                     command = self.command_rx.select_next_some() => self.handle_command(command).await,
                     event = self.peer.poll() => self.handle_event(event).await,
+                    else => break,
                 }
             }
         });
@@ -62,8 +66,9 @@ impl InnerDomainCluster {
 
     async fn handle_command(&mut self, command: Command) {
         match command {
-            Command::SubmitJob { job, response } => {
-                let _ = self.submit_job(&job, response).await;
+            Command::SubmitJob { job, task_updates_channel, response } => {
+                let _ = self.submit_job(&job, task_updates_channel).await;
+                let _ = response.send(true);
             },
             Command::UpdateTask { task } => {
                 let _ = self.peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("can't serialize task update")).await;
@@ -86,15 +91,24 @@ impl InnerDomainCluster {
                             return;
                         }
                         task.status = Status::FAILED;
-                        let _ = tx.send(TaskUpdateEvent {
+                        if let Err(e) = tx.send(TaskUpdateEvent {
                             topic: topic.clone(),
                             from: from,
                             result: TaskUpdateResult::Ok(task.clone()),
-                        }).await;
+                        }).await {
+                            eprintln!("Error sending failed task update: {:?}", e);
+                            if SendError::is_disconnected(&e) {
+                                self.jobs.remove(&topic);
+                                return;
+                            }
+                        }
                         // // TODO: send failed task update with error
                         // self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
                     }
                 }
+            }
+            Some(event::Event::NewNodeRegistered { node }) => {
+                tracing::debug!("New node registered: {:?}", node.name);
             }
             _ => {}
         }
@@ -111,10 +125,7 @@ impl InnerDomainCluster {
 
         let mut out = Vec::new();
         let _ = s.read_to_end(&mut out).await.expect("can't read from stream");
-        let job = {
-            let mut reader = BytesReader::from_bytes(&out);
-            reader.read_message::<task::SubmitJobResponse>(&out).expect("can't read job")
-        };
+        let job = deserialize_from_slice::<SubmitJobResponse>(&out).expect("can't deserialize job"); 
 
         self.subscribe_to_job(job.job_id, tx).await
     }
@@ -133,6 +144,9 @@ pub struct DomainCluster {
 
 impl DomainCluster {
     pub fn new(manager: String, peer: Box<Context>) -> Self {
+        #[cfg(not(target_family="wasm"))]
+        let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+
         let (tx, rx) = channel::<Command>(100);
         let dc = InnerDomainCluster {
             manager: manager,
@@ -141,23 +155,29 @@ impl DomainCluster {
             command_rx: rx,
         };
         dc.init();
+
         DomainCluster {
             sender: tx,
         }
     }
 
     pub async fn submit_job(&mut self, job: &Job) -> Receiver<TaskUpdateEvent> {
-        let (tx, rx) = channel::<TaskUpdateEvent>(100);
+        let (tx, rx) = oneshot::channel::<bool>();
+        let (updates_tx, updates_rx) = channel::<TaskUpdateEvent>(100);
         self.sender.send(Command::SubmitJob {
             job: job.clone(),
             response: tx,
+            task_updates_channel: updates_tx,
         }).await.expect("can't send command");
-        rx
+        let _ = rx.await.expect("can't wait for response");
+        updates_rx
     }
 
-    pub async fn update_task(&mut self, task: &task::Task) {
-        self.sender.send(Command::UpdateTask  {
-            task: task.clone(),
-        }).await.expect("can't send command"); 
-    }
+    // pub async fn update_task(&mut self, task: &task::Task) {
+    //     self.sender.send(Command::UpdateTask  {
+    //         task: task.clone(),
+    //     }).await.expect("can't send command"); 
+    // }
+
+    // pub async fn request_response(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn std::error::Error + Send + Sync>>
 }
