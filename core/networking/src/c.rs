@@ -21,13 +21,13 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         assert!(!config.bootstraps.is_null(), "Context::new(): config.bootstraps is null");
         CStr::from_ptr(config.bootstraps)
     }.to_str().expect("Context::new(): config.bootstraps is not a valid UTF-8 string");
-    let bootstraps = bootstraps_raw.split(';').map(|s| s.to_string()).collect::<Vec<String>>();
+    let bootstraps = bootstraps_raw.split(';').map(|s| s.to_string()).filter(|s| !s.is_empty()).collect::<Vec<String>>();
 
     let relays_raw = unsafe {
         assert!(!config.relays.is_null(), "Context::new(): config.relays is null");
         CStr::from_ptr(config.relays)
     }.to_str().expect("Context::new(): config.relays is not a valid UTF-8 string");
-    let relays = relays_raw.split(';').map(|s| s.to_string()).collect::<Vec<String>>();
+    let relays = relays_raw.split(';').map(|s| s.to_string()).filter(|s| !s.is_empty()).collect::<Vec<String>>();
 
     let private_key = if config.private_key.is_null() {
         None

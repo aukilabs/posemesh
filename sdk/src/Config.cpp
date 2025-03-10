@@ -58,6 +58,10 @@ std::vector<std::string> Config::getBootstraps() const
 bool Config::setBootstraps(std::vector<std::string> bootstraps) noexcept
 {
     const auto bootstrapsCount = bootstraps.size();
+    if (bootstrapsCount <= 0) {
+        m_bootstraps.clear();
+        return true;
+    }
     for (std::size_t i = 0; i < bootstrapsCount; ++i) {
         if (bootstraps[i].find(';') != std::string::npos) {
             std::cerr << "Config::setBootstraps(): bootstrap at index " << i << " contains an illegal ';' character" << std::endl;
@@ -84,6 +88,10 @@ std::vector<std::string> Config::getRelays() const
 bool Config::setRelays(std::vector<std::string> relays) noexcept
 {
     const auto relaysCount = relays.size();
+    if (relaysCount <= 0) {
+        m_relays.clear();
+        return true;
+    }
     for (std::size_t i = 0; i < relaysCount; ++i) {
         if (relays[i].find(';') != std::string::npos) {
             std::cerr << "Config::setRelays(): relay at index " << i << " contains an illegal ';' character" << std::endl;
