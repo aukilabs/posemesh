@@ -21,9 +21,11 @@ extern "C" {
 #endif
 
 bool PSM_API psm_qr_detection_detect_qr(
-    psm_vector3_t image[],
+    uint8_t* image,
     int width,
-    int height);
+    int height,
+    char** contents,
+    psm_vector2_t*** corners);
 
 #if defined(__cplusplus)
 }

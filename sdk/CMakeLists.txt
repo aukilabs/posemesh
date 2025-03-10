@@ -99,6 +99,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/QRDetection.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
@@ -107,6 +108,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"

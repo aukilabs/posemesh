@@ -11,7 +11,8 @@ const util = require('./util');
 const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Config',
   'PoseEstimation',
-  'Posemesh'
+  'Posemesh',
+  'QRDetection'
 ]);
 
 const args = process.argv.slice(2);

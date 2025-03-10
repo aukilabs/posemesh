@@ -1,31 +1,33 @@
 #include <Posemesh/C/QRDetection.h>
 #include <Posemesh/QRDetection.hpp>
 
-bool psm_qr_detection_detect_qr(
-    psm_vector3_t image[],
+bool PSM_API psm_qr_detection_detect_qr(
+    uint8_t* image,
     int width,
-    int height)
+    int height,
+    char** contents,
+    psm_vector2_t*** corners)
 {
-    std::vector<psm::Vector3> image_vector;
-    image_vector.resize(width * height);
-    for (int i = 0; i < width * height; i++) {
-        image_vector[i] = image[i];
-    }
+    const uint8_t* imagePointsRawBytes = static_cast<const uint8_t*>(image);
+    std::vector<uint8_t> bytes(imagePointsRawBytes, imagePointsRawBytes + width * height);
 
-    // TODO: Implement C binding.
-    return false;
-    //psm::Vector2f corners[4];
-    //bool result = psm::QRDetection::detectQR(image, width, height, corners);
-    // bool result = static_cast<bool>(psm::QRDetection::detectQR(image_vector, width, height));
-    
-    /*
+    std::vector<std::string> outContents;
+    std::vector<psm::Vector2> outCorners;
+    bool result = psm::QRDetection::detectQRFromLuminance(bytes, width, height, outContents, outCorners);
+
     if (result) {
-        for (int i = 0; i < 4; i++) {
-            outCorners[i].setX(corners[i].getX());
-            outCorners[i].setY(corners[i].getY());
+        std::string content = outContents[0];
+        *contents = (char*)malloc(content.size() + 1);
+        strcpy(*contents, content.c_str());
+
+        *corners = (psm_vector2_t**)malloc(outCorners.size() * sizeof(psm_vector2_t*));
+        for (int i = 0; i < outCorners.size(); i++) {
+            psm_vector2_t* v = psm_vector2_create();
+            psm_vector2_set_x(v, outCorners[i].getX());
+            psm_vector2_set_y(v, outCorners[i].getY());
+            (*corners)[i] = v;
         }
     }
-    */
 
-    // return result;
-} 
+    return result;
+}
