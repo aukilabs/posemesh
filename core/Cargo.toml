@@ -10,10 +10,10 @@ resolver = "2"
 rust-version = "1.81.0"
 
 [workspace.dependencies]
-libp2p = { path = "../../rust-libp2p/libp2p" }
-libp2p-stream = { path = "../../rust-libp2p/protocols/stream" }
-libp2p-webrtc = { path = "../../rust-libp2p/transports/webrtc" }
-libp2p-webrtc-websys = { path = "../../rust-libp2p/transports/webrtc-websys" }
+libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"
