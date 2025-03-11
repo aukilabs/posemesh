@@ -31,4 +31,4 @@ bool PSM_API psm_qr_detection_detect_qr(
 }
 #endif
 
-#endif // __POSEMESH_C_QR_DETECTION_H__ 
+#endif // __POSEMESH_C_QR_DETECTION_H__

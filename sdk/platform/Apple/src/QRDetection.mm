@@ -27,7 +27,7 @@
 
         for (int i = 0; i < 4; i++) {
             psm::Vector2 o = outCorners[i];
-            PSMVector2 *v = [[PSMVector2 alloc] init];
+            PSMVector2* v = [[PSMVector2 alloc] init];
             [v setX:o.getX()];
             [v setY:o.getY()];
             [corners addObject:v];

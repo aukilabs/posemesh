@@ -7,7 +7,7 @@ using namespace psm;
 
 namespace {
 
-    bool detectQRFromLuminance(
+bool detectQRFromLuminance(
     const std::vector<uint8_t>& imageBytes,
     int width,
     int height,
@@ -17,7 +17,7 @@ namespace {
     std::vector<Vector2> outputCorners;
     std::vector<std::string> outputContents;
     bool detectionResult = QRDetection::detectQRFromLuminance(imageBytes, width, height, outputContents, outputCorners);
-    
+
     for (size_t i = 0; i < outputContents.size(); i++) {
         contents.push_back(outputContents[i]);
     }
