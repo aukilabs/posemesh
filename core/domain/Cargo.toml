@@ -14,7 +14,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
-async-trait = "0.1.86"
+async-trait = {workspace = true} 
 jsonwebtoken = "9.3.0"
 tracing = { workspace = true }
 networking = { workspace = true }

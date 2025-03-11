@@ -273,11 +273,12 @@ impl Datastore for RemoteDatastore {
             }
         });
 
-        let res = rx.await.unwrap();
-        if !res {
+        let res = rx.await;
+        if let Err(e) = res {
+            data_sender_clone.send(Err(DomainError::Cancelled)).await.expect("Failed to send error");
+        } else if res == Ok(false) {
             data_sender_clone.send(Err(DomainError::Interrupted)).await.expect("Failed to send error");
         }
-        
         data_receiver
     }
 
@@ -354,7 +355,9 @@ impl Datastore for RemoteDatastore {
                             upload_task_handler.cancel();
                             break;
                         },
-                        _ => ()
+                        _ => {
+                            println!("Task status: {:?}", task.status);
+                        }
                     }
                     None => {
                         tracing::debug!("task update channel is closed");

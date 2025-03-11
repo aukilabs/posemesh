@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::{domain_data::Query,task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}}};
+use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, message::read_prefix_size_message, protobuf::{domain_data::Query,task::{self, DomainClusterHandshake, LocalRefinementInputV1, LocalRefinementOutputV1, StoreDataOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::libp2p::Networking;
@@ -35,10 +35,10 @@ async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::e
     decode_jwt(header.access_token.as_str())
 }
 
-async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastore>, mut c: Networking) {
+async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastore>, mut c: Client) {
     let claim = handshake(&mut stream).await.expect("Failed to handshake");
     let job_id = claim.job_id.clone();
-    c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
+    c.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
     let t = &mut task::Task {
         name: claim.task_name.clone(),
         receiver: claim.receiver.clone(),
@@ -49,28 +49,29 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
         job_id: job_id.clone(),
         output: None,
     };
-    c.client.publish(job_id.clone(), serialize_into_vec(t).expect("failed to serialize task update")).await.expect("failed to publish task update");
 
-    let mut length_buf = [0u8; 4];
-    stream.read_exact(&mut length_buf).await.expect("Failed to read length");
+    let res = read_prefix_size_message::<LocalRefinementInputV1>(stream).await;
+    if let Err(e) = res {
+        eprintln!("Failed to load local refinement input {}", e);
+        t.status = task::Status::FAILED;
+        let message = serialize_into_vec(t).expect("failed to serialize task update");
+        c.publish(job_id.clone(), message).await.expect("failed to publish task update");
+        return;
+    }
+    let input = res.unwrap();
 
-    let length = u32::from_be_bytes(length_buf) as usize;
-    let mut buffer = vec![0u8; length];
-    stream.read_exact(&mut buffer).await.expect("Failed to read buffer");
-        
-    let input = deserialize_from_slice::<task::LocalRefinementInputV1>(&buffer).expect("Failed to deserialize local refinement input");
-
-    println!("Start executing {}", claim.task_name);
+    c.publish(job_id.clone(), serialize_into_vec(t).expect("failed to serialize task update")).await.expect("failed to publish task update");
+    println!("Start executing {}, {:?}", claim.task_name, input);
 
     let mut downloader = datastore.consume("".to_string(), Query { ids: vec![Uuid::new_v4().to_string()], name_regexp: None, data_type_regexp: None, names: vec![], data_types: vec![] }, false).await;
     let mut i = 0;
     loop {
         match downloader.next().await {
-            Some(Ok(data)) => {
+            Some(Ok(_)) => {
                 i+=1;
             }
             Some(Err(e)) => {
-                t.status = task::Status::FAILED;
+                t.status = task::Status::RETRY;
                 let message = serialize_into_vec(t).expect("failed to serialize task update");
                 c.publish(job_id.clone(), message).await.expect("failed to publish task update");
                 return;
@@ -99,7 +100,7 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
         }),
     };
     let buf = serialize_into_vec(&event).expect("failed to serialize task update");
-    c.client.publish(job_id.clone(), buf).await.expect("failed to publish task update");
+    c.publish(job_id.clone(), buf).await.expect("failed to publish task update");
 }
 
 async fn global_refinement_v1(mut stream: Stream, mut c: Networking) {

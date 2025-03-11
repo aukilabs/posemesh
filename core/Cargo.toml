@@ -33,3 +33,4 @@ runtime = { path = "runtime" }
 domain = { path = "domain" }
 base = { path = "base" }
 asynchronous-codec = "0.7.0"
+async-trait = "0.1.86"

@@ -38,7 +38,7 @@ async fn main() {
 
             let msg = String::from_utf8_lossy(buf);
             println!("Bootstrap: Received message: {}", msg);
-            sleep(Duration::from_millis(10)).await;
+            sleep(Duration::from_millis(800)).await;
 
             let _ = stream.write_all(buf).await.expect(&format!("can't write from stream {}", peer));
             stream.flush().await.expect("can't flush stream");
@@ -47,7 +47,7 @@ async fn main() {
     });
 
     let peer_a_cfg = NetworkingConfig {
-        port: 8081,
+        port: 8082,
         bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id.clone())],
         enable_relay_server: false,
         enable_kdht: true,
@@ -61,7 +61,7 @@ async fn main() {
     let mut peer_clone = peer_a.clone();
 
     let peer_b_cfg = NetworkingConfig {
-        port: 8082,
+        port: 8084,
         bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id_clone_clone.clone())],
         enable_relay_server: false,
         enable_kdht: true,
@@ -74,7 +74,7 @@ async fn main() {
     let mut peer_b = networking::context::context_create(&peer_b_cfg).unwrap();
 
     let peer_c_cfg = NetworkingConfig {
-        port: 8083,
+        port: 8086,
         bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id_clone_clone.clone())],
         enable_relay_server: false,
         enable_kdht: true,
@@ -86,6 +86,7 @@ async fn main() {
     };
     let mut peer_c = networking::context::context_create(&peer_c_cfg).unwrap();
     tokio::spawn(async move {
+        sleep(Duration::from_millis(500)).await;
         let mut s = peer_b.send(format!("send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_b.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
