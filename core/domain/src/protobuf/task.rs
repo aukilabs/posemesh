@@ -58,6 +58,7 @@ pub enum Status {
     DONE = 2,
     FAILED = 3,
     WAITING_FOR_RESOURCE = 4,
+    RETRY = 5,
 }
 
 impl Default for Status {
@@ -74,6 +75,7 @@ impl From<i32> for Status {
             2 => Status::DONE,
             3 => Status::FAILED,
             4 => Status::WAITING_FOR_RESOURCE,
+            5 => Status::RETRY,
             _ => Self::default(),
         }
     }
@@ -87,6 +89,7 @@ impl<'a> From<&'a str> for Status {
             "DONE" => Status::DONE,
             "FAILED" => Status::FAILED,
             "WAITING_FOR_RESOURCE" => Status::WAITING_FOR_RESOURCE,
+            "RETRY" => Status::RETRY,
             _ => Self::default(),
         }
     }

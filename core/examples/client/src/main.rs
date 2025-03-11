@@ -36,6 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut producer = remote_datastore.produce("".to_string()).await;
     let mut uploaded = Vec::<task::TaskRequest>::new();
 
+    let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
+
     for entry in dir {
         let entry = entry.unwrap();
         let path = entry.path().clone();

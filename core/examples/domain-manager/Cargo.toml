@@ -17,3 +17,4 @@ jsonwebtoken = "9.3.0"
 domain = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+async-trait = { workspace = true }
