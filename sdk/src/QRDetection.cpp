@@ -13,7 +13,7 @@ bool QRDetection::detectQRFromLuminance(
     std::vector<Vector2>& corners)
 {
     cv::Mat cvImage(height, width, CV_8U);
-    std::memcpy(cvImage.data, imageBytes.data(), width * height * sizeof(uint8_t)); 
+    std::memcpy(cvImage.data, imageBytes.data(), width * height * sizeof(uint8_t));
 
     try {
         cv::QRCodeDetector qrDetector;
