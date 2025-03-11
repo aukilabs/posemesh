@@ -1,6 +1,6 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
-use networking::{context::{self, Context}, event};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
+use networking::{event, libp2p::{Networking, NetworkingConfig}};
 use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
@@ -26,7 +26,7 @@ pub struct TaskUpdateEvent {
 struct InnerDomainCluster {
     command_rx: Receiver<Command>,
     manager: String,
-    peer: Box<Networking>,
+    peer: Networking,
     jobs: HashMap<TopicHash, Sender<TaskUpdateEvent>>,
 }
 
@@ -126,7 +126,7 @@ impl InnerDomainCluster {
     }
 
     async fn submit_job(&mut self, job: &JobRequest, mut tx: Sender<TaskUpdateEvent>) {
-        let res = self.peer.send(prefix_size_message(job), self.manager.clone(), "/jobs/v1".to_string(), 0).await;
+        let res = self.peer.client.send(prefix_size_message(job), self.manager.clone(), "/jobs/v1".to_string(), 0).await;
         if let Err(e) = res {
             // TODO: handle error
             tracing::error!("Error sending task request {} to {}: {:?}", job.name, self.manager.clone(), e);
@@ -146,7 +146,7 @@ impl InnerDomainCluster {
 
     async fn monitor_jobs(&mut self) -> Receiver<Job> {
         let (mut tx, rx) = channel::<Job>(3072);
-        let mut stream = self.peer.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/jobs/v1".to_string(), 0).await.expect("monitor jobs");
+        let mut stream = self.peer.client.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/jobs/v1".to_string(), 0).await.expect("monitor jobs");
 
         spawn(async move {
             loop {
@@ -191,8 +191,8 @@ impl DomainCluster {
 
         let (tx, rx) = channel::<Command>(3072);
         let dc = InnerDomainCluster {
-            manager,
-            peer,
+            manager: domain_manager_id.clone(),
+            peer: networking.clone(),
             jobs: HashMap::new(),
             command_rx: rx,
         };

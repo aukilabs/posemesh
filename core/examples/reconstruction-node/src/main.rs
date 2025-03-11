@@ -1,7 +1,7 @@
 use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, message::read_prefix_size_message, protobuf::{domain_data::Query,task::{self, LocalRefinementInputV1, LocalRefinementOutputV1}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::libp2p::Networking;
+use networking::{client::Client, libp2p::Networking};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, time::{sleep, Duration}};
 use futures::{AsyncReadExt, StreamExt};
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         select! {
             Some((_, stream)) = local_refinement_v1_handler.next() => {
-                let _ = tokio::spawn(local_refinement_v1(stream, Box::new(remote_storage.clone()), n.clone()));
+                let _ = tokio::spawn(local_refinement_v1(stream, Box::new(remote_storage.clone()), n.client.clone()));
             }
             Some((_, stream)) = global_refinement_v1_handler.next() => {
                 let _ = tokio::spawn(global_refinement_v1(stream, n.clone()));

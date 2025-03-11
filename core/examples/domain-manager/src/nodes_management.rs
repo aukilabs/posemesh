@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, VecDeque}, fmt::Debug, sync::Arc};
 use domain::protobuf::task::CapabilityFilters;
-use networking::network::Node;
 use async_trait::async_trait;
+use networking::libp2p::Node;
 use tokio::sync::{Mutex, oneshot};
 
 #[async_trait]

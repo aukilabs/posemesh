@@ -1,6 +1,6 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
 use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap, error::Error, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
@@ -10,8 +10,6 @@ use crate::{client::{self, Client}, event};
 use libp2p_webrtc as webrtc;
 #[cfg(not(target_family="wasm"))]
 use libp2p::{mdns, noise, tcp, yamux};
-#[cfg(not(target_family="wasm"))]
-use tracing_subscriber::EnvFilter;
 #[cfg(not(target_family="wasm"))]
 use std::{fs, path::Path, net::Ipv4Addr};
 
@@ -24,9 +22,6 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
-
-#[cfg(feature = "py")]
-use pyo3::prelude::*;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -677,6 +672,14 @@ pub struct Networking {
     pub client: Client,
     pub event_receiver: Arc<Mutex<Receiver<event::Event>>>,
     pub id: String,
+}
+
+impl Debug for Networking {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Networking")
+            .field("id", &self.id)
+            .finish()
+    }
 }
 
 impl Networking {

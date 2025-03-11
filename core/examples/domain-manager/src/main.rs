@@ -95,7 +95,7 @@ impl DomainManager {
                     let task_mgmt = self.task_mgmt.clone();
                     let node_mgmt = self.node_mgmt.clone();
                     let peer = self.peer.clone();
-                    spawn(DomainManager::accept_job(node_mgmt, task_mgmt, peer, stream));
+                    spawn(DomainManager::accept_job(node_mgmt, task_mgmt, peer.client.clone(), stream));
                 }
                 e = rx_guard.next() => {
                     match e {
@@ -152,15 +152,13 @@ impl DomainManager {
         let result = hasher.finalize();
         let job_id = hex::encode(result);
         println!("Job received: {:?}-{}", job.name, job_id);
+        peer.subscribe(job_id.clone()).await.expect("failed to subscribe to job");
 
         let mut resp = task::SubmitJobResponse {
             job_id: job_id.clone(),
             code: task::Code::Accepted,
             err_msg: "".to_string(),
         };
-        writer.write_all(&prefix_size_message(&resp)).await?;
-        writer.flush().await?;
-        self.peer.subscribe(job_id.clone()).await?;
 
         let mut tasks: Vec<TaskPendingRequest> = Vec::new();
         for task_req in job.tasks {
@@ -263,7 +261,7 @@ impl DomainManager {
         let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &t.receiver, "secret").expect("failed to encode jwt");
         t.status = Status::PENDING;
         if t.sender == peer.id {
-            if let Err(e) = handshake_then_content(peer, &access_token, &t.receiver, &t.endpoint, serialized_input, th.timeout).await {
+            if let Err(e) = handshake_then_content(peer.client, &access_token, &t.receiver, &t.endpoint, serialized_input, th.timeout).await {
                 tracing::error!("Error triggering task: {:?}", e);
                 task_mgmt.push_tasks(vec![task_id(&t.job_id, &t.name)]).await;
             } else {
@@ -271,7 +269,7 @@ impl DomainManager {
             }
         } else {
             t.access_token = access_token;
-            if let Err(e) = peer.publish(t.job_id.clone(), serialize_into_vec(&t).unwrap()).await {
+            if let Err(e) = peer.client.publish(t.job_id.clone(), serialize_into_vec(&t).unwrap()).await {
                 tracing::error!("Error publishing message for task job {} {}: {:?}", t.job_id, t.name, e);
                 task_mgmt.push_tasks(vec![task_id(&t.job_id, &t.name)]).await;
                 return;
@@ -318,7 +316,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name,
     };
     let c = Networking::new(cfg)?;
-    let mut domain_manager = DomainManager::new(&domain_id, c);
+    let mut domain_manager = DomainManager::new(domain_id, c);
     
     domain_manager.start().await
 }
