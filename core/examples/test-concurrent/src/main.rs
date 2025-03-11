@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use futures::{AsyncReadExt, StreamExt, AsyncWriteExt};
-use networking::network::NetworkingConfig;
+use networking::libp2p::{Networking, NetworkingConfig};
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -14,8 +14,8 @@ async fn main() {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: "./volume/test-concurrent/bootstrap/pkey".to_string(),
+        private_key: None,
+        private_key_path: Some("./volume/test-concurrent/bootstrap/pkey".to_string()),
         name: "test-concurrent/bootstrap".to_string(),
     };
 
@@ -24,8 +24,8 @@ async fn main() {
     let protocol_clone_clone = protocol.clone();
     let protocol_clone_clone_clone = protocol.clone();
 
-    let mut bootstrap = networking::context::context_create(&networking).unwrap();
-    let mut chat_protocol = bootstrap.set_stream_handler(protocol.clone()).await.unwrap();
+    let mut bootstrap = Networking::new(&networking).unwrap();
+    let mut chat_protocol = bootstrap.client.set_stream_handler(protocol.clone()).await.unwrap();
 
     let bootstrap_id = bootstrap.id.clone();
     let bootstrap_id_clone = bootstrap_id.clone();
@@ -53,11 +53,11 @@ async fn main() {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: "./volume/test-concurrent/peer-a/pkey".to_string(),
+        private_key: None,
+        private_key_path: Some("./volume/test-concurrent/peer-a/pkey".to_string()),
         name: "test-concurrent/peer-a".to_string(),
     };
-    let mut peer_a = networking::context::context_create(&peer_a_cfg).unwrap();
+    let mut peer_a = Networking::new(&peer_a_cfg).unwrap();
     let mut peer_clone = peer_a.clone();
 
     let peer_b_cfg = NetworkingConfig {
@@ -67,11 +67,11 @@ async fn main() {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: "./volume/test-concurrent/peer-b/pkey".to_string(),
+        private_key: None,
+        private_key_path: Some("./volume/test-concurrent/peer-b/pkey".to_string()),
         name: "test-concurrent/peer-b".to_string(),
     };
-    let mut peer_b = networking::context::context_create(&peer_b_cfg).unwrap();
+    let mut peer_b = Networking::new(&peer_b_cfg).unwrap();
 
     let peer_c_cfg = NetworkingConfig {
         port: 8086,
@@ -80,14 +80,14 @@ async fn main() {
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: "./volume/test-concurrent/peer-c/pkey".to_string(),
+        private_key: None,
+        private_key_path: Some("./volume/test-concurrent/peer-c/pkey".to_string()),
         name: "test-concurrent/peer-c".to_string(),
     };
-    let mut peer_c = networking::context::context_create(&peer_c_cfg).unwrap();
+    let mut peer_c = Networking::new(&peer_c_cfg).unwrap();
     tokio::spawn(async move {
         sleep(Duration::from_millis(500)).await;
-        let mut s = peer_b.send(format!("send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_b.id));
+        let mut s = peer_b.client.send(format!("send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_b.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -97,7 +97,7 @@ async fn main() {
         println!("{}: Received message: {}", peer_b.id, msg);
     });
     tokio::spawn(async move {
-        let mut s = peer_c.send(format!("send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol_clone_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_c.id));
+        let mut s = peer_c.client.send(format!("send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol_clone_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_c.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -108,7 +108,7 @@ async fn main() {
     });
 
     tokio::spawn(async move {
-        let mut s = peer_a.send(format!("1 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.clone(), 0).await.expect(&format!("{}: can't send message", peer_a.id));
+        let mut s = peer_a.client.send(format!("1 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.clone(), 0).await.expect(&format!("{}: can't send message", peer_a.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         
@@ -120,7 +120,7 @@ async fn main() {
     });
     
     // tokio::spawn(async move {
-    //     let mut s = peer_clone.send(format!("2 - send from {}", peer_clone.id).as_bytes().to_vec(), bootstrap_id_clone.clone(), protocol_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_clone.id));
+    //     let mut s = peer_clone.client.send(format!("2 - send from {}", peer_clone.id).as_bytes().to_vec(), bootstrap_id_clone.clone(), protocol_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_clone.id));
     //     s.flush().await.expect("can't flush stream");
     //     s.close().await.expect("can't close stream");
         

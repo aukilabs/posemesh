@@ -10,7 +10,6 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use networking::context::Context;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::prefix_size_message, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
 use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
