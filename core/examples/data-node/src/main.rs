@@ -1,7 +1,7 @@
 use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, StoreDataOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::{context, event, network::{self, Node}};
+use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, signal};
 use futures::{AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
@@ -35,11 +35,11 @@ async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::e
     decode_jwt(header.access_token.as_str())
 }
 
-fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Context) {
+fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking) {
     tokio::spawn(async move {
         let claim = handshake(&mut stream).await.expect("Failed to handshake");
         let job_id = claim.job_id.clone();
-        c.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
+        c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
         let mut data_ids = Vec::<String>::new();
 
         loop {
@@ -101,9 +101,9 @@ fn store_data_v1(base_path: String, mut stream: Stream, mut c: context::Context)
     });
 }
 
-async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: context::Context) {
+async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking) {
     let header = handshake(&mut stream).await.expect("Failed to handshake");
-    c.subscribe(header.job_id.clone()).await.expect("Failed to subscribe to job");
+    c.client.subscribe(header.job_id.clone()).await.expect("Failed to subscribe to job");
     let mut buf = Vec::new();
     let _ = stream.read_to_end(&mut buf).await.expect("Failed to read stream");
     let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf).expect("Failed to deserialize consume data input");
@@ -155,14 +155,14 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: context::Co
             output: None,
         };
         let buf = serialize_into_vec(&task).expect("Failed to serialize task update");
-        c.publish(header.job_id.clone(), buf).await.expect("Failed to publish task update");
+        c.client.publish(header.job_id.clone(), buf).await.expect("Failed to publish task update");
         stream.close().await.expect("Failed to close stream");
     }
 }
 /*
     * This is a simple example of a data node. It will connect to the domain manager and store and retrieve domain data.
-    * Usage: cargo run --example data --features rust <port> <name> <domain_manager> 
-    * Example: cargo run --example data --features rust 18804 data /ip4/127.0.0.1/udp/18800/quic-v1/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq
+    * Usage: cargo run --package data-node <port> <name> <domain_manager> 
+    * Example: cargo run --package data-node data 18804 data /ip4/127.0.0.1/udp/18800/quic-v1/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -177,37 +177,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &network::NetworkingConfig{
-        port: port,
-        bootstrap_nodes: vec![domain_manager.clone()],
-        enable_relay_server: false,
-        enable_kdht: true,
-        enable_mdns: false,
-        relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path: private_key_path,
-        name: name,
-    };
-    let mut c = context::context_create(cfg)?;
-    let mut produce_handler = c.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    let mut consume_handler = c.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-    let domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c.clone()));
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
+    let mut n = domain_cluster.peer;
+    let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
+    let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
 
     loop {
         select! {
             Some((_, stream)) = produce_handler.next() => {
-                let c = c.clone();
                 // let tx = tx.clone();
                 let base_path = base_path.clone();
-                store_data_v1(base_path, stream, c);
+                store_data_v1(base_path, stream, n.clone());
             }
             Some((_, stream)) = consume_handler.next() => {
-                let c = c.clone();
                 // let rx = rx.clone();
                 let base_path = base_path.clone();
-                tokio::spawn(serve_data_v1(base_path, stream, c.clone()));
+                tokio::spawn(serve_data_v1(base_path, stream, n.clone()));
             }
             else => break
         }

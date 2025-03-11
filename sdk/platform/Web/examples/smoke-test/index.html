@@ -10,7 +10,17 @@
                 await Posemesh.initializePosemesh();
                 let config = new Posemesh.Config();
                 try {
+                    // run `cargo run --package relay` under `core` directory
+                    // copy relay's webrtc-direct address here and set as bootstrap node address
+                    let bootstrap_addr = "/ip4/127.0.0.1/udp/8081/webrtc-direct/certhash/uEiCfit4i8D9taD6NTHG9dPQKmgYzsKct0LEDjxrRKtdh9w/p2p/12D3KooWEUH93jwZEPbVnLkY63AUYjPGQRSgPSwQtTMt8VDKPYFE";
+                    config.setBootstraps([bootstrap_addr]);
                     posemesh = new Posemesh.Posemesh(config);
+
+                    let parts = bootstrap_addr.split("/");
+                    let peerId = parts[parts.length-1];
+                    
+                    let succ = await posemesh.sendString("hi", true, peerId, "/chat");
+                    console.log("message sent", succ);
                 } finally {
                     config.delete();
                 }

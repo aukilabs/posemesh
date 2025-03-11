@@ -6,14 +6,12 @@ use tokio::task::spawn as spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-use std::{collections::{HashMap, HashSet}, future::Future, sync::Arc};
+use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use networking::context::Context;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use futures::{channel::{mpsc::channel, oneshot}, executor::block_on, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-
-use super::common::{Reader, ReliableDataProducer, Writer};
+use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
+use super::common::{ReliableDataProducer, Writer};
 
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";
@@ -61,12 +59,11 @@ impl TaskHandler {
 #[derive(Clone)]
 pub struct RemoteDatastore {
     cluster: DomainCluster,
-    peer: Context,
 }
 
 impl RemoteDatastore {
-    pub fn new(cluster: DomainCluster, peer: Context ) -> Self {
-        Self { cluster, peer }
+    pub fn new(cluster: DomainCluster) -> Self {
+        Self { cluster }
     }
 
     // TODO: error handling
@@ -135,7 +132,7 @@ impl RemoteDatastore {
         });
         while let Some(data) = src.next().await {
             match data {
-                Ok(mut data) => {
+                Ok(data) => {
                     let m_buf = serialize_into_vec(&data.metadata).expect("Failed to serialize metadata");
                     let mut length_buf = [0u8; 4];
                     let length = m_buf.len() as u32;
@@ -179,8 +176,8 @@ impl Datastore for RemoteDatastore {
     {
         let mut download_task = TaskHandler::new();
         let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(100);
-        let peer_id = self.peer.id.clone();
-        let mut peer = self.peer.clone();
+        let peer_id = self.cluster.peer.id.clone();
+        let mut peer = self.cluster.peer.client.clone();
         let domain_id = domain_id.clone();
         let query = query.clone();
         let data = ConsumeDataInputV1 {
@@ -298,13 +295,13 @@ impl Datastore for RemoteDatastore {
                         min_cpu: 0,
                     }),
                     data: None,
-                    sender: self.peer.id.clone(),
+                    sender: self.cluster.peer.id.clone(),
                     receiver: "".to_string(),
                 }
             ],
         }).await;
 
-        let mut peer = self.peer.clone();
+        let mut peer = self.cluster.peer.client.clone();
         let data_receiver = Arc::new(Mutex::new(data_receiver));
         let (tx, rx) = oneshot::channel::<bool>();
         spawn(async move{

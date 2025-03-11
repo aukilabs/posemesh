@@ -88,30 +88,6 @@
     return 0;
 }
 
-- (BOOL)serveAsBootstrap
-{
-    NSAssert(m_config, @"m_config is null");
-    return static_cast<BOOL>(m_config->getServeAsBootstrap());
-}
-
-- (void)setServeAsBootstrap:(BOOL)serveAsBootstrap
-{
-    NSAssert(m_config, @"m_config is null");
-    m_config->setServeAsBootstrap(static_cast<bool>(serveAsBootstrap));
-}
-
-- (BOOL)serveAsRelay
-{
-    NSAssert(m_config, @"m_config is null");
-    return static_cast<BOOL>(m_config->getServeAsRelay());
-}
-
-- (void)setServeAsRelay:(BOOL)serveAsRelay
-{
-    NSAssert(m_config, @"m_config is null");
-    m_config->setServeAsRelay(static_cast<bool>(serveAsRelay));
-}
-
 - (NSArray<NSString*>*)bootstraps
 {
     NSAssert(m_config, @"m_config is null");
@@ -178,6 +154,30 @@
 {
     NSAssert(m_config, @"m_config is null");
     m_config->setPrivateKeyPath([privateKeyPath UTF8String]);
+}
+
+- (BOOL)enableMDNS
+{
+    NSAssert(m_config, @"m_config is null");
+    return static_cast<BOOL>(m_config->getEnableMDNS());
+}
+
+- (void)setEnableMDNS:(BOOL)enableMDNS
+{
+    NSAssert(m_config, @"m_config is null");
+    m_config->setEnableMDNS(static_cast<bool>(enableMDNS));
+}
+
+- (NSString*)name
+{
+    NSAssert(m_config, @"m_config is null");
+    return [NSString stringWithUTF8String:m_config->getName().c_str()];
+}
+
+- (void)setName:(NSString*)name
+{
+    NSAssert(m_config, @"m_config is null");
+    m_config->setName([name UTF8String]);
 }
 
 - (void*)nativeConfig

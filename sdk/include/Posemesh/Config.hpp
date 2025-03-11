@@ -22,14 +22,6 @@ public:
     bool PSM_API operator==(const Config& config) const noexcept;
     bool PSM_API operator!=(const Config& config) const noexcept;
 
-#if !defined(__EMSCRIPTEN__)
-    bool PSM_API getServeAsBootstrap() const noexcept;
-    void PSM_API setServeAsBootstrap(bool serveAsBootstrap) noexcept;
-
-    bool PSM_API getServeAsRelay() const noexcept;
-    void PSM_API setServeAsRelay(bool serveAsRelay) noexcept;
-#endif
-
     std::vector<std::string> PSM_API getBootstraps() const;
     bool PSM_API setBootstraps(std::vector<std::string> bootstraps) noexcept;
 
@@ -42,21 +34,25 @@ public:
 #if !defined(__EMSCRIPTEN__)
     std::string PSM_API getPrivateKeyPath() const;
     void PSM_API setPrivateKeyPath(std::string privateKeyPath) noexcept;
+
+    bool PSM_API getEnableMDNS() const noexcept;
+    void PSM_API setEnableMDNS(bool enableMDNS) noexcept;
 #endif
+
+    std::string PSM_API getName() const;
+    void PSM_API setName(std::string name) noexcept;
 
     static Config PSM_API createDefault();
 
 private:
-#if !defined(__EMSCRIPTEN__)
-    bool m_serveAsBootstrap;
-    bool m_serveAsRelay;
-#endif
     std::vector<std::string> m_bootstraps;
     std::vector<std::string> m_relays;
     std::vector<std::uint8_t> m_privateKey;
 #if !defined(__EMSCRIPTEN__)
     std::string m_privateKeyPath;
+    bool m_enableMDNS;
 #endif
+    std::string m_name;
 };
 
 }

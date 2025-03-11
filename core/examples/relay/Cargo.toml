@@ -1,0 +1,13 @@
+[package]
+name = "relay"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[package.metadata.release]
+release = false
+
+[dependencies]
+tokio = { workspace = true }
+networking = { workspace = true }
+futures = { workspace = true }

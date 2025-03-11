@@ -9,17 +9,15 @@
 #endif
 
 typedef struct {
-    #if !defined(__EMSCRIPTEN__)
-        uint8_t serve_as_bootstrap;
-        uint8_t serve_as_relay;
-    #endif
     const char* bootstraps;
     const char* relays;
     const uint8_t* private_key;
     uint32_t private_key_size;
     #if !defined(__EMSCRIPTEN__)
         const char* private_key_path;
+        uint8_t enable_mdns;
     #endif
+    const char* name;
 } psm_posemesh_networking_config_t;
 
 typedef struct psm_posemesh_networking_context psm_posemesh_networking_context_t;
@@ -60,20 +58,19 @@ extern "C" {
         const uint8_t* const private_key = config->private_key;
         const uint32_t private_key_size = config->private_key_size;
         assert(private_key || private_key_size == 0);
+        const char* const name = config->name;
+        assert(name);
         void* context = EM_ASM_PTR({
-            let bootstraps = UTF8ToString($0);
-            let relays = UTF8ToString($1);
+            let bootstraps = UTF8ToString($0).split(';');
+            let relays = UTF8ToString($1).split(';');
             let privateKey = $2;
             let privateKeySize = $3;
+            let name = UTF8ToString($4);
             let config = new __internalPosemeshBase.Config(
-                bootstraps, relays, new Uint8Array(HEAPU8.buffer, privateKey, privateKeySize)
+                bootstraps, relays, new Uint8Array(HEAPU8.buffer, privateKey, privateKeySize), name
             );
-            try {
-                return __internalPosemeshBase.posemeshNetworkingContextCreate(config);
-            } finally {
-                config.free();
-            }
-        }, bootstraps, relays, private_key, private_key_size);
+            return __internalPosemeshBase.posemeshNetworkingContextCreate(config);
+        }, bootstraps, relays, private_key, private_key_size, name);
         return (psm_posemesh_networking_context_t*)context;
     }
 #endif

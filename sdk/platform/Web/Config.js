@@ -80,5 +80,12 @@ __internalPosemeshAPI.builderFunctions.push(function(context) {
         configurable: false
     });
 
+    Object.defineProperty(__internalPosemesh.Config.prototype, 'name', {
+        get: __internalPosemesh.Config.prototype.getName,
+        set: __internalPosemesh.Config.prototype.setName,
+        enumerable: true,
+        configurable: false
+    });
+
     posemeshModule.Config = __internalPosemesh.Config;
 });
