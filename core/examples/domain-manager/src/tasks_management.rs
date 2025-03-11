@@ -1,16 +1,9 @@
-use std::{collections::{HashMap, HashSet, VecDeque}, error::Error, sync::Arc};
+use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc};
 
-use domain::{cluster::{TaskUpdateEvent, TaskUpdateResult}, protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest}};
-
+use domain::protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest};
 use tokio::task::JoinHandle;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::{sync::{Mutex, mpsc::channel, oneshot}, spawn};
-#[cfg(target_arch = "wasm32")]
-use futures::{channel::oneshot, lock::Mutex, channel::mpsc::{channel, Receiver}};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local as spawn;
-
-use crate::nodes_management::{self, NodesManagement};
+use tokio::{sync::Mutex, spawn};
+use crate::nodes_management::NodesManagement;
 
 fn parse_duration_to_millis(input: &str) -> Result<u32, Box<dyn Error + Send + Sync>> {
     let (value, unit) = input
@@ -227,9 +220,16 @@ impl TasksManagement {
     #[tracing::instrument]
     pub async fn update_task(&self, task: Task) {
         let key = task_id(&task.job_id, &task.name);
+        
         let mut tasks = self.tasks.lock().await;
         match tasks.get_mut(&key) {
             Some(task_handler) => {
+                if task.status == Status::RETRY {
+                    task_handler.retries += 1;
+                    let mut task_queue = self.task_queue.lock().await;
+                    task_queue.push_back(key.clone());
+                    return;
+                }
                 task_handler.task = task.clone();
             }
             None => {
@@ -237,12 +237,6 @@ impl TasksManagement {
             }
         }
         drop(tasks);
-
-        if task.status == Status::RETRY {
-            let mut task_queue = self.task_queue.lock().await;
-            task_queue.push_back(key.clone());
-            return;
-        }
 
         if task.status == Status::DONE {
             let mut tasks = self.tasks.lock().await;

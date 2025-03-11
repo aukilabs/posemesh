@@ -1,18 +1,15 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
-use libp2p::{gossipsub::{PublishError, TopicHash}, Stream};
+use libp2p::Stream;
 use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
 use nodes_management::NodesManagement;
-use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
-use serde::de;
-use tasks_management::{task_id, TaskHandler, TaskManagementError, TaskPendingRequest, TasksManagement};
-use tokio::{self, select, signal, spawn, task::JoinHandle, time::sleep};
-use futures::{channel::mpsc::{channel, Receiver, Sender}, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use core::error;
-use std::{borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, sync::{atomic::AtomicUsize, Arc}, time::{Duration, SystemTime, UNIX_EPOCH}};
-use domain::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Any, Code, GlobalRefinementInputV1, Job, JobRequest, LocalRefinementInputV1, LocalRefinementOutputV1, Status, Task}};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use tasks_management::{task_id, TaskHandler, TaskPendingRequest, TasksManagement};
+use tokio::{self, select, spawn, time::sleep};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
+use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
+use domain::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
 use hex;
-use std::fs;
 use serde::{Serialize, Deserialize};
 mod tasks_management;
 mod nodes_management;
@@ -251,15 +248,11 @@ impl DomainManager {
                         }
                     },
                     "LocalRefinementInputV1" => {
-                        // let deserialized = deserialize_from_slice::<LocalRefinementInputV1>(&input.value).expect("failed to deserialize input");
                         serialized_input = Vec::with_capacity(4 + input.value.len());
                         let size = input.value.len() as u32;
                         let size_buffer = size.to_be_bytes();
                         serialized_input.extend_from_slice(&size_buffer);
                         serialized_input.append(&mut input.value.clone());
-                        // serialized_input.extend_from_slice(&input.value.len().to_be_bytes());
-                        // serialized_input.append(&mut input.value.clone());
-                        // serialized_input = prefix_size_message(&deserialized);
                     },
                     _ => {}
                 }

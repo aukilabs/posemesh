@@ -1,12 +1,12 @@
-use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, StoreDataOutputV1, Task}}};
+use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{self, select, signal};
-use futures::{AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use std::{collections::HashMap, fs::{self, OpenOptions}, io::{Read, Write}, sync::Arc};
-use serde::{de, Deserialize, Serialize};
+use tokio::{self, select};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
+use std::{fs::{self, OpenOptions}, io::{Read, Write}};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TaskTokenClaim {
@@ -164,7 +164,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
-
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
     let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
