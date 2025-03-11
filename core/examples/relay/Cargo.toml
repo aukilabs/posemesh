@@ -10,5 +10,4 @@ release = false
 [dependencies]
 tokio = { workspace = true }
 networking = { workspace = true }
-quick-protobuf = { workspace = true }
 futures = { workspace = true }

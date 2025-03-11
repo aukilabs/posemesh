@@ -3285,7 +3285,6 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "networking",
- "quick-protobuf",
  "tokio",
 ]
 
