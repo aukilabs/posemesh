@@ -1,7 +1,7 @@
-use asynchronous_codec::FramedRead;
 use libp2p::{gossipsub::TopicHash, PeerId};
-use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, AsyncWriteExt, FutureExt, SinkExt, StreamExt};
-use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse, Task}};
+use networking::{context::{self, Context}, event};
+use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
+use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::collections::HashMap;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
@@ -146,7 +146,7 @@ impl InnerDomainCluster {
 
     async fn monitor_jobs(&mut self) -> Receiver<Job> {
         let (mut tx, rx) = channel::<Job>(3072);
-        let mut stream = self.peer.send(vec![], self.manager.clone(), "/monitor/jobs/v1".to_string(), 0).await.expect("monitor jobs");
+        let mut stream = self.peer.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/jobs/v1".to_string(), 0).await.expect("monitor jobs");
 
         spawn(async move {
             loop {

@@ -1,4 +1,4 @@
-use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::task::spawn as spawn;
@@ -12,9 +12,9 @@ use async_trait::async_trait;
 use libp2p::Stream;
 use networking::context::Context;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::prefix_size_message, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use futures::{channel::{mpsc::channel, oneshot}, executor::block_on, future::Remote, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
+use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
-use super::common::{Reader, ReliableDataProducer, Writer};
+use super::common::{ReliableDataProducer, Writer};
 
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";

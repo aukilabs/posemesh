@@ -2,21 +2,12 @@ use std::{collections::{HashMap, VecDeque}, fmt::Debug, sync::Arc};
 use domain::protobuf::task::CapabilityFilters;
 use networking::network::Node;
 use async_trait::async_trait;
-use tokio::sync::mpsc::{Receiver, Sender};
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::{sync::{Mutex, mpsc::channel, oneshot}, spawn};
-#[cfg(target_arch = "wasm32")]
-use futures::{channel::oneshot, lock::Mutex, channel::mpsc::{channel, Receiver}};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local as spawn;
-
-use crate::tasks_management::TasksManagement;
+use tokio::sync::{Mutex, oneshot};
 
 #[async_trait]
 trait LoadBalancer: Send + Sync + Debug {
     async fn find_key(&mut self, nodes: HashMap<String, Node>, key: &str) -> Option<Node>;
     async fn add_key(&mut self, key: &str, value: &str);
-    async fn remove_value(&mut self, key: &str, value: &str);
 }
 
 #[derive(Debug)]
@@ -66,15 +57,6 @@ impl LoadBalancer for RoundRobin {
                 self.capabilities.insert(endpoint.to_string(), vec![node_id.to_string()]);
                 self.node_indices.insert(endpoint.to_string(), std::sync::atomic::AtomicUsize::new(0));
             }
-        }
-    }
-    #[tracing::instrument]
-    async fn remove_value(&mut self, endpoint: &str, node_id: &str) {
-        match self.capabilities.get_mut(endpoint) {
-            Some(node_ids) => {
-                node_ids.retain(|id| id != node_id);
-            }
-            None => {}
         }
     }
 }

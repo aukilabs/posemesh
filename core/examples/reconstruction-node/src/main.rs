@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, message::read_prefix_size_message, protobuf::{domain_data::Query,task::{self, DomainClusterHandshake, LocalRefinementInputV1, LocalRefinementOutputV1, StoreDataOutputV1, Task}}};
+use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, message::read_prefix_size_message, protobuf::{domain_data::Query,task::{self, LocalRefinementInputV1, LocalRefinementOutputV1}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
 use networking::libp2p::Networking;
@@ -70,7 +70,7 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
             Some(Ok(_)) => {
                 i+=1;
             }
-            Some(Err(e)) => {
+            Some(Err(_)) => {
                 t.status = task::Status::RETRY;
                 let message = serialize_into_vec(t).expect("failed to serialize task update");
                 c.publish(job_id.clone(), message).await.expect("failed to publish task update");
