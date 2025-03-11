@@ -113,6 +113,7 @@ if(APPLE)
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
