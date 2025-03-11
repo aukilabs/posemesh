@@ -1,7 +1,7 @@
 use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::{domain_data::Query,task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::libp2p::{Networking, NetworkingConfig};
+use networking::libp2p::Networking;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, time::{sleep, Duration}};
 use futures::{AsyncReadExt, StreamExt};
@@ -120,8 +120,8 @@ async fn global_refinement_v1(mut stream: Stream, mut c: Networking) {
 }
 /*
     * This is a simple example of a reconstruction node. It will connect to a set of bootstraps and execute reconstruction jobs.
-    * Usage: cargo run --example reconstruction <port> <name> <domain_manager> 
-    * Example: cargo run --example reconstruction 18808 reconstruction 
+    * Usage: cargo run --package reconstruction-node <port> <name> <domain_manager> 
+    * Example: cargo run --package reconstruction-node 18808 reconstruction 
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

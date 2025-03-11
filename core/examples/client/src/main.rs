@@ -9,8 +9,8 @@ const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
-    * Usage: cargo run --example dmt <port> <name> <domain_manager>
-    * Example: cargo run --example dmt 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Usage: cargo run --package client-example dmt <port> <name> <domain_manager>
+    * Example: cargo run --package client-example dmt 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

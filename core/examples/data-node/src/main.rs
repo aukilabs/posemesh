@@ -161,8 +161,8 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
 }
 /*
     * This is a simple example of a data node. It will connect to the domain manager and store and retrieve domain data.
-    * Usage: cargo run --example data <port> <name> <domain_manager> 
-    * Example: cargo run --example data 18804 data /ip4/127.0.0.1/udp/18800/quic-v1/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq
+    * Usage: cargo run --package data-node <port> <name> <domain_manager> 
+    * Example: cargo run --package data-node data 18804 data /ip4/127.0.0.1/udp/18800/quic-v1/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

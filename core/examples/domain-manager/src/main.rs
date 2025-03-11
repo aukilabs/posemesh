@@ -382,8 +382,8 @@ impl DomainManager {
 
 /*
     * This is a simple example of a domain_manager node. It will connect to a set of bootstraps and accept tasks.
-    * Usage: cargo run --example domain_manager <port> <name> [private_key_path]
-    * Example: cargo run --example domain_manager 18804 domain_manager 
+    * Usage: cargo run --package domain-manager <port> <name> [private_key_path]
+    * Example: cargo run --package domain-manager 18804 domain_manager 
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
