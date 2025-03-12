@@ -141,7 +141,7 @@ Switch($Platform) {
             'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
             'ARM64' {
                 $RustTarget = 'aarch64-unknown-linux-gnu'
-                $NewTargetCC = 'aarch64-unknown-linux-gnu'
+                $NewTargetCC = 'aarch64-linux-gnu-gcc'
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
