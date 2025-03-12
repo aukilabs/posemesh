@@ -42,6 +42,7 @@ $RustToolchain = $Null
 $RustTarget = $Null
 $WASMTarget = $Null
 $NewTargetCC = $Null
+$NewCargoTargetAArch64UnknownLinuxGNULinker = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -142,6 +143,7 @@ Switch($Platform) {
             'ARM64' {
                 $RustTarget = 'aarch64-unknown-linux-gnu'
                 $NewTargetCC = 'aarch64-linux-gnu-gcc'
+                $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-ld'
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
@@ -273,6 +275,7 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
 }
 
 $OldTargetCC = $env:TARGET_CC
+$OldCargoTargetAArch64UnknownLinuxGNULinker = $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
 $OldCC = $env:CC
 $OldCXX = $env:CXX
 
@@ -284,6 +287,9 @@ If(-Not $PushLocationResult) {
 Try {
     If($NewTargetCC) {
         $env:TARGET_CC = $NewTargetCC
+    }
+    If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
+        $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $NewCargoTargetAArch64UnknownLinuxGNULinker
     }
     If($NewCC) {
         $env:CC = $NewCC
@@ -366,6 +372,9 @@ Try {
 } Finally {
     If($NewTargetCC) {
         $env:TARGET_CC = $OldTargetCC
+    }
+    If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
+        $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $OldCargoTargetAArch64UnknownLinuxGNULinker
     }
     If($NewCC) {
         $env:CC = $OldCC
