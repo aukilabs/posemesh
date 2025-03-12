@@ -9,7 +9,7 @@
     <script src="Posemesh.js"></script>
     <script>
         async function runExperiment() {
-            await Posemesh.initialize();
+            await Posemesh.initializePosemesh();
             runLocalImageDetection();
         }
 
@@ -51,10 +51,10 @@
         function getGreyEncodedImage(imageData, width, height) {
             const startTime = performance.now();
             const byteData = imageData.data;
-            const arr = new Posemesh.VectorUint8();
+            const arr = [];
             for (let i = 0; i < 4 * width * height; i += 4) { // 4 for each RGBA component.
                 const greyValue = 0.299 * (byteData[i + 2] / 255.0) + 0.587 * (byteData[i + 1] / 255.0) + 0.114 * (byteData[i] / 255.0);
-                arr.push_back(greyValue * 255.0);
+                arr.push(greyValue * 255.0);
             }
 
             const endTime = performance.now();
@@ -64,8 +64,8 @@
 
         function processImageDataBytes(imageData, width, height) {
             const imageBytes = getGreyEncodedImage(imageData, width, height);
-            const contents = new Posemesh.VectorString();
-            const corners = new Posemesh.Vector2fArray();
+            const contents = [];
+            const corners = []
 
             const startTime = performance.now();
             const detected = Posemesh.QRDetection.detectQRFromLuminance(imageBytes, width, height, contents, corners);
@@ -75,9 +75,13 @@
             console.log("detected? = ", detected);
 
             if (detected) {
-                console.log(`Found contents = ${contents.get(0)}`);
-                for (let i = 0; i < 4; i++) {
-                    const corner = corners.get(i);
+                for (let i = 0; i < contents.length; i++) {
+                    const content = contents[i];
+                    console.log(`Content ${i + 1} = ${content}`);
+                }
+                
+                for (let i = 0; i < corners.length; i++) {
+                    const corner = corners[i];
                     console.log(`corner ${i + 1} = ${corner.x}, ${corner.y}`);
                 }
             }
