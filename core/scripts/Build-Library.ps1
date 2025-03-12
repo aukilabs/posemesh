@@ -3,7 +3,7 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
@@ -125,6 +125,21 @@ Switch($Platform) {
         $RustToolchain = '1.81.0'
         $RustTarget = 'wasm32-unknown-unknown'
         $WASMTarget = 'bundler'
+    }
+    'Linux' {
+        If(-Not $Architecture) {
+            Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
+            Exit 1
+        }
+        $RustToolchain = '1.81.0'
+        Switch($Architecture) {
+            'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
+            'ARM64' { $RustTarget = 'aarch64-unknown-linux-gnu' }
+            Default {
+                Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
+                Exit 1
+            }
+        }
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
