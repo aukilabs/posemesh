@@ -143,9 +143,9 @@ Switch($Platform) {
             'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
             'ARM64' {
                 $RustTarget = 'aarch64-unknown-linux-gnu'
-                $NewTargetCC = 'aarch64-linux-gnu-gcc'
-                $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-ld'
-                $NewLibraryPath = "/usr/aarch64-linux-gnu/lib:$env:LIBRARY_PATH"
+                #$NewTargetCC = 'aarch64-linux-gnu-gcc'
+                #$NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-ld'
+                #$NewLibraryPath = "/usr/aarch64-linux-gnu/lib:$env:LIBRARY_PATH"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
