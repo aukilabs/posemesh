@@ -1,4 +1,4 @@
-import init, { Config, posemeshNetworkingContextCreate, DomainCluster, RemoteDatastore, Query, DomainData, Metadata } from "./pkg/posemesh-domain.js";
+import init, { DomainCluster, RemoteDatastore, Query, DomainData, Metadata } from "./pkg/posemesh-domain.js";
 
 export class UploadManager {
     constructor() {
@@ -27,11 +27,8 @@ export class UploadManager {
         try {
             await init();
             this.libp2pReady = true;
-            const cfg = new Config("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiCexmxnSnWbpCW5fsCmFsOfzwQfWyNJ8JFm8P3p506wmw/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "", "");
-            const libp2pInstance = posemeshNetworkingContextCreate(cfg);
-
-            const domainCluster = new DomainCluster("12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", libp2pInstance);
-            this.datastore = new RemoteDatastore(domainCluster, libp2pInstance);
+            const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiBx18iewKgY7I3UcWvfuMMuvCW_MkKd8uKW04s2oSI6YQ/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
+            this.datastore = new RemoteDatastore(domainCluster);
             this.uploader = await this.datastore.produce("");
 
             console.log("libp2p is ready!");
@@ -82,7 +79,7 @@ export class UploadManager {
 
     async downloadFiles() {
         if (this.datastore != null) {
-            const query = new Query([], null, null);
+            const query = new Query([], [], [], null, null);
             console.log("Query created");
 
             const downloader = await this.datastore.consume("", query);

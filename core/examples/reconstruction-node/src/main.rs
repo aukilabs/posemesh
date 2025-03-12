@@ -1,7 +1,7 @@
 use domain::{cluster::DomainCluster, datastore::{common::Datastore, remote::RemoteDatastore}, protobuf::{domain_data::Query,task::{self, StoreDataOutputV1, DomainClusterHandshake, LocalRefinementOutputV1, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::{context, network::NetworkingConfig};
+use networking::libp2p::Networking;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, time::{sleep, Duration}};
 use futures::{AsyncReadExt, StreamExt};
@@ -35,10 +35,10 @@ async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::e
     decode_jwt(header.access_token.as_str())
 }
 
-async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastore>, mut c: context::Context) {
+async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastore>, mut c: Networking) {
     let claim = handshake(&mut stream).await.expect("Failed to handshake");
     let job_id = claim.job_id.clone();
-    c.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
+    c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
 
     let mut length_buf = [0u8; 4];
     stream.read_exact(&mut length_buf).await.expect("Failed to read length");
@@ -85,13 +85,13 @@ async fn local_refinement_v1(mut stream: Stream, mut datastore: Box<dyn Datastor
         }),
     };
     let buf = serialize_into_vec(&event).expect("failed to serialize task update");
-    c.publish(job_id.clone(), buf).await.expect("failed to publish task update");
+    c.client.publish(job_id.clone(), buf).await.expect("failed to publish task update");
 }
 
-async fn global_refinement_v1(mut stream: Stream, mut c: context::Context) {
+async fn global_refinement_v1(mut stream: Stream, mut c: Networking) {
     let claim = handshake(&mut stream).await.expect("Failed to handshake");
     let job_id = claim.job_id.clone();
-    c.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
+    c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
     let mut length_buf = [0u8; 4];
     stream.read_exact(&mut length_buf).await.expect("Failed to read length");
 
@@ -116,12 +116,12 @@ async fn global_refinement_v1(mut stream: Stream, mut c: context::Context) {
         output: None,
     };
     let buf = serialize_into_vec(&event).expect("failed to serialize task update");
-    c.publish(job_id.clone(), buf).await.expect("failed to publish task update");
+    c.client.publish(job_id.clone(), buf).await.expect("failed to publish task update");
 }
 /*
     * This is a simple example of a reconstruction node. It will connect to a set of bootstraps and execute reconstruction jobs.
-    * Usage: cargo run --example reconstruction --features rust <port> <name> <domain_manager> 
-    * Example: cargo run --example reconstruction --features rust 18808 reconstruction 
+    * Usage: cargo run --package reconstruction-node <port> <name> <domain_manager> 
+    * Example: cargo run --package reconstruction-node 18808 reconstruction 
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -136,32 +136,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let cfg = &NetworkingConfig{
-        port: port,
-        bootstrap_nodes: vec![domain_manager.clone()],
-        enable_relay_server: false,
-        enable_kdht: true,
-        enable_mdns: false,
-        relay_nodes: vec![],
-        private_key: vec![],
-        private_key_path,
-        name,
-    };
-    let mut c = context::context_create(cfg)?;
-    let mut local_refinement_v1_handler = c.set_stream_handler("/local-refinement/v1".to_string()).await.unwrap();
-    let mut global_refinement_v1_handler = c.set_stream_handler("/global-refinement/v1".to_string()).await.unwrap();
-
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-    let domain_cluster = DomainCluster::new(domain_manager_id.clone(), Box::new(c.clone()));
-    let remote_storage = RemoteDatastore::new(domain_cluster, c.clone());
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
+    let mut n = domain_cluster.peer.clone();
+    let mut local_refinement_v1_handler = n.client.set_stream_handler("/local-refinement/v1".to_string()).await.unwrap();
+    let mut global_refinement_v1_handler = n.client.set_stream_handler("/global-refinement/v1".to_string()).await.unwrap();
+    let remote_storage = RemoteDatastore::new(domain_cluster);
 
     loop {
         select! {
             Some((_, stream)) = local_refinement_v1_handler.next() => {
-                let _ = tokio::spawn(local_refinement_v1(stream, Box::new(remote_storage.clone()), c.clone()));
+                let _ = tokio::spawn(local_refinement_v1(stream, Box::new(remote_storage.clone()), n.clone()));
             }
             Some((_, stream)) = global_refinement_v1_handler.next() => {
-                let _ = tokio::spawn(global_refinement_v1(stream, c.clone()));
+                let _ = tokio::spawn(global_refinement_v1(stream, n.clone()));
             }
             else => break
         }

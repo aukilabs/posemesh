@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
-networking = { workspace = true, features = ["rust"] }
+networking = { workspace = true }
 quick-protobuf = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

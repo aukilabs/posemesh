@@ -12,12 +12,6 @@ NS_SWIFT_NAME(Config) PSM_API @interface PSMConfig : NSObject<NSCopying>
 - (BOOL)isEqual:(id)object;
 - (NSUInteger)hash;
 
-- (BOOL)serveAsBootstrap NS_REFINED_FOR_SWIFT;
-- (void)setServeAsBootstrap:(BOOL)serveAsBootstrap NS_REFINED_FOR_SWIFT;
-
-- (BOOL)serveAsRelay NS_REFINED_FOR_SWIFT;
-- (void)setServeAsRelay:(BOOL)serveAsRelay NS_REFINED_FOR_SWIFT;
-
 - (NSArray<NSString*>*)bootstraps NS_REFINED_FOR_SWIFT;
 - (BOOL)setBootstraps:(NSArray<NSString*>*)bootstraps;
 
@@ -29,6 +23,12 @@ NS_SWIFT_NAME(Config) PSM_API @interface PSMConfig : NSObject<NSCopying>
 
 - (NSString*)privateKeyPath NS_REFINED_FOR_SWIFT;
 - (void)setPrivateKeyPath:(NSString*)privateKeyPath NS_REFINED_FOR_SWIFT;
+
+- (BOOL)enableMDNS NS_REFINED_FOR_SWIFT;
+- (void)setEnableMDNS:(BOOL)enableMDNS NS_REFINED_FOR_SWIFT;
+
+- (NSString*)name NS_REFINED_FOR_SWIFT;
+- (void)setName:(NSString*)name NS_REFINED_FOR_SWIFT;
 
 #if defined(POSEMESH_BUILD)
 - (void*)nativeConfig;
