@@ -9,9 +9,11 @@ __internalPosemeshAPI.builderFunctions.push(function() {
             let result = __internalPosemesh.QRDetection.__detectQRFromLuminance(imageVector, width, height, contentsVector, cornersVector);
 
             if (result) {
-                contents = contentsVector;
-                
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < contentsVector.size(); i++) {
+                    contents.push(contentsVector.get(i));
+                }
+
+                for (let i = 0; i < cornersVector.size(); i++) {
                     corners.push(cornersVector.get(i));
                 }
             }

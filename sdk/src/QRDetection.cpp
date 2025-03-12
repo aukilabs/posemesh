@@ -18,9 +18,12 @@ bool QRDetection::detectQRFromLuminance(
     try {
         cv::QRCodeDetector qrDetector;
         std::vector<cv::Point2f> cornersFound;
-        std::string detectedContents = qrDetector.detectAndDecode(cvImage, cornersFound);
-        if (!detectedContents.empty()) {
-            contents.push_back(detectedContents);
+        std::vector<std::string> contentsFound;
+        bool detected = qrDetector.detectAndDecodeMulti(cvImage, contentsFound, cornersFound);
+        if (detected) {
+            for (size_t i = 0; i < contentsFound.size(); ++i) {
+                contents.push_back(contentsFound[i]);
+            }
 
             for (size_t i = 0; i < cornersFound.size(); ++i) {
                 cv::Point2f p = cornersFound[i];

@@ -17,15 +17,15 @@
     const uint8_t* imageBytesRawBytes = static_cast<const uint8_t*>(imageBytes);
     const int imageBytesCount = width * height;
     std::vector<uint8_t> bytes(imageBytesRawBytes, imageBytesRawBytes + imageBytesCount);
-
     std::vector<std::string> outContents;
     std::vector<psm::Vector2> outCorners;
     BOOL result = psm::QRDetection::detectQRFromLuminance(bytes, width, height, outContents, outCorners);
-
     if (result) {
-        [contents addObject:[NSString stringWithCString:outContents[0].c_str() encoding:[NSString defaultCStringEncoding]]];
+        for (int i = 0; i < outContents.size(); i++) {
+            [contents addObject:[NSString stringWithCString:outContents[i].c_str() encoding:[NSString defaultCStringEncoding]]];
+        }
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < outCorners.size(); i++) {
             psm::Vector2 o = outCorners[i];
             PSMVector2* v = [[PSMVector2 alloc] init];
             [v setX:o.getX()];

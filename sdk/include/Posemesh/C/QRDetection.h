@@ -24,8 +24,10 @@ bool PSM_API psm_qr_detection_detect_qr(
     uint8_t* image,
     int width,
     int height,
-    char** contents,
-    psm_vector2_t*** corners);
+    char*** contents,
+    int* contentsSize,
+    psm_vector2_t*** corners,
+    int* cornersSize);
 
 #if defined(__cplusplus)
 }

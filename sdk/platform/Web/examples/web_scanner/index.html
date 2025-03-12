@@ -183,7 +183,6 @@
                 imageWidth = imageWidth / 2;
                 imageHeight = imageWidth / aspectRatio;
                 console.log(`Resizing image ${originalWidth}x${originalHeight} -> ${imageWidth}x${imageHeight} (${(imageWidth * imageHeight * 8 / 1000000).toFixed(2)} MB)`);
-                console.log(`Don't forget to scale the corner coordinates by a factor of ${originalWidth / imageWidth}!`);
             }
             
             canvas.width = imageWidth;
@@ -225,7 +224,7 @@
             const endTime = performance.now();
 
             console.log(`QR detection took ${(endTime - startTime).toFixed(2)}ms`);
-            console.log("detected? = ", detected);
+            console.log(`Detected ${contents.length} QRs with a total of ${corners.length} corners`);
 
             hasDetectedQR = detected;
             if (detected) {
