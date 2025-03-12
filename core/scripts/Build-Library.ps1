@@ -127,6 +127,10 @@ Switch($Platform) {
         $WASMTarget = 'bundler'
     }
     'Linux' {
+        If(-Not $IsLinux) {
+            Write-Error -Message "Your machine needs to be running GNU/Linux to build for 'Linux' platform."
+            Exit 1
+        }
         If(-Not $Architecture) {
             Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
             Exit 1

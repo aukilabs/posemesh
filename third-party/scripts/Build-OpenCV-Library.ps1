@@ -3,7 +3,7 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
@@ -132,6 +132,27 @@ Switch($Platform) {
         $BuildPythonScriptFile = 'opencv/platforms/js/build_js.py'
         $BuildPythonScriptArgs = @()
         $InvokeWithEmscripten = $True
+    }
+    'Linux' {
+        If(-Not $IsLinux) {
+            Write-Error -Message "Your machine needs to be running GNU/Linux to build for 'Linux' platform."
+            Exit 1
+        }
+        If(-Not $Architecture) {
+            Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
+            Exit 1
+        }
+        $UseCMakeDirectly = $True
+        $CMakeGenerator = ''
+        $CMakeConfigureArgs = @()
+        Switch($Architecture) {
+            'AMD64' { $CMakeConfigureArgs += '' }
+            'ARM64' { $CMakeConfigureArgs += '-DCMAKE_TOOLCHAIN_FILE=./opencv/platforms/linux/aarch64-gnu.toolchain.cmake' }
+            Default {
+                Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
+                Exit 1
+            }
+        }
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."

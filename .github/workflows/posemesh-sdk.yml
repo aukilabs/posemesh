@@ -187,6 +187,10 @@ jobs:
   build_linux_sdk:
     name: Build Linux SDK
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [AMD64, ARM64]
 
     steps:
       - name: Checkout repository with submodules
@@ -200,6 +204,7 @@ jobs:
           npm run generate
 
       - name: Install GCC cross-compiler for ARM64
+        if: matrix.arch == 'ARM64'
         run: sudo apt-get install gcc-aarch64-linux-gnu
 
       - name: Install Rust
@@ -207,9 +212,11 @@ jobs:
 
       - name: Build Posemesh Base
         shell: pwsh
-        run: |
-          ./core/scripts/Build-Library.ps1 Linux AMD64 Release base -InstallNecessaryRustToolchainsAndTargets
-          ./core/scripts/Build-Library.ps1 Linux ARM64 Release base -InstallNecessaryRustToolchainsAndTargets
+        run: ./core/scripts/Build-Library.ps1 Linux ${{ matrix.arch }} Release base -InstallNecessaryRustToolchainsAndTargets
+
+      - name: Build OpenCV
+        shell: pwsh
+        run: ./third-party/scripts/Build-OpenCV-Library.ps1 Linux ${{ matrix.arch }} Release
 
   check_code_style:
     if: false
