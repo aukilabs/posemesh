@@ -41,6 +41,7 @@ If(-Not $Package) {
 $RustToolchain = $Null
 $RustTarget = $Null
 $WASMTarget = $Null
+$NewTargetCC = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -138,7 +139,10 @@ Switch($Platform) {
         $RustToolchain = '1.81.0'
         Switch($Architecture) {
             'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
-            'ARM64' { $RustTarget = 'aarch64-unknown-linux-gnu' }
+            'ARM64' {
+                $RustTarget = 'aarch64-unknown-linux-gnu'
+                $NewTargetCC = 'aarch64-unknown-linux-gnu'
+            }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
                 Exit 1
@@ -268,6 +272,7 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
     Exit 1
 }
 
+$OldTargetCC = $env:TARGET_CC
 $OldCC = $env:CC
 $OldCXX = $env:CXX
 
@@ -277,6 +282,9 @@ If(-Not $PushLocationResult) {
     Exit 1
 }
 Try {
+    If($NewTargetCC) {
+        $env:TARGET_CC = $NewTargetCC
+    }
     If($NewCC) {
         $env:CC = $NewCC
     }
@@ -356,6 +364,9 @@ Try {
         }
     }
 } Finally {
+    If($NewTargetCC) {
+        $env:TARGET_CC = $OldTargetCC
+    }
     If($NewCC) {
         $env:CC = $OldCC
     }

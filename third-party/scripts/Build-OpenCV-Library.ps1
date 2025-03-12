@@ -146,7 +146,7 @@ Switch($Platform) {
         $CMakeGenerator = ''
         $CMakeConfigureArgs = @()
         Switch($Architecture) {
-            'AMD64' { $CMakeConfigureArgs += '' }
+            'AMD64' { }
             'ARM64' { $CMakeConfigureArgs += '-DCMAKE_TOOLCHAIN_FILE=./opencv/platforms/linux/aarch64-gnu.toolchain.cmake' }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
@@ -494,6 +494,8 @@ Try {
         }
         If($InvokeWithEmscripten) {
             & $EmMakeCommand $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        } ElseIf(($CMakeGenerator -Eq '') -Or ($CMakeGenerator -Eq 'Unix Makefiles')) {
+            & $CMakeCommand --build $BuildDirectoryName --parallel 4 @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
         } Else {
             & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
         }
