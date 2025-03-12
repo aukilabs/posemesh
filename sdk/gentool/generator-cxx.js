@@ -271,6 +271,8 @@ function generateHeader(interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw)) {
         includesFirst.add('#include <cstdint>');
+      } else if (propTypeRaw === 'string') {
+        includesFirst.add('#include <string>');
       }
     }
   }
@@ -1023,7 +1025,12 @@ function generateSource(interfaceName, interfaceJson) {
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.CXX);
       let setter = `void ${name}::${setterName}(${setterType} ${setterArgName})${setterConstExt}${setterNoexceptExt}\n`;
       setter += '{\n';
-      setter += `    ${propName} = ${setterArgName};\n`;
+      if (propertyJson.type === 'string') {
+        includesFirst.add('#include <utility>');
+        setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else {
+        setter += `    ${propName} = ${setterArgName};\n`;
+      }
       setter += '}\n';
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       switch (setterVisibility) {

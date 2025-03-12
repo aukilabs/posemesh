@@ -22,7 +22,8 @@
       "type": "float",
       "getterCustom": true,
       "hasSetter": false,
-      "hasMemberVar": false
+      "hasMemberVar": false,
+      "partOfIdentity": false
     }
   ]
 }

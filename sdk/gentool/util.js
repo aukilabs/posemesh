@@ -288,6 +288,8 @@ function getIntType(signed, bits, language) {
     case Language.Swift:
       return `${signed ? '' : 'U'}Int${bits}`;
     case Language.JS:
+      if (bits === '64')
+        return 'bigint';
       return 'number';
     default:
       throw new Error(`Unknown language: ${language}`);
@@ -306,6 +308,23 @@ function getBooleanType(language) {
       return 'Bool';
     case Language.JS:
       return 'boolean';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getStringType(language) {
+  switch (language) {
+    case Language.CXX:
+      return 'std::string';
+    case Language.C:
+      return 'const char*';
+    case Language.ObjC:
+      return 'NSString*';
+    case Language.Swift:
+      return 'String';
+    case Language.JS:
+      return 'string';
     default:
       throw new Error(`Unknown language: ${language}`);
   }
@@ -332,6 +351,8 @@ function getPropertyType(propertyJson, language) {
       return getDoubleType(language);
     case 'boolean':
       return getBooleanType(language);
+    case 'string':
+      return getStringType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -358,6 +379,8 @@ function getPropertyTypeForGetter(propertyJson, language) {
       return getDoubleType(language);
     case 'boolean':
       return getBooleanType(language);
+    case 'string':
+      return getStringType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -384,6 +407,8 @@ function getPropertyTypeForSetter(propertyJson, language) {
       return getDoubleType(language);
     case 'boolean':
       return getBooleanType(language);
+    case 'string':
+      return getStringType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -438,6 +463,8 @@ function isPrimitiveType(type) {
     case 'double':
     case 'boolean':
       return true;
+    case 'string':
+      return false;
     default:
       return false;
   }
@@ -454,6 +481,8 @@ function getTypeImplicitDefaultValue(type) {
       return '0.0';
     case 'boolean':
       return 'false';
+    case 'string':
+      return '';
     default:
       return '';
   }
@@ -467,6 +496,7 @@ function getTypeMembVarCopyOp(type, membVar) {
     case 'float':
     case 'double':
     case 'boolean':
+    case 'string':
       return membVar;
     default:
       return membVar;
@@ -482,6 +512,8 @@ function getTypeMembVarMoveOp(type, membVar) {
     case 'double':
     case 'boolean':
       return membVar;
+    case 'string':
+      return `std::move(${membVar})`;
     default:
       return `std::move(${membVar})`;
   }
@@ -495,6 +527,7 @@ function getTypePropEqOp(type, clsParam, prpParam) {
     case 'float':
     case 'double':
     case 'boolean':
+    case 'string':
       return `${prpParam} == ${clsParam}.${prpParam}`;
     default:
       return `${prpParam} == ${clsParam}.${prpParam}`;
@@ -511,6 +544,8 @@ function getTypePropHasher(type, param) {
       return `hash<${type}> {}(${param})`;
     case 'boolean':
       return `hash<bool> {}(${param})`;
+    case 'string':
+      return `hash<${type}> {}(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }
@@ -915,7 +950,11 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
   }
 
   if (typeof propertyJson.setterNoexcept === 'undefined') {
-    propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
+    if (propertyJson.type === 'string') {
+      propertyJson.setterNoexcept = true;
+    } else {
+      propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
+    }
     propertyJson['setterNoexcept.gen'] = true;
   } else if (typeof propertyJson.setterNoexcept !== 'boolean') {
     throw new Error(`Invalid 'setterNoexcept' key type.`);
@@ -1933,6 +1972,7 @@ module.exports = {
   getDoubleType,
   getIntType,
   getBooleanType,
+  getStringType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
