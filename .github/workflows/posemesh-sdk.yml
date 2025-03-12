@@ -203,13 +203,11 @@ jobs:
           cd sdk/gentool
           npm run generate
 
-      - name: Install GCC cross-compiler for ARM64
+      - name: Install cross-compiler for ARM64
         if: matrix.arch == 'ARM64'
         run: |
           sudo apt-get update
-          sudo apt-get install qemu-user
-          sudo apt-get install gcc-aarch64-linux-gnu
-          sudo apt-get install libc6-dev-arm64-cross
+          sudo apt-get install gcc-aarch64-linux-gnu clang lld
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
