@@ -59,6 +59,7 @@ pub enum Status {
     FAILED = 3,
     WAITING_FOR_RESOURCE = 4,
     RETRY = 5,
+    PROCESSING = 6,
 }
 
 impl Default for Status {
@@ -76,6 +77,7 @@ impl From<i32> for Status {
             3 => Status::FAILED,
             4 => Status::WAITING_FOR_RESOURCE,
             5 => Status::RETRY,
+            6 => Status::PROCESSING,
             _ => Self::default(),
         }
     }
@@ -90,6 +92,7 @@ impl<'a> From<&'a str> for Status {
             "FAILED" => Status::FAILED,
             "WAITING_FOR_RESOURCE" => Status::WAITING_FOR_RESOURCE,
             "RETRY" => Status::RETRY,
+            "PROCESSING" => Status::PROCESSING,
             _ => Self::default(),
         }
     }
@@ -750,6 +753,38 @@ impl MessageWrite for DomainDataChunk {
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
         if !self.data.is_empty() { w.write_with_tag(10, |w| w.write_bytes(&**&self.data))?; }
+        Ok(())
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct Error {
+    pub message: String,
+}
+
+impl<'a> MessageRead<'a> for Error {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Self::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes) {
+                Ok(10) => msg.message = r.read_string(bytes)?.to_owned(),
+                Ok(t) => { r.read_unknown(bytes, t)?; }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(msg)
+    }
+}
+
+impl MessageWrite for Error {
+    fn get_size(&self) -> usize {
+        0
+        + if self.message == String::default() { 0 } else { 1 + sizeof_len((&self.message).len()) }
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.message != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.message))?; }
         Ok(())
     }
 }

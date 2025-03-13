@@ -1,5 +1,5 @@
 use networking::libp2p::{Networking, NetworkingConfig};
-use tokio;
+use tokio::{self, io::split};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
@@ -42,17 +42,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let entry = entry.unwrap();
         let path = entry.path().clone();
 
-        match fs::File::open(path) {
+        if !path.is_file() {
+            continue;
+        }
+
+        match fs::File::open(path.clone()) {
             Ok(mut f) => {
                 if f.metadata()?.len() > u32::MAX as u64 {
                     println!("File too large: {:?}", f.metadata()?.len());
                     continue;
                 }
 
+                let file_name = entry.file_name().into_string().unwrap();
+                let parts = file_name.split(".").collect::<Vec<&str>>();
+                let data_type = parts.last().unwrap();
+                let name = parts[..parts.len()-1].join(".");
+
                 let metadata = Metadata {
                     id: Some(data_id_generator()),
-                    name: entry.file_name().to_string_lossy().to_string(),
-                    data_type: "image".to_string(),
+                    name,
+                    data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
                     properties: HashMap::new(),
                 };
@@ -71,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let input = task::LocalRefinementInputV1 {
                     query: Some(Query {
                         ids: vec![id.clone()],
-                        name_regexp: None,
+                        name_regexp: Some(".*_2025-02-26_11-19-47".to_string()),
                         data_type_regexp: None,
                         names: vec![],
                         data_types: vec![],

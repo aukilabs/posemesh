@@ -263,15 +263,15 @@ impl DomainManager {
         if t.sender == peer.id {
             if let Err(e) = handshake_then_content(peer.client, &access_token, &t.receiver, &t.endpoint, serialized_input, th.timeout).await {
                 tracing::error!("Error triggering task: {:?}", e);
-                task_mgmt.push_tasks(vec![task_id(&t.job_id, &t.name)]).await;
-            } else {
-                task_mgmt.update_task(t).await;
+                task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
+                return;
             }
+            task_mgmt.update_task(t).await;
         } else {
             t.access_token = access_token;
             if let Err(e) = peer.client.publish(t.job_id.clone(), serialize_into_vec(&t).unwrap()).await {
                 tracing::error!("Error publishing message for task job {} {}: {:?}", t.job_id, t.name, e);
-                task_mgmt.push_tasks(vec![task_id(&t.job_id, &t.name)]).await;
+                task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
                 return;
             }
             task_mgmt.update_task(t).await; 

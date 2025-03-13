@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc};
+use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::{Duration, SystemTime}};
 
 use domain::protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest};
 use tokio::task::JoinHandle;
@@ -34,6 +34,8 @@ pub struct TaskHandler {
     pub timeout: u32,
     pub input: Option<task::Any>,
     retries: u32,
+    pub updated_at: SystemTime,
+    pub created_at: SystemTime,
 }
 
 pub struct TaskPendingRequest {
@@ -107,6 +109,8 @@ impl TasksManagement {
             dependencies: HashMap::new(),
             in_degrees: 0,
             retries: 0,
+            created_at: SystemTime::now(),
+            updated_at: SystemTime::now(),
         };
 
         let id = task_id(job_id, &task_req.name);
@@ -226,10 +230,8 @@ impl TasksManagement {
             Some(task_handler) => {
                 if task.status == Status::RETRY {
                     task_handler.retries += 1;
-                    let mut task_queue = self.task_queue.lock().await;
-                    task_queue.push_back(key.clone());
-                    return;
                 }
+                task_handler.updated_at = SystemTime::now();
                 task_handler.task = task.clone();
             }
             None => {
@@ -237,6 +239,12 @@ impl TasksManagement {
             }
         }
         drop(tasks);
+
+        if task.status == Status::RETRY {
+            let mut task_queue = self.task_queue.lock().await;
+            task_queue.push_back(key.clone());
+            return;
+        }
 
         if task.status == Status::DONE {
             let mut tasks = self.tasks.lock().await;
@@ -253,6 +261,17 @@ impl TasksManagement {
                     }
                 }
             }
+            return;
+        }
+
+        if task.status == Status::FAILED {
+            let mut tasks = self.tasks.lock().await;
+            for (_, handler) in tasks.iter_mut() {
+                if handler.dependencies.contains_key(&key) {
+                    handler.task.status = Status::FAILED;
+                }
+            }
+            return;
         }
     }
 
@@ -261,6 +280,26 @@ impl TasksManagement {
         let mut task_queue = self.task_queue.lock().await;
         for t in tasks {
             task_queue.push_back(t);
+        }
+    }
+
+    #[tracing::instrument]
+    pub async fn retry_task(&self, task_id: &str) {
+        let mut tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.get_mut(task_id) {
+            if task.retries < 3 {
+                task.task.status = Status::RETRY;
+                task.retries += 1;
+                task.updated_at = SystemTime::now();
+                self.task_queue.lock().await.push_back(task_id.to_string());
+            } else {
+                task.task.status = Status::FAILED;
+                task.updated_at = SystemTime::now();
+                task.task.output = Some(task::Any {
+                    type_url: "Error".to_string(),
+                    value: b"Task failed after 3 retries".to_vec(),
+                });
+            }
         }
     }
 }

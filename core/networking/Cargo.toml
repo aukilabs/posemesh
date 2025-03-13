@@ -31,7 +31,6 @@ console_error_panic_hook = { workspace = true }
 [features]
 default = []
 c = []
-wasm = []
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
