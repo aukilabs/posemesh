@@ -220,6 +220,16 @@ jobs:
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 Linux ${{ matrix.arch }} Release
 
+      - name: Tree dir struct (build)
+        run: |
+          cd third-party/build-OpenCV-Linux-${{ matrix.arch }}-Release
+          ls -alR
+
+      - name: Tree dir struct (out)
+        run: |
+          cd third-party/out-OpenCV-Linux-${{ matrix.arch }}-Release
+          ls -alR
+
   check_code_style:
     if: false
     name: Check Code Style

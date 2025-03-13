@@ -166,8 +166,6 @@ Switch($Platform) {
                 $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
                 $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
                 $CMakeConfigureArgs += "-DCMAKE_CROSSCOMPILING=ON"
-                #$CMakeConfigureArgs += "-DCMAKE_C_FLAGS=-mfpu=neon"
-                #$CMakeConfigureArgs += "-DCMAKE_CXX_FLAGS=-mfpu=neon"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
