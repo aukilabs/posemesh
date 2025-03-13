@@ -42,9 +42,9 @@ $RustToolchain = $Null
 $RustTarget = $Null
 $WASMTarget = $Null
 $NewCargoTargetAArch64UnknownLinuxGNULinker = $Null
-$NewCCAArch64UnknownLinuxGNU = $Null # CC_aarch64_unknown_linux_gnu
-$NewARAArch64UnknownLinuxGNU = $Null # AR_aarch64_unknown_linux_gnu
-$NewCFlagsAArch64UnknownLinuxGNU = $Null # CFLAGS_aarch64_unknown_linux_gnu
+$NewCCAArch64UnknownLinuxGNU = $Null
+$NewARAArch64UnknownLinuxGNU = $Null
+$NewCFlagsAArch64UnknownLinuxGNU = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -145,10 +145,10 @@ Switch($Platform) {
             'ARM64' {
                 $RustTarget = 'aarch64-unknown-linux-gnu'
                 $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-gcc'
-                $llvm_version = 16
-                $env:CC_aarch64_unknown_linux_gnu = "clang-$llvm_version"
-                $env:AR_aarch64_unknown_linux_gnu = "llvm-ar-$llvm_version"
-                $env:CFLAGS_aarch64_unknown_linux_gnu="--sysroot=/usr/aarch64-linux-gnu"
+                $LLVMVersion = 16
+                $NewCCAArch64UnknownLinuxGNU = "clang-$LLVMVersion"
+                $NewARAArch64UnknownLinuxGNU = "llvm-ar-$LLVMVersion"
+                $NewCFlagsAArch64UnknownLinuxGNU="--sysroot=/usr/aarch64-linux-gnu"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
