@@ -207,7 +207,7 @@ jobs:
         if: matrix.arch == 'ARM64'
         run: |
           sudo apt-get update
-          sudo apt-get install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu clang lld
+          sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu clang lld
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
