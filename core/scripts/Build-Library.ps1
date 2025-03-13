@@ -148,6 +148,10 @@ Switch($Platform) {
                 $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-gcc'
                 #$NewLibraryPath = "/usr/aarch64-linux-gnu/lib:$env:LIBRARY_PATH"
                 $NewRustFlags = '-C link-arg=-fuse-ld=lld'
+                $llvm_version = 16
+                $env:CC_aarch64_unknown_linux_gnu = "clang-$llvm_version"
+                $env:AR_aarch64_unknown_linux_gnu = "llvm-ar-$llvm_version"
+                $env:CFLAGS_aarch64_unknown_linux_gnu="--sysroot=/usr/aarch64-linux-gnu"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
