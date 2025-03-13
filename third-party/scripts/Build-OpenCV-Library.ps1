@@ -172,6 +172,7 @@ Switch($Platform) {
                 Exit 1
             }
         }
+        $CMakeConfigureArgs += "-DBUILD_SHARED_LIBS=OFF"
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
