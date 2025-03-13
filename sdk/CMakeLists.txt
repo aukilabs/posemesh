@@ -55,21 +55,25 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/API.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
         "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
         "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
@@ -95,6 +99,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Config.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/QRDetection.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
@@ -103,10 +108,12 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
@@ -127,6 +134,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/API2.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
@@ -171,6 +179,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/API2.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Config.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"

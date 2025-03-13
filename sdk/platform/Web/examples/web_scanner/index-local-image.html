@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script src="Posemesh.js"></script>
+    <script>
+        async function runExperiment() {
+            await Posemesh.initializePosemesh();
+            runLocalImageDetection();
+        }
+
+        function runLocalImageDetection() {
+            const img = new Image();
+
+            // Hardcoded image path for now.
+            img.src = "qr-test-320.png";
+
+            img.onload = function () {
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+
+                let imageWidth = img.width;
+                let imageHeight = img.height;
+                const encodedImageInBytes = img.width * img.height * 8;
+                const currentMaxBytes = 17760256; // bytes, value taken from error message
+                const diff = currentMaxBytes - encodedImageInBytes;
+                console.log(`Encoded size will be ${(encodedImageInBytes / 1000000).toFixed(2)} MB, limit is ${currentMaxBytes / 1000000} MB.`);
+                if (diff < 0) {
+                    const originalWidth = imageWidth;
+                    const originalHeight = imageHeight;
+                    const aspectRatio = originalWidth / originalHeight;
+                    imageWidth = imageWidth / 4; // WIP: Downsample 4 times (should be calculated).
+                    imageHeight = imageWidth / aspectRatio;
+
+                    console.log(`Resizing image ${originalWidth}x${originalHeight} -> ${imageWidth}x${imageHeight} (${(imageWidth * imageHeight * 8 / 1000000).toFixed(2)} MB)`);
+                    console.log(`Don't forget to scale the corner coordinates by a factor of ${originalWidth / imageWidth}!`);
+                }
+
+                canvas.width = imageWidth;
+                canvas.height = imageHeight;
+                ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
+
+                processImageDataBytes(ctx.getImageData(0, 0, imageWidth, imageHeight), imageWidth, imageHeight);
+            };
+        }
+
+        function getGreyEncodedImage(imageData, width, height) {
+            const startTime = performance.now();
+            const byteData = imageData.data;
+            const arr = [];
+            for (let i = 0; i < 4 * width * height; i += 4) { // 4 for each RGBA component.
+                const greyValue = 0.299 * (byteData[i + 2] / 255.0) + 0.587 * (byteData[i + 1] / 255.0) + 0.114 * (byteData[i] / 255.0);
+                arr.push(greyValue * 255.0);
+            }
+
+            const endTime = performance.now();
+            console.log(`Encoding image data took ${(endTime - startTime).toFixed(2)}ms`);
+            return arr;
+        }
+
+        function processImageDataBytes(imageData, width, height) {
+            const imageBytes = getGreyEncodedImage(imageData, width, height);
+            const contents = [];
+            const corners = []
+
+            const startTime = performance.now();
+            const detected = Posemesh.QRDetection.detectQRFromLuminance(imageBytes, width, height, contents, corners);
+            const endTime = performance.now();
+
+            console.log(`QR detection took ${(endTime - startTime).toFixed(2)}ms`);
+            console.log("detected? = ", detected);
+
+            if (detected) {
+                for (let i = 0; i < contents.length; i++) {
+                    const content = contents[i];
+                    console.log(`Content ${i + 1} = ${content}`);
+                }
+                
+                for (let i = 0; i < corners.length; i++) {
+                    const corner = corners[i];
+                    console.log(`corner ${i + 1} = ${corner.x}, ${corner.y}`);
+                }
+            }
+        }
+
+        runExperiment();
+    </script>
+</body>
+
+</html>
