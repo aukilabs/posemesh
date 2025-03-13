@@ -161,7 +161,10 @@ Switch($Platform) {
         $CMakeConfigureArgs = @()
         Switch($Architecture) {
             'AMD64' { }
-            'ARM64' { $CMakeConfigureArgs += '-DCMAKE_TOOLCHAIN_FILE=./opencv/platforms/linux/aarch64-gnu.toolchain.cmake' }
+            'ARM64' {
+                $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../opencv/platforms/linux/aarch64-gnu.toolchain.cmake").Path
+                $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
+            }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
                 Exit 1
