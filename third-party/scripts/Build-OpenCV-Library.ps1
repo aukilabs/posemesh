@@ -164,6 +164,7 @@ Switch($Platform) {
             'ARM64' {
                 $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../opencv/platforms/linux/aarch64-gnu.toolchain.cmake").Path
                 $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
+                $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
                 $CMakeConfigureArgs += "-DCMAKE_CROSSCOMPILING=ON"
             }
             Default {
