@@ -146,7 +146,7 @@ Switch($Platform) {
             Exit 1
         }
         If(-Not (($UNameResult -Match 'x86_64') -Or ($UNameResult -Match 'amd64'))) {
-            Write-Error -Message "The current running platform should be using x86_64 architecture however is actually using '$UNameResult' architecture."
+            Write-Error -Message "The current running platform should be using 'x86_64' architecture, however yours is actually using '$UNameResult' architecture."
             Exit 1
         }
         If(-Not $Architecture) {

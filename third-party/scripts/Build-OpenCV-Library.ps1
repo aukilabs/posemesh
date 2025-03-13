@@ -149,7 +149,7 @@ Switch($Platform) {
             Exit 1
         }
         If(-Not (($UNameResult -Match 'x86_64') -Or ($UNameResult -Match 'amd64'))) {
-            Write-Error -Message "The current running platform should be using x86_64 architecture however is actually using '$UNameResult' architecture."
+            Write-Error -Message "The current running platform should be using 'x86_64' architecture, however yours is actually using '$UNameResult' architecture."
             Exit 1
         }
         If(-Not $Architecture) {
@@ -164,6 +164,7 @@ Switch($Platform) {
             'ARM64' {
                 $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../opencv/platforms/linux/aarch64-gnu.toolchain.cmake").Path
                 $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
+                $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
