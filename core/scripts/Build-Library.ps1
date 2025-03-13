@@ -147,7 +147,7 @@ Switch($Platform) {
                 #$NewTargetCC = 'aarch64-linux-gnu-gcc'
                 $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-gcc'
                 #$NewLibraryPath = "/usr/aarch64-linux-gnu/lib:$env:LIBRARY_PATH"
-                $NewRustFlags = '-C link-arg=-fuse-ld=lld'
+                #$NewRustFlags = '-C link-arg=-fuse-ld=lld'
                 $llvm_version = 16
                 $env:CC_aarch64_unknown_linux_gnu = "clang-$llvm_version"
                 $env:AR_aarch64_unknown_linux_gnu = "llvm-ar-$llvm_version"
