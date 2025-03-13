@@ -1,0 +1,14 @@
+{
+  "name": "Tester",
+  "properties": [
+    {
+      "name": "My_String_Member",
+      "type": "string"
+    },
+    {
+      "name": "My_String_Static",
+      "type": "string",
+      "static": true
+    }
+  ]
+}

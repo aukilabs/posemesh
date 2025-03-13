@@ -115,7 +115,9 @@ function generateHeader(interfaceName, interfaceJson) {
       const getterType = util.getPropertyTypeForGetter(propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
       const getter = `${getterType} PSM_API ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`});\n`;
+      const getterFree = `void PSM_API ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName});\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         shouldAddIncludes = true;
@@ -125,12 +127,26 @@ function generateHeader(interfaceName, interfaceJson) {
             name: `${nameWithoutTSuffix}_${getterName}`,
             args: []
           });
+          if (propertyJson.type === 'string') {
+            publicFuncs += getterFree;
+            funcAliases.push({
+              name: `${nameWithoutTSuffix}_${getterName}_free`,
+              args: [setterArgName]
+            });
+          }
         } else {
           publicMethods += getter;
           funcAliases.push({
             name: `${nameWithoutTSuffix}_${getterName}`,
             args: [mainArgName]
           });
+          if (propertyJson.type === 'string') {
+            publicMethods += getterFree;
+            funcAliases.push({
+              name: `${nameWithoutTSuffix}_${getterName}_free`,
+              args: [setterArgName]
+            });
+          }
         }
       }
     }
@@ -398,11 +414,20 @@ function generateSource(interfaceName, interfaceJson) {
       const getterType = util.getPropertyTypeForGetter(propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
       let getter = `${getterType} ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`})\n`;
       getter += `{\n`;
       if (propStatic) {
         if (propTypeRaw === 'boolean') {
           getter += `    return static_cast<uint8_t>(psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
+        } else if (propTypeRaw === 'string') {
+          getter += `    const auto ${setterArgName} = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    auto* getter_result = new (std::nothrow) char[${setterArgName}.size() + 1];\n`;
+          getter += `    if (!getter_result) {\n`;
+          getter += `        return nullptr;\n`;
+          getter += `    }\n`;
+          getter += `    std::memcpy(getter_result, ${setterArgName}.c_str(), ${setterArgName}.size() + 1);\n`;
+          getter += `    return getter_result;\n`;
         } else {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
@@ -411,17 +436,34 @@ function generateSource(interfaceName, interfaceJson) {
         getter += `        assert(!"${nameWithoutTSuffix}_${getterName}(): ${mainArgName} is null");\n`;
         if (propTypeRaw === 'boolean') {
           getter += `        return static_cast<uint8_t>(${util.getTypeImplicitDefaultValue(propTypeRaw)});\n`;
+        } else if (propTypeRaw === 'string') {
+          getter += `        return nullptr;\n`;
         } else {
           getter += `        return ${util.getTypeImplicitDefaultValue(propTypeRaw)};\n`;
         }
         getter += `    }\n`;
         if (propTypeRaw === 'boolean') {
           getter += `    return static_cast<uint8_t>(${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
+        } else if (propTypeRaw === 'string') {
+          getter += `    const auto ${setterArgName} = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    auto* getter_result = new (std::nothrow) char[${setterArgName}.size() + 1];\n`;
+          getter += `    if (!getter_result) {\n`;
+          getter += `        return nullptr;\n`;
+          getter += `    }\n`;
+          getter += `    std::memcpy(getter_result, ${setterArgName}.c_str(), ${setterArgName}.size() + 1);\n`;
+          getter += `    return getter_result;\n`;
         } else {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
       }
       getter += `}\n`;
+      if (propTypeRaw === 'string') {
+        getter += `\n`;
+        getter += `void ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName})\n`;
+        getter += `{\n`;
+        getter += `    delete[] const_cast<char*>(${setterArgName});\n`;
+        getter += `}\n`;
+      }
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         if (propStatic) {
@@ -436,6 +478,10 @@ function generateSource(interfaceName, interfaceJson) {
           publicMethods += getter;
           includesFirst.add('#include <cassert>');
         }
+        if (propTypeRaw === 'string') {
+          includesFirst.add('#include <cstring>');
+          includesFirst.add('#include <new>');
+        }
       }
     }
     if (propertyJson.hasSetter) {
@@ -449,6 +495,8 @@ function generateSource(interfaceName, interfaceJson) {
       if (propStatic) {
         if (propTypeRaw === 'boolean') {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
+        } else if (propTypeRaw === 'string') {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
         } else {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -459,6 +507,8 @@ function generateSource(interfaceName, interfaceJson) {
         setter += `    }\n`;
         if (propTypeRaw === 'boolean') {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
+        } else if (propTypeRaw === 'string') {
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
         } else {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }

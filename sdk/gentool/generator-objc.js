@@ -395,11 +395,22 @@ function generateSource(interfaceName, interfaceJson) {
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
       const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
-      const getterExt = (propTypeRaw === 'boolean') ? ' ? YES : NO' : '';
+      let getterPfx = '';
+      let getterExt = '';
+      if (propTypeRaw === 'boolean') {
+        getterExt = ' ? YES : NO';
+      } else if (propTypeRaw === 'string') {
+        getterPfx = '[NSString stringWithUTF8String:';
+        getterExt = '.c_str()]';
+      }
       let getter = `${propStatic ? '+' : '-'} (${getterType})${getterName}\n`;
       getter += `{\n`;
-      getter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-      getter += `    return ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+      if (propStatic) {
+        getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+      } else {
+        getter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+        getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+      }
       getter += `}\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
@@ -420,11 +431,22 @@ function generateSource(interfaceName, interfaceJson) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
       const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
-      const setterExt = (propTypeRaw === 'boolean') ? ' ? true : false' : '';
+      let setterPfx = '';
+      let setterExt = '';
+      if (propTypeRaw === 'boolean') {
+        setterExt = ' ? true : false';
+      } else if (propTypeRaw === 'string') {
+        setterPfx = '[';
+        setterExt = ' UTF8String]';
+      }
       let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
       setter += `{\n`;
-      setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-      setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName}${setterExt});\n`;
+      if (propStatic) {
+        setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+      } else {
+        setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+        setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+      }
       setter += `}\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
