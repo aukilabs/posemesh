@@ -41,10 +41,10 @@ If(-Not $Package) {
 $RustToolchain = $Null
 $RustTarget = $Null
 $WASMTarget = $Null
-$NewTargetCC = $Null
 $NewCargoTargetAArch64UnknownLinuxGNULinker = $Null
-$NewLibraryPath = $Null
-$NewRustFlags = $Null
+$NewCCAArch64UnknownLinuxGNU = $Null # CC_aarch64_unknown_linux_gnu
+$NewARAArch64UnknownLinuxGNU = $Null # AR_aarch64_unknown_linux_gnu
+$NewCFlagsAArch64UnknownLinuxGNU = $Null # CFLAGS_aarch64_unknown_linux_gnu
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -144,10 +144,7 @@ Switch($Platform) {
             'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
             'ARM64' {
                 $RustTarget = 'aarch64-unknown-linux-gnu'
-                #$NewTargetCC = 'aarch64-linux-gnu-gcc'
                 $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-gcc'
-                #$NewLibraryPath = "/usr/aarch64-linux-gnu/lib:$env:LIBRARY_PATH"
-                #$NewRustFlags = '-C link-arg=-fuse-ld=lld'
                 $llvm_version = 16
                 $env:CC_aarch64_unknown_linux_gnu = "clang-$llvm_version"
                 $env:AR_aarch64_unknown_linux_gnu = "llvm-ar-$llvm_version"
@@ -282,10 +279,10 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
     Exit 1
 }
 
-$OldTargetCC = $env:TARGET_CC
 $OldCargoTargetAArch64UnknownLinuxGNULinker = $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
-$OldLibraryPath = $env:LIBRARY_PATH
-$OldRustFlags = $env:RUSTFLAGS
+$OldCCAArch64UnknownLinuxGNU = $env:CC_aarch64_unknown_linux_gnu
+$OldARAArch64UnknownLinuxGNU = $env:AR_aarch64_unknown_linux_gnu
+$OldCFlagsAArch64UnknownLinuxGNU = $env:CFLAGS_aarch64_unknown_linux_gnu
 $OldCC = $env:CC
 $OldCXX = $env:CXX
 
@@ -295,17 +292,17 @@ If(-Not $PushLocationResult) {
     Exit 1
 }
 Try {
-    If($NewTargetCC) {
-        $env:TARGET_CC = $NewTargetCC
-    }
     If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
         $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $NewCargoTargetAArch64UnknownLinuxGNULinker
     }
-    If($NewLibraryPath) {
-        $env:LIBRARY_PATH = $NewLibraryPath
+    If($NewCCAArch64UnknownLinuxGNU) {
+        $env:CC_aarch64_unknown_linux_gnu = $NewCCAArch64UnknownLinuxGNU
     }
-    If($NewRustFlags) {
-        $env:RUSTFLAGS = $NewRustFlags
+    If($NewARAArch64UnknownLinuxGNU) {
+        $env:AR_aarch64_unknown_linux_gnu = $NewARAArch64UnknownLinuxGNU
+    }
+    If($NewCFlagsAArch64UnknownLinuxGNU) {
+        $env:CFLAGS_aarch64_unknown_linux_gnu = $NewCFlagsAArch64UnknownLinuxGNU
     }
     If($NewCC) {
         $env:CC = $NewCC
@@ -386,17 +383,17 @@ Try {
         }
     }
 } Finally {
-    If($NewTargetCC) {
-        $env:TARGET_CC = $OldTargetCC
-    }
     If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
         $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $OldCargoTargetAArch64UnknownLinuxGNULinker
     }
-    If($NewLibraryPath) {
-        $env:LIBRARY_PATH = $OldLibraryPath
+    If($NewCCAArch64UnknownLinuxGNU) {
+        $env:CC_aarch64_unknown_linux_gnu = $OldCCAArch64UnknownLinuxGNU
     }
-    If($NewRustFlags) {
-        $env:RUSTFLAGS = $OldRustFlags
+    If($NewARAArch64UnknownLinuxGNU) {
+        $env:AR_aarch64_unknown_linux_gnu = $OldARAArch64UnknownLinuxGNU
+    }
+    If($NewCFlagsAArch64UnknownLinuxGNU) {
+        $env:CFLAGS_aarch64_unknown_linux_gnu = $OldCFlagsAArch64UnknownLinuxGNU
     }
     If($NewCC) {
         $env:CC = $OldCC
