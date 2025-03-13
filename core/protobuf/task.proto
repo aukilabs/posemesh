@@ -90,6 +90,7 @@ enum Status {
     FAILED = 3;
     WAITING_FOR_RESOURCE = 4;
     RETRY = 5;
+    PROCESSING = 6;
 }
 
 message Task {
@@ -117,4 +118,8 @@ message GlobalRefinementInputV1 {
 
 message DomainDataChunk {
     bytes data = 1;
+}
+
+message Error {
+  string message = 1;
 }

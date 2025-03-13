@@ -2,7 +2,7 @@ use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
 use networking::{event, libp2p::{Networking, NetworkingConfig}};
 use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -227,11 +227,19 @@ impl DomainCluster {
         rx.await.expect("can't wait for response")
     }
 
-    // pub async fn update_task(&mut self, task: &task::Task) {
-    //     self.sender.send(Command::UpdateTask  {
-    //         task: task.clone(),
-    //     }).await.expect("can't send command"); 
-    // }
+    pub async fn fail_task(&mut self, task: &task::Task, err: Error) {
+        let mut t = task.clone();
+        t.status = Status::FAILED;
+        t.output = Some(task::Any {
+            type_url: "Error".to_string(),
+            value: serialize_into_vec(&task::Error {
+                message: format!("{:?}", err),
+            }).unwrap(),
+        });
+        self.sender.send(Command::UpdateTask  {
+            task: t,
+        }).await.expect("can't send command"); 
+    }
 
     // pub async fn request_response(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn std::error::Error + Send + Sync>>
 }
