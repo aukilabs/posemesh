@@ -313,7 +313,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cfg = &NetworkingConfig{
         port,
         bootstrap_nodes: vec![],
-        enable_relay_server: false,
+        enable_relay_server: true,
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],

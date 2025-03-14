@@ -172,7 +172,7 @@ pub struct DomainCluster {
 }
 
 impl DomainCluster {
-    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
         let networking = Networking::new(&NetworkingConfig {
             bootstrap_nodes: vec![manager_addr.clone()],
             relay_nodes: vec![],
@@ -182,7 +182,7 @@ impl DomainCluster {
             enable_kdht: true,
             enable_relay_server: join_as_relay,
             name: node_name,
-            port: 0,
+            port,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
 
