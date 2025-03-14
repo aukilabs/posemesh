@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "domain_data.proto";
+
 package task;
 
 message Any {
@@ -122,4 +123,14 @@ message DomainDataChunk {
 
 message Error {
   string message = 1;
+}
+
+message TaskHandler {
+    required Task task = 1;
+    map<string, bool> dependencies = 2;
+    string job_id = 3;
+    string err_msg = 4;
+    uint32 retries = 5;
+    uint64 updated_at = 6;
+    uint64 created_at = 7;
 }

@@ -9,6 +9,8 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 
 
+use std::collections::HashMap;
+type KVMap<K, V> = HashMap<K, V>;
 use quick_protobuf::{MessageInfo, MessageRead, MessageWrite, BytesReader, Writer, WriterBackend, Result};
 use quick_protobuf::sizeofs::*;
 use super::*;
@@ -785,6 +787,65 @@ impl MessageWrite for Error {
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
         if self.message != String::default() { w.write_with_tag(10, |w| w.write_string(&**&self.message))?; }
+        Ok(())
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct TaskHandler {
+    pub task: task::Task,
+    pub dependencies: KVMap<String, bool>,
+    pub job_id: String,
+    pub err_msg: String,
+    pub retries: u32,
+    pub updated_at: u64,
+    pub created_at: u64,
+}
+
+impl<'a> MessageRead<'a> for TaskHandler {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Self::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes) {
+                Ok(10) => msg.task = r.read_message::<task::Task>(bytes)?,
+                Ok(18) => {
+                    let (key, value) = r.read_map(bytes, |r, bytes| Ok(r.read_string(bytes)?.to_owned()), |r, bytes| Ok(r.read_bool(bytes)?))?;
+                    msg.dependencies.insert(key, value);
+                }
+                Ok(26) => msg.job_id = r.read_string(bytes)?.to_owned(),
+                Ok(34) => msg.err_msg = r.read_string(bytes)?.to_owned(),
+                Ok(40) => msg.retries = r.read_uint32(bytes)?,
+                Ok(48) => msg.updated_at = r.read_uint64(bytes)?,
+                Ok(56) => msg.created_at = r.read_uint64(bytes)?,
+                Ok(t) => { r.read_unknown(bytes, t)?; }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(msg)
+    }
+}
+
+impl MessageWrite for TaskHandler {
+    fn get_size(&self) -> usize {
+        0
+        + 1 + sizeof_len((&self.task).get_size())
+        + self.dependencies.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_varint(*(v) as u64))).sum::<usize>()
+        + if self.job_id == String::default() { 0 } else { 1 + sizeof_len((&self.job_id).len()) }
+        + if self.err_msg == String::default() { 0 } else { 1 + sizeof_len((&self.err_msg).len()) }
+        + if self.retries == 0u32 { 0 } else { 1 + sizeof_varint(*(&self.retries) as u64) }
+        + if self.updated_at == 0u64 { 0 } else { 1 + sizeof_varint(*(&self.updated_at) as u64) }
+        + if self.created_at == 0u64 { 0 } else { 1 + sizeof_varint(*(&self.created_at) as u64) }
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        w.write_with_tag(10, |w| w.write_message(&self.task))?;
+        for (k, v) in self.dependencies.iter() { w.write_with_tag(18, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_varint(*(v) as u64), 10, |w| w.write_string(&**k), 16, |w| w.write_bool(*v)))?; }
+        if self.job_id != String::default() { w.write_with_tag(26, |w| w.write_string(&**&self.job_id))?; }
+        if self.err_msg != String::default() { w.write_with_tag(34, |w| w.write_string(&**&self.err_msg))?; }
+        if self.retries != 0u32 { w.write_with_tag(40, |w| w.write_uint32(*&self.retries))?; }
+        if self.updated_at != 0u64 { w.write_with_tag(48, |w| w.write_uint64(*&self.updated_at))?; }
+        if self.created_at != 0u64 { w.write_with_tag(56, |w| w.write_uint64(*&self.created_at))?; }
         Ok(())
     }
 }
