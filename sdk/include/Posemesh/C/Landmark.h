@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 #include "API.h"
-#include "Vector3.h"
 #include "Posemesh/Vector3.hpp"
+#include "Vector3.h"
 
 #if defined(__cplusplus)
 #include <memory>

@@ -7,7 +7,7 @@
 
 NS_SWIFT_NAME(Landmark) PSM_API @interface PSMLandmark : NSObject<NSCopying>
 
-- (instancetype _Nonnull)init ;
+- (instancetype _Nonnull)init;
 - (instancetype)initWithLandmark:(PSMLandmark*)landmark;
 - (instancetype)copyWithZone:(NSZone*)zone;
 - (void)dealloc;
