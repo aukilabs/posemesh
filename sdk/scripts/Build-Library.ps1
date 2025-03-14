@@ -162,7 +162,7 @@ Switch($Platform) {
         }
         $CMakeGenerator = ''
         Switch($Architecture) {
-            'AMD64' { }
+            'AMD64' { $CMakeToolchainFilePath = '' }
             'ARM64' { $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../cmake/LinuxAArch64Toolchain.cmake").Path }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
