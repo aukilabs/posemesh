@@ -202,8 +202,9 @@
 
             // Draw camera feed on camera canvas.
             ctx.drawImage(video, 0, 0, imageWidth, imageHeight);
-            processImageDataBytes(ctx.getImageData(0, 0, imageWidth, imageHeight), imageWidth, imageHeight, canvas);
-
+            const imageData = ctx.getImageData(0, 0, imageWidth, imageHeight);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            processImageDataBytes(imageData, imageWidth, imageHeight, canvas);
             drawCorners(ctx, currentCorners);
 
             processingFrame = false;
@@ -279,18 +280,15 @@
                 // Data from https://www.calibdb.net/
                 cameraMatrix = new Posemesh.Matrix3x3();
                 cameraMatrix.m00 = focalLength;
-                cameraMatrix.m02 = 1280 / 2; // 638.6549019259521;
+                cameraMatrix.m02 = canvas.width / 2;
                 cameraMatrix.m11 = focalLength;
-                cameraMatrix.m12 = 720 / 2; // 342.9911521888232; 
+                cameraMatrix.m12 = canvas.height / 2; 
                 cameraMatrix.m22 = 1;
 
                 outR = new Posemesh.Matrix3x3();
                 outT = new Posemesh.Vector3();
 
                 let estimationSuccess = Posemesh.PoseEstimation.solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT);
-                // console.log('Estimation success =', estimationSuccess);
-                // console.log(`outR = [${outR.m00}, ${outR.m01},  ${outR.m02},\n${outR.m10}, ${outR.m11},  ${outR.m12},\n${outR.m20}, ${outR.m21},  ${outR.m22}]`);
-                // console.log(`outT = (${outT.x}, ${outT.y}, ${outT.z})`);
                 drawCube(canvas, outT, outR);
             } finally {
                 if (outT) {
@@ -312,8 +310,6 @@
         }
 
         function drawCorners(ctx, corners) {
-            // ctx.clearRect(0, 0, canvas.width, canvas.height);
-
             if (corners.length == 0) return;
 
             // Circles
@@ -361,23 +357,18 @@
         // Function to draw the cube
         function drawCube(canvas, outT, outR) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
 
-            // Apply rotation and translation to all cube vertices
             const transformedVertices = cubeVertices.map(vertex => {
                 const rotatedVertex = rotatePoint(scalePoint(vertex), outR); // Apply rotation
                 const [tx, ty, tz] = [rotatedVertex[0] + outT.x, rotatedVertex[1] + outT.y, rotatedVertex[2] + outT.z]; // Apply translation
                 return [tx, ty, tz];
             });
 
-            // Project 3D vertices to 2D
             const projectedVertices = transformedVertices.map(vertex => {
                 const [x, y, z] = vertex;
                 return project3DTo2D(x, y, z, canvas.width, canvas.height);
             });
-            // console.log(projectedVertices);
 
-            // Draw cube edges (connecting the vertices)
             const edges = [
                 [0, 1], [1, 2], [2, 3], [3, 0], // Front face
                 [4, 5], [5, 6], [6, 7], [7, 4], // Back face
