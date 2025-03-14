@@ -175,7 +175,7 @@ impl DomainCluster {
     pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
         let networking = Networking::new(&NetworkingConfig {
             bootstrap_nodes: vec![manager_addr.clone()],
-            relay_nodes: vec![],
+            relay_nodes: vec![manager_addr.clone()],
             private_key,
             private_key_path,
             enable_mdns: false,
