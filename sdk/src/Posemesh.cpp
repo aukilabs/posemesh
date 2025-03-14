@@ -115,7 +115,7 @@ bool Posemesh::sendMessage(
             assert(callback);
             callback(static_cast<bool>(status));
         }
-                        : nullptr));
+                        : static_cast<void (*)(uint8_t, void*)>(nullptr)));
     if (result)
         wrappedCallback.release();
     return result;
