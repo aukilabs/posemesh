@@ -1,6 +1,7 @@
 #include <Posemesh/Networking/API.h>
 #include <Posemesh/Posemesh.hpp>
 #include <cassert>
+#include <memory>
 #include <sstream>
 
 namespace psm {
