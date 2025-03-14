@@ -57,6 +57,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Landmark.h"
         "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
@@ -64,12 +65,14 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Landmark.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/Landmark.cpp"
         "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
@@ -78,6 +81,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector4.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/Landmark.cpp"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
