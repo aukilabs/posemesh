@@ -52,7 +52,7 @@ impl InnerDomainCluster {
             loop {
                 let mut event_receiver = event_receiver.lock().await;
                 tokio::select! {
-                    command = self.command_rx.select_next_some() => self.handle_command(command).await,
+                    Some(command) = self.command_rx.next() => self.handle_command(command).await,
                     event = event_receiver.next() => self.handle_event(event).await,
                     else => break,
                 }

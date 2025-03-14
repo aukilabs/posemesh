@@ -344,7 +344,7 @@ impl Libp2p {
         #[cfg(not(target_family="wasm"))]
         loop {
             tokio::select! {
-                event = self.swarm.select_next_some() => self.handle_event(event).await,
+                Some(event) = self.swarm.next() => self.handle_event(event).await,
                 Some(command) = self.command_receiver.next() => self.handle_command(command).await,
                 else => break,
             }

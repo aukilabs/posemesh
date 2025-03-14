@@ -86,7 +86,7 @@ impl DomainManager {
     async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let event_receiver = self.peer.event_receiver.clone();
         let mut job_handler = self.peer.client.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
-        // let mut monitor_jobs_handler = self.peer.client.set_stream_handler("/monitor/jobs/v1".to_string()).await.unwrap();
+        let mut monitor_handler = self.peer.client.set_stream_handler("/monitor/v1".to_string()).await.unwrap();
 
         loop {
             let mut rx_guard = event_receiver.lock().await;
@@ -135,6 +135,12 @@ impl DomainManager {
                         }
                         None => sleep(Duration::from_secs(5)).await
                     }
+                }
+                Some((_, stream)) = monitor_handler.next() => {
+                    let task_mgmt = self.task_mgmt.clone();
+                    spawn(async move {
+                        task_mgmt.monitor_tasks(stream).await;
+                    });
                 }
                 else => break
             }

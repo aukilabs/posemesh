@@ -1,7 +1,10 @@
 use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::{Duration, SystemTime}};
 
 use domain::protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest};
-use tokio::task::JoinHandle;
+use futures::AsyncWriteExt;
+use libp2p::Stream;
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use tokio::{sync::mpsc::{self, Receiver}, task::JoinHandle};
 use tokio::{sync::Mutex, spawn};
 use crate::nodes_management::NodesManagement;
 
@@ -302,4 +305,33 @@ impl TasksManagement {
             }
         }
     }
+
+    #[tracing::instrument]
+    pub async fn monitor_tasks(&self, mut stream: Stream) {
+        let tasks = self.tasks.clone();
+        spawn(async move {
+            let tasks = tasks.lock().await;
+            for (_, task) in tasks.iter() {
+                let mut err_msg = "".to_string();
+                if task.task.status == Status::FAILED {
+                    if let Some(output) = task.task.output.as_ref() {
+                        if output.type_url == "Error" {
+                            let err = deserialize_from_slice::<task::Error>(output.value.as_ref()).unwrap();
+                            err_msg = err.message;
+                        }
+                    }
+                }
+                let task_handler = task::TaskHandler {
+                    task: task.task.clone(),
+                    dependencies: task.dependencies.clone(),
+                    job_id: task.job_id.clone(),
+                    retries: task.retries,
+                    updated_at: task.updated_at.elapsed().unwrap().as_millis() as u64,
+                    created_at: task.created_at.elapsed().unwrap().as_millis() as u64,
+                    err_msg,
+                };
+                stream.write_all(&serialize_into_vec(&task_handler).unwrap()).await.expect("Failed to send task handler");
+            }
+        });
+    }           
 }
