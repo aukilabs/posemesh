@@ -143,6 +143,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Landmark.cpp"
             "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
 endif()
@@ -188,6 +189,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Landmark.js"
             "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"
