@@ -220,15 +220,21 @@ jobs:
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 Linux ${{ matrix.arch }} Release
 
-      - name: Tree dir struct (build)
-        run: |
-          cd third-party/build-OpenCV-Linux-${{ matrix.arch }}-Release
-          ls -alR
+      - name: Build Posemesh SDK
+        shell: pwsh
+        run: ./sdk/scripts/Build-Library.ps1 Linux ${{ matrix.arch }} Release
 
-      - name: Tree dir struct (out)
+      - name: Get Posemesh SDK version
         run: |
-          cd third-party/out-OpenCV-Linux-${{ matrix.arch }}-Release
-          ls -alR
+          POSEMESH_SDK_VERSION=$(pwsh ./sdk/scripts/Get-Version.ps1)
+          if [[ $? -ne 0 ]]; then echo '::error file=sdk/scripts/Get-Version.ps1::Get-Version.ps1 script failed.' 1>&2; exit 1; fi
+          echo "POSEMESH_SDK_VERSION=$POSEMESH_SDK_VERSION" >> $GITHUB_ENV
+
+      - name: Upload Posemesh SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Posemesh-Linux-${{ matrix.arch }}-SDK-v${{ env.POSEMESH_SDK_VERSION }}.${{ github.run_number }}
+          path: ./sdk/out-Linux-${{ matrix.arch }}-Release/*
 
   check_code_style:
     if: false

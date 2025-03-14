@@ -3,7 +3,7 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
@@ -136,6 +136,39 @@ Switch($Platform) {
         $CMakeGenerator = ''
         $CMakeUseEmscripten = $True
         $CMakeToolchainFilePath = ''
+    }
+    'Linux' {
+        If(-Not $IsLinux) {
+            Write-Error -Message "Your machine needs to be running GNU/Linux to build for 'Linux' platform."
+            Exit 1
+        }
+        $UNameCommand = (Get-Command -Name 'uname') 2> $Null
+        If(-Not $UNameCommand) {
+            Write-Error -Message "Could not find 'uname' command."
+            Exit 1
+        }
+        $UNameResult = & $UNameCommand -m
+        If($LastExitCode -Ne 0) {
+            Write-Error -Message 'Failed to determine the current running platform architecture.'
+            Exit 1
+        }
+        If(-Not (($UNameResult -Match 'x86_64') -Or ($UNameResult -Match 'amd64'))) {
+            Write-Error -Message "The current running platform should be using 'x86_64' architecture, however yours is actually using '$UNameResult' architecture."
+            Exit 1
+        }
+        If(-Not $Architecture) {
+            Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
+            Exit 1
+        }
+        $CMakeGenerator = ''
+        Switch($Architecture) {
+            'AMD64' { }
+            'ARM64' { $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../cmake/LinuxAArch64Toolchain.cmake").Path }
+            Default {
+                Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
+                Exit 1
+            }
+        }
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."

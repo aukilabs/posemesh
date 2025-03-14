@@ -187,7 +187,23 @@ function(ADD_PLATFORM_LIBRARY NAME)
             CXX_STANDARD 14
             CXX_STANDARD_REQUIRED ON
     )
-    if(APPLE)
+    if(LINUX)
+        install(
+            TARGETS
+                ${NAME}
+            LIBRARY
+                DESTINATION "${CMAKE_INSTALL_PREFIX}/bin"
+        )
+        foreach(PUBLIC_HEADER ${PUBLIC_HEADERS})
+            file(RELATIVE_PATH PUBLIC_HEADER_RELATIVE "${PUBLIC_HEADER_DIR_ABSOLUTE}" "${PUBLIC_HEADER}")
+            get_filename_component(PUBLIC_HEADER_PREFIX "${PUBLIC_HEADER_RELATIVE}" DIRECTORY)
+            install(
+                FILES
+                    ${PUBLIC_HEADER}
+                DESTINATION "${CMAKE_INSTALL_PREFIX}/include/${PUBLIC_HEADER_PREFIX}"
+            )
+        endforeach()
+    elseif(APPLE)
         set_target_properties(
             ${NAME}
             PROPERTIES
