@@ -3,7 +3,7 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
@@ -132,6 +132,47 @@ Switch($Platform) {
         $BuildPythonScriptFile = 'opencv/platforms/js/build_js.py'
         $BuildPythonScriptArgs = @()
         $InvokeWithEmscripten = $True
+    }
+    'Linux' {
+        If(-Not $IsLinux) {
+            Write-Error -Message "Your machine needs to be running GNU/Linux to build for 'Linux' platform."
+            Exit 1
+        }
+        $UNameCommand = (Get-Command -Name 'uname') 2> $Null
+        If(-Not $UNameCommand) {
+            Write-Error -Message "Could not find 'uname' command."
+            Exit 1
+        }
+        $UNameResult = & $UNameCommand -m
+        If($LastExitCode -Ne 0) {
+            Write-Error -Message 'Failed to determine the current running platform architecture.'
+            Exit 1
+        }
+        If(-Not (($UNameResult -Match 'x86_64') -Or ($UNameResult -Match 'amd64'))) {
+            Write-Error -Message "The current running platform should be using 'x86_64' architecture, however yours is actually using '$UNameResult' architecture."
+            Exit 1
+        }
+        If(-Not $Architecture) {
+            Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
+            Exit 1
+        }
+        $UseCMakeDirectly = $True
+        $CMakeGenerator = ''
+        $CMakeConfigureArgs = @()
+        Switch($Architecture) {
+            'AMD64' { }
+            'ARM64' {
+                $CMakeToolchainFilePath = (Resolve-Path "$PSScriptRoot/../opencv/platforms/linux/aarch64-gnu.toolchain.cmake").Path
+                $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
+                $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
+                $CMakeConfigureArgs += "-DCMAKE_CROSSCOMPILING=ON"
+            }
+            Default {
+                Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
+                Exit 1
+            }
+        }
+        $CMakeConfigureArgs += "-DBUILD_SHARED_LIBS=OFF"
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -473,6 +514,8 @@ Try {
         }
         If($InvokeWithEmscripten) {
             & $EmMakeCommand $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
+        } ElseIf(($CMakeGenerator -Eq '') -Or ($CMakeGenerator -Eq 'Unix Makefiles')) {
+            & $CMakeCommand --build $BuildDirectoryName --parallel 4 @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
         } Else {
             & $CMakeCommand --build $BuildDirectoryName @($CMakeBuildTypeFlagForBuildingAndInstalling | Where-Object { $_ })
         }

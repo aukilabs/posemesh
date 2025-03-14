@@ -1,5 +1,10 @@
 #include <Posemesh/C/QRDetection.h>
 #include <Posemesh/QRDetection.hpp>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+
+// TODO(aj): suspicious of memory leaks; check
 
 bool PSM_API psm_qr_detection_detect_qr(
     uint8_t* image,
@@ -19,14 +24,14 @@ bool PSM_API psm_qr_detection_detect_qr(
 
     if (result) {
         *contentsSize = outContents.size();
-        *contents = (char**)malloc(outContents.size());
+        *contents = (char**)std::malloc(outContents.size());
         for (int i = 0; i < outContents.size(); i++) {
             std::string content = outContents[i];
-            (*contents)[i] = (char*)malloc(content.size() + 1);
-            strcpy((*contents)[i], content.c_str());
+            (*contents)[i] = (char*)std::malloc(content.size() + 1);
+            std::strcpy((*contents)[i], content.c_str());
         }
 
-        *corners = (psm_vector2_t**)malloc(outCorners.size() * sizeof(psm_vector2_t*));
+        *corners = (psm_vector2_t**)std::malloc(outCorners.size() * sizeof(psm_vector2_t*));
         *cornersSize = outCorners.size();
         for (int i = 0; i < outCorners.size(); i++) {
             psm_vector2_t* v = psm_vector2_create();

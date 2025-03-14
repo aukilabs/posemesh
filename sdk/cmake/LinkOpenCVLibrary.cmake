@@ -11,6 +11,9 @@ function(LINK_OPENCV_LIBRARY NAME)
     get_build_directory_suffix(BUILD_DIRECTORY_SUFFIX)
     set(OPENCV_OUTPUT_DIRECTORY "${THIRD_PARTY_PREFIX}/out-OpenCV-${BUILD_DIRECTORY_SUFFIX}")
     set(OPENCV_INCLUDE_DIRECTORY "${OPENCV_OUTPUT_DIRECTORY}/include")
+    if(LINUX)
+        set(OPENCV_INCLUDE_DIRECTORY "${OPENCV_INCLUDE_DIRECTORY}/opencv4")
+    endif()
     set(OPENCV_LIBRARY_DIRECTORY "${OPENCV_OUTPUT_DIRECTORY}/lib")
 
     if(NOT EXISTS "${OPENCV_INCLUDE_DIRECTORY}" OR NOT IS_DIRECTORY "${OPENCV_INCLUDE_DIRECTORY}")
@@ -22,7 +25,7 @@ function(LINK_OPENCV_LIBRARY NAME)
             ${OPENCV_INCLUDE_DIRECTORY}
     )
 
-    if(EMSCRIPTEN)
+    if(LINUX OR EMSCRIPTEN)
         set(OPENCV_CALIB3D_LIBRARY "${OPENCV_LIBRARY_DIRECTORY}/libopencv_calib3d.a")
         if(NOT EXISTS "${OPENCV_CALIB3D_LIBRARY}" OR IS_DIRECTORY "${OPENCV_CALIB3D_LIBRARY}")
             message(FATAL_ERROR "OpenCV library is not built for targeted platform, architecture and configuration (build type): Archive file 'libopencv_calib3d.a' is missing.")

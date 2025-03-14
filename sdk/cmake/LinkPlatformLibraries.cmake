@@ -45,7 +45,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
         return()
     endif()
 
-    if(APPLE)
+    if(LINUX OR APPLE)
         foreach(LIBRARY ${ARG_PUBLIC})
             if(TARGET "${LIBRARY}")
                 get_target_property(LIBRARY_TYPE ${LIBRARY} TYPE)
@@ -70,11 +70,21 @@ function(LINK_PLATFORM_LIBRARIES NAME)
             else()
                 set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
             endif()
-            target_link_options(
-                ${NAME}
-                PUBLIC
-                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
-            )
+            if(LINUX)
+                target_link_options(
+                    ${NAME}
+                    PUBLIC
+                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                )
+            elseif(APPLE)
+                target_link_options(
+                    ${NAME}
+                    PUBLIC
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
+                )
+            else()
+                message(FATAL_ERROR "Missing logic.")
+            endif()
         endforeach()
 
         foreach(LIBRARY ${ARG_INTERFACE})
@@ -101,11 +111,21 @@ function(LINK_PLATFORM_LIBRARIES NAME)
             else()
                 set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
             endif()
-            target_link_options(
-                ${NAME}
-                INTERFACE
-                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
-            )
+            if(LINUX)
+                target_link_options(
+                    ${NAME}
+                    INTERFACE
+                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                )
+            elseif(APPLE)
+                target_link_options(
+                    ${NAME}
+                    INTERFACE
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
+                )
+            else()
+                message(FATAL_ERROR "Missing logic.")
+            endif()
         endforeach()
 
         foreach(LIBRARY ${ARG_PRIVATE})
@@ -132,11 +152,21 @@ function(LINK_PLATFORM_LIBRARIES NAME)
             else()
                 set(LIBRARY_NAME "${LIBRARY_FILE_NAME_WLE}")
             endif()
-            target_link_options(
-                ${NAME}
-                PRIVATE
-                    "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
-            )
+            if(LINUX)
+                target_link_options(
+                    ${NAME}
+                    PRIVATE
+                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                )
+            elseif(APPLE)
+                target_link_options(
+                    ${NAME}
+                    PRIVATE
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,-hidden-l${LIBRARY_NAME}"
+                )
+            else()
+                message(FATAL_ERROR "Missing logic.")
+            endif()
         endforeach()
     else()
         message(FATAL_ERROR "TODO") # TODO: this needs to be implemented

@@ -23,7 +23,7 @@ function(LINK_BASE_LIBRARY NAME)
 
     set(BASE_INCLUDE_DIR "${BASE_PREFIX}/include")
 
-    if(APPLE)
+    if(LINUX OR APPLE)
         set(BASE_LIBRARY "${BASE_TARGET_DIR_WITH_BUILD_TYPE}/libbase_static.a")
     elseif(EMSCRIPTEN)
         set(BASE_LIBRARY_JS "${BASE_PKG_PREFIX_WITH_BUILD_TYPE}/PosemeshBase_bg.js")

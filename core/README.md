@@ -26,11 +26,11 @@ The build results end up in a newly-created `target` directory. They include a s
 
 Below is depicted a table of platforms and architectures for which the library can be built. Intuitively, columns represent platforms and rows represent architectures.
 
-|        | macOS | Mac-Catalyst | iOS | iOS-Simulator | Web |
-|--------|-------|--------------|-----|---------------|-----|
-| AMD64  | Yes   | Yes          | No  | Yes           | No  |
-| ARM64  | Yes   | Yes          | Yes | Yes           | No  |
-| WASM32 | No    | No           | No  | No            | Yes |
+|        | macOS | Mac-Catalyst | iOS | iOS-Simulator | Web | Linux |
+|--------|-------|--------------|-----|---------------|-----|-------|
+| AMD64  | Yes   | Yes          | No  | Yes           | No  | Yes   |
+| ARM64  | Yes   | Yes          | Yes | Yes           | No  | Yes   |
+| WASM32 | No    | No           | No  | No            | Yes | No    |
 
 Note that building for `macOS`, `Mac-Catalyst`, `iOS` and `iOS-Simulator` can only be done on a machine that is running macOS.
 
