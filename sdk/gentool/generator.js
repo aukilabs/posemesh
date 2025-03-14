@@ -12,7 +12,8 @@ const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Config',
   'PoseEstimation',
   'Posemesh',
-  'QRDetection'
+  'QRDetection',
+  'Landmark'
 ]);
 
 const args = process.argv.slice(2);

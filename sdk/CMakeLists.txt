@@ -104,6 +104,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/QRDetection.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Landmark.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
@@ -113,11 +114,13 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Landmark.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Landmark.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
