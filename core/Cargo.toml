@@ -3,7 +3,7 @@ members = [
     "networking",
     "domain",
     "runtime"
-, "examples/client", "examples/domain-manager", "examples/data-node", "examples/reconstruction-node", "base", "examples/relay", "examples/test-concurrent"]
+, "examples/client", "examples/domain-manager", "examples/data-node", "base", "examples/relay", "examples/test-concurrent"]
 resolver = "2"
 
 [workspace.package]
