@@ -13,7 +13,6 @@ concurrency:
 
 jobs:
   build_apple_frameworks:
-    if: false
     name: Build Apple SDK
     runs-on: [self-hosted, macOS]
     strategy:
@@ -79,7 +78,6 @@ jobs:
           path: ./sdk/out-${{ matrix.platform }}-${{ matrix.arch }}-Release
 
   build_xcframework:
-    if: false
     name: Build XC Framework
     runs-on: [self-hosted, macOS]
     needs: build_apple_frameworks
@@ -118,7 +116,6 @@ jobs:
           path: ./sdk/out-Apple-Release/Posemesh.zip
 
   build_web_sdk:
-    if: false
     name: Build Web SDK
     runs-on: ubuntu-latest
 
@@ -212,6 +209,24 @@ jobs:
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
+      - name: Cache Cargo registry and Git sources (Shared)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-cargo-
+
+      - name: Cache Cargo build artifacts (Per Target)
+        uses: actions/cache@v4
+        with:
+          path: ./core/target
+          key: rust-cache-${{ matrix.arch }}-Linux-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-${{ matrix.arch }}-Linux-
+
       - name: Build Posemesh Base
         shell: pwsh
         run: ./core/scripts/Build-Library.ps1 Linux ${{ matrix.arch }} Release base -InstallNecessaryRustToolchainsAndTargets
@@ -237,7 +252,6 @@ jobs:
           path: ./sdk/out-Linux-${{ matrix.arch }}-Release/*
 
   check_code_style:
-    if: false
     name: Check Code Style
     runs-on: ubuntu-latest
 
