@@ -70,6 +70,7 @@ bool PSM_API psm_qr_detection_detect_qr(
         new (corners_content_ptr) psm_vector2_t(std::move(corner));
         corners_content_ptr++;
     }
+    *corners_prefix_ptr = nullptr;
 
     *out_contents = reinterpret_cast<const char* const*>(contents_buffer.release());
     if (out_contents_count) {
