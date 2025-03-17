@@ -1,33 +1,41 @@
 posemeshModule.QRDetection = null;
 
 __internalPosemeshAPI.builderFunctions.push(function() {
-    __internalPosemesh.QRDetection.detectQRFromLuminance = function(imageBytes, width, height, contents, corners) {
+    __internalPosemesh.QRDetection.detectQRFromLuminance = function(imageBytes, width, height, outContents, outCorners) {
+        let imageBytesVector = undefined, outContentsVector = undefined, outCornersVector = undefined;
         try {
-            imageVector = __internalPosemeshAPI.toVectorUint8(imageBytes, false);
-            contentsVector = __internalPosemeshAPI.toVectorString(contents, false);
-            cornersVector = __internalPosemeshAPI.toVectorVector2(corners, false);
-            let result = __internalPosemesh.QRDetection.__detectQRFromLuminance(imageVector, width, height, contentsVector, cornersVector);
+            imageBytesVector = __internalPosemeshAPI.toVectorUint8(imageBytes);
+            outContentsVector = new __internalPosemesh.VectorString();
+            outCornersVector = new __internalPosemesh.VectorVector2();
+            let result = __internalPosemesh.QRDetection.__detectQRFromLuminance(imageBytesVector, width, height, outContentsVector, outCornersVector);
 
             if (result) {
-                for (let i = 0; i < contentsVector.size(); i++) {
-                    contents.push(contentsVector.get(i));
+                outContents.length = 0;
+                let outContentsVectorSize = outContentsVector.size();
+                for (let i = 0; i < outContentsVectorSize; i++) {
+                    outContents.push(outContentsVector.get(i));
                 }
 
-                for (let i = 0; i < cornersVector.size(); i++) {
-                    corners.push(cornersVector.get(i));
+                for (let corner of outCorners) {
+                    corner.delete();
+                }
+                outCorners.length = 0;
+                let outCornersVectorSize = outCornersVector.size();
+                for (let i = 0; i < outCornersVectorSize; i++) {
+                    outCorners.push(outCornersVector.get(i));
                 }
             }
 
             return result;
         } finally {
-            if (imageVector) {
-                imageVector.delete();
+            if (outCornersVector) {
+                outCornersVector.delete();
             }
-            if (contentsVector) {
-                contentsVector.delete();
+            if (outContentsVector) {
+                outContentsVector.delete();
             }
-            if (cornersVector) {
-                cornersVector.delete();
+            if (imageBytesVector) {
+                imageBytesVector.delete();
             }
         }
     };
