@@ -4,6 +4,8 @@
 #include "API.hpp"
 #include <Posemesh/Vector2.hpp>
 #include <Posemesh/Vector3.hpp>
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace psm {
@@ -11,7 +13,7 @@ namespace psm {
 class QRDetection final {
 public:
     static bool PSM_API detectQRFromLuminance(
-        const std::vector<uint8_t>& imageBytes,
+        const std::vector<std::uint8_t>& imageBytes,
         int width,
         int height,
         std::vector<std::string>& contents,

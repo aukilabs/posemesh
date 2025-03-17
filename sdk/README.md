@@ -93,13 +93,29 @@ git submodule update --init --recursive
 ./third-party/scripts/Build-OpenCV-Library.ps1 macOS ARM64 Debug
 ```
 
-4. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
+4. Generate API code from interfaces (requires that Node.js is installed)
+```sh
+pushd sdk/gentool
+npm run generate
+popd
+```
+
+5. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
 ```sh
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-5. Build output can be found in `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
+6. Build output can be found in `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
 
 # Apple entitlements
 
 To use the networking features on Apple platforms, it may be required to set both the `com.apple.security.network.client` and `com.apple.security.network.server` entitlements to `YES`.
+
+# Linux compilation
+
+To compile for GNU/Linux, you can do so from Ubuntu x86_64. In case you want to cross-compile for aarch64, please ensure that the following prerequisites are installed:
+
+```sh
+sudo apt-get update
+sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu clang lld
+```
