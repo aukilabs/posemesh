@@ -3,7 +3,7 @@
 Param(
     [Parameter(Position = 0)]
     [ArgumentCompleter({
-        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web')
+        $PossibleValues = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
         return $PossibleValues | ForEach-Object { $_ }
     })]
     [String]$Platform,
@@ -41,6 +41,10 @@ If(-Not $Package) {
 $RustToolchain = $Null
 $RustTarget = $Null
 $WASMTarget = $Null
+$NewCargoTargetAArch64UnknownLinuxGNULinker = $Null
+$NewCCAArch64UnknownLinuxGNU = $Null
+$NewARAArch64UnknownLinuxGNU = $Null
+$NewCFlagsAArch64UnknownLinuxGNU = $Null
 Switch($Platform) {
     'macOS' {
         If(-Not $IsMacOS) {
@@ -125,6 +129,46 @@ Switch($Platform) {
         $RustToolchain = '1.81.0'
         $RustTarget = 'wasm32-unknown-unknown'
         $WASMTarget = 'bundler'
+    }
+    'Linux' {
+        If(-Not $IsLinux) {
+            Write-Error -Message "Your machine needs to be running GNU/Linux to build for 'Linux' platform."
+            Exit 1
+        }
+        $UNameCommand = (Get-Command -Name 'uname') 2> $Null
+        If(-Not $UNameCommand) {
+            Write-Error -Message "Could not find 'uname' command."
+            Exit 1
+        }
+        $UNameResult = & $UNameCommand -m
+        If($LastExitCode -Ne 0) {
+            Write-Error -Message 'Failed to determine the current running platform architecture.'
+            Exit 1
+        }
+        If(-Not (($UNameResult -Match 'x86_64') -Or ($UNameResult -Match 'amd64'))) {
+            Write-Error -Message "The current running platform should be using 'x86_64' architecture, however yours is actually using '$UNameResult' architecture."
+            Exit 1
+        }
+        If(-Not $Architecture) {
+            Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
+            Exit 1
+        }
+        $RustToolchain = '1.81.0'
+        Switch($Architecture) {
+            'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
+            'ARM64' {
+                $RustTarget = 'aarch64-unknown-linux-gnu'
+                $NewCargoTargetAArch64UnknownLinuxGNULinker = 'aarch64-linux-gnu-gcc'
+                $LLVMVersion = 16
+                $NewCCAArch64UnknownLinuxGNU = "clang-$LLVMVersion"
+                $NewARAArch64UnknownLinuxGNU = "llvm-ar-$LLVMVersion"
+                $NewCFlagsAArch64UnknownLinuxGNU="--sysroot=/usr/aarch64-linux-gnu"
+            }
+            Default {
+                Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
+                Exit 1
+            }
+        }
     }
     Default {
         Write-Error -Message "Invalid or unsupported '$Platform' platform."
@@ -249,6 +293,10 @@ If($RustTarget -Eq 'wasm32-unknown-unknown') {
     Exit 1
 }
 
+$OldCargoTargetAArch64UnknownLinuxGNULinker = $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
+$OldCCAArch64UnknownLinuxGNU = $env:CC_aarch64_unknown_linux_gnu
+$OldARAArch64UnknownLinuxGNU = $env:AR_aarch64_unknown_linux_gnu
+$OldCFlagsAArch64UnknownLinuxGNU = $env:CFLAGS_aarch64_unknown_linux_gnu
 $OldCC = $env:CC
 $OldCXX = $env:CXX
 
@@ -258,6 +306,18 @@ If(-Not $PushLocationResult) {
     Exit 1
 }
 Try {
+    If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
+        $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $NewCargoTargetAArch64UnknownLinuxGNULinker
+    }
+    If($NewCCAArch64UnknownLinuxGNU) {
+        $env:CC_aarch64_unknown_linux_gnu = $NewCCAArch64UnknownLinuxGNU
+    }
+    If($NewARAArch64UnknownLinuxGNU) {
+        $env:AR_aarch64_unknown_linux_gnu = $NewARAArch64UnknownLinuxGNU
+    }
+    If($NewCFlagsAArch64UnknownLinuxGNU) {
+        $env:CFLAGS_aarch64_unknown_linux_gnu = $NewCFlagsAArch64UnknownLinuxGNU
+    }
     If($NewCC) {
         $env:CC = $NewCC
     }
@@ -337,6 +397,18 @@ Try {
         }
     }
 } Finally {
+    If($NewCargoTargetAArch64UnknownLinuxGNULinker) {
+        $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = $OldCargoTargetAArch64UnknownLinuxGNULinker
+    }
+    If($NewCCAArch64UnknownLinuxGNU) {
+        $env:CC_aarch64_unknown_linux_gnu = $OldCCAArch64UnknownLinuxGNU
+    }
+    If($NewARAArch64UnknownLinuxGNU) {
+        $env:AR_aarch64_unknown_linux_gnu = $OldARAArch64UnknownLinuxGNU
+    }
+    If($NewCFlagsAArch64UnknownLinuxGNU) {
+        $env:CFLAGS_aarch64_unknown_linux_gnu = $OldCFlagsAArch64UnknownLinuxGNU
+    }
     If($NewCC) {
         $env:CC = $OldCC
     }

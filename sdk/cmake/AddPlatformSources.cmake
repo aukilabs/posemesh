@@ -147,7 +147,17 @@ function(ADD_PLATFORM_SOURCES NAME)
         endif()
     endforeach()
 
-    if(APPLE)
+    if(LINUX)
+        foreach(PUBLIC_HEADER ${PUBLIC_HEADERS})
+            file(RELATIVE_PATH PUBLIC_HEADER_RELATIVE "${PUBLIC_HEADER_DIR_ABSOLUTE}" "${PUBLIC_HEADER}")
+            get_filename_component(PUBLIC_HEADER_PREFIX "${PUBLIC_HEADER_RELATIVE}" DIRECTORY)
+            install(
+                FILES
+                    ${PUBLIC_HEADER}
+                DESTINATION "${CMAKE_INSTALL_PREFIX}/include/${PUBLIC_HEADER_PREFIX}"
+            )
+        endforeach()
+    elseif(APPLE)
         foreach(PUBLIC_HEADER ${PUBLIC_HEADERS})
             set(PUBLIC_HEADER_DIR_APPLE "${PUBLIC_HEADER_DIR_ABSOLUTE}/${NAME}")
             if(NOT EXISTS "${PUBLIC_HEADER_DIR_APPLE}")
