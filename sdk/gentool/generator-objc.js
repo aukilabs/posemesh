@@ -399,7 +399,7 @@ function generateSource(interfaceName, interfaceJson) {
       let getterExt = '';
       if (propTypeRaw === 'boolean') {
         getterExt = ' ? YES : NO';
-      } else if (propTypeRaw === 'string') {
+      } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         getterPfx = '[NSString stringWithUTF8String:';
         getterExt = '.c_str()]';
       }
@@ -435,7 +435,7 @@ function generateSource(interfaceName, interfaceJson) {
       let setterExt = '';
       if (propTypeRaw === 'boolean') {
         setterExt = ' ? true : false';
-      } else if (propTypeRaw === 'string') {
+      } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         setterPfx = '[';
         setterExt = ' UTF8String]';
       }

@@ -330,6 +330,43 @@ function getStringType(language) {
   }
 }
 
+const TypeFor = {
+  Any: 0,
+  PropGetter: 1,
+  PropSetter: 2
+};
+
+function getStringRefType(language, typeFor = TypeFor.Any) {
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return 'std::string';
+      case TypeFor.PropGetter:
+      case TypeFor.PropSetter:
+        return 'const std::string&';
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return getStringType(language);
+}
+
+function getStringMixType(language, typeFor = TypeFor.Any) {
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return 'std::string';
+      case TypeFor.PropGetter:
+        return 'const std::string&';
+      case TypeFor.PropSetter:
+        return 'std::string';
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return getStringType(language);
+}
+
 function getPropertyType(propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -353,6 +390,10 @@ function getPropertyType(propertyJson, language) {
       return getBooleanType(language);
     case 'string':
       return getStringType(language);
+    case 'string_ref':
+      return getStringRefType(language);
+    case 'string_mix':
+      return getStringMixType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -381,6 +422,10 @@ function getPropertyTypeForGetter(propertyJson, language) {
       return getBooleanType(language);
     case 'string':
       return getStringType(language);
+    case 'string_ref':
+      return getStringRefType(language, TypeFor.PropGetter);
+    case 'string_mix':
+      return getStringMixType(language, TypeFor.PropGetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -409,6 +454,10 @@ function getPropertyTypeForSetter(propertyJson, language) {
       return getBooleanType(language);
     case 'string':
       return getStringType(language);
+    case 'string_ref':
+      return getStringRefType(language, TypeFor.PropSetter);
+    case 'string_mix':
+      return getStringMixType(language, TypeFor.PropSetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -464,6 +513,8 @@ function isPrimitiveType(type) {
     case 'boolean':
       return true;
     case 'string':
+    case 'string_ref':
+    case 'string_mix':
       return false;
     default:
       return false;
@@ -482,6 +533,8 @@ function getTypeImplicitDefaultValue(type) {
     case 'boolean':
       return 'false';
     case 'string':
+    case 'string_ref':
+    case 'string_mix':
       return '';
     default:
       return '';
@@ -497,6 +550,8 @@ function getTypeMembVarCopyOp(type, membVar) {
     case 'double':
     case 'boolean':
     case 'string':
+    case 'string_ref':
+    case 'string_mix':
       return membVar;
     default:
       return membVar;
@@ -513,6 +568,8 @@ function getTypeMembVarMoveOp(type, membVar) {
     case 'boolean':
       return membVar;
     case 'string':
+    case 'string_ref':
+    case 'string_mix':
       return `std::move(${membVar})`;
     default:
       return `std::move(${membVar})`;
@@ -528,6 +585,8 @@ function getTypePropEqOp(type, clsParam, prpParam) {
     case 'double':
     case 'boolean':
     case 'string':
+    case 'string_ref':
+    case 'string_mix':
       return `${prpParam} == ${clsParam}.${prpParam}`;
     default:
       return `${prpParam} == ${clsParam}.${prpParam}`;
@@ -545,7 +604,9 @@ function getTypePropHasher(type, param) {
     case 'boolean':
       return `hash<bool> {}(${param})`;
     case 'string':
-      return `hash<${type}> {}(${param})`;
+    case 'string_ref':
+    case 'string_mix':
+      return `hash<string> {}(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }
@@ -865,7 +926,11 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
   }
 
   if (typeof propertyJson.getterNoexcept === 'undefined') {
-    propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
+    if (propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix') {
+      propertyJson.getterNoexcept = true;
+    } else {
+      propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
+    }
     propertyJson['getterNoexcept.gen'] = true;
   } else if (typeof propertyJson.getterNoexcept !== 'boolean') {
     throw new Error(`Invalid 'getterNoexcept' key type.`);
@@ -950,7 +1015,7 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
   }
 
   if (typeof propertyJson.setterNoexcept === 'undefined') {
-    if (propertyJson.type === 'string') {
+    if (propertyJson.type === 'string' || propertyJson.type === 'string_mix') {
       propertyJson.setterNoexcept = true;
     } else {
       propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
@@ -1973,6 +2038,9 @@ module.exports = {
   getIntType,
   getBooleanType,
   getStringType,
+  TypeFor,
+  getStringRefType,
+  getStringMixType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,

@@ -9,6 +9,24 @@
       "name": "My_String_Static",
       "type": "string",
       "static": true
+    },
+    {
+      "name": "My_String_Member_Ref",
+      "type": "string_ref"
+    },
+    {
+      "name": "My_String_Static_Ref",
+      "type": "string_ref",
+      "static": true
+    },
+    {
+      "name": "My_String_Member_Mix",
+      "type": "string_mix"
+    },
+    {
+      "name": "My_String_Static_Mix",
+      "type": "string_mix",
+      "static": true
     }
   ]
 }

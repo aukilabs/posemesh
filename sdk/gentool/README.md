@@ -213,17 +213,19 @@
 
 ### Valid types
 
-| Type key  | Description |
-|-----------|-------------|
-| `int8`    | An 8-bit signed integer. Maps to `std::int8_t` C++ type. A `number` type in JavaScript. |
-| `int16`   | A 16-bit signed integer. Maps to `std::int16_t` C++ type. A `number` type in JavaScript. |
-| `int32`   | A 32-bit signed integer. Maps to `std::int32_t` C++ type. A `number` type in JavaScript. |
-| `int64`   | A 64-bit signed integer. Maps to `std::int64_t` C++ type. A `bigint` type in JavaScript. |
-| `uint8`   | An 8-bit unsigned integer. Maps to `std::uint8_t` C++ type. A `number` type in JavaScript. |
-| `uint16`  | A 16-bit unsigned integer. Maps to `std::uint16_t` C++ type. A `number` type in JavaScript. |
-| `uint32`  | A 32-bit unsigned integer. Maps to `std::uint32_t` C++ type. A `number` type in JavaScript. |
-| `uint64`  | A 64-bit unsigned integer. Maps to `std::uint64_t` C++ type. A `bigint` type in JavaScript. |
-| `float`   | A 32-bit IEEE 754 floating point number. Maps to `float` C++ type. A `number` type in JavaScript. |
-| `double`  | A 64-bit IEEE 754 floating point number. Maps to `double` C++ type. A `number` type in JavaScript. |
-| `boolean` | A boolean type. Maps to `bool` C++ type. A `boolean` type in JavaScript. |
-| `string`  | A string type. Maps to `std::string` C++ type. A `string` type in JavaScript. |
+| Type key     | Description |
+|--------------|-------------|
+| `int8`       | An 8-bit signed integer. Maps to `std::int8_t` C++ type. A `number` type in JavaScript. |
+| `int16`      | A 16-bit signed integer. Maps to `std::int16_t` C++ type. A `number` type in JavaScript. |
+| `int32`      | A 32-bit signed integer. Maps to `std::int32_t` C++ type. A `number` type in JavaScript. |
+| `int64`      | A 64-bit signed integer. Maps to `std::int64_t` C++ type. A `bigint` type in JavaScript. |
+| `uint8`      | An 8-bit unsigned integer. Maps to `std::uint8_t` C++ type. A `number` type in JavaScript. |
+| `uint16`     | A 16-bit unsigned integer. Maps to `std::uint16_t` C++ type. A `number` type in JavaScript. |
+| `uint32`     | A 32-bit unsigned integer. Maps to `std::uint32_t` C++ type. A `number` type in JavaScript. |
+| `uint64`     | A 64-bit unsigned integer. Maps to `std::uint64_t` C++ type. A `bigint` type in JavaScript. |
+| `float`      | A 32-bit IEEE 754 floating point number. Maps to `float` C++ type. A `number` type in JavaScript. |
+| `double`     | A 64-bit IEEE 754 floating point number. Maps to `double` C++ type. A `number` type in JavaScript. |
+| `boolean`    | A boolean type. Maps to `bool` C++ type. A `boolean` type in JavaScript. |
+| `string`     | A string type. Maps to `std::string` C++ type (getter and setter use it by value). A `string` type in JavaScript. |
+| `string_ref` | A string type. Maps to `std::string` C++ type (getter and setter use it by const-ref). A `string` type in JavaScript. |
+| `string_mix` | A string type. Maps to `std::string` C++ type (getter uses it by const-ref and setter uses it by value). A `string` type in JavaScript. |
