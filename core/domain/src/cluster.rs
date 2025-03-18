@@ -173,6 +173,9 @@ pub struct DomainCluster {
 
 impl DomainCluster {
     pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+        #[cfg(not(target_family="wasm"))]
+        let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+
         let networking = Networking::new(&NetworkingConfig {
             bootstrap_nodes: vec![manager_addr.clone()],
             relay_nodes: vec![manager_addr.clone()],
@@ -185,9 +188,6 @@ impl DomainCluster {
             port,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
-
-        #[cfg(not(target_family="wasm"))]
-        let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
         let (tx, rx) = channel::<Command>(3072);
         let dc = InnerDomainCluster {
