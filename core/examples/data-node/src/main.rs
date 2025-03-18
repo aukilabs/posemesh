@@ -96,7 +96,6 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
     let _ = stream.read_to_end(&mut buf).await.expect("Failed to read stream");
     let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf).expect("Failed to deserialize consume data input");
 
-    std::fs::create_dir_all(format!("{}/output/domain_data", base_path)).expect("Failed to create domain_data directory");
     // let listener = listener.clone();
     let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path)).expect("Failed to read domain_data directory");
 
@@ -171,6 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let _ = std::fs::remove_dir_all(format!("{}/output/domain_data", base_path));
+    std::fs::create_dir_all(format!("{}/output/domain_data", base_path)).expect("Failed to create domain_data directory");
 
     loop {
         select! {

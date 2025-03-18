@@ -1,10 +1,11 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::muxing::StreamMuxerBox, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
 use crate::{client::{self, Client}, event};
+use std::net::IpAddr;
 
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
@@ -23,6 +24,35 @@ use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use wasm_bindgen::prelude::*;
 
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ipv4) => !ipv4.is_private() && !ipv4.is_loopback(),
+        IpAddr::V6(ipv6) => !ipv6.is_loopback() && !ipv6.is_unspecified(),
+    }
+}
+
+/// Checks if an IP address is publicly routable
+fn is_public(addr: Multiaddr) -> bool {
+    for proto in addr.iter() {
+        if let Protocol::Ip4(ip) = proto {
+            return is_public_ip(IpAddr::V4(ip));
+        }
+        if let Protocol::Ip6(ip) = proto {
+            return is_public_ip(IpAddr::V6(ip));
+        }
+    }
+    false
+}
+
+fn is_circuit_addr(addr: Multiaddr) -> bool {
+    for proto in addr.iter() {
+        if let Protocol::P2pCircuit = proto {
+            return true;
+        }
+    }
+    false
+}
+
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
 struct PosemeshBehaviour {
@@ -38,6 +68,7 @@ struct PosemeshBehaviour {
     relay: Toggle<libp2p::relay::Behaviour>,
     #[cfg(not(target_family="wasm"))]
     autonat_server: Toggle<libp2p::autonat::v2::server::Behaviour>,
+    dcutr: Toggle<libp2p::dcutr::Behaviour>,
 }
 
 #[derive(Clone)]
@@ -199,7 +230,8 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     let streams = stream::Behaviour::new();
     let identify = libp2p::identify::Behaviour::new(
         libp2p::identify::Config::new("/posemesh/id/1.0.0".to_string(), key.public())
-        .with_agent_version(cfg.name.clone()),
+        .with_agent_version(cfg.name.clone())
+        .with_push_listen_addr_updates(true),
     );
 
     let mut behavior = PosemeshBehaviour {
@@ -215,6 +247,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         relay: None.into(),
         #[cfg(not(target_family="wasm"))]
         autonat_server: None.into(),
+        dcutr: None.into(),
     };
 
     #[cfg(not(target_family="wasm"))]
@@ -223,15 +256,19 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
             .expect("Failed to build mdns behaviour");
         behavior.mdns = Some(mdns).into();
     }
-
+    
     #[cfg(not(target_family="wasm"))]
     if cfg.enable_relay_server {
-        let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), Default::default());
+        let mut relay_config = libp2p::relay::Config::default();
+        relay_config.max_circuit_bytes = 1024 * 1024 * 1024; // 1GB
+        let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), relay_config);
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
+        tracing::info!("Relay server enabled");
     } else {
-        // TODO: should not add to clients
         behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
+        behavior.dcutr = Some(libp2p::dcutr::Behaviour::new(key.public().to_peer_id())).into();
+        tracing::info!("Relay client enabled");
     }
 
     if cfg.enable_kdht {
@@ -286,14 +323,11 @@ impl Libp2p {
     pub fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
-        println!("Local peer id: {:?}", key.public().to_peer_id());
+        println!("Your Peer Id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
         let mut swarm = build_swarm(key.clone(), behaviour)?;
-        
-        // let nodes_map: Arc<Mutex<HashMap<String, Node>>> = Arc::new(Mutex::new(HashMap::new()));
-        // let nodes_map = HashMap::new();
 
         #[cfg(not(target_family="wasm"))]
         let listeners = build_listeners(cfg.port);
@@ -364,6 +398,20 @@ impl Libp2p {
     
     async fn handle_event(&mut self, event :SwarmEvent<PosemeshBehaviourEvent>) {
         match event {
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Dcutr(dcutr::Event {
+                remote_peer_id,
+                result: Ok(_),
+                ..  
+            })) => {
+                tracing::info!("Successfully hole-punched to {remote_peer_id}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Dcutr(dcutr::Event {
+                remote_peer_id,
+                result: Err(e),
+                ..  
+            })) => {
+                tracing::error!("Failed to hole-punch to {remote_peer_id}: {e}");
+            }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
                     id,
@@ -379,9 +427,12 @@ impl Libp2p {
                 }
                 let peer_id = peer_id_res.unwrap();
                 tracing::info!("GetClosestPeersOk Got {:?} peer(s) for {:#}, count {:?}, last {:?}", peers.len(), peer_id, count, last);
+                let mut found_address = false;
                 for peer in peers {
+                    found_address = peer.addrs.len() > 0;
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer.peer_id);
                     for addr in peer.addrs {
+                        tracing::info!("Adding address to DHT: {}", addr.clone());
                         self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                             dht.add_address(&peer.peer_id, addr.clone());
                         });
@@ -393,11 +444,32 @@ impl Libp2p {
                     if sender.is_none() {
                         return;
                     }
-                    let _ = sender.unwrap().send(Ok(()));
+                    if found_address {
+                        let _ = sender.unwrap().send(Ok(()));
+                    } else {
+                        let _ = sender.unwrap().send(Err(Box::new(DialError::NoAddresses)));
+                    }
                     return;
                 } else if last {
                     tracing::error!("Failed to find peer: {peer_id}");
                 }
+            }
+            // get closest peers err
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
+                kad::Event::OutboundQueryProgressed {
+                    result: kad::QueryResult::GetClosestPeers(Err(e)),
+                    ..
+                }
+            )) => {
+                tracing::error!("GetClosestPeers failed: {e}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
+                kad::Event::OutboundQueryProgressed {
+                    result: kad::QueryResult::Bootstrap(Err(e)),
+                    ..
+                }
+            )) => {
+                tracing::error!("Bootstrap failed: {e}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(
                 kad::Event::OutboundQueryProgressed {
@@ -464,6 +536,7 @@ impl Libp2p {
                 result: Ok(()),
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
+                self.swarm.add_external_address(tested_addr.clone());
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
@@ -473,7 +546,7 @@ impl Libp2p {
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
                 // TODO: should be done only once and not for every failed autonat test
-                // client should not care
+
                 for relay in self.cfg.relay_nodes.iter() {
                     let maddr = Multiaddr::from_str(relay).unwrap();
                     let addr = maddr
@@ -512,15 +585,17 @@ impl Libp2p {
                 ..
             })) =>
             {
-                tracing::info!("Observed address: {observed_addr} for {peer_id}");
+                tracing::info!("Observed address: {observed_addr} from {peer_id}");
                 if self.cfg.enable_relay_server {
                     self.swarm.add_external_address(observed_addr.clone());
                 }
-
-                // TODO: Only add the non local address to the DHT
+                
                 self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                     for addr in listen_addrs {
-                        dht.add_address(&peer_id, addr.clone());
+                        if is_public(addr.clone()) {
+                            tracing::info!("Adding public address to DHT: {}", addr.clone());
+                            dht.add_address(&peer_id, addr.clone());
+                        }
                     }
                 });
 
@@ -536,7 +611,7 @@ impl Libp2p {
                 // #[cfg(target_family="wasm")]
                 // self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             },
-            e => tracing::debug!("Other events: {e:?}"),
+            e => tracing::info!("Other events: {e:?}"),
         }
     }
 
@@ -625,7 +700,11 @@ impl Libp2p {
 
 async fn open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
     if let Ok(Err(e)) = find_response.await {
-        tracing::error!("find peer response {}", e);
+        tracing::error!("find peer error {}", e);
+        if let Err(send_err) = send_response.send(Err(e)) {
+            tracing::error!("Failed to send feedback: {:?}", send_err);
+        }
+        return;
     }
 
     let mut s = match ctrl.open_stream(peer_id, protocol).await {

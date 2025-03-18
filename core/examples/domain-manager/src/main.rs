@@ -73,7 +73,6 @@ struct DomainManager {
 
 impl DomainManager {
     fn new(domain_id: String, peer: Networking) -> Self {
-        let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
         DomainManager {
             peer,
             domain_id,
@@ -309,6 +308,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if args.len() == 5 {
         private_key_path = args[4].clone();
     }
+    let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let cfg = &NetworkingConfig{
         port,
