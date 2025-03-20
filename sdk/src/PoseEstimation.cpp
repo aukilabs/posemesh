@@ -48,7 +48,7 @@ bool PoseEstimation::solvePnP(
             tvec,
             false,
             cv::SOLVEPNP_IPPE_SQUARE);
-    } catch (cv::Exception& e) {
+    } catch (const cv::Exception& e) {
         std::cerr << "PoseEstimation::solvePnP(): An OpenCV exception occurred: " << e.what() << std::endl;
         return false;
     }
