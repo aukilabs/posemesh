@@ -3,7 +3,7 @@ use std::{collections::HashSet, error::Error, sync::Arc};
 
 use crate::protobuf::domain_data::{self, Data};
 use async_trait::async_trait;
-use futures::{channel::mpsc::{Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
+use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
 use uuid::Uuid;
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -51,12 +51,17 @@ pub fn data_id_generator() -> String {
 pub struct ReliableDataProducer {
     writer: DataWriter,
     pendings: Arc<Mutex<HashSet<String>>>,
+    pub progress: Arc<Mutex<Receiver<i32>>>,
+    total: Arc<Mutex<i32>>,
 }
 
 impl ReliableDataProducer {
     pub fn new(mut response: Reader<domain_data::Metadata>, writer: DataWriter) -> Self {
         let pendings = Arc::new(Mutex::new(HashSet::new()));
         let pending_clone = pendings.clone();
+        let total: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
+        let total_clone = total.clone();
+        let (mut progress_sender, progress_receiver) = mpsc::channel(100);
 
         spawn(async move {
             while let Some(m) = response.next().await {
@@ -64,7 +69,13 @@ impl ReliableDataProducer {
                     Ok(metadata) => {
                         let id = metadata.id.unwrap_or("why no id".to_string());
                         let mut pendings = pending_clone.lock().await;
+                        let total = total_clone.lock().await;
+                        let completed = *total as usize - pendings.len() + 1;
                         pendings.remove(&id);
+                        let progress = completed * 100 / *total as usize;
+                        tracing::info!("back");
+                        progress_sender.send(progress as i32).await.expect("can't send progress");
+                        tracing::info!("progress: {}", progress);
                     }
                     Err(e) => {
                         eprintln!("{}", e);
@@ -74,7 +85,7 @@ impl ReliableDataProducer {
         });
 
         Self {
-            writer, pendings
+            writer, progress: Arc::new(Mutex::new(progress_receiver)), pendings, total
         }
     }
 
@@ -85,6 +96,8 @@ impl ReliableDataProducer {
                 let id = data.metadata.id.clone().unwrap_or("no id?".to_string());
                 let mut pendings = self.pendings.lock().await;
                 pendings.insert(id.clone());
+                let mut total = self.total.lock().await;
+                *total += 1;
                 Ok(id)
             },
             Err(e) => {
@@ -101,5 +114,7 @@ impl ReliableDataProducer {
 
     pub async fn close(mut self) {
         self.writer.close().await.expect("can't close writer");
+        self.progress.lock().await.close();
+        self.pendings.lock().await.clear();
     }
 }
