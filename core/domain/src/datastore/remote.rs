@@ -151,6 +151,7 @@ impl RemoteDatastore {
                             chunk_size = data.content.len() - offset;
                         }
                         println!("Uploading chunk: {}/{}", offset, data.content.len());
+                        // TODO: Add timeout and retry
                         writer.write_all(&data.content[offset..offset + chunk_size]).await.expect("Failed to write content");
                         writer.flush().await.expect("Failed to flush");
                         offset += chunk_size;

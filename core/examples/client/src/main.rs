@@ -1,5 +1,5 @@
 use networking::libp2p::{Networking, NetworkingConfig};
-use tokio::{self, io::split};
+use tokio::{self, io::split, select};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
@@ -75,52 +75,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     content
                 };
 
-                let id = producer.push(&data).await.expect("cant push data");
-
-                let input = task::LocalRefinementInputV1 {
-                    query: Some(Query {
-                        ids: vec![id.clone()],
-                        name_regexp: Some(".*_2025-02-26_11-19-47".to_string()),
-                        data_type_regexp: None,
-                        names: vec![],
-                        data_types: vec![],
-                    }),
-                };
-                let task = task::TaskRequest {
-                    needs: vec![],
-                    resource_recruitment: Some(task::ResourceRecruitment {
-                        recruitment_policy: ResourceRecruitment::RecruitmentPolicy::ALWAYS,
-                        termination_policy: ResourceRecruitment::TerminationPolicy::TERMINATE,
-                    }),
-                    name: format!("local_refinement_{}", id.clone()),
-                    timeout: "10h".to_string(),
-                    max_budget: 1000,
-                    capability_filters: Some(task::CapabilityFilters {
-                        endpoint: "/local-refinement/v1".to_string(),
-                        min_gpu: 0,
-                        min_cpu: 0,
-                    }),
-                    data: Some(task::Any {
-                        type_url: "LocalRefinementInputV1".to_string(), // TODO: use actual type url
-                        value: serialize_into_vec(&input).expect("cant serialize input"),
-                    }),
-                    sender: domain_cluster.manager_id.clone(),
-                    receiver: "".to_string(),
-                };
-                uploaded.push(task);
+                let _ = producer.push(&data).await.expect("cant push data");
             }
             Err(e) => {
                 println!("Error reading file: {:?}", e);
             }
         }
     }
-    
-    // TODO: use oneshot channel to signal completion
-    while !producer.is_completed().await {
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+    loop {
+        let producer_clone = producer.clone();
+        let mut progress = producer.progress.lock().await;
+        select! {
+            event = progress.next() => {
+                drop(progress);
+                match event {
+                    Some(progress) => {
+                        if progress >= 100 {
+                            producer_clone.close().await;
+                            break;
+                        }
+                    }
+                    None => {
+                        producer_clone.close().await;
+                        break;
+                    }
+                }
+            }
+        }
     }
-    println!("Closed producer");
-    producer.close().await;
+
+    println!("producer closed");
+
+    let input = task::LocalRefinementInputV1 {
+        query: Some(Query {
+            ids: vec![],
+            name_regexp: Some(".*_2025-02-26_11-19-47".to_string()),
+            data_type_regexp: None,
+            names: vec![],
+            data_types: vec![],
+        }),
+    };
+    let task = task::TaskRequest {
+        needs: vec![],
+        resource_recruitment: Some(task::ResourceRecruitment {
+            recruitment_policy: ResourceRecruitment::RecruitmentPolicy::ALWAYS,
+            termination_policy: ResourceRecruitment::TerminationPolicy::TERMINATE,
+        }),
+        name: format!("local_refinement_2025-02-26_11-19-47"),
+        timeout: "10h".to_string(),
+        max_budget: 1000,
+        capability_filters: Some(task::CapabilityFilters {
+            endpoint: "/local-refinement/v1".to_string(),
+            min_gpu: 0,
+            min_cpu: 0,
+        }),
+        data: Some(task::Any {
+            type_url: "LocalRefinementInputV1".to_string(), // TODO: use actual type url
+            value: serialize_into_vec(&input).expect("cant serialize input"),
+        }),
+        sender: domain_cluster.manager_id.clone(),
+        receiver: "".to_string(),
+    };
+    uploaded.push(task);
     
     let dependencies = uploaded.iter().map(|t| t.name.clone()).collect::<Vec<String>>();
     uploaded.push(task::TaskRequest {
