@@ -26,13 +26,15 @@ export class UploadManager {
 
     async initializeLibp2p() {
         try {
+            console.log("initializing domain cluster");
             await init();
-            this.libp2pReady = true;
+            console.log("wasm loaeded!");
             const domainCluster = new DomainCluster("/ip4/54.67.15.233/tcp/18803/ws/p2p/12D3KooWE7RYJVU3wCcXhzSSGdwm1fdiTiGsV9EJPnen47sSZMiL", "domain-browser-example", null, null);
             this.datastore = new RemoteDatastore(domainCluster);
             this.uploader = await this.datastore.produce("");
+            this.libp2pReady = true;
 
-            console.log("libp2p is ready!", this.domainCluster.monitor);
+            console.log("domain cluster is ready!");
         } catch (error) {
             console.error("Failed to initialize libp2p:", error);
         }
@@ -62,7 +64,7 @@ export class UploadManager {
                 const id = await this.uploader.push(data);
                 console.log(`Pushed ${file.name} -> ${id}`);
             } catch (error) {
-                console.error(`Failed to upload ${file.name}`);
+                console.error(`Failed to upload ${file.name}`, error);
             }
         }
 

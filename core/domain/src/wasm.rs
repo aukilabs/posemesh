@@ -159,7 +159,7 @@ pub struct DomainCluster {
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
     pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, true, private_key, private_key_path))) }   
+        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, false, private_key, private_key_path))) }   
     }
 
     #[wasm_bindgen]
@@ -283,6 +283,8 @@ pub fn start() -> Result<(), JsValue> {
 
     // Add this line:
     tracing_wasm::set_as_global_default();
+
+    tracing::info!("Starting domain-core");
 
     Ok(())
 }

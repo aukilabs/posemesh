@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true,None, Some(private_key_path));
+    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
     let peer_id = domain_cluster.peer.id.clone();
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
