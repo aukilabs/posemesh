@@ -19,6 +19,8 @@ use tokio::spawn;
 #[cfg(target_family="wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
+use futures::executor::block_on;
+
 #[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
@@ -334,8 +336,12 @@ fn enable_websocket(port: u16) -> Multiaddr {
 }
 
 fn enable_webrtc(port: u16) -> Multiaddr {
+    let mut webrtc_port = port + 1;
+    if port == 0 {
+        webrtc_port = 0;
+    }
     Multiaddr::from(Ipv4Addr::UNSPECIFIED)
-        .with(Protocol::Udp(port+1))
+        .with(Protocol::Udp(webrtc_port))
         .with(Protocol::WebRTCDirect)
 }
 
@@ -780,6 +786,14 @@ impl Debug for Networking {
     }
 }
 
+async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let res = Libp2p::new(cfg, receiver, event_sender).await;
+    match res {
+        Ok(node) => Ok(node.id),
+        Err(e) => Err(e),
+    }
+}
+
 impl Networking {
     pub fn new(cfg: &NetworkingConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let (sender, receiver) = channel::<client::Command>(8);
@@ -787,22 +801,16 @@ impl Networking {
         let cfg = cfg.clone();
         let client = Client::new(sender);
         
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        spawn(async move {
-            let res = Libp2p::new(&cfg, receiver, event_sender).await;
-            match res {
-                Ok(node) => {
-                    if let Err(e) = tx.send(node.id) {
-                        panic!("Failed to send node id: {:?}", e);
-                    }
-                }
-                Err(e) => {
-                    panic!("Failed to create libp2p node: {:?}", e);
-                }
-            }
-        });
+        let id_res = block_on(initialize_libp2p(&cfg, receiver, event_sender));
 
-        let id = rx.recv().unwrap();
+        let id = match id_res {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("Failed to initialize libp2p: {:?}", e);
+                return Err(e);
+            }
+        };
+
         Ok(Networking {
             client,
             event_receiver: Arc::new(Mutex::new(event_receiver)),
