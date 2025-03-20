@@ -14,6 +14,8 @@ libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/go
 libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p-websocket = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p-websocket-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" } 
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"

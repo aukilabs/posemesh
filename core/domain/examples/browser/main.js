@@ -28,7 +28,7 @@ export class UploadManager {
         try {
             await init();
             this.libp2pReady = true;
-            const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiBx18iewKgY7I3UcWvfuMMuvCW_MkKd8uKW04s2oSI6YQ/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
+            const domainCluster = new DomainCluster("/ip4/54.67.15.233/tcp/18803/ws/p2p/12D3KooWE7RYJVU3wCcXhzSSGdwm1fdiTiGsV9EJPnen47sSZMiL", "domain-browser-example", null, null);
             this.datastore = new RemoteDatastore(domainCluster);
             this.uploader = await this.datastore.produce("");
 

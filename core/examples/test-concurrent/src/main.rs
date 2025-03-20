@@ -17,6 +17,8 @@ async fn main() {
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/bootstrap/pkey".to_string()),
         name: "test-concurrent/bootstrap".to_string(),
+        enable_websocket: false,
+        enable_webrtc: false,
     };
 
     let protocol = "/chat/v1".to_string();
@@ -56,6 +58,8 @@ async fn main() {
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-a/pkey".to_string()),
         name: "test-concurrent/peer-a".to_string(),
+        enable_websocket: false,
+        enable_webrtc: false,
     };
     let mut peer_a = Networking::new(&peer_a_cfg).unwrap();
     let mut peer_clone = peer_a.clone();
@@ -70,6 +74,8 @@ async fn main() {
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-b/pkey".to_string()),
         name: "test-concurrent/peer-b".to_string(),
+        enable_websocket: false,
+        enable_webrtc: false,
     };
     let mut peer_b = Networking::new(&peer_b_cfg).unwrap();
 
@@ -83,6 +89,8 @@ async fn main() {
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-c/pkey".to_string()),
         name: "test-concurrent/peer-c".to_string(),
+        enable_websocket: false,
+        enable_webrtc: false,
     };
     let mut peer_c = Networking::new(&peer_c_cfg).unwrap();
     tokio::spawn(async move {

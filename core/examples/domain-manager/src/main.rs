@@ -320,6 +320,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         private_key: None,
         private_key_path: Some(private_key_path),
         name,
+        enable_websocket: true,
+        enable_webrtc: true,
     };
     let c = Networking::new(cfg)?;
     let mut domain_manager = DomainManager::new(domain_id, c);
