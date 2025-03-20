@@ -27,7 +27,7 @@ bool QRDetection::detectQRFromLuminance(
         }
 
         // Hacky, but we aren't gonna modify cvImage so this way we skip unnecessary copying
-        const cv::Mat cvImage(cv::Size(height, width), CV_8U, const_cast<std::uint8_t*>(imageBytes));
+        const cv::Mat cvImage(cv::Size(width, height), CV_8U, const_cast<std::uint8_t*>(imageBytes));
 
         const cv::QRCodeDetector qrDetector;
         std::vector<cv::Point2f> cornersFound;
