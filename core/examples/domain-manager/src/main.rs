@@ -3,7 +3,7 @@ use libp2p::Stream;
 use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
 use nodes_management::NodesManagement;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tasks_management::{task_id, TaskHandler, TaskPendingRequest, TasksManagement};
+use tasks_management::{task_id, TaskHandler, TasksManagement};
 use tokio::{self, select, spawn, time::sleep};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
@@ -112,8 +112,9 @@ impl DomainManager {
                                     if from.is_none() || from.unwrap().to_string() != self.peer.id.clone() {
                                         let task_event = deserialize_from_slice::<task::Task>(&message)?;
                                         let task_mgmt = self.task_mgmt.clone();
+                                        let node_mgmt = self.node_mgmt.clone();
                                         spawn(async move {
-                                            task_mgmt.update_task(task_event).await
+                                            task_mgmt.update_task(&task_event, node_mgmt).await;
                                         });
                                     }
                                 }
@@ -126,10 +127,11 @@ impl DomainManager {
                     match next_task {
                         Some(task) => {
                             let task_mgmt = self.task_mgmt.clone();
+                            let node_mgmt = self.node_mgmt.clone();
                             let domain_id = self.domain_id.clone();
                             let peer = self.peer.clone();
                             spawn(async move {
-                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt).await;
+                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt).await;
                             });
                         }
                         None => sleep(Duration::from_secs(5)).await
@@ -165,7 +167,7 @@ impl DomainManager {
             err_msg: "".to_string(),
         };
 
-        let mut tasks: Vec<TaskPendingRequest> = Vec::new();
+        let mut tasks: Vec<String> = Vec::new();
         for task_req in job.tasks {
             let task_mgmt = task_mgmt.clone();
             let mut node_mgmt = node_mgmt.clone();
@@ -177,29 +179,21 @@ impl DomainManager {
                 resp.err_msg = err.to_string();
                 writer.write_all(&prefix_size_message(&resp)).await.expect("failed to write job submittion response");
                 writer.flush().await.expect("failed to flush result");
-                for handler in tasks {
-                    if let Some(node_request) = handler.node_request {
-                        node_request.abort();
-                    }
-                }
                 task_mgmt.remove_job(&job_id).await;
                 return;
             } else {
-                let handler = res.unwrap();
-                if handler.dependencies_ready && handler.node_request.is_none() {
-                    tasks.push(handler);
+                if res.unwrap() {
+                    tasks.push(task_id(&job_id, &task_req.name));
                 }
             }
         }
         writer.write_all(&prefix_size_message(&resp)).await.expect("failed to write job submittion response");
         writer.flush().await.expect("failed to flush result");
-        for handler in tasks {
-            task_mgmt.push_tasks(vec![handler.task_id]).await;
-        }
+        task_mgmt.push_tasks(tasks).await;
     }
 
     #[tracing::instrument]
-    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement) {
+    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement) {
         let mut serialized_input: Vec<u8> = vec![];
         let mut t = th.task.clone();
         let input = th.input.clone();
@@ -268,18 +262,34 @@ impl DomainManager {
         if t.sender == peer.id {
             if let Err(e) = handshake_then_content(peer.client, &access_token, &t.receiver, &t.endpoint, serialized_input, th.timeout).await {
                 tracing::error!("Error triggering task: {:?}", e);
+                t.status = Status::FAILED;
+                t.output = Some(task::Any {
+                    type_url: "Error".to_string(),
+                    value: serialize_into_vec(&task::Error{
+                        message: e.to_string(),
+                    }).unwrap(),
+                });
+                task_mgmt.update_task(&t, node_mgmt).await;
                 task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
                 return;
             }
-            task_mgmt.update_task(t).await;
+            task_mgmt.update_task(&t, node_mgmt).await;
         } else {
             t.access_token = access_token;
             if let Err(e) = peer.client.publish(t.job_id.clone(), serialize_into_vec(&t).unwrap()).await {
                 tracing::error!("Error publishing message for task job {} {}: {:?}", t.job_id, t.name, e);
+                t.status = Status::FAILED;
+                t.output = Some(task::Any {
+                    type_url: "Error".to_string(),
+                    value: serialize_into_vec(&task::Error{
+                        message: e.to_string(),
+                    }).unwrap(),
+                });
+                task_mgmt.update_task(&t, node_mgmt).await;
                 task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
                 return;
             }
-            task_mgmt.update_task(t).await; 
+            task_mgmt.update_task(&t, node_mgmt).await; 
         }
     }
 }
