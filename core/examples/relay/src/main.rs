@@ -19,6 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         private_key: None,
         private_key_path: Some("./volume/relay-example/relay/pkey".to_string()),
         name: "relay-example/relay".to_string(),
+        enable_websocket: true,
+        enable_webrtc: true,
     };
     let mut relay = Networking::new(relay_cfg)?;
     let protocol = "/chat".to_string();

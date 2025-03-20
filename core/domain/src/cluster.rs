@@ -172,7 +172,7 @@ pub struct DomainCluster {
 }
 
 impl DomainCluster {
-    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, enable_websocket: bool, enable_webrtc: bool, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
         #[cfg(not(target_family="wasm"))]
         let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
@@ -186,6 +186,8 @@ impl DomainCluster {
             enable_relay_server: join_as_relay,
             name: node_name,
             port,
+            enable_websocket,
+            enable_webrtc,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
 

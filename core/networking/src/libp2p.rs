@@ -1,18 +1,18 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
 use crate::{client::{self, Client}, event};
-use std::net::IpAddr;
+use std::net::{Ipv4Addr, IpAddr};
 
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
 #[cfg(not(target_family="wasm"))]
-use libp2p::{mdns, noise, tcp, yamux};
+use libp2p::{mdns, tcp};
 #[cfg(not(target_family="wasm"))]
-use std::{fs, path::Path, net::Ipv4Addr};
+use std::{fs, path::Path};
 
 #[cfg(not(target_family="wasm"))]
 use tokio::spawn;
@@ -22,7 +22,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 #[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
-use wasm_bindgen::prelude::*;
+use libp2p_websocket_websys as ws_websys;
 
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
@@ -82,6 +82,8 @@ pub struct NetworkingConfig {
     pub private_key_path: Option<String>,
     pub enable_kdht: bool,
     pub name: String,
+    pub enable_websocket: bool,
+    pub enable_webrtc: bool,
 }
 
 impl Default for NetworkingConfig {
@@ -95,12 +97,13 @@ impl Default for NetworkingConfig {
             relay_nodes: vec![],
             private_key: None,
             private_key_path: Some("/volume/pkey".to_string()),
-            name: "Placeholder".to_string(), // placeholder
+            name: "Placeholder".to_string(),
+            enable_webrtc: false,
+            enable_websocket: false, // placeholder
         }
     }
 }
 
-#[cfg_attr(feature = "py", pyclass(get_all))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     pub id: String,
@@ -173,7 +176,7 @@ fn parse_or_create_keypair(
     return libp2p::identity::Keypair::generate_ed25519();
 }
 
-fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error + Send + Sync>> {
+async fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error + Send + Sync>> {
     #[cfg(not(target_family="wasm"))]
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -190,6 +193,11 @@ fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) 
             )
             .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn))))
         })?
+        .with_dns()?
+        .with_websocket(
+            noise::Config::new,
+            yamux::Config::default,
+        ).await?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|_, relay_behavior| {
             behavior.relay_client = Some(relay_behavior).into();
@@ -203,6 +211,12 @@ fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) 
         .with_wasm_bindgen()
         .with_other_transport(|key| {
             webrtc_websys::Transport::new(webrtc_websys::Config::new(&key))
+        })?
+        .with_other_transport(|key| {
+            Ok(ws_websys::Transport::default()
+            .upgrade(Version::V1Lazy)
+            .authenticate(noise::Config::new(&key).expect("Failed to create noise config"))
+            .multiplex(yamux::Config::default()))
         })?
         .with_behaviour(|_| behavior)?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
@@ -291,7 +305,6 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
             };
             let maddr = Multiaddr::from_str(&bootstrap).expect("Failed to parse bootstrap node address");
             let _ = kdht.add_address(&peer_id, maddr);
-            // behavior.gossipsub.add_explicit_peer(&peer_id);
         }
 
         behavior.kdht = Some(kdht).into();
@@ -300,38 +313,49 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-#[cfg(not(target_family="wasm"))]
-fn build_listeners(port: u16) -> [Multiaddr; 3] {
-    let mut webrtc_port = port;
-    if webrtc_port != 0 {
-        webrtc_port+=1;
-    }
-    return [
+fn build_listeners(port: u16) -> Vec<Multiaddr> {
+    #[cfg(not(target_family="wasm"))]
+    return vec![
         Multiaddr::empty()
             .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(port)),
         Multiaddr::from(Ipv4Addr::UNSPECIFIED)
-            .with(Protocol::Udp(webrtc_port))
-            .with(Protocol::WebRTCDirect),
-        Multiaddr::from(Ipv4Addr::UNSPECIFIED)
             .with(Protocol::Udp(port))
             .with(Protocol::QuicV1),
     ];
+    #[cfg(target_family="wasm")]
+    return vec![];
+}
+
+fn enable_websocket(port: u16) -> Multiaddr {
+    Multiaddr::from(Ipv4Addr::UNSPECIFIED)
+        .with(Protocol::Tcp(port))
+        .with(Protocol::Ws("/".into()))
+}
+
+fn enable_webrtc(port: u16) -> Multiaddr {
+    Multiaddr::from(Ipv4Addr::UNSPECIFIED)
+        .with(Protocol::Udp(port+1))
+        .with(Protocol::WebRTCDirect)
 }
 
 impl Libp2p {
-    pub fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
+    pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
         println!("Your Peer Id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
-        let mut swarm = build_swarm(key.clone(), behaviour)?;
+        let mut swarm = build_swarm(key.clone(), behaviour).await?;
 
-        #[cfg(not(target_family="wasm"))]
-        let listeners = build_listeners(cfg.port);
-        #[cfg(not(target_family="wasm"))]
+        let mut listeners = build_listeners(cfg.port);
+        if cfg.enable_websocket {
+            listeners.push(enable_websocket(cfg.port));
+        }
+        if cfg.enable_webrtc {
+            listeners.push(enable_webrtc(cfg.port));
+        }
         for addr in listeners.iter() {
             match swarm.listen_on(addr.clone()) {
                 Ok(_) => {},
@@ -342,12 +366,7 @@ impl Libp2p {
                 }
             }
         }
-
-        // // Create a Gossipsub topic
-        // let topic = gossipsub::IdentTopic::new("Posemesh");
-        // // subscribes to our topic
-        // swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
-
+        
         let node = Node {
             id: key.public().to_peer_id().to_string(),
             name: cfg.name.clone(),
@@ -490,9 +509,9 @@ impl Libp2p {
                 );
             }
             SwarmEvent::ConnectionEstablished {
-                peer_id, ..
+                peer_id, endpoint, ..
             } => {
-                tracing::info!("Connected to {peer_id}");
+                tracing::info!("Connected to {peer_id} on {:?}", endpoint.get_remote_address());
                 self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
             SwarmEvent::Dialing {
@@ -768,12 +787,26 @@ impl Networking {
         let cfg = cfg.clone();
         let client = Client::new(sender);
         
-        let node = Libp2p::new(&cfg, receiver, event_sender)?;
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        spawn(async move {
+            let res = Libp2p::new(&cfg, receiver, event_sender).await;
+            match res {
+                Ok(node) => {
+                    if let Err(e) = tx.send(node.id) {
+                        panic!("Failed to send node id: {:?}", e);
+                    }
+                }
+                Err(e) => {
+                    panic!("Failed to create libp2p node: {:?}", e);
+                }
+            }
+        });
 
+        let id = rx.recv().unwrap();
         Ok(Networking {
             client,
             event_receiver: Arc::new(Mutex::new(event_receiver)),
-            id: node.id,
+            id,
         })
     }
 }

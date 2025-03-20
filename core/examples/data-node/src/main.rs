@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let private_key_path = format!("{}/pkey", base_path);
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, None, Some(private_key_path));
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true, None, Some(private_key_path));
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
