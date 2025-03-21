@@ -444,7 +444,7 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     toStrOp += `    return getter_result;\n`;
     toStrOp += `}\n`;
     toStrOp += `\n`;
-    toStrOp += `void ${nameWithoutTSuffix}_to_string_free(const char* ${mainArgName}_string)`;
+    toStrOp += `void ${nameWithoutTSuffix}_to_string_free(const char* ${mainArgName}_string)\n`;
     toStrOp += `{\n`;
     toStrOp += `    delete[] const_cast<char*>(${mainArgName}_string);\n`;
     toStrOp += `}\n`;
