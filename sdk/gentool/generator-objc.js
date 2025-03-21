@@ -24,19 +24,19 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   const pCtorDefinition = util.getConstructorDefinition(parameterlessConstructor);
   const pCtorVisibility = util.getConstructorVisibility(parameterlessConstructor);
   if (static || pCtorDefinition === util.ConstructorDefinition.deleted || pCtorVisibility !== util.Visibility.public) {
-    publicCtors += '- (instancetype)init NS_UNAVAILABLE;\n';
+    publicCtors += '- (instancetype _Nonnull)init NS_UNAVAILABLE;\n';
   } else {
-    publicCtors += '- (instancetype)init;\n';
+    publicCtors += '- (instancetype _Nonnull)init;\n';
   }
 
   const copyConstructor = util.getClassCopyConstructor(interfaceJson);
   const cCtorDefinition = util.getConstructorDefinition(copyConstructor);
   const cCtorVisibility = util.getConstructorVisibility(copyConstructor);
   if (!static && copyable && cCtorDefinition !== util.ConstructorDefinition.deleted && cCtorVisibility === util.Visibility.public) {
-    publicCtors += `- (instancetype)initWith${interfaceName}:(${name}*)${nameCamelBack};\n`;
-    publicCtors += `- (instancetype)copyWithZone:(NSZone*)zone;\n`;
+    publicCtors += `- (instancetype _Nonnull)initWith${interfaceName}:(${name}* _Nonnull)${nameCamelBack};\n`;
+    publicCtors += `- (instancetype _Nonnull)copyWithZone:(NSZone* _Null_unspecified)zone;\n`;
   } else {
-    publicCtors += `- (instancetype)copy NS_UNAVAILABLE;\n`;
+    publicCtors += `- (instancetype _Nonnull)copy NS_UNAVAILABLE;\n`;
   }
 
   if (!static) {
@@ -45,7 +45,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
 
   const equalityOperator = interfaceJson.equalityOperator;
   if (equalityOperator.defined) {
-    publicOperators += `- (BOOL)isEqual:(id)object;\n`;
+    publicOperators += `- (BOOL)isEqual:(id _Null_unspecified)object;\n`;
   }
 
   const hashOperator = interfaceJson.hashOperator;
@@ -59,7 +59,11 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
       const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.ObjC);
-      const getter = `${propStatic ? '+' : '-'} (${getterType})${getterName} NS_REFINED_FOR_SWIFT;\n`;
+      let getterTypeExt = '';
+      if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type)) {
+        getterTypeExt = ' _Nonnull';
+      }
+      const getter = `${propStatic ? '+' : '-'} (${getterType}${getterTypeExt})${getterName} NS_REFINED_FOR_SWIFT;\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         shouldAddIncludes = true;
@@ -73,8 +77,12 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
       const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.ObjC);
+      let setterTypeExt = '';
+      if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type)) {
+        setterTypeExt = ' _Nonnull';
+      }
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
-      const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
+      const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType}${setterTypeExt})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
         shouldAddIncludes = true;
@@ -123,10 +131,10 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   if (!static) {
     code += '\n';
     code += '#if defined(POSEMESH_BUILD)\n';
-    code += `- (instancetype)initWithManaged${interfaceName}:(void*)${nameCamelBack};\n`;
-    code += `- (instancetype)initWithNative${interfaceName}:(void*)${nameCamelBack};\n`;
-    code += `- (void*)${managedGetterName};\n`;
-    code += `- (void*)${nativeGetterName};\n`;
+    code += `- (instancetype _Nonnull)initWithManaged${interfaceName}:(void* _Nonnull)${nameCamelBack};\n`;
+    code += `- (instancetype _Nonnull)initWithNative${interfaceName}:(void* _Nonnull)${nameCamelBack};\n`;
+    code += `- (void* _Nonnull)${managedGetterName};\n`;
+    code += `- (void* _Nonnull)${nativeGetterName};\n`;
     code += '#endif\n';
   }
   code += '\n';
