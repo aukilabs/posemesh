@@ -70,12 +70,12 @@ function validateInterface(interfaceName, interfaceJson) {
   validateInterfaceRecursive('', interfaceName, interfaceJson);
 }
 
-function generateInterface(interfaceName, interfaceJson) {
-  generateInterfaceC(interfaceName, interfaceJson);
-  generateInterfaceCXX(interfaceName, interfaceJson);
-  generateInterfaceJS(interfaceName, interfaceJson);
-  generateInterfaceObjC(interfaceName, interfaceJson);
-  generateInterfaceSwift(interfaceName, interfaceJson);
+function generateInterface(interfaces, interfaceName, interfaceJson) {
+  generateInterfaceC(interfaces, interfaceName, interfaceJson);
+  generateInterfaceCXX(interfaces, interfaceName, interfaceJson);
+  generateInterfaceJS(interfaces, interfaceName, interfaceJson);
+  generateInterfaceObjC(interfaces, interfaceName, interfaceJson);
+  generateInterfaceSwift(interfaces, interfaceName, interfaceJson);
 }
 
 function generate() {
@@ -105,6 +105,7 @@ function generate() {
       util.fillDestructor(interfaceJson);
       util.fillEqualityOperator(interfaceJson);
       util.fillHashOperator(interfaceJson);
+      util.fillToStringOperator(interfaceJson);
       util.fillCGenerateFuncAliasDefines(interfaceJson);
       interfaces[interfaceName] = interfaceJson;
       validateInterface(interfaceName, interfaceJson);
@@ -150,7 +151,7 @@ function generate() {
   for (const interfaceName in interfaces) {
     const interfaceJson = interfaces[interfaceName];
     try {
-      generateInterface(interfaceName, interfaceJson);
+      generateInterface(interfaces, interfaceName, interfaceJson);
       console.log(`Generated '${interfaceName}.json' interface code.`);
     } catch (error) {
       console.error(`Failed to generate '${interfaceName}.json' interface code:\n`, error);

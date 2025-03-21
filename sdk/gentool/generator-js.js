@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateCppSource(interfaceName, interfaceJson) {
+function generateCppSource(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const static = util.getClassStatic(interfaceJson);
@@ -77,6 +77,19 @@ function generateCppSource(interfaceName, interfaceJson) {
     unnamedNamespace += `}\n`;
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n        .function("toString()", &toString)`;
+    if (unnamedNamespace.length > 0) {
+      unnamedNamespace += '\n';
+    }
+    unnamedNamespace += `std::string toString(const ${nameCxx}& ${mainArgName})\n`;
+    unnamedNamespace += `{\n`;
+    unnamedNamespace += `    return static_cast<std::string>(${mainArgName});\n`;
+    unnamedNamespace += `}\n`;
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
@@ -84,10 +97,48 @@ function generateCppSource(interfaceName, interfaceJson) {
       const getterNameCxx = util.getPropertyGetterName(propertyJson, util.CXX);
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
+        let funcName = `${nameCxx}::${getterNameCxx}`;
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          funcName = getterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+          if (typeof propTypeInterfaceJson === 'undefined') {
+            throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.getterConst) {
+              selfArg = `const ${nameCxx}& self`;
+            } else {
+              selfArg = `${nameCxx}& self`;
+            }
+          }
+          unnamedNamespace += `std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> ${funcName}(${selfArg})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            if (util.isClassType(propertyJson.type)) {
+              unnamedNamespace += `    return std::make_shared<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>(std::move(${nameCxx}::${getterNameCxx}()));\n`;
+              includesFirst.add('#include <utility>');
+            } else {
+              unnamedNamespace += `    return std::make_shared<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>(${nameCxx}::${getterNameCxx}());\n`;
+            }
+          } else {
+            if (util.isClassType(propertyJson.type)) {
+              unnamedNamespace += `    return std::make_shared<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>(std::move(self.${getterNameCxx}()));\n`;
+              includesFirst.add('#include <utility>');
+            } else {
+              unnamedNamespace += `    return std::make_shared<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>(self.${getterNameCxx}());\n`;
+            }
+          }
+          unnamedNamespace += `}\n`;
+        }
         if (propStatic) {
-          code += `\n        .class_function("__${getterName}()", &${nameCxx}::${getterNameCxx})`;
+          code += `\n        .class_function("__${getterName}()", &${funcName})`;
         } else {
-          code += `\n        .function("__${getterName}()", &${nameCxx}::${getterNameCxx})`;
+          code += `\n        .function("__${getterName}()", &${funcName})`;
         }
       }
     }
@@ -97,10 +148,43 @@ function generateCppSource(interfaceName, interfaceJson) {
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.JS);
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
+        let funcName = `${nameCxx}::${setterNameCxx}`;
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          funcName = setterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+          if (typeof propTypeInterfaceJson === 'undefined') {
+            throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.setterConst) {
+              selfArg = `const ${nameCxx}& self, `;
+            } else {
+              selfArg = `${nameCxx}& self, `;
+            }
+          }
+          unnamedNamespace += `void ${setterNameCxx}(${selfArg}const std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>& ${setterArgName})\n`;
+          unnamedNamespace += `{\n`;
+          unnamedNamespace += `    if (!${setterArgName}) {\n`;
+          unnamedNamespace += `        assert(!"${nameCxx}::${setterNameCxx}(): ${setterArgName} is null");\n`;
+          unnamedNamespace += `        return;\n`;
+          unnamedNamespace += `    }\n`;
+          if (propStatic) {
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(*${setterArgName});\n`;
+          } else {
+            unnamedNamespace += `    self.${setterNameCxx}(*${setterArgName});\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cassert>');
+        }
         if (propStatic) {
-          code += `\n        .class_function("__${setterName}(${setterArgName})", &${nameCxx}::${setterNameCxx})`;
+          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName})`;
         } else {
-          code += `\n        .function("__${setterName}(${setterArgName})", &${nameCxx}::${setterNameCxx})`;
+          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName})`;
         }
       }
     }
@@ -133,7 +217,7 @@ function generateCppSource(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateJsSource(interfaceName, interfaceJson) {
+function generateJsSource(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const aliases = util.getLangAliases(interfaceJson, util.JS);
 
@@ -198,7 +282,7 @@ function generateJsSource(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateTransformTsDefScript(interfaceName, interfaceJson) {
+function generateTransformTsDefScript(interfaces, interfaceName, interfaceJson) {
   // TODO: TEMP: this needs to be fully reworked !!!
   const name = util.getLangClassName(interfaceJson, util.JS);
   const fixFuncName = `fix${name}`;
@@ -263,14 +347,14 @@ function generateTransformTsDefScript(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceJS(interfaceName, interfaceJson) {
+function generateInterfaceJS(interfaces, interfaceName, interfaceJson) {
   const cppSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', 'src', `${interfaceName}.cpp`);
   const jsSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `${interfaceName}.js`);
   const transformTsDefScriptFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `transform-typescript-definition-${interfaceName}.js`);
 
-  let cppSourceCode = generateCppSource(interfaceName, interfaceJson);
-  let jsSourceCode = generateJsSource(interfaceName, interfaceJson);
-  let transformTsDefScriptCode = generateTransformTsDefScript(interfaceName, interfaceJson);
+  let cppSourceCode = generateCppSource(interfaces, interfaceName, interfaceJson);
+  let jsSourceCode = generateJsSource(interfaces, interfaceName, interfaceJson);
+  let transformTsDefScriptCode = generateTransformTsDefScript(interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(cppSourceFilePath, cppSourceCode);
   util.writeFileContentIfDifferent(jsSourceFilePath, jsSourceCode);
