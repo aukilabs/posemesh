@@ -27,6 +27,60 @@
       "name": "My_String_Static_Mix",
       "type": "string_mix",
       "static": true
+    },
+    {
+      "name": "My_Vector2_Member",
+      "type": "CLASS:Vector2"
+    },
+    {
+      "name": "My_Vector2_Static",
+      "type": "CLASS:Vector2",
+      "static": true
+    },
+    {
+      "name": "My_Vector2_Ref_Member",
+      "type": "CLASS_REF:Vector2"
+    },
+    {
+      "name": "My_Vector2_Ref_Static",
+      "type": "CLASS_REF:Vector2",
+      "static": true
+    },
+    {
+      "name": "My_Vector2_Mix_Member",
+      "type": "CLASS_MIX:Vector2"
+    },
+    {
+      "name": "My_Vector2_Mix_Static",
+      "type": "CLASS_MIX:Vector2",
+      "static": true
+    },
+    {
+      "name": "My_Vector2_Ptr_Member",
+      "type": "CLASS_PTR:Vector2"
+    },
+    {
+      "name": "My_Vector2_Ptr_Static",
+      "type": "CLASS_PTR:Vector2",
+      "static": true
+    },
+    {
+      "name": "My_Vector2_Ptr_Ref_Member",
+      "type": "CLASS_PTR_REF:Vector2"
+    },
+    {
+      "name": "My_Vector2_Ptr_Ref_Static",
+      "type": "CLASS_PTR_REF:Vector2",
+      "static": true
+    },
+    {
+      "name": "My_Vector2_Ptr_Mix_Member",
+      "type": "CLASS_PTR_MIX:Vector2"
+    },
+    {
+      "name": "My_Vector2_Ptr_Mix_Static",
+      "type": "CLASS_PTR_MIX:Vector2",
+      "static": true
     }
   ]
 }

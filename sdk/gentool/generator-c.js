@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateHeader(interfaceName, interfaceJson) {
+function generateHeader(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
   const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
@@ -112,7 +112,7 @@ function generateHeader(interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.C);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.C);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -127,7 +127,7 @@ function generateHeader(interfaceName, interfaceJson) {
             name: `${nameWithoutTSuffix}_${getterName}`,
             args: []
           });
-          if (propertyJson.type === 'string') {
+          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type)) {
             publicFuncs += getterFree;
             funcAliases.push({
               name: `${nameWithoutTSuffix}_${getterName}_free`,
@@ -140,7 +140,7 @@ function generateHeader(interfaceName, interfaceJson) {
             name: `${nameWithoutTSuffix}_${getterName}`,
             args: [mainArgName]
           });
-          if (propertyJson.type === 'string') {
+          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type)) {
             publicMethods += getterFree;
             funcAliases.push({
               name: `${nameWithoutTSuffix}_${getterName}_free`,
@@ -152,10 +152,13 @@ function generateHeader(interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.C);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.C);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.C);
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
-      const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
+      let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
+      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+        setterArgName += '_consumed';
+      }
       const setter = `void PSM_API ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName});\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
@@ -179,6 +182,8 @@ function generateHeader(interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw) || propTypeRaw === 'boolean') {
         includesFirst.add('#include <stdint.h>');
+      } else if (util.isClassOfAnyType(propTypeRaw)) {
+        includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       }
     }
   }
@@ -281,7 +286,7 @@ function generateHeader(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateSource(interfaceName, interfaceJson) {
+function generateSource(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
   const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
@@ -411,7 +416,7 @@ function generateSource(interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.C);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.C);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -430,6 +435,18 @@ function generateSource(interfaceName, interfaceJson) {
           getter += `    return getter_result;\n`;
         } else if (propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}().c_str();\n`;
+        } else if (util.isClassType(propTypeRaw)) {
+          getter += `    const auto getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return ${getterType.substring(0, getterType.length - 3)}_duplicate(&getter_result);\n`;
+        } else if (util.isClassRefType(propTypeRaw) || util.isClassMixType(propTypeRaw)) {
+          getter += `    const auto& getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return &getter_result;\n`;
+        } else if (util.isClassPtrType(propTypeRaw)) {
+          getter += `    const auto getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+        } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          getter += `    const auto& getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return &getter_result;\n`;
         } else {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
@@ -439,6 +456,8 @@ function generateSource(interfaceName, interfaceJson) {
         if (propTypeRaw === 'boolean') {
           getter += `        return static_cast<uint8_t>(${util.getTypeImplicitDefaultValue(propTypeRaw)});\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
+          getter += `        return nullptr;\n`;
+        } else if (util.isClassOfAnyType(propTypeRaw)) {
           getter += `        return nullptr;\n`;
         } else {
           getter += `        return ${util.getTypeImplicitDefaultValue(propTypeRaw)};\n`;
@@ -456,16 +475,36 @@ function generateSource(interfaceName, interfaceJson) {
           getter += `    return getter_result;\n`;
         } else if (propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}().c_str();\n`;
+        } else if (util.isClassType(propTypeRaw)) {
+          getter += `    const auto getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return ${getterType.substring(0, getterType.length - 3)}_duplicate(&getter_result);\n`;
+        } else if (util.isClassRefType(propTypeRaw) || util.isClassMixType(propTypeRaw)) {
+          getter += `    const auto& getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return &getter_result;\n`;
+        } else if (util.isClassPtrType(propTypeRaw)) {
+          getter += `    const auto getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+        } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          getter += `    const auto& getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+          getter += `    return &getter_result;\n`;
         } else {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
       }
       getter += `}\n`;
-      if (propTypeRaw === 'string') {
+      if (propTypeRaw === 'string' || util.isClassType(propTypeRaw) || util.isClassPtrType(propTypeRaw)) {
         getter += `\n`;
         getter += `void ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName})\n`;
         getter += `{\n`;
-        getter += `    delete[] const_cast<char*>(${setterArgName});\n`;
+        if (propTypeRaw === 'string') {
+          getter += `    delete[] const_cast<char*>(${setterArgName});\n`;
+        } else if (util.isClassType(propTypeRaw)) {
+          getter += `    ${getterType.substring(0, getterType.length - 3)}_destroy(${setterArgName});\n`;
+        } else if (util.isClassPtrType(propTypeRaw)) {
+          getter += `    ${getterType.substring(0, getterType.length - 3)}_delete(${setterArgName});\n`;
+        } else {
+          getter += '    #error "Not implemented."\n';
+        }
         getter += `}\n`;
       }
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
@@ -490,10 +529,13 @@ function generateSource(interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.C);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.C);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.C);
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
-      const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
+      let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
+      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+        setterArgName += '_consumed';
+      }
       let setter = `void ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName})\n`;
       setter += `{\n`;
       if (propStatic) {
@@ -501,6 +543,46 @@ function generateSource(interfaceName, interfaceJson) {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
+        } else if (util.isClassType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassRefType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+        } else if (util.isClassMixType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassPtrType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassPtrRefType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+        } else if (util.isClassPtrMixType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -513,6 +595,46 @@ function generateSource(interfaceName, interfaceJson) {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
+        } else if (util.isClassType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassRefType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+        } else if (util.isClassMixType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassPtrType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+        } else if (util.isClassPtrRefType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+        } else if (util.isClassPtrMixType(propTypeRaw)) {
+          setter += `    if (!${setterArgName}) {\n`;
+          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
+          setter += `        return;\n`;
+          setter += `    }\n`;
+          setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -525,12 +647,19 @@ function generateSource(interfaceName, interfaceJson) {
             publicFuncs += '\n';
           }
           publicFuncs += setter;
+          if (util.isClassOfAnyType(propTypeRaw)) {
+            includesFirst.add('#include <cassert>');
+          }
         } else {
           if (publicMethods.length > 0) {
             publicMethods += '\n';
           }
           publicMethods += setter;
           includesFirst.add('#include <cassert>');
+        }
+        if (util.isClassType(propTypeRaw) || util.isClassMixType(propTypeRaw) || util.isClassPtrType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
+          includesFirst.add('#include <utility>');
         }
       }
     }
@@ -642,12 +771,12 @@ function generateSource(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceC(interfaceName, interfaceJson) {
+function generateInterfaceC(interfaces, interfaceName, interfaceJson) {
   const headerFilePath = path.resolve(__dirname, '..', 'include', 'Posemesh', 'C', `${interfaceName}.h`);
   const sourceFilePath = path.resolve(__dirname, '..', 'src', 'C', `${interfaceName}.cpp`);
 
-  let headerCode = generateHeader(interfaceName, interfaceJson);
-  let sourceCode = generateSource(interfaceName, interfaceJson);
+  let headerCode = generateHeader(interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(headerFilePath, headerCode);
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);

@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateHeader(interfaceName, interfaceJson) {
+function generateHeader(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameSwift = util.getLangClassName(interfaceJson, util.Swift);
   const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
@@ -58,7 +58,7 @@ function generateHeader(interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.ObjC);
       const getter = `${propStatic ? '+' : '-'} (${getterType})${getterName} NS_REFINED_FOR_SWIFT;\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
@@ -72,7 +72,7 @@ function generateHeader(interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.ObjC);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
       const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
@@ -89,6 +89,8 @@ function generateHeader(interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw)) {
         includesFirst.add('#include <stdint.h>');
+      } else if (util.isClassOfAnyType(propTypeRaw)) {
+        importsSecond.add(`#import "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       }
     }
   }
@@ -121,6 +123,8 @@ function generateHeader(interfaceName, interfaceJson) {
   if (!static) {
     code += '\n';
     code += '#if defined(POSEMESH_BUILD)\n';
+    code += `- (instancetype)initWithManaged${interfaceName}:(void*)${nameCamelBack};\n`;
+    code += `- (instancetype)initWithNative${interfaceName}:(void*)${nameCamelBack};\n`;
     code += `- (void*)${managedGetterName};\n`;
     code += `- (void*)${nativeGetterName};\n`;
     code += '#endif\n';
@@ -181,7 +185,7 @@ function generateHeader(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateSource(interfaceName, interfaceJson) {
+function generateSource(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
@@ -243,14 +247,14 @@ function generateSource(interfaceName, interfaceJson) {
       includesFirst.add('#include <new>');
     }
 
-    let initWithManaged = `- (instancetype)${initWithManagedName}:(std::shared_ptr<psm::${nameCxx}>)${nameCamelBack}\n`;
+    let initWithManaged = `- (instancetype)${initWithManagedName}:(void*)${nameCamelBack}\n`;
     initWithManaged += '{\n';
-    initWithManaged += `    NSAssert(${nameCamelBack}.get() != nullptr, @"${nameCamelBack} is null");\n`;
+    initWithManaged += `    NSAssert(${nameCamelBack} != nullptr && static_cast<std::shared_ptr<psm::${nameCxx}>*>(${nameCamelBack})->get() != nullptr, @"${nameCamelBack} is null");\n`;
     initWithManaged += `    self = [super init];\n`;
     initWithManaged += `    if (!self) {\n`;
     initWithManaged += `        return nil;\n`;
     initWithManaged += `    }\n`;
-    initWithManaged += `    ${nameManagedMember} = std::move(${nameCamelBack});\n`;
+    initWithManaged += `    ${nameManagedMember} = std::move(*static_cast<std::shared_ptr<psm::${nameCxx}>*>(${nameCamelBack}));\n`;
     initWithManaged += `    return self;\n`;
     initWithManaged += '}\n';
     if (privateCtors.length > 0) {
@@ -260,7 +264,7 @@ function generateSource(interfaceName, interfaceJson) {
 
     includesFirst.add('#include <utility>');
 
-    let initWithNative = `- (instancetype)${initWithNativeName}:(psm::${nameCxx}*)${nameCamelBack}\n`;
+    let initWithNative = `- (instancetype)${initWithNativeName}:(void*)${nameCamelBack}\n`;
     initWithNative += '{\n';
     initWithNative += `    NSAssert(${nameCamelBack} != nullptr, @"${nameCamelBack} is null");\n`;
     initWithNative += `    self = [super init];\n`;
@@ -268,7 +272,7 @@ function generateSource(interfaceName, interfaceJson) {
     initWithNative += `        return nil;\n`;
     initWithNative += `    }\n`;
     initWithNative += `    try {\n`;
-    initWithNative += `        ${nameManagedMember}.reset(${nameCamelBack});\n`;
+    initWithNative += `        ${nameManagedMember}.reset(static_cast<psm::${nameCxx}*>(${nameCamelBack}));\n`;
     initWithNative += `    } catch (...) {\n`;
     initWithNative += `        return nil;\n`;
     initWithNative += `    }\n`;
@@ -394,7 +398,7 @@ function generateSource(interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.ObjC);
       let getterPfx = '';
       let getterExt = '';
       if (propTypeRaw === 'boolean') {
@@ -402,14 +406,57 @@ function generateSource(interfaceName, interfaceJson) {
       } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         getterPfx = '[NSString stringWithUTF8String:';
         getterExt = '.c_str()]';
+      } else if (util.isClassOfAnyType(propTypeRaw)) {
+        const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
+        const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+        if (typeof propTypeInterfaceJson === 'undefined') {
+          throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+        }
+        if (util.isClassType(propTypeRaw)) {
+          getterPfx = `[[${getterType.substring(0, getterType.length - 1)} alloc] initWithNative${propTypeRawWithoutPfx}:new (std::nothrow) psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}(std::move(`;
+          getterExt = `))]`;
+        } else if (util.isClassRefType(propTypeRaw) || util.isClassMixType(propTypeRaw)) {
+          getterPfx = `[[${getterType.substring(0, getterType.length - 1)} alloc] initWithNative${propTypeRawWithoutPfx}:new (std::nothrow) psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}(`;
+          getterExt = `)]`;
+        }
       }
       let getter = `${propStatic ? '+' : '-'} (${getterType})${getterName}\n`;
       getter += `{\n`;
       if (propStatic) {
-        getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+        if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
+          const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+          if (typeof propTypeInterfaceJson === 'undefined') {
+            throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+          }
+          let movePfx = '', moveExt = '';
+          if (util.isClassPtrType(propTypeRaw)) {
+            movePfx = 'std::move(';
+            moveExt = ')';
+          }
+          getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
+          getter += `    return [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult];\n`;
+        } else {
+          getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+        }
       } else {
         getter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-        getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+        if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
+          const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+          if (typeof propTypeInterfaceJson === 'undefined') {
+            throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+          }
+          let movePfx = '', moveExt = '';
+          if (util.isClassPtrType(propTypeRaw)) {
+            movePfx = 'std::move(';
+            moveExt = ')';
+          }
+          getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
+          getter += `    return [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult];\n`;
+        } else {
+          getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
+        }
       }
       getter += `}\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
@@ -425,11 +472,20 @@ function generateSource(interfaceName, interfaceJson) {
           }
           publicMethods += getter;
         }
+        if (util.isClassType(propTypeRaw) || util.isClassRefType(propTypeRaw) || util.isClassMixType(propTypeRaw)) {
+          includesFirst.add('#include <new>');
+        }
+        if (util.isClassType(propTypeRaw) || util.isClassPtrType(propTypeRaw)) {
+          includesFirst.add('#include <utility>');
+        }
+        if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
+        }
       }
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.ObjC);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
       let setterPfx = '';
       let setterExt = '';
@@ -438,6 +494,19 @@ function generateSource(interfaceName, interfaceJson) {
       } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         setterPfx = '[';
         setterExt = ' UTF8String]';
+      } else if (util.isClassOfAnyType(propTypeRaw)) {
+        const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
+        const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+        if (typeof propTypeInterfaceJson === 'undefined') {
+          throw new Error(`Unknown class: ${propTypeRawWithoutPfx}`);
+        }
+        if (util.isClassType(propTypeRaw) || util.isClassRefType(propTypeRaw) || util.isClassMixType(propTypeRaw)) {
+          setterPfx = `*static_cast<const psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}*>([`;
+          setterExt = ` native${propTypeRawWithoutPfx}])`;
+        } else if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          setterPfx = `*static_cast<const std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>*>([`;
+          setterExt = ` managed${propTypeRawWithoutPfx}])`;
+        }
       }
       let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
       setter += `{\n`;
@@ -460,6 +529,9 @@ function generateSource(interfaceName, interfaceJson) {
             publicMethods += '\n';
           }
           publicMethods += setter;
+        }
+        if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
         }
       }
     }
@@ -569,12 +641,12 @@ function generateSource(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceObjC(interfaceName, interfaceJson) {
+function generateInterfaceObjC(interfaces, interfaceName, interfaceJson) {
   const headerFilePath = path.resolve(__dirname, '..', 'platform', 'Apple', 'include', 'Posemesh', `${interfaceName}.h`);
   const sourceFilePath = path.resolve(__dirname, '..', 'platform', 'Apple', 'src', `${interfaceName}.mm`);
 
-  let headerCode = generateHeader(interfaceName, interfaceJson);
-  let sourceCode = generateSource(interfaceName, interfaceJson);
+  let headerCode = generateHeader(interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(headerFilePath, headerCode);
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);

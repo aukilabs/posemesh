@@ -367,7 +367,141 @@ function getStringMixType(language, typeFor = TypeFor.Any) {
   return getStringType(language);
 }
 
-function getPropertyType(propertyJson, language) {
+function getClassType(interfaces, language, type, classPfx = 'CLASS:') {
+  if (!type.startsWith(classPfx)) {
+    throw new Error(`Missing '${classPfx}' class prefix.`);
+  }
+  const name = type.substring(classPfx.length);
+  const interfaceJson = interfaces[name];
+  if (typeof interfaceJson === 'undefined') {
+    throw new Error(`Unknown class name: ${name}`);
+  }
+  type = getLangClassName(interfaceJson, language);
+  if (language === Language.C || language === Language.ObjC) {
+    return `${type}*`;
+  }
+  return type;
+}
+
+function getClassRefType(interfaces, language, type, typeFor = TypeFor.Any) {
+  type = getClassType(interfaces, language, type, 'CLASS_REF:');
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+      case TypeFor.PropSetter:
+        return `const ${type}&`;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  } else if (language === Language.C) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+      case TypeFor.PropSetter:
+        return `const ${type}`;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return type;
+}
+
+function getClassMixType(interfaces, language, type, typeFor = TypeFor.Any) {
+  type = getClassType(interfaces, language, type, 'CLASS_MIX:');
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+        return `const ${type}&`;
+      case TypeFor.PropSetter:
+        return type;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  } else if (language === Language.C) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+        return `const ${type}`;
+      case TypeFor.PropSetter:
+        return type;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return type;
+}
+
+function getClassPtrType(interfaces, language, type, classPfx = 'CLASS_PTR:') {
+  type = getClassType(interfaces, language, type, classPfx);
+  if (language === Language.CXX) {
+    return `std::shared_ptr<${type}>`;
+  } else if (language === Language.C) {
+    return `${type.substring(0, type.length - '_t*'.length)}_ref_t*`;
+  }
+  return type;
+}
+
+function getClassPtrRefType(interfaces, language, type, typeFor = TypeFor.Any) {
+  type = getClassPtrType(interfaces, language, type, 'CLASS_PTR_REF:');
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+      case TypeFor.PropSetter:
+        return `const ${type}&`;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  } else if (language === Language.C) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+      case TypeFor.PropSetter:
+        return `const ${type}`;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return type;
+}
+
+function getClassPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
+  type = getClassPtrType(interfaces, language, type, 'CLASS_PTR_MIX:');
+  if (language === Language.CXX) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+        return `const ${type}&`;
+      case TypeFor.PropSetter:
+        return type;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  } else if (language === Language.C) {
+    switch (typeFor) {
+      case TypeFor.Any:
+        return type;
+      case TypeFor.PropGetter:
+        return `const ${type}`;
+      case TypeFor.PropSetter:
+        return type;
+      default:
+        throw new Error(`Unknown TypeFor value: ${typeFor}`);
+    }
+  }
+  return type;
+}
+
+function getPropertyType(interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -380,6 +514,24 @@ function getPropertyType(propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('CLASS:')) {
+    return getClassType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_REF:')) {
+    return getClassRefType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_MIX:')) {
+    return getClassMixType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR:')) {
+    return getClassPtrType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_REF:')) {
+    return getClassPtrRefType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
+    return getClassPtrMixType(interfaces, language, propertyJson[key]);
   }
   switch (propertyJson[key]) {
     case 'float':
@@ -399,7 +551,7 @@ function getPropertyType(propertyJson, language) {
   }
 }
 
-function getPropertyTypeForGetter(propertyJson, language) {
+function getPropertyTypeForGetter(interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -412,6 +564,24 @@ function getPropertyTypeForGetter(propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('CLASS:')) {
+    return getClassType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_REF:')) {
+    return getClassRefType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_MIX:')) {
+    return getClassMixType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR:')) {
+    return getClassPtrType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_REF:')) {
+    return getClassPtrRefType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
+    return getClassPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
   }
   switch (propertyJson[key]) {
     case 'float':
@@ -431,7 +601,7 @@ function getPropertyTypeForGetter(propertyJson, language) {
   }
 }
 
-function getPropertyTypeForSetter(propertyJson, language) {
+function getPropertyTypeForSetter(interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -444,6 +614,24 @@ function getPropertyTypeForSetter(propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('CLASS:')) {
+    return getClassType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_REF:')) {
+    return getClassRefType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_MIX:')) {
+    return getClassMixType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR:')) {
+    return getClassPtrType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_REF:')) {
+    return getClassPtrRefType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
+    return getClassPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
   }
   switch (propertyJson[key]) {
     case 'float':
@@ -503,9 +691,41 @@ function isIntType(type) {
   return type.startsWith('int') || type.startsWith('uint');
 }
 
+function isClassType(type) {
+  return type.startsWith('CLASS:');
+}
+
+function isClassRefType(type) {
+  return type.startsWith('CLASS_REF:');
+}
+
+function isClassMixType(type) {
+  return type.startsWith('CLASS_MIX:');
+}
+
+function isClassPtrType(type) {
+  return type.startsWith('CLASS_PTR:');
+}
+
+function isClassPtrRefType(type) {
+  return type.startsWith('CLASS_PTR_REF:');
+}
+
+function isClassPtrMixType(type) {
+  return type.startsWith('CLASS_PTR_MIX:');
+}
+
+function isClassOfAnyType(type) {
+  return isClassType(type) || isClassRefType(type) || isClassMixType(type) ||
+    isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type);
+}
+
 function isPrimitiveType(type) {
   if (isIntType(type)) {
     return true;
+  }
+  if (isClassOfAnyType(type)) {
+    return false;
   }
   switch (type) {
     case 'float':
@@ -524,6 +744,9 @@ function isPrimitiveType(type) {
 function getTypeImplicitDefaultValue(type) {
   if (isIntType(type)) {
     return '0';
+  }
+  if (isClassOfAnyType(type)) {
+    return '';
   }
   switch (type) {
     case 'float':
@@ -545,6 +768,12 @@ function getTypeMembVarCopyOp(type, membVar) {
   if (isIntType(type)) {
     return membVar;
   }
+  if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
+    return membVar;
+  }
+  if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
+    return `std::make_shared<decltype(${membVar})::element_type>(*${membVar})`;
+  }
   switch (type) {
     case 'float':
     case 'double':
@@ -561,6 +790,9 @@ function getTypeMembVarCopyOp(type, membVar) {
 function getTypeMembVarMoveOp(type, membVar) {
   if (isIntType(type)) {
     return membVar;
+  }
+  if (isClassOfAnyType(type)) {
+    return `std::move(${membVar})`;
   }
   switch (type) {
     case 'float':
@@ -580,6 +812,12 @@ function getTypePropEqOp(type, clsParam, prpParam) {
   if (isIntType(type)) {
     return `${prpParam} == ${clsParam}.${prpParam}`;
   }
+  if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
+    return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+  if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
+    return `static_cast<bool>(${prpParam}) == static_cast<bool>(${clsParam}.${prpParam}) && (!${prpParam} || *${prpParam} == *(${clsParam}.${prpParam}))`;
+  }
   switch (type) {
     case 'float':
     case 'double':
@@ -596,6 +834,12 @@ function getTypePropEqOp(type, clsParam, prpParam) {
 function getTypePropHasher(type, param) {
   if (isIntType(type)) {
     return `hash<${type}_t> {}(${param})`;
+  }
+  if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
+    return `hash<decltype(${param})> {}(${param})`;
+  }
+  if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
+    return `${param} ? hash<decltype(${param})::element_type> {}(*${param}) : 0`;
   }
   switch (type) {
     case 'float':
@@ -928,6 +1172,10 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
   if (typeof propertyJson.getterNoexcept === 'undefined') {
     if (propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix') {
       propertyJson.getterNoexcept = true;
+    } else if (isClassRefType(propertyJson.type) || isClassMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
+    } else if (isClassPtrRefType(propertyJson.type) || isClassPtrMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
     } else {
       propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
     }
@@ -1016,6 +1264,10 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
 
   if (typeof propertyJson.setterNoexcept === 'undefined') {
     if (propertyJson.type === 'string' || propertyJson.type === 'string_mix') {
+      propertyJson.setterNoexcept = true;
+    } else if (isClassType(propertyJson.type) || isClassMixType(propertyJson.type)) {
+      propertyJson.setterNoexcept = true;
+    } else if (isClassPtrType(propertyJson.type) || isClassPtrMixType(propertyJson.type)) {
       propertyJson.setterNoexcept = true;
     } else {
       propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
@@ -1379,6 +1631,8 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson, fi
         break;
       case FillConstructorInitializedPropertiesType.copyConstructor:
         if (initializedPropertyJson.value.length > 0 && initializedPropertyJson.value !== getTypeMembVarCopyOp(foundPropertyJson.type, initializedPropertyJson.valuePlaceholder)) {
+          result.canBeDefault = false;
+        } else if (isClassPtrType(foundPropertyJson.type) || isClassPtrRefType(foundPropertyJson.type) || isClassPtrMixType(foundPropertyJson.type)) {
           result.canBeDefault = false;
         }
         break;
@@ -2041,6 +2295,12 @@ module.exports = {
   TypeFor,
   getStringRefType,
   getStringMixType,
+  getClassType,
+  getClassRefType,
+  getClassMixType,
+  getClassPtrType,
+  getClassPtrRefType,
+  getClassPtrMixType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
@@ -2054,6 +2314,13 @@ module.exports = {
   getPropertyDefaultValue,
   getPropertyStatic,
   isIntType,
+  isClassType,
+  isClassRefType,
+  isClassMixType,
+  isClassPtrType,
+  isClassPtrRefType,
+  isClassPtrMixType,
+  isClassOfAnyType,
   isPrimitiveType,
   getTypeImplicitDefaultValue,
   getTypeMembVarCopyOp,
