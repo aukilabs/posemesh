@@ -2209,6 +2209,42 @@ function fillHashOperator(interfaceJson) {
   }
 }
 
+function fillToStringOperator(interfaceJson) {
+  const nameKey = 'toStringOperator';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKeyGen] = true;
+    interfaceJson[nameKey] = {
+      defined: !interfaceJson.static,
+      'defined.gen': true,
+      custom: false,
+      'custom.gen': true
+    };
+    return;
+  } else if (typeof interfaceJson[nameKey] !== 'object') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  interfaceJson[nameKeyGen] = false;
+
+  if (typeof interfaceJson[nameKey].defined === 'undefined') {
+    interfaceJson[nameKey].defined = !interfaceJson.static;
+    interfaceJson[nameKey]['defined.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].defined !== 'boolean') {
+    throw new Error(`Invalid 'defined' key type.`);
+  } else {
+    interfaceJson[nameKey]['defined.gen'] = false;
+  }
+
+  if (typeof interfaceJson[nameKey].custom === 'undefined') {
+    interfaceJson[nameKey].custom = false;
+    interfaceJson[nameKey]['custom.gen'] = true;
+  } else if (typeof interfaceJson[nameKey].custom !== 'boolean') {
+    throw new Error(`Invalid 'custom' key type.`);
+  } else {
+    interfaceJson[nameKey]['custom.gen'] = false;
+  }
+}
+
 function fillCGenerateFuncAliasDefines(interfaceJson) {
   if (typeof interfaceJson['c.generateFuncAliasDefines'] === 'undefined') {
     interfaceJson['c.generateFuncAliasDefines'] = true;
@@ -2379,6 +2415,7 @@ module.exports = {
   fillEqualityOperator,
   makeHashOperatorHashedProperties,
   fillHashOperator,
+  fillToStringOperator,
   fillCGenerateFuncAliasDefines,
   writeFileContentIfDifferent
 };

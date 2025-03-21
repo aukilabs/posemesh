@@ -20,6 +20,7 @@
 | `destructor`                 |          | *Destructor*               | Options for the destructor. See [definition](#destructor-json-options). |
 | `equalityOperator`           |          | *EqualityOperator*         | Options for the equality (and inequality) operator. See [definition](#equalityoperator-json-options). |
 | `hashOperator`               |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
+| `toStringOperator`           |          | *ToStringOperator*         | Options for the to-string operator. See [definition](#tostringoperator-json-options). |
 | `c.generateFuncAliasDefines` |          | *boolean*                  | Determine whether the C header will contain the macro defines for all class functions with the first part of the function replaced with names for all class aliases or not. Default is `true`. |
 
 ### Alias JSON options
@@ -154,6 +155,13 @@
 | `useGetter`         |          | *boolean* | Determine whether to use the property getter method or not. Inferred from [compared property](#comparedproperty-json-options) `useGetter` option if possible or property `hasMemberVar` and `hasGetter` options. |
 | `hasher`            |          | *string*  | Expression evaluating to a hash integer used to hash the property. For example, this hasher can be as simple as `123` or a bit more complicated like `hash<float> {}(@)` where `@` is the `hasherPlaceholder` option. The placeholder will implicitly be replaced with either the named access of the property member variable or the property getter method call. Inferred from `hasherPlaceholder` option as well as property `type` option. |
 | `hasherPlaceholder` |          | *string*  | Replace hasher placeholder used in `hasher` option. Default is `@`. |
+
+### ToStringOperator JSON options
+
+| Name      | Required | Type      | Description |
+|-----------|----------|-----------|-------------|
+| `defined` |          | *boolean* | Determine whether the to-string operator is defined or not. Inferred from class `static` option. |
+| `custom`  |          | *boolean* | Determine whether the to-string operator will have a custom implementation or not. Default is `false`. |
 
 ### Naming conventions
 

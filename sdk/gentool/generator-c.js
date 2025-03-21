@@ -107,6 +107,21 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     includesFirst.add('#include <stddef.h>');
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    publicOperators += `const char* PSM_API ${nameWithoutTSuffix}_to_string(const ${name}* ${mainArgName});\n`;
+    publicOperators += `void PSM_API ${nameWithoutTSuffix}_to_string_free(const char* ${mainArgName}_string);\n`;
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_to_string`,
+      args: [mainArgName]
+    });
+    funcAliases.push({
+      name: `${nameWithoutTSuffix}_to_string_free`,
+      args: [`${mainArgName}_string`]
+    });
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     let shouldAddIncludes = false;
     const propStatic = util.getPropertyStatic(propertyJson);
@@ -409,6 +424,39 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     publicOperators += hashOp;
 
     includesFirst.add('#include <cassert>');
+  }
+
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let toStrOp = `const char* ${nameWithoutTSuffix}_to_string(const ${name}* ${mainArgName})\n`;
+    toStrOp += `{\n`;
+    toStrOp += `    if (!${mainArgName}) {\n`;
+    toStrOp += `        assert(!"${nameWithoutTSuffix}_to_string(): ${mainArgName} is null");\n`;
+    toStrOp += `        return nullptr;\n`;
+    toStrOp += `    }\n`;
+    toStrOp += `    const auto ${mainArgName}_string = static_cast<std::string>(*${mainArgName});\n`;
+    toStrOp += `    auto* getter_result = new (std::nothrow) char[${mainArgName}_string.size() + 1];\n`;
+    toStrOp += `    if (!getter_result) {\n`;
+    toStrOp += `        return nullptr;\n`;
+    toStrOp += `    }\n`;
+    toStrOp += `    std::memcpy(getter_result, ${mainArgName}_string.c_str(), ${mainArgName}_string.size() + 1);\n`;
+    toStrOp += `    return getter_result;\n`;
+    toStrOp += `}\n`;
+    toStrOp += `\n`;
+    toStrOp += `void ${nameWithoutTSuffix}_to_string_free(const char* ${mainArgName}_string)`;
+    toStrOp += `{\n`;
+    toStrOp += `    delete[] const_cast<char*>(${mainArgName}_string);\n`;
+    toStrOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += toStrOp;
+
+    includesFirst.add('#include <cassert>');
+    includesFirst.add('#include <cstring>');
+    includesFirst.add('#include <new>');
   }
 
   for (const propertyJson of util.getProperties(interfaceJson)) {

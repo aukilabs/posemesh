@@ -288,6 +288,15 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     includesFirst.add('#include <functional>');
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    publicOperators += `    PSM_API operator std::string() const;\n`;
+    includesFirst.add('#include <string>');
+    privateFriends += `    friend std::ostream& operator<<(std::ostream& outputStream, const ${name}& ${argName});\n`;
+    includesFirst.add('#include <ostream>');
+  }
+
   let public = publicCtors, protected = protectedCtors, private = privateCtors;
 
   if (publicOperators.length > 0) {
@@ -409,6 +418,14 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   for (const alias of aliases) {
     code += `using ${alias} = ${name};\n`;
   }
+
+  if (toStringOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n`;
+    code += `std::ostream& PSM_API operator<<(std::ostream& outputStream, const ${name}& ${argName});\n`;
+    includesFirst.add('#include <ostream>');
+  }
+
   code += '\n';
   code += '}\n';
 
@@ -967,6 +984,18 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    if (publicOperators.length > 0) { publicOperators += '\n'; }
+    publicOperators += `${name}::operator std::string() const\n`;
+    publicOperators += `{\n`;
+    publicOperators += `    std::ostringstream outputStringStream;\n`;
+    publicOperators += `    outputStringStream << *this;\n`;
+    publicOperators += `    return outputStringStream.str();\n`;
+    publicOperators += `}\n`;
+    includesFirst.add('#include <sstream>');
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     const propType = util.getPropertyType(interfaces, propertyJson, util.CXX);
@@ -1173,6 +1202,18 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
       code += '\n';
     }
     code += private;
+  }
+
+  if (toStringOperator.defined && !toStringOperator.custom) {
+    namespaceBodyNeedsAdditionalNewLine = true;
+    if (public.length > 0 || protected.length > 0 || private.length > 0) {
+      code += '\n';
+    }
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `std::ostream& operator<<(std::ostream& outputStream, const ${name}& ${argName})\n`;
+    code += `{\n`;
+    code += `    return outputStream << "(Posemesh.${name})";\n`;
+    code += `}\n`;
   }
 
   if (namespaceBodyNeedsAdditionalNewLine) { code += '\n'; }

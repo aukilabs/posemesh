@@ -53,6 +53,11 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     publicOperators += `- (NSUInteger)hash;\n`;
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    publicOperators += `- (NSString* _Nonnull)description;\n`;
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     let shouldAddIncludes = false;
     const propStatic = util.getPropertyStatic(propertyJson);
@@ -399,6 +404,20 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
       publicOperators += '\n';
     }
     publicOperators += hashOp;
+  }
+
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    let toStrOp = `- (NSString*)description\n`;
+    toStrOp += `{\n`;
+    toStrOp += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+    toStrOp += `    return [NSString stringWithUTF8String:static_cast<std::string>(*(${nameManagedMember}.get())).c_str()];\n`;
+    toStrOp += `}\n`;
+
+    if (publicOperators.length > 0) {
+      publicOperators += '\n';
+    }
+    publicOperators += toStrOp;
   }
 
   for (const propertyJson of util.getProperties(interfaceJson)) {

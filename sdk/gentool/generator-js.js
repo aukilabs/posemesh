@@ -77,6 +77,19 @@ function generateCppSource(interfaces, interfaceName, interfaceJson) {
     unnamedNamespace += `}\n`;
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const mainArgName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n        .function("toString()", &toString)`;
+    if (unnamedNamespace.length > 0) {
+      unnamedNamespace += '\n';
+    }
+    unnamedNamespace += `std::string toString(const ${nameCxx}& ${mainArgName})\n`;
+    unnamedNamespace += `{\n`;
+    unnamedNamespace += `    return static_cast<std::string>(${mainArgName});\n`;
+    unnamedNamespace += `}\n`;
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
