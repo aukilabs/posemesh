@@ -1,5 +1,8 @@
 {
   "name": "Vector3",
+  "toStringOperator": {
+    "custom": true
+  },
   "properties": [
     {
       "name": "X",
