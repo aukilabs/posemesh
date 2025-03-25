@@ -64,6 +64,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 endif()
             endif()
             get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME "${LIBRARY_PATH}" NAME)
             get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
             if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
                 string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
@@ -74,7 +75,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 target_link_options(
                     ${NAME}
                     PUBLIC
-                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,--whole-archive -l${LIBRARY_NAME} -Wl,--no-whole-archive -Wl,--exclude-libs,${LIBRARY_FILE_NAME}"
                 )
             elseif(APPLE)
                 target_link_options(
@@ -105,6 +106,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 endif()
             endif()
             get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME "${LIBRARY_PATH}" NAME)
             get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
             if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
                 string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
@@ -115,7 +117,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 target_link_options(
                     ${NAME}
                     INTERFACE
-                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,--whole-archive -l${LIBRARY_NAME} -Wl,--no-whole-archive -Wl,--exclude-libs,${LIBRARY_FILE_NAME}"
                 )
             elseif(APPLE)
                 target_link_options(
@@ -146,6 +148,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 endif()
             endif()
             get_filename_component(LIBRARY_DIR "${LIBRARY_PATH}" DIRECTORY)
+            get_filename_component(LIBRARY_FILE_NAME "${LIBRARY_PATH}" NAME)
             get_filename_component(LIBRARY_FILE_NAME_WLE "${LIBRARY_PATH}" NAME_WLE)
             if("${LIBRARY_FILE_NAME_WLE}" MATCHES "^lib")
                 string(SUBSTRING "${LIBRARY_FILE_NAME_WLE}" 3 -1 LIBRARY_NAME)
@@ -156,7 +159,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
                 target_link_options(
                     ${NAME}
                     PRIVATE
-                        "SHELL:-L\"${LIBRARY_DIR}\" -l${LIBRARY_NAME} -Wl,--exclude-libs,${LIBRARY_FILE_NAME_WLE}.a"
+                        "SHELL:-L\"${LIBRARY_DIR}\" -Wl,--whole-archive -l${LIBRARY_NAME} -Wl,--no-whole-archive -Wl,--exclude-libs,${LIBRARY_FILE_NAME}"
                 )
             elseif(APPLE)
                 target_link_options(
