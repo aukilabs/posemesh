@@ -90,10 +90,14 @@ impl ReliableDataProducer {
     }
 
     pub async fn push(&mut self, data: &domain_data::Data) -> Result<String, DomainError> {
-        let res = self.writer.send(Ok(data.clone())).await;
+        let mut data = data.clone();
+        if data.metadata.id.is_none() {
+            data.metadata.id = Some(data_id_generator());
+        }
+        let id = data.metadata.id.clone().unwrap();
+        let res = self.writer.send(Ok(data)).await;
         match res {
             Ok(_) => {
-                let id = data.metadata.id.clone().unwrap_or("no id?".to_string());
                 let mut pendings = self.pendings.lock().await;
                 pendings.insert(id.clone());
                 let mut total = self.total.lock().await;

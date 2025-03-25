@@ -610,7 +610,7 @@ impl Libp2p {
             })) =>
             {
                 tracing::info!("Observed address: {observed_addr} from {peer_id}. {:?}", listen_addrs);
-                if self.cfg.enable_relay_server {
+                if is_public(observed_addr.clone()) {
                     self.swarm.add_external_address(observed_addr.clone());
                 }
                 
