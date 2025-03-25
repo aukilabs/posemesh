@@ -1,23 +1,23 @@
-syntax = "proto3";
+syntax = "proto2";
 import "domain_data.proto";
 
 package task;
 
 message Any {
-  string type_url = 1; // in quick-protobuf, it is PATH, in prost, it is type_url https://github.com/tokio-rs/prost/issues/299
-  bytes value = 2;
+  required string type_url = 1; // in quick-protobuf, it is PATH, in prost, it is type_url https://github.com/tokio-rs/prost/issues/299
+  required bytes value = 2;
 }
 
 // Job containing a list of tasks
 message JobRequest {
-    string name = 1;
+    required string name = 1;
     repeated TaskRequest tasks = 2;
     required string nonce = 3;
 }
 
 message Job {
-  string id = 1;
-  string name = 2;
+  required string id = 1;
+  required string name = 2;
   repeated Task tasks = 3;
 }
 
@@ -29,27 +29,27 @@ enum Code {
 }
 
 message SubmitJobResponse {
-    Code code = 1;
-    string job_id = 2;
-    string err_msg = 3;
+    required Code code = 1;
+    required string job_id = 2;
+    required string err_msg = 3;
 }
 
 // Task definition
 message TaskRequest {
-    string name = 1;
-    CapabilityFilters capability_filters = 2;
+    required string name = 1;
+    required CapabilityFilters capability_filters = 2;
     optional uint64 max_budget = 3;
-    string timeout = 4;
+    required string timeout = 4;
     repeated string needs = 5; // List of dependent task names
-    ResourceRecruitment resource_recruitment = 6;
-    string sender = 7;
+    required ResourceRecruitment resource_recruitment = 6;
+    required string sender = 7;
     optional string receiver = 8;
-    Any data = 9;
+    optional Any data = 9;
 }
 
 // Filters for task capabilities
 message CapabilityFilters {
-    string endpoint = 1;
+    required string endpoint = 1;
     optional int32 min_gpu = 2;
     optional int32 min_cpu = 3; // Optional, for tasks that need CPU
 }
@@ -62,18 +62,18 @@ message ResourceRecruitment {
         NEVER = 2;          // "Never (only re-use existing node, wait if busy)"
         FAIL = 3;           // "Fail (don't create job if there's no existing node)"
     }
-    RecruitmentPolicy recruitment_policy = 1;
+    required RecruitmentPolicy recruitment_policy = 1;
 
     enum TerminationPolicy {
         KEEP = 0;       // "Keep"
         TERMINATE = 1;  // "Terminate"
     }
-    TerminationPolicy termination_policy = 2;
+    required TerminationPolicy termination_policy = 2;
 }
 
 message ConsumeDataInputV1 {
-  domain_data.Query query = 1;
-  bool keep_alive = 2;
+  required domain_data.Query query = 1;
+  required bool keep_alive = 2;
 }
 
 message StoreDataOutputV1 {
@@ -95,42 +95,38 @@ enum Status {
 }
 
 message Task {
-  string name = 2;
-  string receiver = 3;
-  string endpoint = 4;
-  string access_token = 5;
-  string job_id = 6;
-  string sender = 7;
-  Status status = 9;
-  Any output = 10;
+  required string name = 2;
+  optional string receiver = 3;
+  required string endpoint = 4;
+  optional string access_token = 5;
+  required string job_id = 6;
+  required string sender = 7;
+  required Status status = 9;
+  optional Any output = 10;
 }
 
 message LocalRefinementInputV1 {
-  domain_data.Query query = 1;
+  required domain_data.Query query = 1;
 }
 
 message DomainClusterHandshake {
-  string access_token = 1;
+  required string access_token = 1;
 }
 
 message GlobalRefinementInputV1 {
-    repeated LocalRefinementOutputV1 local_refinement_results = 1; 
-}
-
-message DomainDataChunk {
-    bytes data = 1;
+  repeated LocalRefinementOutputV1 local_refinement_results = 1; 
 }
 
 message Error {
-  string message = 1;
+  required string message = 1;
 }
 
 message TaskHandler {
     required Task task = 1;
     map<string, bool> dependencies = 2;
-    string job_id = 3;
-    string err_msg = 4;
-    uint32 retries = 5;
-    uint64 updated_at = 6;
-    uint64 created_at = 7;
+    required string job_id = 3;
+    required string err_msg = 4;
+    required uint32 retries = 5;
+    required uint64 updated_at = 6;
+    required uint64 created_at = 7;
 }

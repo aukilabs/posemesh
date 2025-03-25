@@ -179,7 +179,7 @@ impl Datastore for RemoteDatastore {
         let domain_id = domain_id.clone();
         let query = query.clone();
         let data = ConsumeDataInputV1 {
-            query: Some(query),
+            query,
             keep_alive,
         };
         let query_data = serialize_into_vec(&data).expect("cant serialize data length");
@@ -188,21 +188,21 @@ impl Datastore for RemoteDatastore {
             tasks: vec![
                 task::TaskRequest {
                     needs: vec![],
-                    resource_recruitment: Some(task::ResourceRecruitment {
+                    resource_recruitment: task::ResourceRecruitment {
                         recruitment_policy: ResourceRecruitment::RecruitmentPolicy::FAIL,
                         termination_policy: ResourceRecruitment::TerminationPolicy::KEEP,
-                    }),
+                    },
                     name: "download_data".to_string(),
                     timeout: "100m".to_string(),
-                    max_budget: 1000,
-                    capability_filters: Some(task::CapabilityFilters {
+                    max_budget: Some(1000),
+                    capability_filters: task::CapabilityFilters {
                         endpoint: "/consume/v1".to_string(),
-                        min_gpu: 0,
-                        min_cpu: 0,
-                    }),
+                        min_gpu: None,
+                        min_cpu: None,
+                    },
                     data: None,
                     sender: peer_id.clone(),
-                    receiver: "".to_string(),
+                    receiver: None,
                 }
             ],
             nonce: Uuid::new_v4().to_string(),
@@ -227,13 +227,13 @@ impl Datastore for RemoteDatastore {
                             let domain_id_clone = domain_id.clone();
                             peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                             let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
-                                access_token: task.access_token.clone(),
+                                access_token: task.access_token.clone().unwrap(),
                             }).unwrap();
                             let mut length_buf = [0u8; 4];
                             let length = m_buf.len() as u32;
                             length_buf.copy_from_slice(&length.to_be_bytes());
                             
-                            let mut upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
+                            let mut upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone().unwrap(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
                             upload_stream.write_all(&m_buf).await.expect("cant write handshake");
                             upload_stream.write_all(&query_data).await.expect("cant write data length");
                             upload_stream.flush().await.expect("cant flush data");
@@ -292,21 +292,21 @@ impl Datastore for RemoteDatastore {
             tasks: vec![
                 task::TaskRequest {
                     needs: vec![],
-                    resource_recruitment: Some(task::ResourceRecruitment {
+                    resource_recruitment: task::ResourceRecruitment {
                         recruitment_policy: ResourceRecruitment::RecruitmentPolicy::FAIL,
                         termination_policy: ResourceRecruitment::TerminationPolicy::KEEP,
-                    }),
+                    },
                     name: "store_recording".to_string(),
                     timeout: "100m".to_string(),
-                    max_budget: 1000,
-                    capability_filters: Some(task::CapabilityFilters {
+                    max_budget: Some(1000),
+                    capability_filters: task::CapabilityFilters {
                         endpoint: "/produce/v1".to_string(),
-                        min_gpu: 0,
-                        min_cpu: 0,
-                    }),
+                        min_gpu: Some(0),
+                        min_cpu: Some(0),
+                    },
                     data: None,
                     sender: self.cluster.peer.id.clone(),
-                    receiver: "".to_string(),
+                    receiver: None,
                 }
             ],
         }).await;
@@ -333,8 +333,8 @@ impl Datastore for RemoteDatastore {
 
                             let task = task.clone();
                             let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
-                                access_token: task.access_token.clone(),
-                            }), task.receiver.clone(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
+                                access_token: task.access_token.clone().unwrap(),
+                            }), task.receiver.clone().unwrap(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
 
                             let data_receiver = data_receiver.clone();
                             let uploaded_data_sender = uploaded_data_sender.clone();

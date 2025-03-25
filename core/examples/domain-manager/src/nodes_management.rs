@@ -80,6 +80,14 @@ impl NodesManagement {
     #[tracing::instrument]
     pub async fn register_node(&mut self, node: Node) {
         let node_id = node.id.clone();
+        let mut exists = false;
+
+        let mut nodes = self.nodes.lock().await;
+        if let Some(_) = nodes.insert(node_id.clone(), node.clone()) {
+            exists = true;
+            tracing::warn!("Node {} already registered", node_id);
+        }
+        drop(nodes);
 
         for capability in node.capabilities.iter() {
             let mut requests = self.requests.lock().await;
@@ -94,12 +102,11 @@ impl NodesManagement {
                 }
             }
             drop(requests);
-            let mut load_balancer = self.load_balancer.lock().await;
-            load_balancer.add_key(capability, &node_id.clone()).await;
+            if !exists {
+                let mut load_balancer = self.load_balancer.lock().await;
+                load_balancer.add_key(capability, &node_id.clone()).await;
+            }
         }
-
-        let mut nodes = self.nodes.lock().await;
-        nodes.insert(node_id.clone(), node);
     }
 
     #[tracing::instrument]
