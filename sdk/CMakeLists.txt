@@ -48,6 +48,9 @@ elseif(EMSCRIPTEN)
     )
 endif()
 
+include(AddProtobuf)
+add_protobuf(Posemesh)
+
 add_platform_library(
     Posemesh
     PUBLIC_HEADER_DIR "${CMAKE_CURRENT_LIST_DIR}/include"
@@ -66,6 +69,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Landmark.hpp"
+        "${POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS}"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
@@ -82,6 +86,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector4.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Landmark.cpp"
+        "${POSEMESH_GENERATED_PROTOBUF_CXX_SOURCES}"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
     ${ADD_PLATFORM_LIBRARY_EXTRA_FLAGS}
 )
@@ -158,6 +163,9 @@ link_base_library(Posemesh)
 
 include(LinkOpenCVLibrary)
 link_opencv_library(Posemesh)
+
+include(LinkProtobuf)
+link_protobuf(Posemesh)
 
 if(EMSCRIPTEN)
     include(ReplaceJavaScriptSymbols)

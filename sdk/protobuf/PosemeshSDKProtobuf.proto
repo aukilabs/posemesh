@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+package PosemeshSDKProtobuf;
+
+message Vector3 {
+    optional float x = 1;
+    optional float y = 2;
+    optional float z = 3;
+}
+
+message Landmark {
+    optional string type = 1;
+    optional string id = 2;
+    optional Vector3 position = 3;
+}
+
+message LandmarkCollection {
+    repeated Landmark landmarks = 1;
+}
