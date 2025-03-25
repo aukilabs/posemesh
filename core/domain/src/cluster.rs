@@ -146,12 +146,19 @@ impl InnerDomainCluster {
 
     async fn monitor_jobs(&mut self) -> Receiver<Job> {
         let (mut tx, rx) = channel::<Job>(3072);
-        let mut stream = self.peer.client.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/jobs/v1".to_string(), 0).await.expect("monitor jobs");
+        let mut stream = self.peer.client.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/v1".to_string(), 0).await.expect("monitor jobs");
 
         spawn(async move {
             loop {
                 let mut size_buffer = [0u8; 4];
-                stream.read_exact(&mut size_buffer).await.expect("can't read size");
+                if let Err(e) = stream.read_exact(&mut size_buffer).await {
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                        tx.close_channel();
+                        break;
+                    }
+                    tracing::error!("Error reading size: {:?}", e);
+                    continue;
+                }
                 let size = u32::from_be_bytes(size_buffer);
                 let mut message_buffer = vec![0u8; size as usize];
                 stream.read_exact(&mut message_buffer).await.expect("can't read message");

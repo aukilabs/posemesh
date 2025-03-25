@@ -1,8 +1,8 @@
 use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::{Duration, SystemTime}};
 
-use domain::protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest};
+use domain::{message::prefix_size_message, protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest}};
 use futures::AsyncWriteExt;
-use libp2p::Stream;
+use libp2p::{swarm::ConnectionId, Stream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{sync::mpsc::{self, Receiver}, task::JoinHandle};
 use tokio::{sync::Mutex, spawn};
@@ -56,7 +56,7 @@ pub struct TaskHandler {
 
 impl TaskHandler {
     pub fn ready(&self) -> bool {
-        self.in_degrees == 0 && !self.task.receiver.is_empty()
+        self.in_degrees == 0 && self.task.receiver.is_some()
     }
     pub async fn failed(&mut self, err_msg: &str) {
         self.task.status = Status::FAILED;
@@ -79,7 +79,7 @@ impl TaskHandler {
         }
     }
     pub async fn resource_recruited(&mut self, node_id: &str) {
-        self.task.receiver = node_id.to_string();
+        self.task.receiver = Some(node_id.to_string());
         self.updated_at = SystemTime::now();
         self.node_request.lock().await.take();
     }
@@ -90,6 +90,7 @@ pub struct TasksManagement {
     pub tasks: Arc<Mutex<HashMap<String, TaskHandler>>>,
     pub task_queue: Arc<Mutex<VecDeque<String>>>,
     pub max_retries: u32,
+    // pub task_monitor: Arc<Mutex<HashMap<ConnectionId, Stream>>>,
 }
 
 pub fn task_id(job_id: &str, task_name: &str) -> String {
@@ -123,6 +124,7 @@ impl TasksManagement {
             tasks: Arc::new(Mutex::new(HashMap::new())),
             task_queue: Arc::new(Mutex::new(VecDeque::new())),
             max_retries: 3,
+            // task_monitor: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -132,22 +134,15 @@ impl TasksManagement {
             task: Task {
                 name: task_req.name.clone(),
                 receiver: task_req.receiver.clone(),
-                endpoint: task_req.capability_filters.clone().unwrap().endpoint.clone(),
-                access_token: "".to_string(), // TODO: generate access token
+                endpoint: task_req.capability_filters.clone().endpoint.clone(),
+                access_token: None,
                 job_id: job_id.to_string(),
                 sender: task_req.sender.clone(),
                 status: Status::WAITING_FOR_RESOURCE,
                 output: None,
             },
-            capability_filters: task_req.capability_filters.clone().get_or_insert(task::CapabilityFilters {
-                endpoint: "/".to_string(),
-                min_cpu: 0,
-                min_gpu: 0,
-            }).clone(),
-            resource_recruitment: task_req.resource_recruitment.clone().get_or_insert(task::ResourceRecruitment {
-                recruitment_policy: ResourceRecruitment::RecruitmentPolicy::FAIL,
-                termination_policy: ResourceRecruitment::TerminationPolicy::KEEP,
-            }).clone(),
+            capability_filters: task_req.capability_filters.clone(),
+            resource_recruitment: task_req.resource_recruitment.clone(),
             job_id: job_id.to_string(),
             timeout: parse_duration_to_millis(&task_req.timeout).map_err(|e| TaskManagementError::OtherError(e))?,
             input: task_req.data.clone(),
@@ -280,30 +275,33 @@ impl TasksManagement {
     #[tracing::instrument]
     pub async fn monitor_tasks(&self, mut stream: Stream) {
         let tasks = self.tasks.clone();
-        spawn(async move {
-            let tasks = tasks.lock().await;
-            for (_, task) in tasks.iter() {
-                let mut err_msg = "".to_string();
-                if task.task.status == Status::FAILED {
-                    if let Some(output) = task.task.output.as_ref() {
-                        if output.type_url == "Error" {
-                            let err = deserialize_from_slice::<task::Error>(output.value.as_ref()).unwrap();
-                            err_msg = err.message;
-                        }
+        let tasks = tasks.lock().await;
+        for (_, task) in tasks.iter() {
+            let mut err_msg = "".to_string();
+            if task.task.status == Status::FAILED {
+                if let Some(output) = task.task.output.as_ref() {
+                    if output.type_url == "Error" {
+                        let err = deserialize_from_slice::<task::Error>(output.value.as_ref()).expect("Failed to deserialize error");
+                        err_msg = err.message;
                     }
                 }
-                let task_handler = task::TaskHandler {
-                    task: task.task.clone(),
-                    dependencies: task.dependencies.clone(),
-                    job_id: task.job_id.clone(),
-                    retries: task.retries,
-                    updated_at: task.updated_at.elapsed().unwrap().as_millis() as u64,
-                    created_at: task.created_at.elapsed().unwrap().as_millis() as u64,
-                    err_msg,
-                };
-                stream.write_all(&serialize_into_vec(&task_handler).unwrap()).await.expect("Failed to send task handler");
             }
-        });
+            let task_handler = task::TaskHandler {
+                task: task.task.clone(),
+                dependencies: task.dependencies.clone(),
+                job_id: task.job_id.clone(),
+                retries: task.retries,
+                updated_at: task.updated_at.elapsed().unwrap().as_millis() as u64,
+                created_at: task.created_at.elapsed().unwrap().as_millis() as u64,
+                err_msg,
+            };
+            stream.write_all(&prefix_size_message(&task_handler)).await.expect("Failed to send task handler");
+        }
+
+        stream.flush().await.expect("Failed to flush stream");
+
+        // let mut task_monitor = self.task_monitor.lock().await;
+        // task_monitor.insert(connection_id, stream);
     }
 
     async fn task_state_machine(&self, key: &str, action: TaskAction) -> Result<(), TaskManagementError> {
@@ -341,12 +339,12 @@ impl TasksManagement {
                             });
                             return Err(TaskManagementError::RetryLimitReached);
                         }
-                        if ready && task.task.receiver.is_empty() {
+                        if ready && task.task.receiver.is_none() {
                             task.task.status = Status::WAITING_FOR_RESOURCE;
                             task.updated_at = SystemTime::now();
                             return Ok(());
                         }
-                        if ready && !task.task.receiver.is_empty(){
+                        if ready && task.task.receiver.is_some() {
                             task.task.status = Status::PENDING;
                             task.updated_at = SystemTime::now();
                             drop(tasks);
@@ -369,13 +367,13 @@ impl TasksManagement {
                 if task.task.status == Status::STARTED || task.task.status == Status::PROCESSING || task.task.status == Status::PENDING {
                     return Err(TaskManagementError::TaskAlreadyExists);
                 }
-                if ready && !task.task.receiver.is_empty() {
+                if ready && task.task.receiver.is_some() {
                     task.updated_at = SystemTime::now();
                     drop(tasks);
                     self.task_queue.lock().await.push_back(key.to_string());
                     return Ok(());
                 }
-                if ready && task.task.receiver.is_empty() && task.task.status != Status::WAITING_FOR_RESOURCE {
+                if ready && task.task.receiver.is_none() && task.task.status != Status::WAITING_FOR_RESOURCE {
                     task.task.status = Status::WAITING_FOR_RESOURCE;
                     task.updated_at = SystemTime::now();
                     return Ok(());
@@ -440,7 +438,7 @@ impl TasksManagement {
         let node = node_mgmt.find_node(capapbilities).await;
         match node {
             Some(node) => {
-                task_handler.task.receiver = node.id.clone();
+                task_handler.task.receiver = Some(node.id.clone());
             }
             None => {
                 if recruit_policy == ResourceRecruitment::RecruitmentPolicy::FAIL {
@@ -453,7 +451,7 @@ impl TasksManagement {
                 let task_queue = self.task_queue.clone();
                 let tasks = self.tasks.clone();
                 let id = task_id(&task_handler.job_id, &task_handler.task.name);
-                task_handler.task.receiver = "".to_string();
+                task_handler.task.receiver = None;
                 task_handler.node_request = Arc::new(Mutex::new(Some(spawn(async move {
                     let rx = node_mgmt.request_node(&endpoint).await;
                     if let Ok(node_id) = rx.await {

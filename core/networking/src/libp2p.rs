@@ -10,7 +10,7 @@ use std::net::{Ipv4Addr, IpAddr};
 #[cfg(not(target_family="wasm"))]
 use libp2p_webrtc as webrtc;
 #[cfg(not(target_family="wasm"))]
-use libp2p::{mdns, tcp};
+use libp2p::{tcp, mdns};
 #[cfg(not(target_family="wasm"))]
 use std::{fs, path::Path};
 
@@ -280,11 +280,9 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), relay_config);
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
-        tracing::info!("Relay server enabled");
     } else {
         behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
         behavior.dcutr = Some(libp2p::dcutr::Behaviour::new(key.public().to_peer_id())).into();
-        tracing::info!("Relay client enabled");
     }
 
     if cfg.enable_kdht {
@@ -572,6 +570,7 @@ impl Libp2p {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
                 // TODO: should be done only once and not for every failed autonat test
 
+                #[cfg(not(target_family="wasm"))]
                 for relay in self.cfg.relay_nodes.iter() {
                     let maddr = Multiaddr::from_str(relay).unwrap();
                     let addr = maddr
@@ -610,17 +609,14 @@ impl Libp2p {
                 ..
             })) =>
             {
-                tracing::info!("Observed address: {observed_addr} from {peer_id}");
+                tracing::info!("Observed address: {observed_addr} from {peer_id}. {:?}", listen_addrs);
                 if self.cfg.enable_relay_server {
                     self.swarm.add_external_address(observed_addr.clone());
                 }
                 
                 self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                     for addr in listen_addrs {
-                        if is_public(addr.clone()) {
-                            tracing::info!("Adding public address to DHT: {}", addr.clone());
-                            dht.add_address(&peer_id, addr.clone());
-                        }
+                        dht.add_address(&peer_id, addr.clone());
                     }
                 });
 
@@ -630,13 +626,9 @@ impl Libp2p {
                     capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") ).collect::<Vec<String>>(),
                 };
 
-                // self.nodes_map.insert(node.id.clone(), node.clone());
                 self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.expect(&format!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
-                
-                // #[cfg(target_family="wasm")]
-                // self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             },
-            e => tracing::info!("Other events: {e:?}"),
+            e => tracing::debug!("Other events: {e:?}"),
         }
     }
 

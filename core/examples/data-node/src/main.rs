@@ -34,13 +34,10 @@ fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking) {
         c.client.subscribe(job_id.clone()).await.expect("Failed to subscribe to job");
         let mut data_ids = Vec::<String>::new();
 
-        println!("Storing data for job: {:?}", claim.task_name);
         loop {
             let mut length_buf = [0u8; 4];
             stream.read_exact(&mut length_buf).await.expect("Failed to read length");
             let length = u32::from_be_bytes(length_buf) as usize;
-
-            println!("Received length: {}", length);
     
             // Read the data in chunks
             let mut buffer = vec![0u8; length];
@@ -95,7 +92,16 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
     let mut buf = Vec::new();
     let _ = stream.read_to_end(&mut buf).await.expect("Failed to read stream");
     let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf).expect("Failed to deserialize consume data input");
-
+    // let query = input.query.clone();
+    let name_regexp = {
+        let query = input.query.clone();
+        if let Some(name_regexp) = query.name_regexp {
+            name_regexp
+        } else {
+            ".*".to_string()
+        }
+    };
+    println!("name_regexp: {}", name_regexp);
     // let listener = listener.clone();
     let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path)).expect("Failed to read domain_data directory");
 
@@ -106,6 +112,11 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         let content_path = format!("{}/content.bin", path.to_str().expect("Failed to convert to str"));
 
         let metadata_buf = std::fs::read(metadata_path).expect("Failed to read metadata");
+        let metadata = deserialize_from_slice::<Metadata>(&metadata_buf).expect("Failed to deserialize metadata");
+        if !regex::Regex::new(&name_regexp).unwrap().is_match(metadata.name.as_str()) {
+            // println!("{} doesn't match {}", metadata.name, name_regexp);
+            continue;
+        }
         let mut length_buf = [0u8; 4];
         let length = metadata_buf.len() as u32;
         length_buf.copy_from_slice(&length.to_be_bytes());
@@ -134,11 +145,11 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
     if !input.keep_alive {
         let task = Task {
             name: header.task_name.clone(),
-            receiver: header.receiver.clone(),
+            receiver: Some(header.receiver.clone()),
             sender: header.sender.clone(),
             endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
             status: Status::DONE,
-            access_token: "".to_string(),
+            access_token: None,
             job_id: header.job_id.clone(),
             output: None,
         };
@@ -165,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let private_key_path = format!("{}/pkey", base_path);
 
     let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
-    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, true, None, Some(private_key_path));
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true, None, Some(private_key_path));
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();

@@ -5,6 +5,7 @@ pub mod message;
 pub mod protobuf {
     include!("protobuf/mod.rs");
 }
+pub mod spatial;
 
 #[cfg(all(feature="c", not(target_family="wasm")))]
 mod c;
