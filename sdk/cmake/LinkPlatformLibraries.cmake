@@ -20,7 +20,7 @@ function(LINK_PLATFORM_LIBRARIES NAME)
         message(FATAL_ERROR "Target '${NAME}' does not exist.")
     endif()
 
-    if(NOT ARG_HIDE_SYMBOLS OR EMSCRIPTEN)
+    if(NOT ARG_HIDE_SYMBOLS OR EMSCRIPTEN OR LINUX)
         if(ARG_PUBLIC)
             target_link_libraries(
                 ${NAME}
