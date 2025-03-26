@@ -1,0 +1,19 @@
+{
+  "name": "posemesh-browser-example",
+  "version": "1.0.0",
+  "description": "Browser example for Posemesh",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "generate-proto": "protoc --ts_out=./protobuf -I=../../../protobuf ../../../protobuf/*.proto"
+  },
+  "dependencies": {
+    "google-protobuf": "^3.21.4"
+  },
+  "devDependencies": {
+    "@types/google-protobuf": "^3.15.12",
+    "vite": "^6.0.0"
+  }
+}
