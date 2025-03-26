@@ -279,7 +279,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   }
 
   code += `\n`;
-  code += `#endif // ${headerGuard}\n`;
+  code += `#endif /* ${headerGuard} */\n`;
 
   includesFirst = Array.from(includesFirst).sort();
   includesSecond = Array.from(includesSecond).sort();
