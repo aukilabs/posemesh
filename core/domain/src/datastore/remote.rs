@@ -226,11 +226,14 @@ impl Datastore for RemoteDatastore {
                             let domain_id_clone = domain_id.clone();
                             peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                             
-                            let res = handshake_then_content(peer, &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), &data, 5000).await;
+                            let res = handshake_then_content(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), &data, 5000).await;
                             if let Err(e) = res {
                                 tracing::error!("Failed to send handshake: {:?}", e);
                                 tx.send(false).expect("Failed to send completion signal");
                                 download_task.cancel();
+                                let mut task = task.clone();
+                                task.status = Status::RETRY;
+                                peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                                 return;
                             }
                             let upload_stream = res.unwrap();
@@ -328,7 +331,18 @@ impl Datastore for RemoteDatastore {
                             }
 
                             let task = task.clone();
-                            let upload_stream = handshake(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), 5000).await.expect("Failed to send handshake");
+                            let upload_stream = handshake(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), 5000).await;
+                            if let Err(e) = upload_stream {
+                                tracing::error!("Failed to send handshake: {:?}", e);
+                                tx.send(false).expect("Failed to send completion signal");
+                                upload_task_handler.cancel();
+
+                                let mut task = task.clone();
+                                task.status = Status::RETRY;
+                                peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
+                                return;
+                            }
+                            let upload_stream = upload_stream.unwrap();
                             let data_receiver = data_receiver.clone();
                             let uploaded_data_sender = uploaded_data_sender.clone();
                             let mut peer = peer.clone();

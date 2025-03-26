@@ -243,7 +243,8 @@ impl TasksManagement {
         match tasks.get_mut(&key) {
             Some(task_handler) => {
                 let status = task.status;
-                task_handler.task.output = task.output.clone();
+                task_handler.task = task.clone();
+                task_handler.updated_at = SystemTime::now();
                 println!("Task {} updated to status: {:?}", key, status);
                 drop(tasks);
                 match status {
@@ -256,12 +257,7 @@ impl TasksManagement {
                     Status::DONE => {
                         let _ = self.task_state_machine(&key, TaskAction::Done {node_mgmt}).await;
                     }
-                    _ => {
-                        let mut tasks = self.tasks.lock().await;
-                        let task = tasks.get_mut(&key).unwrap();
-                        task.task.status = status;
-                        task.updated_at = SystemTime::now();
-                    }
+                    _ => {}
                 }
             }
             None => {
@@ -397,7 +393,7 @@ impl TasksManagement {
                 return Ok(());
             }
             TaskAction::Done {mut node_mgmt} => {
-                if task.task.status != Status::PROCESSING && task.task.status != Status::STARTED {
+                if task.task.status != Status::PROCESSING && task.task.status != Status::STARTED && task.task.status != Status::DONE {
                     return Err(TaskManagementError::TaskAlreadyExists);
                 }
                 task.task.status = Status::DONE;
@@ -425,9 +421,6 @@ impl TasksManagement {
                 return Ok(());
             }
             TaskAction::Fail => {
-                if task.task.status == Status::FAILED {
-                    return Err(TaskManagementError::TaskAlreadyExists);
-                }
                 task.task.status = Status::FAILED;
                 task.updated_at = SystemTime::now();
                 for (_, handler) in tasks.iter_mut() {

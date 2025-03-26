@@ -46,15 +46,18 @@ pub async fn handshake_then_content<M: MessageWrite>(peer: Client, access_token:
 
 pub async fn handshake_then_vec(peer: Client, access_token: &str, receiver: &str, endpoint: &str, vec: Vec<u8>, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
     let mut upload_stream = handshake(peer, access_token, receiver, endpoint, timeout).await?;
+    tracing::debug!("Sending vec");
     upload_stream.write_all(&vec).await?;
+    tracing::debug!("Flushing");
     upload_stream.flush().await?;
     Ok(upload_stream)
 }
 
 pub async fn handshake(mut peer: Client, access_token: &str, receiver: &str, endpoint: &str, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+    tracing::debug!("Sending handshake");
     let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
         access_token: access_token.to_string(),
     }), receiver.to_string(), endpoint.to_string(), timeout).await?;
-
+    tracing::debug!("Handshake sent");
     Ok(upload_stream)
 }
