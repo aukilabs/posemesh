@@ -236,9 +236,9 @@ impl Datastore for RemoteDatastore {
                                 peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                                 return;
                             }
-                            let upload_stream = res.unwrap();
+                            let mut upload_stream = res.unwrap();
                             upload_stream.close().await;
-                            
+
                             let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
                                 RemoteDatastore::read_from_stream(domain_id_clone, reader, data_sender).await;
