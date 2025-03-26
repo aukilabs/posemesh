@@ -101,7 +101,10 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
             ".*".to_string()
         }
     };
-    println!("name_regexp: {}", name_regexp);
+    let ids_filter ={
+        let query = input.query.clone();
+        query.ids.clone()
+    };
     // let listener = listener.clone();
     let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path)).expect("Failed to read domain_data directory");
 
@@ -114,7 +117,9 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         let metadata_buf = std::fs::read(metadata_path).expect("Failed to read metadata");
         let metadata = deserialize_from_slice::<Metadata>(&metadata_buf).expect("Failed to deserialize metadata");
         if !regex::Regex::new(&name_regexp).unwrap().is_match(metadata.name.as_str()) {
-            // println!("{} doesn't match {}", metadata.name, name_regexp);
+            continue;
+        }
+        if ids_filter.len() > 0 && !ids_filter.contains(&metadata.id.unwrap()) {
             continue;
         }
         let mut length_buf = [0u8; 4];
@@ -122,9 +127,7 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         length_buf.copy_from_slice(&length.to_be_bytes());
         stream.write_all(&length_buf).await.expect("Failed to write length");
         stream.write_all(&metadata_buf).await.expect("Failed to write metadata");
-
-        let metadata = deserialize_from_slice::<Metadata>(&metadata_buf).expect("Failed to deserialize metadata");
-
+        
         let mut f = fs::File::open(content_path).expect("Failed to open file");
         let mut written = 0;
         let chunk_size = 2 * 1024;

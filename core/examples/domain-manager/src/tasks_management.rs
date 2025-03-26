@@ -165,6 +165,9 @@ impl TasksManagement {
                 if th.task.status == Status::WAITING_FOR_RESOURCE {
                     return Ok(th.ready());
                 }
+                if th.task.status == Status::DONE {
+                    return Ok(true);
+                }
                 drop(tasks);
                 if let Err(e) = self.task_state_machine(&id, TaskAction::Add).await {
                     return Err(e);
@@ -239,8 +242,9 @@ impl TasksManagement {
         let mut tasks = self.tasks.lock().await;
         match tasks.get_mut(&key) {
             Some(task_handler) => {
-                task_handler.task = task.clone();
                 let status = task.status;
+                task_handler.task.output = task.output.clone();
+                println!("Task {} updated to status: {:?}", key, status);
                 drop(tasks);
                 match status {
                     Status::RETRY => {
@@ -252,7 +256,12 @@ impl TasksManagement {
                     Status::DONE => {
                         let _ = self.task_state_machine(&key, TaskAction::Done {node_mgmt}).await;
                     }
-                    _ => {}
+                    _ => {
+                        let mut tasks = self.tasks.lock().await;
+                        let task = tasks.get_mut(&key).unwrap();
+                        task.task.status = status;
+                        task.updated_at = SystemTime::now();
+                    }
                 }
             }
             None => {
@@ -311,14 +320,13 @@ impl TasksManagement {
         }
         let task = tasks.get_mut(key).unwrap();
         let ready = task.in_degrees == 0;
-        println!("Task {} state machine: {:?}, {:?}", key, action, task.task.status);
         match action {
             TaskAction::Add => {
                 match task.task.status {
                     Status::STARTED | Status::PROCESSING | Status::PENDING => {
                         return Err(TaskManagementError::TaskAlreadyExists);
                     }
-                    Status::WAITING_FOR_RESOURCE => {
+                    Status::WAITING_FOR_RESOURCE | Status::DONE => {
                         return Ok(());
                     }
                     _ => {

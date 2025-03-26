@@ -2720,7 +2720,6 @@ dependencies = [
  "gloo-timers 0.3.0",
  "libp2p",
  "libp2p-stream",
- "libp2p-tls",
  "libp2p-webrtc",
  "libp2p-webrtc-websys",
  "libp2p-websocket",
