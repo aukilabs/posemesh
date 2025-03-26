@@ -28,7 +28,7 @@
                 <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
                 <span id="progressLabel" class="text-gray-700"></span>
             </div>
-            <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Upload</button>
+            <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Refine</button>
         </div>
 
         <!-- Download Section -->
@@ -39,137 +39,17 @@
             <div id="fileMetadata" class="mt-4 text-gray-700"></div>
         </div>
     </div>
-    <!-- Import UploadManager and Set Up Events -->
-    <script type="module">
-        import { UploadManager } from "./main.js";
-        import{decodeJob} from "./task_proto.js";
-
-        const uploadManager = new UploadManager();
-
-        const dropZone = document.getElementById("dropZone");
-        const fileInput = document.getElementById("fileInput");
-        const uploadBtn = document.getElementById("uploadBtn");
-        const finishBtn = document.getElementById("finishBtn");
-        const progressLabel = document.getElementById("progressLabel");
-
-        const downloadBtn = document.getElementById("downloadBtn");
-        const finishDownloadBtn = document.getElementById("finishDownloadBtn");
-        const fileMetadata = document.getElementById("fileMetadata");
-
-        function finishUpload() {
-            fileInput.value = "";
-            uploadBtn.disabled = true;
-            finishBtn.disabled = true;
-            progressLabel.innerText = "Upload complete!";
-        }
-
-        // dropZone.addEventListener("click", () => fileInput.click());
-
-        dropZone.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            dropZone.classList.add("bg-gray-200");
-        });
-
-        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-gray-200"));
-
-        dropZone.addEventListener("drop", (e) => {
-            e.preventDefault();
-            dropZone.classList.remove("bg-gray-200");
-            uploadManager.handleFiles(e.dataTransfer.files);
-        });
-
-        fileInput.addEventListener("change", (e) => uploadManager.handleFiles(e.target.files));
-        uploadBtn.addEventListener("click", () => uploadManager.uploadFiles());
-        finishBtn.addEventListener("click", finishUpload);
-
-        await uploadManager.init(
-            (files) => {
-                uploadBtn.disabled = false;
-                progressLabel.innerText = `${files.length} file(s) selected`;
-            },
-            (message) => {
-                progressLabel.innerText = message;
-            },
-            () => {
-                progressLabel.innerText = "All files uploaded!";
-                uploadBtn.disabled = true;
-                finishBtn.disabled = false;
-            }
-        );
-
-        downloadBtn.addEventListener("click", async () => {
-            const downloading = await uploadManager.downloadFiles();
-            while(true) {
-                const file = await downloading.next();
-                if (!file) break;
-                const metadata = file.metadata
-            
-                const p = document.createElement("p");
-                p.textContent = `${metadata.name} ${metadata.size} bytes`;
-                
-                fileMetadata.appendChild(p);
-                finishDownloadBtn.disabled = false;
-            }
-        });
-        
-        finishDownloadBtn.addEventListener("click", () => {
-            fileMetadata.innerText = "Download complete!";
-            finishDownloadBtn.disabled = true;
-        });
-        console.log(uploadManager.domainCluster.monitor)
-
-        const fn = jobBytes => {
-            console.log("received")
-            const job = decodeJob(new Uint8Array(jobBytes));
-            updateJobTable(job);
-        }
-
-        uploadManager.domainCluster.monitor(fn);
-
-        function updateJobTable(job) {
-            const table = document.getElementById("jobsTable").getElementsByTagName("tbody")[0];
-            let row = document.getElementById(`job-${job.id}`);
-
-            if (!row) {
-                // Create a new row if job doesn't exist
-                row = table.insertRow();
-                row.id = `job-${job.id}`;
-                row.insertCell(0).textContent = job.id;
-                row.insertCell(1).textContent = job.name;
-                row.insertCell(2).appendChild(createTaskTable(job.tasks));
-            } else {
-                // Update existing row
-                row.cells[2].replaceChild(createTaskTable(job.tasks), row.cells[2].firstChild);
-            }
-        }
-
-        // Create nested task table
-        function createTaskTable(tasks) {
-            const taskTable = document.createElement("table");
-            taskTable.border = "1";
-
-            // Add header
-            const thead = taskTable.createTHead();
-            const headerRow = thead.insertRow();
-            ["Name", "Status", "Sender", "Receiver"].forEach((title) => {
-                const th = document.createElement("th");
-                th.textContent = title;
-                headerRow.appendChild(th);
-            });
-
-            // Add task rows
-            const tbody = taskTable.createTBody();
-            tasks.forEach((task) => {
-                const row = tbody.insertRow();
-                row.insertCell(0).textContent = task.name;
-                row.insertCell(1).textContent = task.status;
-                row.insertCell(2).textContent = task.sender;
-                row.insertCell(3).textContent = task.receiver;
-            });
-
-            return taskTable;
-        }
-    </script>
-
+    <div id="uploads-list"></div>
+    <table id="jobsTable" class="mt-4">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Tasks</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <script type="module" src="/main.js"></script>
 </body>
 </html>
