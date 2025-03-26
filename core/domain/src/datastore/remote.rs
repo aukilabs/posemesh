@@ -237,6 +237,7 @@ impl Datastore for RemoteDatastore {
                                 return;
                             }
                             let upload_stream = res.unwrap();
+                            upload_stream.close().await;
                             
                             let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
