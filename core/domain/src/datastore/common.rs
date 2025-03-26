@@ -1,9 +1,11 @@
 
 use std::{collections::HashSet, error::Error, sync::Arc};
 
-use crate::protobuf::domain_data::{self, Data};
+use crate::protobuf::{domain_data::{self, Data}, task::{Status, Task}};
 use async_trait::async_trait;
 use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
+use networking::client::Client;
+use quick_protobuf::{serialize_into_slice, serialize_into_vec};
 use uuid::Uuid;
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -73,9 +75,7 @@ impl ReliableDataProducer {
                         let completed = *total as usize - pendings.len() + 1;
                         pendings.remove(&id);
                         let progress = completed * 100 / *total as usize;
-                        tracing::info!("back");
                         progress_sender.send(progress as i32).await.expect("can't send progress");
-                        tracing::info!("progress: {}", progress);
                     }
                     Err(e) => {
                         eprintln!("{}", e);

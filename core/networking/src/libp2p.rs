@@ -299,11 +299,11 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         let store = libp2p::kad::store::MemoryStore::new(key.public().to_peer_id());
         let mut kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);
 
-        #[cfg(not(target_family="wasm"))]
-        kdht.set_mode(Some(kad::Mode::Server));
-
-        #[cfg(target_family="wasm")]
-        kdht.set_mode(Some(kad::Mode::Client)); // TODO: do it for all clients instead of just wasm
+        if cfg.enable_relay_server {
+            kdht.set_mode(Some(kad::Mode::Server));
+        } else {
+            kdht.set_mode(Some(kad::Mode::Client));
+        }
         
         let bootstrap_nodes = cfg.bootstrap_nodes.clone();
         for bootstrap in bootstrap_nodes {
@@ -568,6 +568,9 @@ impl Libp2p {
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
                 self.swarm.add_external_address(tested_addr.clone());
+                self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                    dht.set_mode(Some(kad::Mode::Server));
+                });
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
@@ -586,6 +589,9 @@ impl Libp2p {
                     match self.swarm.listen_on(addr.clone()) {
                         Ok(_) => {
                             tracing::info!("Listening on relay address: {addr}");
+                            self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                                dht.set_mode(Some(kad::Mode::Server));
+                            });
                         },
                         Err(e) => {
                             tracing::error!("Failed to listen on relay address: {addr}. Error: {e}");
