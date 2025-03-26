@@ -98,7 +98,35 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         let funcName = `${nameCxx}::${getterNameCxx}`;
-        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+        if (util.isEnumType(propertyJson.type)) {
+          funcName = getterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+          if (typeof propTypeEnumJson === 'undefined') {
+            throw new Error(`Unknown enum: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.getterConst) {
+              selfArg = `const ${nameCxx}& self`;
+            } else {
+              selfArg = `${nameCxx}& self`;
+            }
+          }
+          const isFlagType = propTypeEnumJson.type === 'flag';
+          unnamedNamespace += `${isFlagType ? 'std::uint32_t' : 'std::int32_t'} ${funcName}(${selfArg})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    return static_cast<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>(${nameCxx}::${getterNameCxx}());\n`;
+          } else {
+            unnamedNamespace += `    return static_cast<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>(self.${getterNameCxx}());\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cstdint>');
+        } else if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           funcName = getterNameCxx;
           const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
           const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
@@ -149,7 +177,35 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
         let funcName = `${nameCxx}::${setterNameCxx}`;
-        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+        if (util.isEnumType(propertyJson.type)) {
+          funcName = setterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+          if (typeof propTypeEnumJson === 'undefined') {
+            throw new Error(`Unknown enum: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.setterConst) {
+              selfArg = `const ${nameCxx}& self, `;
+            } else {
+              selfArg = `${nameCxx}& self, `;
+            }
+          }
+          const isFlagType = propTypeEnumJson.type === 'flag';
+          unnamedNamespace += `void ${setterNameCxx}(${selfArg}${isFlagType ? 'std::uint32_t' : 'std::int32_t'} ${setterArgName})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(static_cast<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}>(${setterArgName}));\n`;
+          } else {
+            unnamedNamespace += `    self.${setterNameCxx}(static_cast<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}>(${setterArgName}));\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cstdint>');
+        } else if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           funcName = setterNameCxx;
           const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
           const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];

@@ -509,6 +509,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `        return static_cast<uint8_t>(${util.getTypeImplicitDefaultValue(propTypeRaw)});\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           getter += `        return nullptr;\n`;
+        } else if (util.isEnumType(propTypeRaw)) {
+          getter += `        return static_cast<${getterType}>(0);\n`;
         } else if (util.isClassOfAnyType(propTypeRaw)) {
           getter += `        return nullptr;\n`;
         } else {
