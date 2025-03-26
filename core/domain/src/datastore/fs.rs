@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256 as Sha256Hasher};
 use tokio::{spawn, sync::mpsc};
 use uuid::Uuid;
 
-struct FsDatastore {
-    pub metadata_store: MetadataStore,
+pub struct FsDatastore {
+    metadata_store: MetadataStore,
 }
 
 impl FsDatastore {

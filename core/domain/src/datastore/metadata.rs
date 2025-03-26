@@ -40,7 +40,7 @@ impl ReliableDataProducer for LocalProducer {
     }
 }
 
-pub(crate) struct MetadataStore {
+pub struct MetadataStore {
     client: Arc<Mutex<Client>>,
     path: String,
 }
