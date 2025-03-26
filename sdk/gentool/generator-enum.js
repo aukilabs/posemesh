@@ -200,7 +200,23 @@ function generateEnumObjC(enums, enumName, enumJson) {
     headerCode += `#else\n`;
     for (const aliasJson of aliases) {
       const alias = util.getLangEnumName(aliasJson, util.ObjC);
-      headerCode += `@compatibility_alias ${alias} ${name};\n`;
+      headerCode += `typedef NS_ENUM(${isFlagType ? 'NSUInteger' : 'NSInteger'}, ${alias}) {`;
+      let firstAliasConstant = true;
+      for (const constantJson of constants) {
+        if (firstAliasConstant) {
+          firstAliasConstant = false;
+        } else {
+          headerCode += `,`;
+        }
+        headerCode += `\n`;
+        const constantName = util.getLangEnumConstantName(constantJson, util.ObjC);
+        headerCode += `    ${alias}${constantName} = ${name}${constantName}`;
+      }
+      if (constants.length > 0) {
+        headerCode += `\n};\n`;
+      } else {
+        headerCode += ` _ };\n`;
+      }
     }
     headerCode += `#endif\n`;
   }
