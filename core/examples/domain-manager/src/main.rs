@@ -7,7 +7,7 @@ use tasks_management::{task_id, TaskHandler, TasksManagement};
 use tokio::{self, select, spawn, time::sleep};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
-use domain::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
+use domain::{message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
 use hex;
 use serde::{Serialize, Deserialize};
@@ -51,17 +51,6 @@ fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, rece
     Ok(token)
 }
 
-async fn handshake_then_content(mut peer: Client, access_token: &str, receiver: &str, endpoint: &str, content: Vec<u8>, timeout: u32) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
-        access_token: access_token.to_string(),
-    }), receiver.to_string(), endpoint.to_string(), timeout).await?;
-
-    // check if handshake succeed
-
-    upload_stream.write_all(&content).await?;
-    upload_stream.flush().await?;
-    Ok(())
-}
 
 #[derive(Clone, Debug)]
 struct DomainManager {
@@ -261,7 +250,7 @@ impl DomainManager {
         let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, "secret").expect("failed to encode jwt");
         t.status = Status::PENDING;
         if t.sender == peer.id {
-            if let Err(e) = handshake_then_content(peer.client, &access_token, &receiver, &t.endpoint, serialized_input, th.timeout).await {
+            if let Err(e) = handshake_then_vec(peer.client, &access_token, &receiver, &t.endpoint, serialized_input, th.timeout).await {
                 tracing::error!("Error triggering task: {:?}", e);
                 t.status = Status::FAILED;
                 t.output = Some(task::Any {

@@ -10,7 +10,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::prefix_size_message, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
 use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
 use super::common::{ReliableDataProducer, Writer};
@@ -182,7 +182,6 @@ impl Datastore for RemoteDatastore {
             query,
             keep_alive,
         };
-        let query_data = serialize_into_vec(&data).expect("cant serialize data length");
         let job = &task::JobRequest {
             name: "stream download domain data".to_string(),
             tasks: vec![
@@ -226,18 +225,15 @@ impl Datastore for RemoteDatastore {
                             task.status = Status::STARTED;
                             let domain_id_clone = domain_id.clone();
                             peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
-                            let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
-                                access_token: task.access_token.clone().unwrap(),
-                            }).unwrap();
-                            let mut length_buf = [0u8; 4];
-                            let length = m_buf.len() as u32;
-                            length_buf.copy_from_slice(&length.to_be_bytes());
                             
-                            let mut upload_stream = peer.send(length_buf.to_vec(), task.receiver.clone().unwrap(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
-                            upload_stream.write_all(&m_buf).await.expect("cant write handshake");
-                            upload_stream.write_all(&query_data).await.expect("cant write data length");
-                            upload_stream.flush().await.expect("cant flush data");
-                            upload_stream.close().await.expect("cant close data");
+                            let res = handshake_then_content(peer, &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), &data, 5000).await;
+                            if let Err(e) = res {
+                                tracing::error!("Failed to send handshake: {:?}", e);
+                                tx.send(false).expect("Failed to send completion signal");
+                                download_task.cancel();
+                                return;
+                            }
+                            let upload_stream = res.unwrap();
                             
                             let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
@@ -332,10 +328,7 @@ impl Datastore for RemoteDatastore {
                             }
 
                             let task = task.clone();
-                            let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
-                                access_token: task.access_token.clone().unwrap(),
-                            }), task.receiver.clone().unwrap(), task.endpoint.clone(), 1000).await.expect("cant send handshake");
-
+                            let upload_stream = handshake(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), 5000).await.expect("Failed to send handshake");
                             let data_receiver = data_receiver.clone();
                             let uploaded_data_sender = uploaded_data_sender.clone();
                             let mut peer = peer.clone();
