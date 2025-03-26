@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateCppSource(interfaces, interfaceName, interfaceJson) {
+function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const static = util.getClassStatic(interfaceJson);
@@ -217,7 +217,7 @@ function generateCppSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateJsSource(interfaces, interfaceName, interfaceJson) {
+function generateJsSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const aliases = util.getLangAliases(interfaceJson, util.JS);
 
@@ -282,7 +282,7 @@ function generateJsSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateTransformTsDefScript(interfaces, interfaceName, interfaceJson) {
+function generateTransformTsDefScript(enums, interfaces, interfaceName, interfaceJson) {
   // TODO: TEMP: this needs to be fully reworked !!!
   const name = util.getLangClassName(interfaceJson, util.JS);
   const fixFuncName = `fix${name}`;
@@ -347,14 +347,14 @@ function generateTransformTsDefScript(interfaces, interfaceName, interfaceJson) 
   return code;
 }
 
-function generateInterfaceJS(interfaces, interfaceName, interfaceJson) {
+function generateInterfaceJS(enums, interfaces, interfaceName, interfaceJson) {
   const cppSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', 'src', `${interfaceName}.cpp`);
   const jsSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `${interfaceName}.js`);
   const transformTsDefScriptFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `transform-typescript-definition-${interfaceName}.js`);
 
-  let cppSourceCode = generateCppSource(interfaces, interfaceName, interfaceJson);
-  let jsSourceCode = generateJsSource(interfaces, interfaceName, interfaceJson);
-  let transformTsDefScriptCode = generateTransformTsDefScript(interfaces, interfaceName, interfaceJson);
+  let cppSourceCode = generateCppSource(enums, interfaces, interfaceName, interfaceJson);
+  let jsSourceCode = generateJsSource(enums, interfaces, interfaceName, interfaceJson);
+  let transformTsDefScriptCode = generateTransformTsDefScript(enums, interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(cppSourceFilePath, cppSourceCode);
   util.writeFileContentIfDifferent(jsSourceFilePath, jsSourceCode);

@@ -81,6 +81,15 @@
       "name": "My_Vector2_Ptr_Mix_Static",
       "type": "CLASS_PTR_MIX:Vector2",
       "static": true
+    },
+    {
+      "name": "My_Test_Enum_Member",
+      "type": "ENUM:TestEnum"
+    },
+    {
+      "name": "My_Test_Enum_Static",
+      "type": "ENUM:TestEnum",
+      "static": true
     }
   ]
 }

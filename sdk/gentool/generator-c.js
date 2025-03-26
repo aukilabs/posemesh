@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateHeader(interfaces, interfaceName, interfaceJson) {
+function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
   const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
@@ -127,7 +127,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.C);
-      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.C);
+      const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -167,7 +167,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.C);
-      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.C);
+      const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.C);
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -197,6 +197,8 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw) || propTypeRaw === 'boolean') {
         includesFirst.add('#include <stdint.h>');
+      } else if (util.isEnumType(propTypeRaw)) {
+        includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       }
@@ -301,7 +303,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateSource(interfaces, interfaceName, interfaceJson) {
+function generateSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
   const nameRefWithoutTSuffix = `${nameWithoutTSuffix}_ref`;
@@ -464,7 +466,7 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.C);
-      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.C);
+      const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.C);
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -483,6 +485,8 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
           getter += `    return getter_result;\n`;
         } else if (propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}().c_str();\n`;
+        } else if (util.isEnumType(propTypeRaw)) {
+          getter += `    return static_cast<${getterType}>(psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
         } else if (util.isClassType(propTypeRaw)) {
           getter += `    const auto getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
           getter += `    return ${getterType.substring(0, getterType.length - 3)}_duplicate(&getter_result);\n`;
@@ -523,6 +527,8 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
           getter += `    return getter_result;\n`;
         } else if (propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}().c_str();\n`;
+        } else if (util.isEnumType(propTypeRaw)) {
+          getter += `    return static_cast<${getterType}>(${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}());\n`;
         } else if (util.isClassType(propTypeRaw)) {
           getter += `    const auto getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
           getter += `    return ${getterType.substring(0, getterType.length - 3)}_duplicate(&getter_result);\n`;
@@ -577,7 +583,8 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.C);
-      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.C);
+      const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.C);
+      const setterTypeCxx = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.CXX);
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
@@ -591,6 +598,8 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
+        } else if (util.isEnumType(propTypeRaw)) {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<psm::${setterTypeCxx}>(${setterArgName}));\n`;
         } else if (util.isClassType(propTypeRaw)) {
           setter += `    if (!${setterArgName}) {\n`;
           setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
@@ -643,6 +652,8 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<bool>(${setterArgName}));\n`;
         } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? std::string { ${setterArgName} } : std::string {});\n`;
+        } else if (util.isEnumType(propTypeRaw)) {
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<psm::${setterTypeCxx}>(${setterArgName}));\n`;
         } else if (util.isClassType(propTypeRaw)) {
           setter += `    if (!${setterArgName}) {\n`;
           setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
@@ -819,12 +830,12 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceC(interfaces, interfaceName, interfaceJson) {
+function generateInterfaceC(enums, interfaces, interfaceName, interfaceJson) {
   const headerFilePath = path.resolve(__dirname, '..', 'include', 'Posemesh', 'C', `${interfaceName}.h`);
   const sourceFilePath = path.resolve(__dirname, '..', 'src', 'C', `${interfaceName}.cpp`);
 
-  let headerCode = generateHeader(interfaces, interfaceName, interfaceJson);
-  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
+  let headerCode = generateHeader(enums, interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(enums, interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(headerFilePath, headerCode);
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);

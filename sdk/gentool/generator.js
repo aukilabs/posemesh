@@ -79,12 +79,12 @@ function validateInterface(interfaceName, interfaceJson) {
   validateJson(interfaceName, interfaceJson, 'interface');
 }
 
-function generateInterface(interfaces, interfaceName, interfaceJson) {
-  generateInterfaceC(interfaces, interfaceName, interfaceJson);
-  generateInterfaceCXX(interfaces, interfaceName, interfaceJson);
-  generateInterfaceJS(interfaces, interfaceName, interfaceJson);
-  generateInterfaceObjC(interfaces, interfaceName, interfaceJson);
-  generateInterfaceSwift(interfaces, interfaceName, interfaceJson);
+function generateInterface(enums, interfaces, interfaceName, interfaceJson) {
+  generateInterfaceC(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceCXX(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceJS(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceObjC(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceSwift(enums, interfaces, interfaceName, interfaceJson);
 }
 
 function generate() {
@@ -222,7 +222,7 @@ function generate() {
   for (const interfaceName in interfaces) {
     const interfaceJson = interfaces[interfaceName];
     try {
-      generateInterface(interfaces, interfaceName, interfaceJson);
+      generateInterface(enums, interfaces, interfaceName, interfaceJson);
       console.log(`Generated '${interfaceName}.json' interface code.`);
     } catch (error) {
       console.error(`Failed to generate '${interfaceName}.json' interface code:\n`, error);

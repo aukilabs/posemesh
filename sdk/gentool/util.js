@@ -389,6 +389,19 @@ function getStringMixType(language, typeFor = TypeFor.Any) {
   return getStringType(language);
 }
 
+function getEnumType(enums, language, type) {
+  const enumPfx = 'ENUM:';
+  if (!type.startsWith(enumPfx)) {
+    throw new Error(`Missing '${enumPfx}' enum prefix.`);
+  }
+  const name = type.substring(enumPfx.length);
+  const enumJson = enums[name];
+  if (typeof enumJson === 'undefined') {
+    throw new Error(`Unknown enum name: ${name}`);
+  }
+  return getLangEnumName(enumJson, language);
+}
+
 function getClassType(interfaces, language, type, classPfx = 'CLASS:') {
   if (!type.startsWith(classPfx)) {
     throw new Error(`Missing '${classPfx}' class prefix.`);
@@ -523,7 +536,7 @@ function getClassPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
   return type;
 }
 
-function getPropertyType(interfaces, propertyJson, language) {
+function getPropertyType(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -536,6 +549,9 @@ function getPropertyType(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -573,7 +589,7 @@ function getPropertyType(interfaces, propertyJson, language) {
   }
 }
 
-function getPropertyTypeForGetter(interfaces, propertyJson, language) {
+function getPropertyTypeForGetter(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -586,6 +602,9 @@ function getPropertyTypeForGetter(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -623,7 +642,7 @@ function getPropertyTypeForGetter(interfaces, propertyJson, language) {
   }
 }
 
-function getPropertyTypeForSetter(interfaces, propertyJson, language) {
+function getPropertyTypeForSetter(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -636,6 +655,9 @@ function getPropertyTypeForSetter(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -713,6 +735,10 @@ function isIntType(type) {
   return type.startsWith('int') || type.startsWith('uint');
 }
 
+function isEnumType(type) {
+  return type.startsWith('ENUM:');
+}
+
 function isClassType(type) {
   return type.startsWith('CLASS:');
 }
@@ -746,6 +772,9 @@ function isPrimitiveType(type) {
   if (isIntType(type)) {
     return true;
   }
+  if (isEnumType(type)) {
+    return true;
+  }
   if (isClassOfAnyType(type)) {
     return false;
   }
@@ -766,6 +795,9 @@ function isPrimitiveType(type) {
 function getTypeImplicitDefaultValue(type) {
   if (isIntType(type)) {
     return '0';
+  }
+  if (isEnumType(type)) {
+    return '';
   }
   if (isClassOfAnyType(type)) {
     return '';
@@ -788,6 +820,9 @@ function getTypeImplicitDefaultValue(type) {
 
 function getTypeMembVarCopyOp(type, membVar) {
   if (isIntType(type)) {
+    return membVar;
+  }
+  if (isEnumType(type)) {
     return membVar;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
@@ -813,6 +848,9 @@ function getTypeMembVarMoveOp(type, membVar) {
   if (isIntType(type)) {
     return membVar;
   }
+  if (isEnumType(type)) {
+    return membVar;
+  }
   if (isClassOfAnyType(type)) {
     return `std::move(${membVar})`;
   }
@@ -832,6 +870,9 @@ function getTypeMembVarMoveOp(type, membVar) {
 
 function getTypePropEqOp(type, clsParam, prpParam) {
   if (isIntType(type)) {
+    return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+  if (isEnumType(type)) {
     return `${prpParam} == ${clsParam}.${prpParam}`;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
@@ -856,6 +897,9 @@ function getTypePropEqOp(type, clsParam, prpParam) {
 function getTypePropHasher(type, param) {
   if (isIntType(type)) {
     return `hash<${type}_t> {}(${param})`;
+  }
+  if (isEnumType(type)) {
+    return `hash<decltype(${param})> {}(${param})`;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
     return `hash<decltype(${param})> {}(${param})`;
@@ -2456,6 +2500,7 @@ module.exports = {
   TypeFor,
   getStringRefType,
   getStringMixType,
+  getEnumType,
   getClassType,
   getClassRefType,
   getClassMixType,
@@ -2475,6 +2520,7 @@ module.exports = {
   getPropertyDefaultValue,
   getPropertyStatic,
   isIntType,
+  isEnumType,
   isClassType,
   isClassRefType,
   isClassMixType,
