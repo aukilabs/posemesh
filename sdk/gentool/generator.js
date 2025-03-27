@@ -9,9 +9,9 @@ const shared = require('./shared');
 const util = require('./util');
 
 const manualUmbrellaAndBridgingHeaderNames = new Set([
-  'Config',
+  //'Config',
   'PoseEstimation',
-  'Posemesh',
+  //'Posemesh',
   'QRDetection'
 ]);
 
