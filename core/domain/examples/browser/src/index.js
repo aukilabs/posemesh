@@ -57,7 +57,7 @@ export class UploadManager {
         try {
             console.log("initializing domain cluster");
             await init();
-            const domainCluster = new DomainCluster("/ip4/54.67.15.233/udp/18804/webrtc-direct/certhash/uEiCIkcbb9ySZ4L_vLoIcUIiFyCFnXDalI5adVnT9ZqapwA/p2p/12D3KooWE7RYJVU3wCcXhzSSGdwm1fdiTiGsV9EJPnen47sSZMiL", "domain-browser-example", null, null);
+            const domainCluster = new DomainCluster("/ip4/54.67.15.233/udp/18804/webrtc-direct/certhash/uEiBOFRjB-yCk_G82Wkp_R1GUoKSbbOEJVkrKF77giq4_IA/p2p/12D3KooWE7RYJVU3wCcXhzSSGdwm1fdiTiGsV9EJPnen47sSZMiL", "domain-browser-example", null, null);
             // const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiA2J2rDp90OcHCmtUn6PdGKWwxqkFpNeDx5ZT5Lla6AWA/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
 
             this.domainCluster = domainCluster;
@@ -88,6 +88,7 @@ export class UploadManager {
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
         await reconstruction_job(this.domainCluster, scans_array, (taskBytes) => {
+            console.log("reconstruction job bytes", taskBytes);
             const task = proto.task.Task.deserializeBinary(taskBytes); 
             console.log("reconstruction job", task);
         });
@@ -179,7 +180,7 @@ export class UploadManager {
             console.log("Query created");
 
             const downloader = await this.datastore.consume("", query);
-            console.log("Downloader initialized", downloader);
+            console.log("Downloader initialized");
             return downloader;
         } else {
             console.error("Haven't initialized");
@@ -200,7 +201,6 @@ async function initializeApp() {
     const finishBtn = document.getElementById("finishBtn");
     const progressLabel = document.getElementById("progressLabel");
     const downloadBtn = document.getElementById("downloadBtn");
-    const finishDownloadBtn = document.getElementById("finishDownloadBtn");
     const fileMetadata = document.getElementById("fileMetadata");
 
     // Set up drag and drop events
@@ -219,9 +219,12 @@ async function initializeApp() {
         uploadManager.handleFiles(e.dataTransfer.files);
     });
 
-    // Add click handler to trigger file input
-    dropZone.addEventListener("click", () => {
-        fileInput.click();
+    // Add click event listener to dropZone
+    dropZone.addEventListener("click", (e) => {
+        // Only trigger if clicking directly on dropZone, not on fileInput
+        if (e.target === dropZone) {
+            fileInput.click();
+        }
     });
 
     // Set up other event listeners
@@ -266,27 +269,22 @@ async function initializeApp() {
         
             const p = document.createElement("p");
             p.textContent = `${metadata.name} ${metadata.size} bytes`;
+            console.log("file", metadata);
             
             fileMetadata.appendChild(p);
-            finishDownloadBtn.disabled = false;
         }
     });
-    
-    finishDownloadBtn.addEventListener("click", () => {
-        fileMetadata.innerText = "Download complete!";
-        finishDownloadBtn.disabled = true;
-    });
 
-    // Set up job monitoring
-    const fn = jobBytes => {
-        console.log("received")
-        const job = proto.task.Job.deserialize(jobBytes);
-        updateJobTable(job);
-    }
+    // // Set up job monitoring
+    // const fn = jobBytes => {
+    //     console.log("received")
+    //     const job = proto.task.Job.deserialize(jobBytes);
+    //     updateJobTable(job);
+    // }
 
-    setInterval(() => {
-        uploadManager.domainCluster.monitor(fn);
-    }, 5000);
+    // setInterval(() => {
+    //     uploadManager.domainCluster.monitor(fn);
+    // }, 5000);
 }
 
 // Job table update functions

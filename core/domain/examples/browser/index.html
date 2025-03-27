@@ -3,53 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Libp2p File Upload</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Domain Browser Example</title>
+    <link href="/src/index.css" rel="stylesheet">
 </head>
-<body class="flex flex-col items-center justify-center h-screen bg-gray-100">
-    <table id="jobsTable">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Tasks</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-    <div class="w-3/4 h-3/4 grid grid-cols-2 gap-4 bg-white shadow-lg rounded-lg p-6">
-        <div class="flex flex-col items-center">
-            <h2 class="text-lg font-semibold mb-4">Upload Files</h2>
-            <div id="dropZone" class="w-full h-40 flex items-center justify-center border-2 border-dashed border-gray-400 bg-gray-50 rounded-lg cursor-pointer relative">
-                <p class="text-gray-600">Drag & drop files here or click to select</p>
-                <input type="file" id="fileInput" multiple class="absolute inset-0 opacity-0 pointer-events-auto z-10">
-            </div>
-            <div class="mt-4 flex items-center space-x-4">
-                <button id="uploadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Upload</button>
-                <span id="progressLabel" class="text-gray-700"></span>
-            </div>
-            <button id="finishBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Refine</button>
+<body>
+    <div class="container mx-auto p-4">
+        <h1 class="text-2xl font-bold mb-4">Domain Browser Example</h1>
+        <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50">
+            <input type="file" id="fileInput" class="hidden" multiple>
+            <p class="text-gray-600">Drag and drop files here or click to select files</p>
         </div>
-
-        <!-- Download Section -->
-        <div class="flex flex-col items-center">
-            <h2 class="text-lg font-semibold mb-4">Download Files</h2>
-            <button id="downloadBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50">Download</button>
-            <button id="finishDownloadBtn" class="mt-4 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled>Finish Download</button>
-            <div id="fileMetadata" class="mt-4 text-gray-700"></div>
+        <div id="fileList" class="mt-4"></div>
+        <div class="mt-4 space-x-4">
+            <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50" disabled>Upload Files</button>
+            <button id="finishBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50" disabled>Finish Upload</button>
+            <button id="downloadBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Download Files</button>
+        </div>
+        <div id="progressLabel" class="mt-4 text-gray-600"></div>
+        <div id="uploads-list" class="mt-4"></div>
+        <div id="fileMetadata" class="mt-4"></div>
+        <div id="jobsTable" class="mt-4">
+            <table class="min-w-full border-collapse border border-gray-300">
+                <thead>
+                    <tr>
+                        <th class="border border-gray-300 px-4 py-2">Job ID</th>
+                        <th class="border border-gray-300 px-4 py-2">Name</th>
+                        <th class="border border-gray-300 px-4 py-2">Tasks</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
-    <div id="uploads-list"></div>
-    <table id="jobsTable" class="mt-4">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Tasks</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="/src/index.js"></script>
 </body>
 </html>

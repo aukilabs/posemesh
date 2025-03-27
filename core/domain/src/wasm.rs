@@ -279,6 +279,7 @@ pub fn reconstruction_job(cluster: &DomainCluster, scans: Vec<String>, callback:
             while let Some(task_update) = r.next().await {
                 match task_update.result {
                     TaskUpdateResult::Ok(task) => {
+                        tracing::debug!("Task {}-{} update status {:?}", task.job_id, task.name, task.status);
                         let task_update_bytes = serialize_into_vec(&task).unwrap();
                         let js_arr = Uint8Array::from(&task_update_bytes[..]);
                         callback.call1(&JsValue::NULL, &js_arr).unwrap();
@@ -292,6 +293,8 @@ pub fn reconstruction_job(cluster: &DomainCluster, scans: Vec<String>, callback:
         Ok(JsValue::NULL)
     })
 }
+
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook

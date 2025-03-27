@@ -579,25 +579,6 @@ impl Libp2p {
                 result: Err(e),
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Failed with {e:?}.");
-                // TODO: should be done only once and not for every failed autonat test
-
-                #[cfg(not(target_family="wasm"))]
-                for relay in self.cfg.relay_nodes.iter() {
-                    let maddr = Multiaddr::from_str(relay).unwrap();
-                    let addr = maddr
-                        .with(Protocol::P2pCircuit);
-                    match self.swarm.listen_on(addr.clone()) {
-                        Ok(_) => {
-                            tracing::info!("Listening on relay address: {addr}");
-                            self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                                dht.set_mode(Some(kad::Mode::Server));
-                            });
-                        },
-                        Err(e) => {
-                            tracing::error!("Failed to listen on relay address: {addr}. Error: {e}");
-                        }
-                    }
-                }
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 tracing::info!("External address confirmed: {address}");
@@ -606,9 +587,29 @@ impl Libp2p {
                 tracing::info!("New external address candidate: {address}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(
-                libp2p::relay::client::Event::ReservationReqAccepted { .. },
+                libp2p::relay::client::Event::ReservationReqAccepted { renewal,.. },
             )) => {
                 tracing::info!("Relay accepted our reservation request");
+
+                #[cfg(not(target_family="wasm"))]
+                if renewal {
+                    for relay in self.cfg.relay_nodes.iter() {
+                        let maddr = Multiaddr::from_str(relay).unwrap();
+                        let addr = maddr
+                            .with(Protocol::P2pCircuit);
+                        match self.swarm.listen_on(addr.clone()) {
+                            Ok(_) => {
+                                tracing::info!("Listening on relay address: {addr}");
+                                self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                                    dht.set_mode(Some(kad::Mode::Server));
+                                });
+                            },
+                            Err(e) => {
+                                tracing::error!("Failed to listen on relay address: {addr}. Error: {e}");
+                            }
+                        }
+                    }
+                }
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
                 tracing::info!("Relay Client: {event:?}");
