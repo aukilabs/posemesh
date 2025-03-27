@@ -169,6 +169,7 @@ Switch($Platform) {
                 $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
                 $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
                 $CMakeConfigureArgs += "-DCMAKE_CROSSCOMPILING=ON"
+                $CMakeConfigureArgs += "-DWITH_ITT=OFF"
                 $CMakeConfigureArgs += "-DWITH_TBB=OFF"
             }
             Default {
