@@ -3,7 +3,7 @@ use tokio::{self, io::split, select};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}, spatial::reconstruction::reconstruction_job};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::{RemoteDatastore, RemoteReliableDataProducer}}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}, spatial::reconstruction::reconstruction_job};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
 
-    let mut producer = remote_datastore.produce("".to_string()).await;
+    let mut producer: Box<RemoteReliableDataProducer> = remote_datastore.produce("".to_string()).await;
     let scan = "2025-02-26_11-19-47".to_string();
     let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
 
@@ -85,7 +85,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     loop {
-        let producer_clone = producer.clone();
         let mut progress = producer.progress.lock().await;
         select! {
             event = progress.next() => {

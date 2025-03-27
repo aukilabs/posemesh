@@ -2,18 +2,16 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::task::spawn as spawn;
-
 use uuid::Uuid;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-use std::{future::Future, sync::Arc};
+use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-
-use super::common::{ReliableDataProducer, Writer};
+use super::common::{data_id_generator, Reader, ReliableDataProducer, Writer};
+use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";
@@ -44,9 +42,7 @@ impl RemoteReliableDataProducer {
                         let completed = *total as usize - pendings.len() + 1;
                         pendings.remove(&id);
                         let progress = completed * 100 / *total as usize;
-                        tracing::info!("back");
                         progress_sender.send(progress as i32).await.expect("can't send progress");
-                        tracing::info!("progress: {}", progress);
                     }
                     Err(e) => {
                         eprintln!("{}", e);
@@ -91,7 +87,9 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
     }
 
     async fn close(mut self) {
+        #[cfg(target_family = "wasm")]
         self.writer.close().await.expect("can't close writer");
+
         self.progress.lock().await.close();
         self.pendings.lock().await.clear();
     }
@@ -149,7 +147,7 @@ impl RemoteDatastore {
     }
 
     // TODO: error handling
-    async fn read_from_stream(domain_id: String, mut src: ReadHalf<Stream>, mut dest: DataWriter) {
+    async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mut dest: DataWriter) {
         loop {
             tracing::debug!("Reading data");
             let mut length_buf = [0u8; 4];
@@ -370,7 +368,7 @@ impl Datastore for RemoteDatastore {
         data_receiver
     }
 
-    async fn produce(&mut self, domain_id: String) -> RemoteReliableDataProducer {
+    async fn produce(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer>{
         let (data_sender, data_receiver) = channel::<Result<Data, DomainError>>(3720);
         let mut upload_task_handler = TaskHandler::new();
         let (uploaded_data_sender, uploaded_data_receiver) = channel::<Result<Metadata, DomainError>>(3072);
@@ -469,6 +467,6 @@ impl Datastore for RemoteDatastore {
         });
 
         let _ = rx.await;
-        RemoteReliableDataProducer::new(uploaded_data_receiver, data_sender)
+        Box::new(RemoteReliableDataProducer::new(uploaded_data_receiver, data_sender))
     }
 }
