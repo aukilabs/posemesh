@@ -1,85 +1,69 @@
-# Posemesh Browser Example
+# Posemesh Domain Browser Example
 
-This is a browser-based example of using Posemesh for file uploads and downloads with WebRTC support.
+This is a browser example for the domain package. It demonstrates how to use the domain package in a browser environment.
 
 ## Prerequisites
 
 - Node.js (v14 or later)
-- npm
+- npm (v6 or later)
+- Rust (latest stable)
+- wasm-pack (latest)
 - protoc (Protocol Buffers Compiler)
-- protoc-gen-js (Protocol Buffers JavaScript Plugin)
+- protoc-gen-ts (Protocol Buffers TypeScript Plugin)
 
-## Setup
-
-1. Install dependencies:
-```bash
-npm install
-```
-
-2. Generate JavaScript Protobuf files:
-
-First, install the protobuf compiler and JavaScript plugin:
+### Installing Protocol Buffers Tools
 
 ```bash
 # macOS (using Homebrew)
 brew install protobuf
-npm install -g protoc-gen-js
+npm install -g protoc-gen-ts
 
 # Linux
 sudo apt-get install protobuf-compiler
-npm install -g protoc-gen-js
+npm install -g protoc-gen-ts
 
 # Windows (using chocolatey)
 choco install protoc
-npm install -g protoc-gen-js
+npm install -g protoc-gen-ts
 ```
 
-Then generate the JavaScript files from your .proto files:
+## Setup
 
+1. Build the WASM module:
 ```bash
-# From the browser example directory
-protoc \
---plugin=protoc-gen-js=$(which protoc-gen-js) \
---proto_path=../../../protobuf \
---js_out=import_style=es6,binary:./protobuf ../../../protobuf/*.proto
+cd core
+wasm-pack build --target web --out-dir ./examples/browser/pkg --out-name posemesh-domain --release domain
 ```
 
-This will generate the following files in the `protobuf` directory:
-- `task_pb.js`
-- `domain_data_pb.js`
+2. Install dependencies:
+```bash
+cd domain/examples/browser
+npm install
+```
 
-## Building
+3. Start the development server:
+```bash
+npm run dev
+```
 
-1. Build the JavaScript bundle:
+4. Open your browser and navigate to `http://localhost:5173`
+
+
+## Development
+
+The project uses:
+- Vite for development and building
+- Tailwind CSS for styling
+- Protocol Buffers for data serialization
+- WebAssembly for core functionality
+
+## Building for Production
+
 ```bash
 npm run build
 ```
 
-2. For development with auto-rebuild:
-```bash
-npm run watch
-```
-
-## Running
-
-Start the development server:
-```bash
-npm run serve
-```
-
-The application will be available at http://localhost:3000
-
-## Project Structure
-
-```
-browser/
-├── build.js          # esbuild configuration
-├── index.html        # Main HTML file
-├── main.js          # Main JavaScript entry point
-├── package.json     # Project dependencies and scripts
-├── protobuf/        # Generated protobuf JavaScript files
-└── pkg/             # WebAssembly package directory
-```
+This will create a production build in the `dist` directory.
 
 ## Features
 
@@ -89,12 +73,4 @@ browser/
 - Task monitoring and status updates
 - File download capabilities
 
-## Development
-
-The project uses:
-- esbuild for bundling
-- Tailwind CSS for styling
-- Protocol Buffers for data serialization
-- WebAssembly for core functionality
-
-To modify the protobuf definitions, edit the .proto files in the `proto` directory and regenerate the JavaScript files using the commands above. 
+To modify the protobuf definitions, edit the .proto files in the `protobuf` directory and regenerate the JavaScript files using the commands above. 
