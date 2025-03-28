@@ -1,19 +1,22 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
-use libp2p::{gossipsub::{PublishError, TopicHash}, Stream};
+use libp2p::Stream;
 use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
-use quick_protobuf::{deserialize_from_slice, serialize_into_slice, serialize_into_vec};
-use serde::de;
-use tokio::{self, select, signal, time::sleep};
-use futures::{channel::mpsc::{channel, Receiver, Sender}, AsyncReadExt, AsyncWriteExt, StreamExt, SinkExt};
-use std::{any::Any, borrow::BorrowMut, collections::{HashMap, VecDeque}, error::Error, hash::Hash, time::{Duration, SystemTime, UNIX_EPOCH}};
-use domain::protobuf::task::{self, GlobalRefinementInputV1, LocalRefinementOutputV1, mod_ResourceRecruitment as ResourceRecruitment};
+use nodes_management::NodesManagement;
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use tasks_management::{task_id, TaskHandler, TasksManagement};
+use tokio::{self, select, spawn, time::sleep};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
+use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
+use domain::{message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
 use hex;
-use std::fs;
 use serde::{Serialize, Deserialize};
+mod tasks_management;
+mod nodes_management;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TaskTokenClaim {
+    domain_id: String,
     task_name: String,
     job_id: String,
     sender: String,
@@ -23,10 +26,11 @@ struct TaskTokenClaim {
     sub: String,
 }
 
-fn encode_jwt(job_id: &str, task_name: &str, sender: &str, receiver: &str, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
     let exp = now + Duration::from_secs(60*60);
     let claims = TaskTokenClaim {
+        domain_id: domain_id.to_string(),
         task_name: task_name.to_string(),
         sender: sender.to_string(),
         receiver: receiver.to_string(),
@@ -47,125 +51,60 @@ fn encode_jwt(job_id: &str, task_name: &str, sender: &str, receiver: &str, secre
     Ok(token)
 }
 
-pub async fn start_task(task: &mut task::Task,  c: &mut Client) -> Result<Stream, Box<dyn Error + Send + Sync>> {
-    let m_buf = serialize_into_vec(&task::DomainClusterHandshake{
-        access_token: task.access_token.clone(),
-    })?;
-    let mut length_buf = [0u8; 4];
-    let length = m_buf.len() as u32;
-    length_buf.copy_from_slice(&length.to_be_bytes());
-    let mut upload_stream = c.send(length_buf.to_vec(), task.receiver.clone(), task.endpoint.clone(), 0).await.expect(&format!("cant send handshake with {}", task.receiver.clone()));
-    upload_stream.write_all(&m_buf).await.expect("cant write handshake");
-    upload_stream.flush().await.expect("cant flush handshake");
-
-    Ok(upload_stream)
-}
-
-fn parse_duration_to_millis(input: &str) -> Result<u32, Box<dyn Error>> {
-    let (value, unit) = input
-        .trim()
-        .split_at(input.find(|c: char| c.is_alphabetic()).unwrap_or(input.len()));
-
-    let value: u32 = value.parse()?;
-    let millis = match unit {
-        "ms" => value,
-        "s" => value * 1000,
-        "m" => value * 60 * 1000,
-        "h" => value * 60 * 60 * 1000,
-        "" => value,  // Default to milliseconds if no unit is provided
-        _ => return Err(format!("Unsupported unit: {}", unit).into()),
-    };
-
-    Ok(millis)
-}
-
-#[derive(Debug, Clone)]
-struct TaskHandler {
-    name: String,
-    capability_filters: task::CapabilityFilters,
-    resource_recruitment: task::ResourceRecruitment,
-    needs: Vec<String>,
-    job_id: String,
-    timeout: u32,
-    input: Option<task::Any>,
-}
-struct Queue<T> {
-    sender: Sender<T>,
-    pub(crate) receiver: Receiver<T>,
-}
-
-impl<T> Queue<T> {
-    // Initialize the queue and start the background worker
-    pub fn new() -> Self {
-        let (sender, receiver) = channel::<T>(100);
-
-        Self { sender, receiver }
-    }
-
-    // Add a task to the queue
-    pub async fn add(&mut self, datum: T) {
-        self.sender.send(datum).await.unwrap();
-    }
-
-    // Get the next task from the queue
-    pub async fn next(&mut self) -> Option<T> {
-        self.receiver.next().await
-    }
-}
 
 #[derive(Clone, Debug)]
-struct JobHandler {
-    id: String,
-    tasks: HashMap<String, task::Task>,
-}
-
 struct DomainManager {
     peer: Networking,
-    task_req_queue: Queue<TaskHandler>,
-    jobs: HashMap<String, JobHandler>,
-    nodes: HashMap<String, Node>,
+    domain_id: String,
+    task_mgmt: TasksManagement,
+    node_mgmt: NodesManagement,
 }
 
 impl DomainManager {
-    fn new(peer: Networking) -> Self {
+    fn new(domain_id: String, peer: Networking) -> Self {
         DomainManager {
             peer,
-            task_req_queue: Queue::new(),
-            jobs: HashMap::new(),
-            nodes: HashMap::new(),
+            domain_id,
+            task_mgmt: TasksManagement::new(),
+            node_mgmt: NodesManagement::new(),
         }
     }
 
+    #[tracing::instrument]
     async fn start(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut job_handler = self.peer.client.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
-        // periodically print latest status of tasks
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
         let event_receiver = self.peer.event_receiver.clone();
+        let mut job_handler = self.peer.client.set_stream_handler("/jobs/v1".to_string()).await.unwrap();
+        let mut monitor_handler = self.peer.client.set_stream_handler("/monitor/v1".to_string()).await.unwrap();
 
         loop {
             let mut rx_guard = event_receiver.lock().await;
             select! {
                 Some((_, stream)) = job_handler.next() => {
-                    self.accept_job(stream).await.expect("Error accepting job");
+                    let task_mgmt = self.task_mgmt.clone();
+                    let node_mgmt = self.node_mgmt.clone();
+                    let peer = self.peer.clone();
+                    spawn(DomainManager::accept_job(node_mgmt, task_mgmt, peer.client.clone(), stream));
                 }
                 e = rx_guard.next() => {
                     match e {
                         Some(e) => {
                             match e {
                                 event::Event::NewNodeRegistered { node } => {
-                                    self.nodes.insert(node.id.clone(), node);
+                                    let mut node_mgmt = self.node_mgmt.clone();
+                                    if node.id != self.peer.id {
+                                        spawn(async move {
+                                            node_mgmt.register_node(node).await;
+                                        });
+                                    }
                                 }
                                 event::Event::PubSubMessageReceivedEvent { from, message, .. } => {
-                                    if from.is_none() || from.unwrap().to_string() != self.peer.id {
+                                    if from.is_none() || from.unwrap().to_string() != self.peer.id.clone() {
                                         let task_event = deserialize_from_slice::<task::Task>(&message)?;
-                                        // TODO: verify access token, ignore if not valid. Ignore expiration time
-                                        if let Some(j) = self.jobs.get_mut(&task_event.job_id) {
-                                            if let Some(t) = j.tasks.get_mut(&task_event.name) {
-                                                t.status = task_event.status;
-                                                t.output = task_event.output;
-                                                println!("Task {} status updated: {:?}", t.name, t.status);
-                                            }
-                                        }
+                                        let task_mgmt = self.task_mgmt.clone();
+                                        let node_mgmt = self.node_mgmt.clone();
+                                        spawn(async move {
+                                            task_mgmt.update_task(&task_event, node_mgmt).await;
+                                        });
                                     }
                                 }
                             }
@@ -173,19 +112,25 @@ impl DomainManager {
                         None => break
                     }
                 }
-                Some(task_handler) = self.task_req_queue.next() => {
-                    self.poll_task_req(&task_handler).await?;
-                }
-                _ = interval.tick() => {
-                    println!("##########################");
-                    // print task status as a table | Job | Task Name | Status | Receiver | Output |
-                    println!("| {:<64} | {:<20} | {:<30} | {:<60} |", "Job", "Task Name", "Status", "Done By");
-                    for (job_id, job) in self.jobs.iter() {
-                        for (task_name, task) in job.tasks.iter() {
-                            println!("| {:<64} | {:<20} | {:<30} | {:<60} |", job_id, task_name, format!("{:?}", task.status), task.receiver);
+                next_task = self.task_mgmt.get_next_task() => {
+                    match next_task {
+                        Some(task) => {
+                            let task_mgmt = self.task_mgmt.clone();
+                            let node_mgmt = self.node_mgmt.clone();
+                            let domain_id = self.domain_id.clone();
+                            let peer = self.peer.clone();
+                            spawn(async move {
+                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt).await;
+                            });
                         }
+                        None => sleep(Duration::from_secs(5)).await
                     }
-                    println!("##########################");
+                }
+                Some((_, stream)) = monitor_handler.next() => {
+                    let task_mgmt = self.task_mgmt.clone();
+                    spawn(async move {
+                        task_mgmt.monitor_tasks(stream).await;
+                    });
                 }
                 else => break
             }
@@ -193,101 +138,55 @@ impl DomainManager {
         Ok(())
     }
 
-    fn find_nodes(&mut self, capability_filter: task::CapabilityFilters) -> Vec<Node> {
-        self.nodes.values().filter(|n| n.capabilities.contains(&capability_filter.endpoint)).cloned().collect()
-    }
-
-    async fn accept_job(&mut self, mut stream: Stream) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut buf = Vec::new();
-        let _ = stream.read_to_end(&mut buf).await?;
-        let job = deserialize_from_slice::<task::Job>(&buf)?;
+    #[tracing::instrument]
+    async fn accept_job(node_mgmt: NodesManagement, task_mgmt: TasksManagement, mut peer: Client, stream: Stream) {
+        let (reader, mut writer) = stream.split();
+        let job = read_prefix_size_message::<JobRequest>(reader).await.expect("failed to load job request");
 
         let mut hasher = Sha256::new();
-        hasher.update(&buf);
+        hasher.update(&serialize_into_vec(&job).unwrap());
         let result = hasher.finalize();
         let job_id = hex::encode(result);
+        println!("Job received: {:?}-{}", job.name, job_id);
+        peer.subscribe(job_id.clone()).await.expect("failed to subscribe to job");
 
-        let mut job_handler = JobHandler {
-            id: job_id.clone(),
-            tasks: HashMap::new(),
-        };
-
-        let resp = task::SubmitJobResponse {
+        let mut resp = task::SubmitJobResponse {
             job_id: job_id.clone(),
             code: task::Code::Accepted,
             err_msg: "".to_string(),
         };
-        stream.write_all(&serialize_into_vec(&resp).unwrap()).await?;
-        stream.flush().await?;
-        self.peer.client.subscribe(job_id.clone()).await?;
 
-        for task_req in job.tasks.iter() {
-            let mut task = task::Task {
-                name: task_req.name.clone(),
-                receiver: "".to_string(),
-                endpoint: task_req.capability_filters.clone().unwrap().endpoint.clone(),
-                access_token: job_id.clone(), // TODO: generate access token
-                job_id: job_id.clone(),
-                sender: task_req.sender.clone(),
-                status: task::Status::WAITING_FOR_RESOURCE,
-                output: None,
-            };
-            let task_handler = TaskHandler {
-                name: task.name.clone(),
-                capability_filters: task_req.capability_filters.clone().get_or_insert(task::CapabilityFilters {
-                    endpoint: "/".to_string(),
-                    min_cpu: 0,
-                    min_gpu: 0,
-                }).clone(),
-                resource_recruitment: task_req.resource_recruitment.clone().get_or_insert(task::ResourceRecruitment {
-                    recruitment_policy: ResourceRecruitment::RecruitmentPolicy::FAIL,
-                    termination_policy: ResourceRecruitment::TerminationPolicy::KEEP,
-                }).clone(),
-                needs: task_req.needs.clone(),
-                job_id: job_id.clone(),
-                timeout: parse_duration_to_millis(&task_req.timeout).map_err(|e| format!("Error parsing timeout: {}", e))?,
-                input: task_req.data.clone(),
-            };
-            
-            if !task_req.needs.is_empty() {
-                for need in task_req.needs.iter() {
-                    if !job_handler.tasks.contains_key(need) {
-                        panic!("Task not found: {:?}", need); // TODO: handle error
-                    }
-                }
-            }
-            if !task_req.receiver.is_empty() {
-                // TODO: validate receiver
-                task.receiver = task_req.receiver.clone();
-                task.status = task::Status::PENDING;
+        let mut tasks: Vec<String> = Vec::new();
+        for task_req in job.tasks {
+            let task_mgmt = task_mgmt.clone();
+            let mut node_mgmt = node_mgmt.clone();
+            let job_id = job_id.clone();
+            let res = task_mgmt.validate_task(&mut node_mgmt, &job_id, &task_req).await;
+            if let Err(err) = res {
+                tracing::error!("Error adding task: {:?}", err);
+                resp.code = Code::BadRequest;
+                resp.err_msg = err.to_string();
+                writer.write_all(&prefix_size_message(&resp)).await.expect("failed to write job submittion response");
+                writer.flush().await.expect("failed to flush result");
+                task_mgmt.remove_job(&job_id).await;
+                return;
             } else {
-                let nodes = self.find_nodes(task_req.capability_filters.clone().unwrap());
-                if nodes.is_empty() {
-                    if task_handler.resource_recruitment.recruitment_policy == ResourceRecruitment::RecruitmentPolicy::FAIL {
-                        panic!("No nodes found for task: {:?}", task_req); // TODO: handle error
-                    }
-                } else {
-                    task.receiver = nodes[0].id.clone();
-                    task.status = task::Status::PENDING;
-
-                    // if task_req.needs.is_empty() {
-                    //     self.run_task(task.borrow_mut(), task_req.data.clone(), HashMap::new(), task_handler.timeout).await?;
-                    // }
+                if res.unwrap() {
+                    tasks.push(task_id(&job_id, &task_req.name));
                 }
-            }
-            self.task_req_queue.add(task_handler).await;
-            
-            if let Some(t) = job_handler.tasks.insert(task.name.clone(), task.clone()) {
-                panic!("Task already exists: {:?}", t); // TODO: handle error
             }
         }
-
-        self.jobs.insert(job_id.clone(), job_handler);
-        Ok(())
+        writer.write_all(&prefix_size_message(&resp)).await.expect("failed to write job submittion response");
+        writer.flush().await.expect("failed to flush result");
+        task_mgmt.push_tasks(tasks).await;
     }
 
-    async fn run_task(&mut self, t: &mut task::Task, input: Option<task::Any>, dependencies: HashMap<String, task::Task>, timeout: u32) -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tracing::instrument]
+    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement) {
         let mut serialized_input: Vec<u8> = vec![];
+        let mut t = th.task.clone();
+        let input = th.input.clone();
+        let dependency_list = th.dependencies.clone();
 
         match input {
             Some(input) => {
@@ -296,15 +195,50 @@ impl DomainManager {
                     "GlobalRefinementInputV1" => {
                         if input.value.is_empty() {
                             let global_refinement_input = GlobalRefinementInputV1 {
-                                local_refinement_results: dependencies.iter().map(|(_, v)| deserialize_from_slice::<LocalRefinementOutputV1>(&v.output.as_ref().unwrap().value).expect("failed to deserialize local refinement output")).collect(),
+                                local_refinement_results: {
+                                    let mut dependencies: Vec<LocalRefinementOutputV1> = Vec::new();
+                                    for (k, v) in dependency_list {
+                                        if v == false {
+                                            tracing::error!("Task {} failed to run due to dependency {}", t.name, k);
+                                            return;
+                                        }
+                                        match task_mgmt.get_task(&k).await {
+                                            Some(task) => {
+                                                match task.task.output {
+                                                    Some(output) => {
+                                                        let output = deserialize_from_slice(&output.value).expect("failed to deserialize output");
+                                                        dependencies.push(output);
+                                                    }
+                                                    None => {
+                                                        tracing::error!("Task {} failed to run due to missing dependency {}", t.name, k);
+                                                        return;
+                                                    }
+                                                }
+                                            }
+                                            None => {
+                                                tracing::error!("Task {} failed to run due to missing dependency {}", t.name, k);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    dependencies
+                                }
                             };
-                            serialized_input = serialize_into_vec(&global_refinement_input).expect("failed to serialize");
+                            serialized_input = prefix_size_message(&global_refinement_input);
                         } else {
-                            serialized_input = input.value.clone();
+                            serialized_input = Vec::with_capacity(4 + input.value.len());
+                            let size = input.value.len() as u32;
+                            let size_buffer = size.to_be_bytes();
+                            serialized_input.extend_from_slice(&size_buffer);
+                            serialized_input.append(&mut input.value.clone());
                         }
                     },
                     "LocalRefinementInputV1" => {
-                        serialized_input = input.value.clone();
+                        serialized_input = Vec::with_capacity(4 + input.value.len());
+                        let size = input.value.len() as u32;
+                        let size_buffer = size.to_be_bytes();
+                        serialized_input.extend_from_slice(&size_buffer);
+                        serialized_input.append(&mut input.value.clone());
                     },
                     _ => {}
                 }
@@ -312,71 +246,41 @@ impl DomainManager {
             None => {}
         }
         
-        t.access_token = encode_jwt(&t.job_id, &t.name, &t.sender, &t.receiver, "secret")?;
-        if t.sender == self.peer.id {
-            let mut s = start_task(t, &mut self.peer.client).await?;
-            let mut length_buf = [0u8; 4];
-            let length = serialized_input.len() as u32;
-            length_buf.copy_from_slice(&length.to_be_bytes());
-            s.write_all(length_buf.to_vec().as_slice()).await?;
-            s.write_all(&serialized_input).await?;
-            s.flush().await?;
+        let receiver = t.receiver.clone().unwrap();
+        let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, "secret").expect("failed to encode jwt");
+        t.status = Status::PENDING;
+        if t.sender == peer.id {
+            if let Err(e) = handshake_then_vec(peer.client, &access_token, &receiver, &t.endpoint, serialized_input, th.timeout).await {
+                tracing::error!("Error triggering task: {:?}", e);
+                t.status = Status::FAILED;
+                t.output = Some(task::Any {
+                    type_url: "Error".to_string(),
+                    value: serialize_into_vec(&task::Error{
+                        message: e.to_string(),
+                    }).unwrap(),
+                });
+                task_mgmt.update_task(&t, node_mgmt).await;
+                task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
+                return;
+            }
+            task_mgmt.update_task(&t, node_mgmt).await;
         } else {
-            if let Err(e) = self.peer.client.publish(t.job_id.clone(), serialize_into_vec(&t.clone())?).await {
-                println!("Error publishing message: {:?}", e);
-                return Err(e);
+            t.access_token = Some(access_token);
+            if let Err(e) = peer.client.publish(t.job_id.clone(), serialize_into_vec(&t).unwrap()).await {
+                tracing::error!("Error publishing message for task job {} {}: {:?}", t.job_id, t.name, e);
+                t.status = Status::FAILED;
+                t.output = Some(task::Any {
+                    type_url: "Error".to_string(),
+                    value: serialize_into_vec(&task::Error{
+                        message: e.to_string(),
+                    }).unwrap(),
+                });
+                task_mgmt.update_task(&t, node_mgmt).await;
+                task_mgmt.retry_task(&task_id(&t.job_id, &t.name)).await;
+                return;
             }
+            task_mgmt.update_task(&t, node_mgmt).await; 
         }
-        Ok(())
-    }
-
-    // TODO: handle task failure
-    async fn poll_task_req(&mut self, task_handler: &TaskHandler) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut jobs = self.jobs.clone();
-        if let Some(j) = jobs.get_mut(&task_handler.job_id) {
-            if let Some(t) = j.clone().tasks.get_mut(&task_handler.name) {
-                // TODO: adding sleep so we wont check the same task again and again too often
-                if t.status == task::Status::WAITING_FOR_RESOURCE {
-                    let nodes = self.find_nodes(task_handler.capability_filters.clone());
-                    if nodes.is_empty() {
-                        self.task_req_queue.add(task_handler.clone()).await;
-                        return Ok(());
-                    } else {
-                        t.receiver = nodes[0].id.clone();
-                        t.status = task::Status::PENDING;
-                    }
-                }
-                if t.status == task::Status::PENDING {
-                    let mut dependencies = HashMap::<String, task::Task>::new();
-                    for need in task_handler.needs.iter() {
-                        if let Some(j) = self.jobs.get(&task_handler.job_id) {
-                            if let Some(t) = j.tasks.get(need) {
-                                if t.status != task::Status::DONE {
-                                    sleep(std::time::Duration::from_secs(30)).await;
-                                    self.task_req_queue.add(task_handler.clone()).await;
-                                    return Ok(());
-                                }
-                                dependencies.insert(need.clone(), t.clone());
-                            }
-                        }
-                    }
-                    if let Err(e) = self.run_task(t, task_handler.input.clone(), dependencies, task_handler.timeout).await {
-                        println!("Error running task: {:?}", e);
-                        // TODO: not every failure worths retry
-                        t.status = task::Status::PENDING;
-                        sleep(std::time::Duration::from_secs(5)).await;
-                        self.task_req_queue.add(task_handler.clone()).await;
-                    }
-                    j.tasks.insert(t.name.clone(), t.clone());
-                    self.jobs.insert(task_handler.job_id.clone(), j.clone());
-                    return Ok(());
-                } else {
-                    self.task_req_queue.add(task_handler.clone()).await;
-                }
-            }
-        }
-        self.task_req_queue.add(task_handler.clone()).await;
-        Ok(())
     }
 }
 
@@ -387,32 +291,40 @@ impl DomainManager {
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 3 {
-        println!("Usage: {} <port> <name> [private_key_path]", args[0]);
-        return Ok(());
+    let mut args: Vec<String> = std::env::args().collect();
+    if args.len() < 4 {
+        println!("Arguments received: {:?}", args);
+        args.push("18800".to_string());
+        args.push("domain_manager".to_string());
+        args.push("xxx".to_string());
+        // println!("Missing arguments, Usage: {} <port> <name> <domain_id> [private_key_path]", args[0]);
+        // return Ok(());
     }
     let port = args[1].parse::<u16>().unwrap();
     let name = args[2].clone();
+    let domain_id = args[3].clone();
     let base_path = format!("./volume/{}", name);
     let mut private_key_path = format!("{}/pkey", base_path);
-    if args.len() == 4 {
-        private_key_path = args[3].clone();
+    if args.len() == 5 {
+        private_key_path = args[4].clone();
     }
+    let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let cfg = &NetworkingConfig{
-        port: port,
+        port,
         bootstrap_nodes: vec![],
-        enable_relay_server: false,
+        enable_relay_server: true,
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some(private_key_path),
-        name: name,
+        name,
+        enable_websocket: true,
+        enable_webrtc: true,
     };
     let c = Networking::new(cfg)?;
-    let mut domain_manager = DomainManager::new(c);
+    let mut domain_manager = DomainManager::new(domain_id, c);
     
     domain_manager.start().await
 }

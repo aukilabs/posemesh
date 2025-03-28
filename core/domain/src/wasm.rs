@@ -1,12 +1,13 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
-use futures::{SinkExt, StreamExt};
+use futures::{executor::block_on, SinkExt, StreamExt};
 use networking::libp2p::Networking;
 use quick_protobuf::serialize_into_vec;
 use serde::de;
+use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::DomainCluster as r_DomainCluster, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data};
-use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise}, spawn_local};
+use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -35,13 +36,13 @@ impl Query {
 pub struct DomainData {
     pub domain_id: String,
     pub metadata: Metadata,
-    pub content: *const u8,
+    pub content: js_sys::Uint8Array,
 }
 
 #[wasm_bindgen]
 impl DomainData {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_id: String, metadata: Metadata, content: *const u8) -> Self {
+    pub fn new(domain_id: String, metadata: Metadata, content: js_sys::Uint8Array) -> Self {
         Self {
             domain_id,
             metadata,
@@ -84,31 +85,32 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
     }
 }
 
-fn to_r_metadata(metadata: Metadata) -> domain_data::Metadata {
+fn to_r_metadata(metadata: &Metadata) -> domain_data::Metadata {
     domain_data::Metadata {
-        name: metadata.name,
-        data_type: metadata.data_type,
-        properties: from_value(metadata.properties).unwrap(),
-        id: Some(metadata.id),
+        name: metadata.name.clone(),
+        data_type: metadata.data_type.clone(),
+        properties: from_value(metadata.properties.clone()).unwrap(),
+        id: Some(metadata.id.clone()),
         size: metadata.size as u32,
     }
 }
 
 fn from_r_data(r_data: &domain_data::Data) -> DomainData {
     let content = r_data.content.as_slice();
-    let content_size = content.len();
     DomainData {
         domain_id: r_data.domain_id.clone(),
         metadata: from_r_metadata(&r_data.metadata),
-        content: content.as_ptr(),
+        content: js_sys::Uint8Array::from(content),
     }
 }
 
-fn to_r_data(data: DomainData) -> domain_data::Data {
-    let metadata = to_r_metadata(data.metadata);
-    let content = Vec::from(unsafe { std::slice::from_raw_parts(data.content, metadata.size as usize) });
+fn to_r_data(data: &DomainData) -> domain_data::Data {
+    let metadata = to_r_metadata(&data.metadata);
+
+    let content = data.content.to_vec();
+    
     domain_data::Data {
-        domain_id: data.domain_id,
+        domain_id: data.domain_id.clone(),
         metadata,
         content,
     }
@@ -158,7 +160,20 @@ pub struct DomainCluster {
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
     pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, private_key, private_key_path))) }   
+        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, false, private_key, private_key_path))) }   
+    }
+
+    #[wasm_bindgen]
+    pub fn monitor(&self, callback: Function) {
+        let inner = self.inner.clone();
+        block_on(async move {
+            let mut rx = inner.lock().unwrap().monitor_jobs().await;
+            while let Some(job) = rx.next().await {
+                let job_bytes = serialize_into_vec(&job).unwrap();
+                let js_arr = Uint8Array::from(&job_bytes[..]);
+                callback.call1(&JsValue::NULL, &js_arr).unwrap();
+            }
+        });
     }
 }
 
@@ -170,19 +185,10 @@ struct ReliableDataProducer {
 #[wasm_bindgen]
 impl ReliableDataProducer {
     #[wasm_bindgen]
-    pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
+    pub fn push(&mut self, mut data: DomainData) -> js_sys::Promise {
         let id = data.metadata.id.is_empty().then(|| data_id_generator());
-        let data = domain_data::Data {
-            domain_id: data.domain_id,
-            metadata: domain_data::Metadata {
-                name: data.metadata.name,
-                data_type: data.metadata.data_type,
-                properties: from_value(data.metadata.properties).unwrap(),
-                id,
-                size: data.metadata.size as u32,
-            },
-            content: Vec::from(unsafe { std::slice::from_raw_parts(data.content, data.metadata.size) }),
-        };
+        data.metadata.id = id.unwrap();
+        let data = to_r_data(&data);
         let mut writer = self.inner.clone();
         let future = async move {
             let res = writer.push(&data).await;
@@ -220,7 +226,7 @@ pub struct RemoteDatastore {
 #[wasm_bindgen]
 impl RemoteDatastore {
     #[wasm_bindgen(constructor)]
-    pub fn new(cluster: DomainCluster) -> Self {
+    pub fn new(cluster: &DomainCluster) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
 
@@ -261,6 +267,34 @@ impl RemoteDatastore {
     }
 }
 
+#[wasm_bindgen]
+pub fn reconstruction_job(cluster: &DomainCluster, scans: Vec<String>, callback: Function) -> js_sys::Promise {
+    let cluster = cluster.inner.lock().unwrap();
+    let cluster_clone = cluster.clone();
+    drop(cluster);
+
+    future_to_promise(async move {
+        let mut r = r_reconstruction_job(cluster_clone, scans).await;
+        spawn_local(async move {
+            while let Some(task_update) = r.next().await {
+                match task_update.result {
+                    TaskUpdateResult::Ok(task) => {
+                        tracing::debug!("Task {}-{} update status {:?}", task.job_id, task.name, task.status);
+                        let task_update_bytes = serialize_into_vec(&task).unwrap();
+                        let js_arr = Uint8Array::from(&task_update_bytes[..]);
+                        callback.call1(&JsValue::NULL, &js_arr).unwrap();
+                    }
+                    TaskUpdateResult::Err(e) => {
+                        tracing::error!("Error: {}", e);
+                    }
+                }
+            }
+        });
+        Ok(JsValue::NULL)
+    })
+}
+
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook
@@ -269,6 +303,8 @@ pub fn start() -> Result<(), JsValue> {
 
     // Add this line:
     tracing_wasm::set_as_global_default();
+
+    tracing::info!("Starting domain-core");
 
     Ok(())
 }

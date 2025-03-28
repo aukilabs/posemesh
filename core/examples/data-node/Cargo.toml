@@ -14,3 +14,4 @@ futures = { workspace = true }
 jsonwebtoken = "9.3.0"
 uuid = "1.13.2"
 domain = {workspace = true}
+regex = "1.11.1"

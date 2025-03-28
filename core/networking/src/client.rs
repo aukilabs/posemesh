@@ -7,7 +7,7 @@ use std::str::FromStr;
 #[cfg(target_family = "wasm")]
 use gloo_timers::future::TimeoutFuture;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
 }
