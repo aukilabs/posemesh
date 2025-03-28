@@ -592,7 +592,7 @@ impl Libp2p {
                 tracing::info!("Relay accepted our reservation request");
 
                 #[cfg(not(target_family="wasm"))]
-                if renewal {
+                if !renewal {
                     for relay in self.cfg.relay_nodes.iter() {
                         let maddr = Multiaddr::from_str(relay).unwrap();
                         let addr = maddr
