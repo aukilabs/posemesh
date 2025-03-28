@@ -88,9 +88,8 @@ export class UploadManager {
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
         await reconstruction_job(this.domainCluster, scans_array, (taskBytes) => {
-            console.log("reconstruction job bytes", taskBytes);
             const task = proto.task.Task.deserializeBinary(taskBytes); 
-            console.log("reconstruction job", task);
+            console.log("reconstruction job", task.status);
         });
         this.activeUploads.clear();
         this.updateUploadsList();
