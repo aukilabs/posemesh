@@ -67,6 +67,11 @@ jobs:
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
 
+      - name: Build Protobuf for ${{ matrix.platform }} ${{ matrix.arch }}
+        run: |
+          source ./emsdk/emsdk_env.sh
+          pwsh ./third-party/scripts/Build-protobuf-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
+
       - name: Build Framework for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
         run: ./sdk/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release
@@ -163,6 +168,11 @@ jobs:
         run: |
           source ./emsdk/emsdk_env.sh
           pwsh ./third-party/scripts/Build-OpenCV-Library.ps1 Web WASM32 Release
+
+      - name: Build Protobuf
+        run: |
+          source ./emsdk/emsdk_env.sh
+          pwsh ./third-party/scripts/Build-protobuf-Library.ps1 Web WASM32 Release
 
       - name: Build Posemesh SDK
         run: |
