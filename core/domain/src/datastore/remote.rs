@@ -1,4 +1,5 @@
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use futures::select;
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::task::spawn as spawn;
@@ -22,6 +23,7 @@ pub struct RemoteReliableDataProducer {
     pendings: Arc<Mutex<HashSet<String>>>,
     pub progress: Arc<Mutex<Receiver<i32>>>,
     total: Arc<Mutex<i32>>,
+    completed: Arc<Mutex<oneshot::Receiver<()>>>,
 }
 
 impl RemoteReliableDataProducer {
@@ -31,7 +33,7 @@ impl RemoteReliableDataProducer {
         let total: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
         let total_clone = total.clone();
         let (mut progress_sender, progress_receiver) = mpsc::channel(100);
-
+        let (completed_sender, completed_receiver) = oneshot::channel::<()>();
         spawn(async move {
             while let Some(m) = response.next().await {
                 match m {
@@ -41,6 +43,9 @@ impl RemoteReliableDataProducer {
                         let total = total_clone.lock().await;
                         let completed = *total as usize - pendings.len() + 1;
                         pendings.remove(&id);
+                        if pendings.is_empty() {
+                            let _ = completed_sender.send(());
+                        }
                         let progress = completed * 100 / *total as usize;
                         progress_sender.send(progress as i32).await.expect("can't send progress");
                     }
@@ -52,8 +57,13 @@ impl RemoteReliableDataProducer {
         });
 
         Self {
-            writer, progress: Arc::new(Mutex::new(progress_receiver)), pendings, total
+            writer, progress: Arc::new(Mutex::new(progress_receiver)), pendings, total, completed: Arc::new(Mutex::new(completed_receiver))
         }
+    }
+
+    pub async fn wait_for_completion(&self) -> Result<(), DomainError> {
+        let mut completed = self.completed.lock().await;
+        completed.await.map_err(|_| DomainError::Interrupted)
     }
 }
 
@@ -92,6 +102,11 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
 
         self.progress.lock().await.close();
         self.pendings.lock().await.clear();
+    }
+
+    async fn await_completion(&self) {
+        let completed = self.completed.lock().await;
+        completed.await.unwrap();
     }
 }
 
