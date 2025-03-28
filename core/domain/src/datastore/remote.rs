@@ -231,9 +231,6 @@ impl Datastore for RemoteDatastore {
                                 tracing::error!("Failed to send handshake: {:?}", e);
                                 tx.send(false).expect("Failed to send completion signal");
                                 download_task.cancel();
-                                let mut task = task.clone();
-                                task.status = Status::RETRY;
-                                peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                                 return;
                             }
                             let mut upload_stream = res.unwrap();
@@ -337,10 +334,6 @@ impl Datastore for RemoteDatastore {
                                 tracing::error!("Failed to send handshake: {:?}", e);
                                 tx.send(false).expect("Failed to send completion signal");
                                 upload_task_handler.cancel();
-
-                                let mut task = task.clone();
-                                task.status = Status::RETRY;
-                                peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                                 return;
                             }
                             let upload_stream = upload_stream.unwrap();
