@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateSource(interfaces, interfaceName, interfaceJson) {
+function generateSource(enums, interfaces, interfaceName, interfaceJson) {
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
   code += `\n`;
   code += `extension ${util.getLangClassName(interfaceJson, util.Swift)} {\n`;
@@ -11,7 +11,7 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     const hasPublicSetter = propertyJson.hasSetter && util.getPropertySetterVisibility(propertyJson) === util.Visibility.public;
     if (hasPublicGetter || hasPublicSetter) {
       let prop = '';
-      prop += `    public${util.getPropertyStatic(propertyJson) ? ' static' : ''} var ${util.getPropertyName(propertyJson, util.Swift)}: ${util.getPropertyType(interfaces, propertyJson, util.Swift)} {\n`;
+      prop += `    public${util.getPropertyStatic(propertyJson) ? ' static' : ''} var ${util.getPropertyName(propertyJson, util.Swift)}: ${util.getPropertyType(enums, interfaces, propertyJson, util.Swift)} {\n`;
       if (hasPublicGetter) {
         prop += `        get {\n`;
         prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}()\n`;
@@ -45,10 +45,10 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceSwift(interfaces, interfaceName, interfaceJson) {
+function generateInterfaceSwift(enums, interfaces, interfaceName, interfaceJson) {
   const sourceFilePath = path.resolve(__dirname, '..', 'platform', 'Apple', 'src', `${interfaceName}.swift`);
 
-  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(enums, interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);
 }

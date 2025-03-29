@@ -1,5 +1,8 @@
 {
   "name": "Quaternion",
+  "toStringOperator": {
+    "custom": true
+  },
   "properties": [
     {
       "name": "X",

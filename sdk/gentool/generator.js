@@ -1,4 +1,5 @@
 const fs = require('fs');
+const generateEnum = require('./generator-enum');
 const generateInterfaceC = require('./generator-c');
 const generateInterfaceCXX = require('./generator-cxx');
 const generateInterfaceJS = require('./generator-js');
@@ -34,11 +35,11 @@ if (typeof option !== 'undefined') {
   dontGitignoreCodeFiles = true;
 }
 
-function validateInterfaceRecursive(path, interfaceName, json) {
+function validateJsonRecursive(path, jsonName, json, typeName) {
   if (Array.isArray(json)) {
     let index = 0;
     for (const element of json) {
-      validateInterfaceRecursive(`${path}[${index}]`, interfaceName, element);
+      validateJsonRecursive(`${path}[${index}]`, jsonName, element, typeName);
       index++;
     }
   } else if (typeof json === 'object') {
@@ -56,29 +57,61 @@ function validateInterfaceRecursive(path, interfaceName, json) {
         keyPath += key;
       }
       if (typeof json[`${key}.gen`] !== 'boolean') {
-        console.warn(`Unknown key '${keyPath}' in '${interfaceName}.json' interface JSON.`);
+        console.warn(`Unknown key '${keyPath}' in '${jsonName}.json' ${typeName} JSON.`);
       }
-      validateInterfaceRecursive(keyPath, interfaceName, json[key]);
+      validateJsonRecursive(keyPath, jsonName, json[key], typeName);
     }
   }
 }
 
-function validateInterface(interfaceName, interfaceJson) {
-  if (typeof interfaceJson !== 'object') {
-    throw new Error(`Invalid '${interfaceName}.json' interface JSON.`);
+function validateJson(jsonName, json, typeName) {
+  if (typeof json !== 'object') {
+    throw new Error(`Invalid '${jsonName}.json' ${typeName} JSON.`);
   }
-  validateInterfaceRecursive('', interfaceName, interfaceJson);
+  validateJsonRecursive('', jsonName, json, typeName);
 }
 
-function generateInterface(interfaces, interfaceName, interfaceJson) {
-  generateInterfaceC(interfaces, interfaceName, interfaceJson);
-  generateInterfaceCXX(interfaces, interfaceName, interfaceJson);
-  generateInterfaceJS(interfaces, interfaceName, interfaceJson);
-  generateInterfaceObjC(interfaces, interfaceName, interfaceJson);
-  generateInterfaceSwift(interfaces, interfaceName, interfaceJson);
+function validateEnum(enumName, enumJson) {
+  validateJson(enumName, enumJson, 'enum');
+}
+
+function validateInterface(interfaceName, interfaceJson) {
+  validateJson(interfaceName, interfaceJson, 'interface');
+}
+
+function generateInterface(enums, interfaces, interfaceName, interfaceJson) {
+  generateInterfaceC(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceCXX(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceJS(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceObjC(enums, interfaces, interfaceName, interfaceJson);
+  generateInterfaceSwift(enums, interfaces, interfaceName, interfaceJson);
 }
 
 function generate() {
+  const enumDirPath = path.resolve(__dirname, '..', 'enum');
+  const enumFileNames = fs.readdirSync(enumDirPath, 'utf8');
+  let enums = {};
+  for (const enumFileName of enumFileNames) {
+    if (!enumFileName.toLowerCase().endsWith('.json')) {
+      continue;
+    }
+    const enumName = enumFileName.substring(0, enumFileName.length - 5);
+    const enumFilePath = path.resolve(enumDirPath, enumFileName);
+    const enumFileContent = fs.readFileSync(enumFilePath, 'utf8');
+    try {
+      const enumJson = JSON.parse(enumFileContent);
+      util.fillEnumName(enumJson);
+      util.fillEnumType(enumJson);
+      util.fillEnumConstants(enumJson);
+      util.fillAliases(enumJson);
+      util.fillHeaderGuardName(enumJson);
+      enums[enumName] = enumJson;
+      validateEnum(enumName, enumJson);
+    } catch (error) {
+      console.error(`Failed to fill '${enumFileName}' enum JSON:\n`, error);
+    }
+  }
+
   const interfaceDirPath = path.resolve(__dirname, '..', 'interface');
   const interfaceFileNames = fs.readdirSync(interfaceDirPath, 'utf8');
   let interfaces = {};
@@ -87,6 +120,9 @@ function generate() {
       continue;
     }
     const interfaceName = interfaceFileName.substring(0, interfaceFileName.length - 5);
+    if (typeof enums[interfaceName] !== 'undefined') {
+      throw new Error(`Both enum and interface '${interfaceName}' cannot exist at the same time.`);
+    }
     const interfaceFilePath = path.resolve(interfaceDirPath, interfaceFileName);
     const interfaceFileContent = fs.readFileSync(interfaceFilePath, 'utf8');
     try {
@@ -148,10 +184,45 @@ function generate() {
     umbrellaHeaders.add(`#import "${headerName}.h"`);
     bridgingHeaders.add(`#import <Posemesh/${headerName}.h>`);
   }
+  for (const enumName in enums) {
+    const enumJson = enums[enumName];
+    try {
+      generateEnum(enums, enumName, enumJson);
+      console.log(`Generated '${enumName}.json' enum code.`);
+    } catch (error) {
+      console.error(`Failed to generate '${enumName}.json' enum code:\n`, error);
+    }
+
+    if (!dontGitignoreCodeFiles) {
+      gitignore += '\n';
+      gitignore += `# Generated ${enumName} files\n`;
+
+      // C
+      gitignore += `/include/Posemesh/C/${enumName}.h\n`;
+
+      // CXX
+      gitignore += `/include/Posemesh/${enumName}.hpp\n`;
+
+      // JS
+      gitignore += `/platform/Web/transform-typescript-definition-${enumName}.js\n`;
+      gitignore += `/platform/Web/${enumName}.js\n`;
+
+      // ObjC
+      gitignore += `/platform/Apple/include/Posemesh/${enumName}.h\n`;
+    }
+
+    // Generated files
+    generatedCHeaders.add(`/include/Posemesh/C/${enumName}.h`);
+    generatedCXXHeaders.add(`/include/Posemesh/${enumName}.hpp`);
+    generatedObjCHeaders.add(`/platform/Apple/include/Posemesh/${enumName}.h`);
+    generatedWebJSSources.add(`/platform/Web/${enumName}.js`);
+    umbrellaHeaders.add(`#import "${enumName}.h"`);
+    bridgingHeaders.add(`#import <Posemesh/${enumName}.h>`);
+  }
   for (const interfaceName in interfaces) {
     const interfaceJson = interfaces[interfaceName];
     try {
-      generateInterface(interfaces, interfaceName, interfaceJson);
+      generateInterface(enums, interfaces, interfaceName, interfaceJson);
       console.log(`Generated '${interfaceName}.json' interface code.`);
     } catch (error) {
       console.error(`Failed to generate '${interfaceName}.json' interface code:\n`, error);
