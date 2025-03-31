@@ -1,6 +1,7 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
 use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
-use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
+use utils::retry_with_delay;
+use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration, pin::Pin};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
@@ -731,7 +732,30 @@ impl Libp2p {
     }
 }
 
-async fn open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
+async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+    let mut s = ctrl.open_stream(peer_id, protocol).await?;
+
+    if message.len() != 0 {
+        println!("SENDING MESSAGE");
+        match s.write(&message[..1]).await {
+            Ok(0) => {
+                tracing::warn!("Failed to send message: check warnings");
+                return Err(Box::new(io::Error::new(io::ErrorKind::ConnectionReset, "Connection reset")));
+            }
+            Ok(_) => {
+                s.write_all(&message[1..]).await?;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to send message: {:?}", e);
+                return Err(Box::new(e));
+            }
+        }
+        s.flush().await?;
+    }
+    Ok(s)
+}
+
+async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
     if let Ok(Err(e)) = find_response.await {
         tracing::error!("find peer error {}", e);
         if let Err(send_err) = send_response.send(Err(e)) {
@@ -740,40 +764,16 @@ async fn open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Strea
         return;
     }
 
-    let mut s = match ctrl.open_stream(peer_id, protocol).await {
-        Ok(s) => s,
-        Err(error @ stream::OpenStreamError::UnsupportedProtocol(_)) => {
-            if let Err(send_err) = send_response.send(Err(Box::new(error))) {
-                tracing::error!("Failed to send feedback: {:?}", send_err);
-            }
-            return;
+    let s = retry_with_delay(|| Box::pin(_open_stream(ctrl.clone(), peer_id.clone(), protocol.clone(), message.clone())), 3, Duration::from_secs(5)).await;
+    if let Err(e) = s {
+        tracing::error!("Failed to open stream: {:?}", e);
+        if let Err(send_err) = send_response.send(Err(e)) {
+            tracing::error!("Failed to send feedback: {:?}", send_err);
         }
-        Err(error) => {
-            if let Err(send_err) = send_response.send(Err(Box::new(error))) {
-                tracing::error!("Failed to send feedback: {:?}", send_err);
-            }
-            return;
-        }
-    };
-
-    if message.len() != 0 {
-        if let Err(e) = s.write_all(&message).await {
-            tracing::error!("Failed to send message: {:?}", e);
-            if let Err(send_err) = send_response.send(Err(Box::new(e))) {
-                tracing::error!("Failed to send feedback: {:?}", send_err);
-            }
-            return;
-        }
-        if let Err(e) = s.flush().await {
-            tracing::error!("Failed to flush stream: {:?}", e);
-            if let Err(send_err) = send_response.send(Err(Box::new(e))) {
-                tracing::error!("Failed to send feedback: {:?}", send_err);
-            }
-            return;
-        }
+        return;
     }
-    
-    if let Err(send_err) = send_response.send(Ok(s)) {
+
+    if let Err(send_err) = send_response.send(Ok(s.unwrap())) {
         tracing::error!("Failed to send feedback: {:?}", send_err);
     }
 }

@@ -2,8 +2,15 @@
 members = [
     "networking",
     "domain",
-    "runtime"
-, "examples/client", "examples/domain-manager", "examples/data-node", "base", "examples/relay", "examples/test-concurrent"]
+    "runtime",
+    "examples/client",
+    "examples/domain-manager",
+    "examples/data-node",
+    "base",
+    "examples/relay",
+    "examples/test-concurrent",
+    "utils"
+]
 resolver = "2"
 
 [workspace.package]
@@ -34,4 +41,5 @@ console_error_panic_hook = "0.1.7"
 networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
+utils = { path = "utils" }
 async-trait = "0.1.86"

@@ -40,7 +40,7 @@ async fn main() {
 
             let msg = String::from_utf8_lossy(buf);
             println!("Bootstrap: Received message: {}", msg);
-            sleep(Duration::from_millis(800)).await;
+            // sleep(Duration::from_millis(800)).await;
 
             let _ = stream.write_all(buf).await.expect(&format!("can't write from stream {}", peer));
             stream.flush().await.expect("can't flush stream");
@@ -93,9 +93,12 @@ async fn main() {
         enable_webrtc: false,
     };
     let mut peer_c = Networking::new(&peer_c_cfg).unwrap();
+
+    sleep(Duration::from_millis(3000)).await;
     tokio::spawn(async move {
-        sleep(Duration::from_millis(500)).await;
-        let mut s = peer_b.client.send(format!("send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_b.id));
+        // sleep(Duration::from_millis(500)).await;
+        println!("{}: Sending message", peer_b.id);
+        let mut s = peer_b.client.send(format!("3 - send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_b.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -105,7 +108,8 @@ async fn main() {
         println!("{}: Received message: {}", peer_b.id, msg);
     });
     tokio::spawn(async move {
-        let mut s = peer_c.client.send(format!("send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol_clone_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_c.id));
+        println!("{}: Sending message", peer_c.id);
+        let mut s = peer_c.client.send(format!("1 - send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol_clone_clone_clone.clone(), 0).await.expect(&format!("{}: can't send message", peer_c.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -116,7 +120,8 @@ async fn main() {
     });
 
     tokio::spawn(async move {
-        let mut s = peer_a.client.send(format!("1 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.clone(), 0).await.expect(&format!("{}: can't send message", peer_a.id));
+        println!("{}: Sending message", peer_a.id);
+        let mut s = peer_a.client.send(format!("2 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.clone(), 0).await.expect(&format!("{}: can't send message", peer_a.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         

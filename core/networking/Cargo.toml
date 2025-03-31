@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 rand = "0.8.5"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+utils = {workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "dcutr", "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat", "websocket" ] }
