@@ -22,17 +22,23 @@ use tokio::time::sleep;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::JsFuture;
 #[cfg(target_family = "wasm")]
-use web_sys::Window;
-#[cfg(target_family = "wasm")]
 use wasm_bindgen::{closure::Closure, JsCast};
+#[cfg(target_family = "wasm")]
+use js_sys::Promise;
+#[cfg(target_family = "wasm")]
+use wasm_bindgen::JsValue;
 
 #[cfg(target_family = "wasm")]
 async fn sleep(duration: Duration) {
     let window = web_sys::window().expect("no window");
-    let promise = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-        &Closure::once_into_js(move || {}).unchecked_ref(),
-        duration.as_millis() as i32,
-    ).expect("failed to set timeout");
+    let promise = Promise::new(&mut |resolve, _| {
+        window.set_timeout_with_callback_and_timeout_and_arguments_0(
+            &Closure::once_into_js(move || {
+                resolve.call0(&JsValue::null()).unwrap();
+            }).unchecked_ref(),
+            duration.as_millis() as i32,
+        ).expect("failed to set timeout");
+    });
     JsFuture::from(promise).await.expect("failed to wait");
 }
 
