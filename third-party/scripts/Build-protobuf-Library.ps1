@@ -63,6 +63,8 @@ switch ($Platform) {
     }
     "Mac-Catalyst" {
         # $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS" "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
+        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
+        $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
     }
     "iOS" {
         $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS" 
