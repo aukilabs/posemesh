@@ -3,6 +3,7 @@ include(AddLibraryImportsEmscripten)
 
 function(ADD_PROTOBUF NAME)
     set(Protobuf_SRC_ROOT_FOLDER "${CMAKE_SOURCE_DIR}/../third-party/protobuf" CACHE STRING INTERNAL)
+    set(Protobuf_DIR ${Protobuf_SRC_ROOT_FOLDER})
     
     # extract platform & arcitecture from installation dir
     string(REGEX MATCH "out-([a-zA-Z0-9_]+-[a-zA-Z0-9_]+|[a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)$" match ${CMAKE_INSTALL_PREFIX})
