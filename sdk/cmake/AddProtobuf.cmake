@@ -2,38 +2,39 @@ include(AddProtoc)
 include(AddLibraryImportsEmscripten)
 
 function(ADD_PROTOBUF NAME)
-    set(Protobuf_SRC_ROOT_FOLDER "${CMAKE_SOURCE_DIR}/../third-party/protobuf" CACHE STRING INTERNAL)
-    set(Protobuf_DIR ${Protobuf_SRC_ROOT_FOLDER})
-    
     # extract platform & arcitecture from installation dir
     string(REGEX MATCH "out-([a-zA-Z0-9_]+-[a-zA-Z0-9_]+|[a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)$" match ${CMAKE_INSTALL_PREFIX})
     set(INSTALL_PLATFORM "${CMAKE_MATCH_1}")
     set(INSTALL_ARCHITECTURE "${CMAKE_MATCH_2}")
+    set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/../third-party")
+    
+    set(PROTOBUF_ROOT "${THIRD_PARTY_DIR}/out-protobuf-${INSTALL_PLATFORM}-${INSTALL_ARCHITECTURE}-${CMAKE_BUILD_TYPE}")
+    set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_ROOT}/include)
+    set(Protobuf_SRC_ROOT_FOLDER "${THIRD_PARTY_DIR}/protobuf" CACHE STRING INTERNAL)
 
-    set(PROTOBUF_INSTALL_ROOT "${CMAKE_SOURCE_DIR}/../third-party/out-protobuf-${INSTALL_PLATFORM}-${INSTALL_ARCHITECTURE}-${CMAKE_BUILD_TYPE}")
-    set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_INSTALL_ROOT}/include)
+    if(EMSCRIPTEN)
+        add_library_imports_emscripten(${NAME} ${PROTOBUF_ROOT})
+    endif()
+
+    add_protoc(${NAME} ${PROTOBUF_ROOT})
+
     include_directories(${PROTOBUF_INCLUDE_DIR})
-
-    add_protoc(${NAME} ${PROTOBUF_INSTALL_ROOT})
 
     set(Protobuf_USE_STATIC_LIBS ON)
     set(Protobuf_DEBUG ON)
+    
     find_package(Protobuf REQUIRED CONFIG)
 
     if(NOT Protobuf_FOUND)
         message(FATAL_ERROR "Failed to find protobuf library build.")
     endif()
-
-    if(EMSCRIPTEN)
-        add_library_imports_emscripten(${NAME} "${PROTOBUF_INSTALL_ROOT}")
-    endif()
-
-    find_package(absl REQUIRED CONFIG PATHS ${PROTOBUF_INSTALL_ROOT})
+    
+    find_package(absl REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
     if(NOT absl_FOUND)
         message(FATAL_ERROR "Failed to find absl (a protobuf dependency) library build.")
     endif()
 
-    find_package(utf8_range REQUIRED CONFIG PATHS ${PROTOBUF_INSTALL_ROOT})
+    find_package(utf8_range REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
     if(NOT utf8_range_FOUND)
         message(FATAL_ERROR "Failed to find utf8_range (a protobuf dependency) library build.")
     endif()
