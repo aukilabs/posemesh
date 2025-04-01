@@ -26,10 +26,8 @@ Param(
 $ProtobufSource = Join-Path $PSScriptRoot "../protobuf"
 $BuildDir = "../build-protobuf-$Platform-$Architecture-$BuildType"
 $InstallDir = "../out-protobuf-$Platform-$Architecture-$BuildType"
-$BuildPathRel = Join-Path $PSScriptRoot $BuildDir
-$BuildPath = (Resolve-Path -Path $BuildPathRel).Path
-$InstallPathRel = Join-Path $PSScriptRoot $InstallDir
-$InstallPath = (Resolve-Path -Path $InstallPathRel).Path
+$BuildPath = Join-Path $PSScriptRoot $BuildDir
+$InstallPath = Join-Path $PSScriptRoot $InstallDir
 
 if (!(Test-Path $BuildPath)) {
     New-Item -ItemType Directory -Path $BuildPath | Out-Null
