@@ -588,7 +588,7 @@ impl Libp2p {
     // }
 
     fn subscribe(&mut self, topic: String, sender: oneshot::Sender<Box<dyn Error + Send + Sync>>) {
-        let t = IdentTopic::new(topic.clone());
+        let t = IdentTopic::new(topic);
         
         match self.swarm.behaviour_mut().gossipsub.subscribe(&t) {
             Ok(_) => {
