@@ -26,8 +26,10 @@ Param(
 $ProtobufSource = Join-Path $PSScriptRoot "../protobuf"
 $BuildDir = "../build-protobuf-$Platform-$Architecture-$BuildType"
 $InstallDir = "../out-protobuf-$Platform-$Architecture-$BuildType"
-$BuildPath = Join-Path $PSScriptRoot $BuildDir
-$InstallPath = Join-Path $PSScriptRoot $InstallDir
+$BuildPathRel = Join-Path $PSScriptRoot $BuildDir
+$BuildPath = (Resolve-Path -Path $BuildPathRel).Path
+$InstallPathRel = Join-Path $PSScriptRoot $InstallDir
+$InstallPath = (Resolve-Path -Path $InstallPathRel).Path
 
 if (!(Test-Path $BuildPath)) {
     New-Item -ItemType Directory -Path $BuildPath | Out-Null
@@ -59,10 +61,13 @@ $CMakeArgs = @(
 $UseEmscripten = $False
 switch ($Platform) {
     "macOS" {
-        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Architecture"
+        $Arch = $Architecture
+        if ($Arch -like "amd64") {
+            $Arch = "x86_64"
+        }
+        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
     }
     "Mac-Catalyst" {
-        # $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS" "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
         $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
         $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
     }
