@@ -143,31 +143,32 @@ impl RemoteDatastore {
                     writer.write_all(&m_buf).await.expect("Failed to write metadata");
                     writer.flush().await.expect("Failed to flush");
 
-                    // let default_chunk_size = 5 * 1024; // wasm allows 8192 = 8KB the most
-                    // let mut chunk_size = default_chunk_size;
+                    let default_chunk_size = 5 * 1024; // wasm allows 8192 = 8KB the most
+                    let mut chunk_size = default_chunk_size;
                     // let mut offset = 0;
                     let mut written = 0;
                     while written < data.content.len() {
-                        // if offset + chunk_size > data.content.len() {
-                        //     chunk_size = data.content.len() - offset;
-                        // }
-                        println!("Uploading chunk: {}/{}", written, data.content.len());
-                        match writer.write(&data.content[written..]).await {
+                        if written + chunk_size > data.content.len() {
+                            chunk_size = data.content.len() - written;
+                        }
+                        tracing::debug!("Uploading chunk: {}/{}", written, data.content.len());
+                        match writer.write(&data.content[written..written + chunk_size]).await {
                             Ok(0) => {
                                 tracing::error!("Failed to write content, is it backpressure?");
                                 continue;
                             }
                             Ok(n) => {
                                 written += n;
+                                tracing::debug!("Uploaded chunk: {}/{}", written, data.content.len());
                             },
                             Err(e) => {
                                 tracing::error!("Failed to write content: {:?}", e);
                                 break;
                             }
                         }
+                        writer.flush().await.expect("Failed to flush after chunk");
                         // offset += written;
                     }
-                    writer.flush().await.expect("Failed to flush");
                     println!("Uploaded");
                 },
                 Err(e) => {

@@ -617,8 +617,8 @@ impl Libp2p {
                 tracing::info!("Relay Client: {event:?}");
             }
             #[cfg(not(target_family="wasm"))]
-            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, ..})) => {
-                tracing::info!("Autonat Server tested address: {tested_addr}");
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatServer(libp2p::autonat::v2::server::Event {tested_addr, result, ..})) => {
+                tracing::info!("Autonat Server tested address: {tested_addr}, result: {result:?}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
                 info: libp2p::identify::Info { observed_addr, listen_addrs, protocols, agent_version, .. },
