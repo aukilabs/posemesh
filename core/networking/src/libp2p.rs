@@ -569,9 +569,6 @@ impl Libp2p {
             })) => {
                 tracing::info!("Tested {tested_addr} with {server}. Sent {bytes_sent} bytes for verification. Everything Ok and verified.");
                 self.swarm.add_external_address(tested_addr.clone());
-                self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                    dht.set_mode(Some(kad::Mode::Server));
-                });
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::AutonatClient(libp2p::autonat::v2::client::Event {
                 server,
@@ -597,21 +594,27 @@ impl Libp2p {
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 tracing::info!("External address confirmed: {address}");
+                let peer_id = self.swarm.local_peer_id().clone();
+                self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                    dht.add_address(&peer_id, address.clone());
+                    if !is_circuit_addr(address.clone()) {
+                        dht.set_mode(Some(kad::Mode::Server));
+                    }
+                });
+                // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                //     // dht.add_address(self.swarm.local_peer_id(), address.clone());
+                //     // if !is_circuit_addr(address.clone()) {
+                //         dht.set_mode(Some(kad::Mode::Server));
+                //     // }
+                // });
             }
             SwarmEvent::NewExternalAddrCandidate { address } => {
                 tracing::info!("New external address candidate: {address}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(
-                libp2p::relay::client::Event::ReservationReqAccepted { renewal,.. },
+                libp2p::relay::client::Event::ReservationReqAccepted { .. },
             )) => {
                 tracing::info!("Relay accepted our reservation request");
-
-                #[cfg(not(target_family="wasm"))]
-                if !renewal {
-                    self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                        dht.set_mode(Some(kad::Mode::Server));
-                    });
-                }
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::RelayClient(event)) => {
                 tracing::info!("Relay Client: {event:?}");

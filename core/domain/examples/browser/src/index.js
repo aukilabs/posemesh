@@ -57,8 +57,7 @@ export class UploadManager {
         try {
             console.log("initializing domain cluster");
             await init();
-            const domainCluster = new DomainCluster("/ip4/54.67.15.233/udp/18804/webrtc-direct/certhash/uEiBOFRjB-yCk_G82Wkp_R1GUoKSbbOEJVkrKF77giq4_IA/p2p/12D3KooWE7RYJVU3wCcXhzSSGdwm1fdiTiGsV9EJPnen47sSZMiL", "domain-browser-example", null, null);
-            // const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiA2J2rDp90OcHCmtUn6PdGKWwxqkFpNeDx5ZT5Lla6AWA/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
+            const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiA2J2rDp90OcHCmtUn6PdGKWwxqkFpNeDx5ZT5Lla6AWA/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
 
             this.domainCluster = domainCluster;
             this.datastore = new RemoteDatastore(domainCluster);
