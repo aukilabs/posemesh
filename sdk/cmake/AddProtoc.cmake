@@ -22,8 +22,6 @@ function(ADD_PROTOC NAME PROTO_BUILD_PATH)
     if(NOT Protobuf_SRC_ROOT_FOLDER)
         message(FATAL_ERROR "Protobuf_SRC_ROOT_FOLDER must be set to the protobuf source directory")
     endif()
-    
-    message("Protobuf_SRC_ROOT_FOLDER = ${Protobuf_SRC_ROOT_FOLDER}")
 
     set(PROTOC_BUILD_DIR "${PROTO_BUILD_PATH}/build-protoc-${PROTOBUF_OS}-${PROTOBUF_ARCH}")
     file(MAKE_DIRECTORY ${PROTOC_BUILD_DIR})
