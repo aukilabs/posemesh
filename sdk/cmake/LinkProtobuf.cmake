@@ -1,4 +1,6 @@
 function(LINK_PROTOBUF NAME)
+    link_directories(${PROTOBUF_LIBS_DIR})
+
     if(EMSCRIPTEN)
         link_platform_libraries(
             ${NAME}

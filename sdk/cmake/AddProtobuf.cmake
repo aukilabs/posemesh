@@ -21,6 +21,7 @@ function(ADD_PROTOBUF NAME)
     endif()
 
     set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_ROOT}/include)
+    set(PROTOBUF_LIBS_DIR ${PROTOBUF_ROOT}/lib)
     set(Protobuf_SRC_ROOT_FOLDER "${THIRD_PARTY_DIR}/protobuf" CACHE STRING INTERNAL)
 
     if(EMSCRIPTEN)
@@ -29,26 +30,13 @@ function(ADD_PROTOBUF NAME)
 
     add_protoc(${NAME} ${PROTOBUF_ROOT})
 
-    include_directories(${PROTOBUF_INCLUDE_DIR})
-
     set(Protobuf_USE_STATIC_LIBS ON)
     set(Protobuf_DEBUG ON)
-    
-    message(STATUS "Looking up Protobuf package in ${PROTOBUF_BUILD_DIR}")
-    find_package(Protobuf REQUIRED CONFIG PATHS ${PROTOBUF_BUILD_DIR})
+    find_package(Protobuf REQUIRED)
+    include_directories(${PROTOBUF_INCLUDE_DIR})
 
     if(NOT Protobuf_FOUND)
         message(FATAL_ERROR "Failed to find protobuf library build.")
-    endif()
-    
-    find_package(absl REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
-    if(NOT absl_FOUND)
-        message(FATAL_ERROR "Failed to find absl (a protobuf dependency) library build.")
-    endif()
-
-    find_package(utf8_range REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
-    if(NOT utf8_range_FOUND)
-        message(FATAL_ERROR "Failed to find utf8_range (a protobuf dependency) library build.")
     endif()
 
     # .proto file compilation
