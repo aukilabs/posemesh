@@ -39,6 +39,16 @@ function(ADD_PROTOBUF NAME)
         message(FATAL_ERROR "Failed to find protobuf library build.")
     endif()
 
+    find_package(absl REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
+    if(NOT absl_FOUND)
+        message(FATAL_ERROR "Failed to find absl (a protobuf dependency) library build.")
+    endif()
+
+    find_package(utf8_range REQUIRED CONFIG PATHS ${PROTOBUF_ROOT})
+    if(NOT utf8_range_FOUND)
+        message(FATAL_ERROR "Failed to find utf8_range (a protobuf dependency) library build.")
+    endif()
+
     # .proto file compilation
     if(NOT DEFINED Protobuf_PROTOC_EXECUTABLE)
         message(FATAL_ERROR "Failed to access protoc")
