@@ -70,8 +70,21 @@ switch ($Platform) {
         $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
     }
     "Mac-Catalyst" {
-        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
-        $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
+        $Arch = $Architecture
+        if ($Arch -like "amd64") {
+            $Arch = "x86_64"
+            $CXXFlags = "-target x86_64-apple-ios-macabi"
+        }
+        if ($Arch -like "arm64") {
+            $Arch = "arm64"
+            $CXXFlags = "-target arm64-apple-ios-macabi"
+        }
+        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
+        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=Darwin"
+        $CMakeArgs += "-DCMAKE_OSX_SYSROOT=macosx"
+        $CMakeArgs += "-DCMAKE_CXX_FLAGS=$CXXFlags"
+        $CMakeArgs += "-DCMAKE_C_FLAGS=$CXXFlags"
+        $CMakeArgs += "-DCMAKE_EXE_LINKER_FLAGS=$CXXFlags"
     }
     "iOS" {
         $Arch = $Architecture
