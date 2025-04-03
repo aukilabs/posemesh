@@ -175,7 +175,7 @@ impl RemoteDatastore {
                 }
             }
         }
-        println!("Flushed all data");
+        tracing::info!("Flushed all data");
     }
 }
 
