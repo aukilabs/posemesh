@@ -237,6 +237,7 @@
 | `string`               | A string type. Maps to `std::string` C++ type (getter and setter use it by value). A `string` type in JavaScript. |
 | `string_ref`           | A string type. Maps to `std::string` C++ type (getter and setter use it by const-ref). A `string` type in JavaScript. |
 | `string_mix`           | A string type. Maps to `std::string` C++ type (getter uses it by const-ref and setter uses it by value). A `string` type in JavaScript. |
+| `ENUM:<TYPE>`          | A custom generated enum `<TYPE>` type. |
 | `CLASS:<TYPE>`         | A custom generated class `<TYPE>` type. In C++ getter and setter use it by value. |
 | `CLASS_REF:<TYPE>`     | A custom generated class `<TYPE>` type. In C++ getter and setter use it by const-ref. |
 | `CLASS_MIX:<TYPE>`     | A custom generated class `<TYPE>` type. In C++ getter uses it by const-ref and setter uses it by value. |

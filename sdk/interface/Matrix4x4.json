@@ -1,5 +1,8 @@
 {
   "name": "Matrix4x4",
+  "toStringOperator": {
+    "custom": true
+  },
   "properties": [
     {
       "name": "M00",

@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateHeader(interfaces, interfaceName, interfaceJson) {
+function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameSwift = util.getLangClassName(interfaceJson, util.Swift);
   const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
@@ -63,7 +63,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
-      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.ObjC);
       let getterTypeExt = '';
       if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type)) {
         getterTypeExt = ' _Nonnull';
@@ -81,7 +81,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
-      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.ObjC);
       let setterTypeExt = '';
       if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type)) {
         setterTypeExt = ' _Nonnull';
@@ -102,6 +102,8 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw)) {
         includesFirst.add('#include <stdint.h>');
+      } else if (util.isEnumType(propTypeRaw)) {
+        importsSecond.add(`#import "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         importsSecond.add(`#import "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       }
@@ -198,7 +200,7 @@ function generateHeader(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateSource(interfaces, interfaceName, interfaceJson) {
+function generateSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const nameCamelBack = util.getStyleName('name', interfaceJson, util.camelBack);
@@ -425,7 +427,7 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     const propStatic = util.getPropertyStatic(propertyJson);
     if (propertyJson.hasGetter) {
       const getterName = util.getPropertyGetterName(propertyJson, util.ObjC);
-      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.ObjC);
+      const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.ObjC);
       let getterPfx = '';
       let getterExt = '';
       if (propTypeRaw === 'boolean') {
@@ -433,6 +435,9 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
       } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         getterPfx = '[NSString stringWithUTF8String:';
         getterExt = '.c_str()]';
+      } else if (util.isEnumType(propTypeRaw)) {
+        getterPfx = `static_cast<${getterType}>(`;
+        getterExt = ')';
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
         const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
@@ -512,7 +517,7 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.ObjC);
-      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.ObjC);
+      const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.ObjC);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
       let setterPfx = '';
       let setterExt = '';
@@ -521,6 +526,9 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
       } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         setterPfx = '[';
         setterExt = ' UTF8String]';
+      } else if (util.isEnumType(propTypeRaw)) {
+        setterPfx = `static_cast<psm::${util.getPropertyType(enums, interfaces, propertyJson, util.CXX)}>(`;
+        setterExt = ')';
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         const propTypeRawWithoutPfx = propTypeRaw.split(':').slice(1).join(':');
         const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
@@ -668,12 +676,12 @@ function generateSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceObjC(interfaces, interfaceName, interfaceJson) {
+function generateInterfaceObjC(enums, interfaces, interfaceName, interfaceJson) {
   const headerFilePath = path.resolve(__dirname, '..', 'platform', 'Apple', 'include', 'Posemesh', `${interfaceName}.h`);
   const sourceFilePath = path.resolve(__dirname, '..', 'platform', 'Apple', 'src', `${interfaceName}.mm`);
 
-  let headerCode = generateHeader(interfaces, interfaceName, interfaceJson);
-  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
+  let headerCode = generateHeader(enums, interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(enums, interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(headerFilePath, headerCode);
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);
