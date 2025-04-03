@@ -244,6 +244,10 @@ jobs:
         shell: pwsh
         run: ./third-party/scripts/Build-OpenCV-Library.ps1 Linux ${{ matrix.arch }} Release
 
+      - name: Build Protobuf
+        shell: pwsh
+        run: ./third-party/scripts/Build-protobuf-Library.ps1 Linux ${{ matrix.arch }} Release
+
       - name: Build Posemesh SDK
         shell: pwsh
         run: ./sdk/scripts/Build-Library.ps1 Linux ${{ matrix.arch }} Release

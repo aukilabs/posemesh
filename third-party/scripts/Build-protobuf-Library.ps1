@@ -64,6 +64,9 @@ switch ($Platform) {
         if ($Arch -like "amd64") {
             $Arch = "x86_64"
         }
+        if ($Arch -like "arm64") {
+            $Arch = "arm64"
+        }
         $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
     }
     "Mac-Catalyst" {
@@ -71,11 +74,24 @@ switch ($Platform) {
         $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
     }
     "iOS" {
-        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS" 
-        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Architecture"
+        $Arch = $Architecture
+        if ($Arch -like "ARM64") {
+            $Arch = "arm64"
+        }
+        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
+        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
     }
     "iOS-Simulator" {
-        # $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS" "-DCMAKE_OSX_ARCHITECTURES=$Architecture" "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
+        $Arch = $Architecture
+        if ($Arch -like "amd64") {
+            $Arch = "x86_64"
+        }
+        if ($Arch -like "arm64") {
+            $Arch = "arm64"
+        }
+        $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
+        $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
+        $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
     }
     "Web" {
         $UseEmscripten = $True
