@@ -144,7 +144,7 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
                 break;
             }
             written += n;
-            // println!("Served chunk: {}/{}", written, metadata.size);
+            println!("Served chunk: {}/{}", written, metadata.size);
             stream.write_all(&buf[..n]).await?;
             stream.flush().await?;
         }

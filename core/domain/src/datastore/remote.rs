@@ -167,12 +167,10 @@ impl RemoteDatastore {
                             }
                         }
                         writer.flush().await.expect("Failed to flush after chunk");
-                        // offset += written;
                     }
-                    println!("Uploaded");
                 },
                 Err(e) => {
-                    eprintln!("Failed to read data: {:?}", e);
+                    tracing::error!("Failed to read data: {:?}", e);
                     return;
                 }
             }

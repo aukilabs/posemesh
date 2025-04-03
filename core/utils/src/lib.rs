@@ -1,20 +1,7 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
-
 use std::time::Duration;
 use tracing;
+use std::{error::Error, io};
+use futures::{self, Future, FutureExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
@@ -29,7 +16,10 @@ use js_sys::Promise;
 use wasm_bindgen::JsValue;
 
 #[cfg(target_family = "wasm")]
-async fn sleep(duration: Duration) {
+use gloo_timers::future::TimeoutFuture;
+
+#[cfg(target_family = "wasm")]
+pub async fn sleep(duration: Duration) {
     let window = web_sys::window().expect("no window");
     let promise = Promise::new(&mut |resolve, _| {
         window.set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -71,4 +61,56 @@ where
             }
         }
     }
+}
+
+pub async fn retry_with_increasing_delay<F, T, E>(mut f: F, max_retries: u32, initial_delay: Duration) -> Result<T, E>
+where
+    F: FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, E>> + Send>>,
+    E: std::fmt::Debug,
+{
+    let mut retries = 0;
+    let mut delay = initial_delay;
+    loop {
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                if retries >= max_retries {
+                    return Err(e);
+                }
+                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries + 1, max_retries, delay, e);
+                sleep(delay).await;
+                delay = delay * 2;
+                retries += 1;
+            }
+        }
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Box<dyn Error + Send + Sync>>
+where
+    F: Future<Output = T> + 'static + Send,
+    T: 'static + Send,
+{
+    if duration.is_zero() {
+        return Ok(future.await);
+    }
+    let timeout_fut = gloo_timers::future::TimeoutFuture::new(duration.as_millis() as u32);
+    futures::select! {
+        result = future.fuse() => Ok(result),
+        _ = timeout_fut.fuse() => Err(Box::new(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>),
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Box<dyn Error + Send + Sync>>
+where
+    F: Future<Output = T>,
+{
+    if duration.is_zero() {
+        return Ok(future.await);
+    }
+    tokio::time::timeout(duration, future)
+        .await
+        .map_err(|_| Box::new(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>)
 }

@@ -1,11 +1,56 @@
 use libp2p::{PeerId, Stream, StreamProtocol};
 use libp2p_stream::IncomingStreams;
-use core::time;
-use std::error::Error;
-use futures::{channel::{mpsc::{self, Receiver}, oneshot}, future::{select, Either::{Left, Right}}, SinkExt};
+use utils;
+use std::{error::Error, time::Duration};
+use futures::{channel::{mpsc, oneshot}, SinkExt, FutureExt};
 use std::str::FromStr;
+#[cfg(not(target_family = "wasm"))]
+use tokio::time::sleep;
 #[cfg(target_family = "wasm")]
-use gloo_timers::future::TimeoutFuture;
+use utils::sleep;
+
+async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>, peer_id: PeerId, protocol: StreamProtocol, timeout: u32, last: bool) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+    let (sender, receiver) = oneshot::channel::<Result<Stream, Box<dyn Error + Send + Sync>>>();
+    command_sender
+        .send(Command::Send { message: message.clone(), peer_id: peer_id.clone(), protocol: protocol.clone(), response: sender })
+        .await
+        .map_err(|e| Box::new(e))?;
+
+    // #[cfg(target_family = "wasm")] 
+    // let result = {
+    //     let timeout_fut = gloo_timers::future::TimeoutFuture::new(timeout);
+    //     futures::select! {
+    //         result = receiver.fuse() => match result {
+    //             Ok(result) => result,
+    //             Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
+    //         },
+    //         _ = timeout_fut.fuse() => Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>),
+    //     }
+    // };
+
+    // #[cfg(not(target_family = "wasm"))]
+    let result = utils::timeout(Duration::from_millis(timeout as u64), async move {
+        match receiver.await {
+            Ok(result) => result,
+            Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
+        }
+    }).await?;
+
+    match result {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            if let Some(dial_error) = e.downcast_ref::<libp2p::swarm::DialError>() {
+                tracing::warn!("retry_send error: {:?}", dial_error);
+                if matches!(dial_error, libp2p::swarm::DialError::NoAddresses) && !last {
+                    tracing::warn!("retry the last time");
+                    sleep(Duration::from_millis(500)).await;
+                    return Box::pin(retry_send(command_sender, message, peer_id, protocol, timeout, true)).await;
+                }
+            }
+            return Err(e);
+        },
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -16,49 +61,14 @@ impl Client {
     pub fn new(sender: mpsc::Sender<Command>) -> Self {
         Self { sender }
     }
+
+    
     // timeout is in milliseconds
     pub async fn send(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
-        let (sender, receiver) = oneshot::channel::<Result<Stream, Box<dyn Error + Send + Sync>>>();
         let peer_id = PeerId::from_str(&peer_id).map_err(|e| Box::new(e))?;
         let pro = StreamProtocol::try_from_owned(protocol).map_err(|e| Box::new(e))?; 
-        self.sender
-            .send(Command::Send { message, peer_id, protocol: pro, response: sender })
-            .await
-            .map_err(|e| Box::new(e))?;
-
-        if timeout == 0 {
-            return match receiver.await {
-                Ok(result) => result,
-                Err(e) => Err(Box::new(e)), 
-            }
-        }
-
-
-        #[cfg(target_family = "wasm")]
-        match select(TimeoutFuture::new(timeout), receiver).await {
-            Left(_) => {
-                return Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out")));
-            }
-            Right((result, _)) => {
-                return match result {
-                    Ok(result) => result,
-                    Err(e) => Err(Box::new(e)), 
-                }
-            }
-        };
-
-        #[cfg(not(target_family = "wasm"))]
-        match tokio::time::timeout(time::Duration::from_millis(timeout as u64), receiver).await {
-            Err(_) => {
-                return Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out")));
-            }
-            Ok(result) => {
-                return match result {
-                    Ok(result) => result,
-                    Err(e) => Err(Box::new(e)), 
-                }
-            }
-        };
+        
+        retry_send(self.sender.clone(), message, peer_id, pro, timeout, false).await
     }
 
     pub async fn set_stream_handler(&mut self, protocol: String) -> Result<IncomingStreams, Box<dyn Error + Send + Sync>> {

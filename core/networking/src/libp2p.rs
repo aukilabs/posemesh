@@ -19,6 +19,10 @@ use std::{fs, path::Path};
 use tokio::spawn;
 #[cfg(target_family="wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
+#[cfg(target_family="wasm")]
+use utils::sleep;
+#[cfg(not(target_family="wasm"))]
+use tokio::time::sleep;
 
 use futures::executor::block_on;
 
@@ -601,12 +605,6 @@ impl Libp2p {
                         dht.set_mode(Some(kad::Mode::Server));
                     }
                 });
-                // self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                //     // dht.add_address(self.swarm.local_peer_id(), address.clone());
-                //     // if !is_circuit_addr(address.clone()) {
-                //         dht.set_mode(Some(kad::Mode::Server));
-                //     // }
-                // });
             }
             SwarmEvent::NewExternalAddrCandidate { address } => {
                 tracing::info!("New external address candidate: {address}");
@@ -656,12 +654,10 @@ impl Libp2p {
         match command {
             client::Command::Send { message, peer_id, protocol, response } => {
                 let ctrl = self.swarm.behaviour_mut().streams.new_control();
-                let (sender, mut receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
-
+                let mut receiver = None;
                 if !Swarm::is_connected(&self.swarm, &peer_id) {
-                    self.find_peer(peer_id, sender).await;
-                } else {
-                    receiver.close();
+                    tracing::info!("Peer {peer_id} is not connected, trying to find it");
+                    receiver = Some(self.find_peer(peer_id.clone()).await);
                 }
                 #[cfg(target_family="wasm")]
                 wasm_bindgen_futures::spawn_local(open_stream(ctrl, peer_id, protocol, message, response, receiver));
@@ -725,13 +721,16 @@ impl Libp2p {
         let _ = sender.send(Ok(incoming_stream));
     }
 
-    async fn find_peer(&mut self, peer_id: PeerId, sender: oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>) {
+    async fn find_peer(&mut self, peer_id: PeerId) -> oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>> {
+        let (sender, receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
         let mut find_peer_requests_lock = self.find_peer_requests.lock().await;
-        // TODO: add timeout to the query
-        self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-            let q = dht.get_closest_peers(peer_id.clone());
+
+        if let Some(kdht) = self.swarm.behaviour_mut().kdht.as_mut() {
+            let q = kdht.get_closest_peers(peer_id.clone());
             find_peer_requests_lock.insert(q, sender);
-        });
+        }
+
+        receiver
     }
 }
 
@@ -739,7 +738,6 @@ async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Stre
     let mut s = ctrl.open_stream(peer_id, protocol).await?;
 
     if message.len() != 0 {
-        println!("SENDING MESSAGE");
         match s.write(&message[..1]).await {
             Ok(0) => {
                 tracing::warn!("Failed to send message: check warnings");
@@ -758,15 +756,24 @@ async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Stre
     Ok(s)
 }
 
-async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_response: oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>) {
-    if let Ok(Err(e)) = find_response.await {
-        tracing::error!("find peer error {}", e);
-        if let Err(send_err) = send_response.send(Err(e)) {
-            tracing::error!("Failed to send feedback: {:?}", send_err);
+async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_peer_receiver: Option<oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>>) {
+    if let Some(receiver) = find_peer_receiver {
+        match receiver.await {
+            Ok(Ok(_)) => {
+                tracing::info!("Peer found");
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Failed to find peer: {:?}", e);
+                if let Err(e) = send_response.send(Err(e)) {
+                    tracing::error!("Failed to send feedback: {:?}", e);
+                }
+                return;
+            }
+            Err(e) => {
+                tracing::debug!("Cancelled finding peer");
+            }
         }
-        return;
     }
-
     let s = retry_with_delay(|| Box::pin(_open_stream(ctrl.clone(), peer_id.clone(), protocol.clone(), message.clone())), 3, Duration::from_secs(5)).await;
     if let Err(e) = s {
         tracing::error!("Failed to open stream: {:?}", e);
