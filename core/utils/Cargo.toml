@@ -1,0 +1,19 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+tokio = { workspace = true, features = ["full"] }
+
+[target.'cfg(target_family="wasm")'.dependencies]
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { version = "0.3", features = ["Window"] }
+js-sys = "0.3"
+gloo-timers = { workspace = true, features = ["futures"] }

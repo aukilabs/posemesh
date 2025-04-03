@@ -1,9 +1,9 @@
 use networking::libp2p::{Networking, NetworkingConfig};
-use tokio;
+use tokio::{self, io::split, select};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}, spatial::reconstruction::reconstruction_job};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, None, Some(private_key_path));
+    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
     let peer_id = domain_cluster.peer.id.clone();
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
@@ -34,23 +34,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let dir = fs::read_dir(input_dir).unwrap();
 
     let mut producer = remote_datastore.produce("".to_string()).await;
-    let mut uploaded = Vec::<task::TaskRequest>::new();
+    let scan = "2025-02-26_11-19-47".to_string();
+    let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
 
     for entry in dir {
         let entry = entry.unwrap();
         let path = entry.path().clone();
 
-        match fs::File::open(path) {
+        if !path.is_file() {
+            continue;
+        }
+
+        match fs::File::open(path.clone()) {
             Ok(mut f) => {
                 if f.metadata()?.len() > u32::MAX as u64 {
                     println!("File too large: {:?}", f.metadata()?.len());
                     continue;
                 }
 
+                let file_name = entry.file_name().into_string().unwrap();
+                let parts = file_name.split(".").collect::<Vec<&str>>();
+                let data_type = parts.last().unwrap();
+                let name = format!("{}_{}", parts[..parts.len()-1].join("."), scan);
+
                 let metadata = Metadata {
                     id: Some(data_id_generator()),
-                    name: entry.file_name().to_string_lossy().to_string(),
-                    data_type: "image".to_string(),
+                    name,
+                    data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
                     properties: HashMap::new(),
                 };
@@ -64,81 +74,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     content
                 };
 
-                let id = producer.push(&data).await.expect("cant push data");
-
-                let input = task::LocalRefinementInputV1 {
-                    query: Some(Query {
-                        ids: vec![id.clone()],
-                        name_regexp: None,
-                        data_type_regexp: None,
-                        names: vec![],
-                        data_types: vec![],
-                    }),
-                };
-                let task = task::TaskRequest {
-                    needs: vec![],
-                    resource_recruitment: Some(task::ResourceRecruitment {
-                        recruitment_policy: ResourceRecruitment::RecruitmentPolicy::ALWAYS,
-                        termination_policy: ResourceRecruitment::TerminationPolicy::TERMINATE,
-                    }),
-                    name: format!("local_refinement_{}", id.clone()),
-                    timeout: "10h".to_string(),
-                    max_budget: 1000,
-                    capability_filters: Some(task::CapabilityFilters {
-                        endpoint: "/local-refinement/v1".to_string(),
-                        min_gpu: 0,
-                        min_cpu: 0,
-                    }),
-                    data: Some(task::Any {
-                        type_url: "LocalRefinementInputV1".to_string(), // TODO: use actual type url
-                        value: serialize_into_vec(&input).expect("cant serialize input"),
-                    }),
-                    sender: domain_cluster.manager_id.clone(),
-                    receiver: "".to_string(),
-                };
-                uploaded.push(task);
+                let _ = producer.push(&data).await.expect("cant push data");
             }
             Err(e) => {
                 println!("Error reading file: {:?}", e);
             }
         }
     }
-    
-    // TODO: use oneshot channel to signal completion
-    while !producer.is_completed().await {
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+    loop {
+        let producer_clone = producer.clone();
+        let mut progress = producer.progress.lock().await;
+        select! {
+            event = progress.next() => {
+                drop(progress);
+                match event {
+                    Some(progress) => {
+                        if progress >= 100 {
+                            producer_clone.close().await;
+                            break;
+                        }
+                    }
+                    None => {
+                        producer_clone.close().await;
+                        break;
+                    }
+                }
+            }
+        }
     }
-    producer.close().await;
-    
-    let dependencies = uploaded.iter().map(|t| t.name.clone()).collect::<Vec<String>>();
-    uploaded.push(task::TaskRequest {
-        needs: dependencies,
-        resource_recruitment: Some(task::ResourceRecruitment {
-            recruitment_policy: ResourceRecruitment::RecruitmentPolicy::ALWAYS,
-            termination_policy: ResourceRecruitment::TerminationPolicy::KEEP,
-        }),
-        name: "global_refinement".to_string(),
-        timeout: "10m".to_string(),
-        max_budget: 1000,
-        capability_filters: Some(task::CapabilityFilters {
-            endpoint: "/global-refinement/v1".to_string(),
-            min_gpu: 1,
-            min_cpu: 1,
-        }),
-        data: Some(task::Any {
-            type_url: "GlobalRefinementInputV1".to_string(), // TODO: use actual type url
-            value: vec![],
-        }),
-        sender: domain_cluster.manager_id.clone(),
-        receiver: "".to_string(),
-    });
 
-    let job = task::Job {
-        name: "local_refinement".to_string(),
-        tasks: uploaded,
-    };
+    println!("producer closed");
 
-    let mut recv = domain_cluster.submit_job(&job).await;
+    let mut recv = reconstruction_job(domain_cluster, vec![scan]).await; 
 
     loop {
         tokio::select! {
