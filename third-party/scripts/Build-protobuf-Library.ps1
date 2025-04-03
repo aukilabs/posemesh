@@ -132,7 +132,6 @@ if (-not $UseEmscripten) {
         --target cordz_sample_token `
         --target bad_any_cast_impl `
         --target log_flags `
-        --parallel
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build failed" -ForegroundColor Red
