@@ -16,19 +16,6 @@ async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>,
         .await
         .map_err(|e| Box::new(e))?;
 
-    // #[cfg(target_family = "wasm")] 
-    // let result = {
-    //     let timeout_fut = gloo_timers::future::TimeoutFuture::new(timeout);
-    //     futures::select! {
-    //         result = receiver.fuse() => match result {
-    //             Ok(result) => result,
-    //             Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
-    //         },
-    //         _ = timeout_fut.fuse() => Err(Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>),
-    //     }
-    // };
-
-    // #[cfg(not(target_family = "wasm"))]
     let result = utils::timeout(Duration::from_millis(timeout as u64), async move {
         match receiver.await {
             Ok(result) => result,
@@ -40,13 +27,13 @@ async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>,
         Ok(s) => Ok(s),
         Err(e) => {
             if let Some(dial_error) = e.downcast_ref::<libp2p::swarm::DialError>() {
-                tracing::warn!("retry_send error: {:?}", dial_error);
                 if matches!(dial_error, libp2p::swarm::DialError::NoAddresses) && !last {
-                    tracing::warn!("retry the last time");
+                    tracing::warn!("find address the last time: {:?}", dial_error);
                     sleep(Duration::from_millis(500)).await;
                     return Box::pin(retry_send(command_sender, message, peer_id, protocol, timeout, true)).await;
                 }
             }
+            tracing::error!("send error: {:?}", e);
             return Err(e);
         },
     }

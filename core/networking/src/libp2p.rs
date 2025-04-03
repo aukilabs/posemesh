@@ -487,7 +487,7 @@ impl Libp2p {
                     }
                     return;
                 } else if last {
-                    tracing::error!("Failed to find peer: {peer_id}");
+                    tracing::warn!("No request found for peer: {peer_id}");
                 }
             }
             // get closest peers err
@@ -763,7 +763,6 @@ async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamPro
                 tracing::info!("Peer found");
             }
             Ok(Err(e)) => {
-                tracing::error!("Failed to find peer: {:?}", e);
                 if let Err(e) = send_response.send(Err(e)) {
                     tracing::error!("Failed to send feedback: {:?}", e);
                 }

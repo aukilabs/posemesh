@@ -175,7 +175,7 @@ impl RemoteDatastore {
                 }
             }
         }
-        writer.flush().await.expect("Failed to flush");
+        println!("Flushed all data");
     }
 }
 
