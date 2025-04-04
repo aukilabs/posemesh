@@ -104,13 +104,23 @@ switch ($Platform) {
         }
         $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
         $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
+        $CMakeArgs += "-DCMAKE_OSX_SYSROOT=iphonesimulator"
         $CMakeArgs += "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"
     }
     "Web" {
         $UseEmscripten = $True
     }
     "Linux" {
-        $CMakeArgs += "-DCMAKE_SYSTEM_PROCESSOR=$Architecture"
+        $Arch = $Architecture
+        if ($Arch -like "arm64") {
+            $Arch = "arm64"
+            $CMakeArgs += "-DCMAKE_SYSTEM_NAME=Linux"
+            $CMakeArgs += "-DCMAKE_SYSTEM_PROCESSOR=aarch64"
+            $CMakeArgs += "-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc"
+            $CMakeArgs += "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"
+            $CMakeArgs += "-DCMAKE_LINKER=aarch64-linux-gnu-ld"
+        }
+        $CMakeArgs += "-DCMAKE_SYSTEM_PROCESSOR=$Arch"
     }
 }
 
