@@ -17,9 +17,10 @@ pub type DataReader = Reader<Data>;
 pub enum DomainError {
     NotFound,
     Interrupted,
-    Cancelled,
+    Cancelled(String),
     IoError(std::io::Error),
     PostgresError(tokio_postgres::Error),
+    InternalError(Box<dyn Error + Send + Sync>),
 }
 
 impl Error for DomainError {}
@@ -28,17 +29,22 @@ impl std::fmt::Display for DomainError {
         match self {
             DomainError::NotFound => write!(f, "Not found"),
             DomainError::Interrupted => write!(f, "Interrupted"),
-            DomainError::Cancelled => write!(f, "Cancelled"),
+            DomainError::Cancelled(s) => write!(f, "Cancelled: {}", s),
             DomainError::IoError(e) => write!(f, "IO error: {}", e),
             DomainError::PostgresError(e) => write!(f, "Postgres error: {}", e),
+            DomainError::InternalError(e) => write!(f, "Internal error: {}", e),
         }
     }
 }
 
+#[async_trait]
+pub trait DomainData: Send + Sync {
+    async fn push_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError>;
+}
 
 #[async_trait]
 pub trait ReliableDataProducer: Send + Sync {
-    async fn push(&mut self, data: &domain_data::Data) -> Result<String, DomainError>;
+    async fn push(&mut self, metadata: &domain_data::Metadata) -> Result<Box<dyn DomainData>, DomainError>;
     async fn is_completed(&self) -> bool;
     async fn close(self) -> ();
 }

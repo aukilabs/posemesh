@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
 
-    let mut producer: Box<RemoteReliableDataProducer> = remote_datastore.produce("".to_string()).await;
+    let mut producer = remote_datastore.produce("".to_string()).await;
     let scan = "2025-02-26_11-19-47".to_string();
     let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
 
@@ -82,25 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    loop {
-        let mut progress = producer.progress.lock().await;
-        select! {
-            event = progress.next() => {
-                drop(progress);
-                match event {
-                    Some(progress) => {
-                        if progress >= 100 {
-                            producer_clone.close().await;
-                            break;
-                        }
-                    }
-                    None => {
-                        producer_clone.close().await;
-                        break;
-                    }
-                }
-            }
-        }
+    while !producer.is_completed().await {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 
     println!("producer closed");
