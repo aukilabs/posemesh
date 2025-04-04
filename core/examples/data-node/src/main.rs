@@ -175,7 +175,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    let conn_str = "postgres://postgres:postgres@localhost:5432/postgres";
+    let conn_str = "postgres://test:test@localhost:5433/domain-server?sslmode=disable";
     let path = format!("{}/output/domain_data", base_path);
     let _ = std::fs::remove_dir_all(path.clone());
     std::fs::create_dir_all(path.clone()).expect("Failed to create domain_data directory");

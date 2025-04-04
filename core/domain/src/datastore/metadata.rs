@@ -1,32 +1,43 @@
 use std::{collections::{HashMap, VecDeque}, fmt::write, sync::Arc};
-use futures::{channel::mpsc::channel, SinkExt, StreamExt};
+use futures::{channel::mpsc::{self, channel}, SinkExt, StreamExt};
 use tokio::{spawn, sync::{oneshot, Mutex}};
 use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 use crate::protobuf::domain_data::{Data, Metadata, Query};
-use super::common::{DataReader, DataWriter, Datastore, DomainError, Reader, ReliableDataProducer, Writer};
+use super::common::{DataReader, DataWriter, Datastore, DomainData, DomainError, Reader, ReliableDataProducer, Writer};
 use async_trait::async_trait;
 
 pub(crate) struct InstantPush {
     pub response: oneshot::Sender<Result<Metadata, DomainError>>,
-    pub data: Data,
+    pub data: Metadata,
 }
 
-pub struct LocalProducer {
-    pub writer: Writer<InstantPush>,
+pub struct MetadataProducer {
+    pub(crate) writer: mpsc::Sender<InstantPush>,
+}
+
+pub struct MetadataDomainData {
+    pub link: String,
 }
 
 #[async_trait]
-impl ReliableDataProducer for LocalProducer {
-    async fn push(&mut self, data: &Data) -> Result<String, DomainError> {
+impl DomainData for MetadataDomainData {
+    async fn push_chunk(&mut self, _: &[u8], _: bool) -> Result<String, DomainError> {
+        Ok(self.link.clone())
+    }
+}
+
+#[async_trait]
+impl ReliableDataProducer for MetadataProducer {
+    async fn push(&mut self, data: &Metadata) -> Result<Box<dyn DomainData>, DomainError> {
         let (response, receiver) = oneshot::channel();
         let push = InstantPush {
             response,
             data: data.clone(),
         };
-        self.writer.send(Ok(push)).await.unwrap();
+        self.writer.send(push).await.unwrap();
         match receiver.await.unwrap() {
-            Ok(metadata) => Ok(metadata.link.unwrap()),
+            Ok(metadata) => Ok(Box::new(MetadataDomainData { link: metadata.link.unwrap() })),
             Err(e) => Err(e),
         }
     }
@@ -151,48 +162,39 @@ impl Datastore for MetadataStore {
     async fn produce(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
         let client = self.client.clone();
         
-        let (writer, mut reader) = channel::<Result<InstantPush, DomainError>>(240);
+        let (writer, mut reader) = channel::<InstantPush>(240);
         
         let path = self.path.clone();
-        let mut writer_clone = writer.clone();
         spawn(async move {
-            let client = client.lock().await;
-            while let Some(row) = reader.next().await {
-                match row {
-                    Ok(push) => {
-                        let mut metadata = push.data.metadata;
-                        let response_writer = push.response;
-                        let mut sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name, domain_id) DO UPDATE SET data_type=$3,size=$4,link=$5,updated_at=now()";
-                        if metadata.id.is_none() {
-                            let id = Uuid::new_v4().to_string();
-                            metadata.id = Some(id.clone());
-                            metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, id, metadata.hash.as_ref().unwrap()));
-                        } else {
-                            metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, metadata.id.as_ref().unwrap(), metadata.hash.as_ref().unwrap()));
-                            sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$2,data_type=$3,size=$4,link=$5,domain_id=$6,updated_at=now()";
-                        }
-                        if let Err(e) = client.execute(sql, &[
-                            &metadata.id,
-                            &metadata.name,
-                            &metadata.data_type,
-                            &metadata.size,
-                            &metadata.link,
-                            &domain_id,
-                        ]).await {
-                            tracing::error!("{}", e);
-                            response_writer.send(Err(DomainError::Interrupted)).expect("send error");
-                            continue;
-                        }
-                        response_writer.send(Ok(metadata)).expect("send error");
-                    }
-                    Err(e) => {
-                        let _ = writer_clone.send(Err(e)).await;
-                        break;
-                    }
+            while let Some(push) = reader.next().await {
+                let metadata = push.data;
+                let response_writer = push.response;
+                let mut sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name, domain_id) DO UPDATE SET data_type=$3,size=$4,link=$5,updated_at=now()";
+                if metadata.id.is_none() {
+                    // let id = Uuid::new_v4().to_string();
+                    // metadata.id = Some(id.clone());
+                    // metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, id, metadata.hash.as_ref().unwrap()));
+                // } else {
+                    // metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, metadata.id.as_ref().unwrap(), metadata.hash.as_ref().unwrap()));
+                    sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$2,data_type=$3,size=$4,link=$5,domain_id=$6,updated_at=now()";
                 }
+                let client = client.lock().await;
+                if let Err(e) = client.execute(sql, &[
+                    &metadata.id,
+                    &metadata.name,
+                    &metadata.data_type,
+                    &metadata.size,
+                    &metadata.link,
+                    &domain_id,
+                ]).await {
+                    tracing::error!("{}", e);
+                    response_writer.send(Err(DomainError::Interrupted)).expect("send error");
+                    continue;
+                }
+                response_writer.send(Ok(metadata)).expect("send error");
             }
         });
 
-        Box::new(LocalProducer { writer })
+        Box::new(MetadataProducer { writer })
     }
 }
