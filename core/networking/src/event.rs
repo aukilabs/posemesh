@@ -1,4 +1,4 @@
-use libp2p::{gossipsub::TopicHash, PeerId, Stream, StreamProtocol};
+use libp2p::{gossipsub::TopicHash, PeerId};
 use std::error::Error;
 
 #[derive(Debug)]

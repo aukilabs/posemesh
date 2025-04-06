@@ -1,9 +1,9 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::{muxing::StreamMuxerBox}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
-use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration, pin::Pin};
+use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
 use crate::{client::{self, Client}, event};
 use std::net::{Ipv4Addr, IpAddr};
@@ -184,11 +184,11 @@ fn parse_or_create_keypair(
     }
 
     #[cfg(not(target_family="wasm"))]
-    if !private_key_path.is_none() {
-        return keypair_file(private_key_path.as_ref().unwrap());
+    if let Some(key_path) = private_key_path {
+        return keypair_file(&key_path);
     }
 
-    return libp2p::identity::Keypair::generate_ed25519();
+    libp2p::identity::Keypair::generate_ed25519()
 }
 
 async fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehaviour) -> Result<Swarm<PosemeshBehaviour>, Box<dyn Error + Send + Sync>> {
@@ -465,7 +465,7 @@ impl Libp2p {
                 tracing::info!("GetClosestPeersOk Got {:?} peer(s) for {:#}, count {:?}, last {:?}", peers.len(), peer_id, count, last);
                 let mut found_address = false;
                 for peer in peers {
-                    found_address = peer.addrs.len() > 0;
+                    found_address = !peer.addrs.is_empty();
                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer.peer_id);
                     for addr in peer.addrs {
                         tracing::info!("Adding address to DHT: {}", addr.clone());
@@ -485,7 +485,6 @@ impl Libp2p {
                     } else {
                         let _ = sender.unwrap().send(Err(Box::new(DialError::NoAddresses)));
                     }
-                    return;
                 } else if last {
                     tracing::warn!("No request found for peer: {peer_id}");
                 }
@@ -556,7 +555,7 @@ impl Libp2p {
                 if let Err(e) = self.event_sender.send(event::Event::PubSubMessageReceivedEvent { 
                         topic: topic.clone(),
                         message: data.clone(),
-                        from: source.clone(),
+                        from: source,
                     }).await {
                     tracing::error!("Failed to send pubsub message: {e}");
                 }
@@ -644,7 +643,7 @@ impl Libp2p {
                     capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") ).collect::<Vec<String>>(),
                 };
 
-                self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.expect(&format!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
+                self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
             },
             e => tracing::debug!("Other events: {e:?}"),
         }
@@ -657,7 +656,7 @@ impl Libp2p {
                 let mut receiver = None;
                 if !Swarm::is_connected(&self.swarm, &peer_id) {
                     tracing::info!("Peer {peer_id} is not connected, trying to find it");
-                    receiver = Some(self.find_peer(peer_id.clone()).await);
+                    receiver = Some(self.find_peer(peer_id).await);
                 }
                 #[cfg(target_family="wasm")]
                 wasm_bindgen_futures::spawn_local(open_stream(ctrl, peer_id, protocol, message, response, receiver));
@@ -693,9 +692,7 @@ impl Libp2p {
         let t = IdentTopic::new(topic);
         
         match self.swarm.behaviour_mut().gossipsub.subscribe(&t) {
-            Ok(_) => {
-                return;
-            },
+            Ok(_) => {},
             Err(e) => {
                 let _ = sender.send(Box::new(e));
             }
@@ -726,7 +723,7 @@ impl Libp2p {
         let mut find_peer_requests_lock = self.find_peer_requests.lock().await;
 
         if let Some(kdht) = self.swarm.behaviour_mut().kdht.as_mut() {
-            let q = kdht.get_closest_peers(peer_id.clone());
+            let q = kdht.get_closest_peers(peer_id);
             find_peer_requests_lock.insert(q, sender);
         }
 
@@ -737,7 +734,7 @@ impl Libp2p {
 async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>) -> Result<Stream, Box<dyn Error + Send + Sync>> {
     let mut s = ctrl.open_stream(peer_id, protocol).await?;
 
-    if message.len() != 0 {
+    if !message.is_empty() {
         match s.write(&message[..1]).await {
             Ok(0) => {
                 tracing::warn!("Failed to send message: check warnings");
@@ -768,12 +765,12 @@ async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamPro
                 }
                 return;
             }
-            Err(e) => {
+            Err(_) => {
                 tracing::debug!("Cancelled finding peer");
             }
         }
     }
-    let s = retry_with_delay(|| Box::pin(_open_stream(ctrl.clone(), peer_id.clone(), protocol.clone(), message.clone())), 3, Duration::from_secs(5)).await;
+    let s = retry_with_delay(|| Box::pin(_open_stream(ctrl.clone(), peer_id, protocol.clone(), message.clone())), 3, Duration::from_secs(5)).await;
     if let Err(e) = s {
         tracing::error!("Failed to open stream: {:?}", e);
         if let Err(send_err) = send_response.send(Err(e)) {

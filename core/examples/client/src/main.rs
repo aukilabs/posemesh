@@ -1,9 +1,7 @@
-use networking::libp2p::{Networking, NetworkingConfig};
-use tokio::{self, io::split, select};
+use tokio::{self, select};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata, Query}, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status}}, spatial::reconstruction::reconstruction_job};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata}}, spatial::reconstruction::reconstruction_job};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
@@ -25,8 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let mut domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
-    let peer_id = domain_cluster.peer.id.clone();
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
+    let _peer_id = domain_cluster.peer.id.clone();
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);

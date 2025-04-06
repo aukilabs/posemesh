@@ -1,7 +1,6 @@
 use std::time::Duration;
-use tracing;
 use std::{error::Error, io};
-use futures::{self, Future, FutureExt};
+use futures::{self, Future};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
@@ -79,7 +78,7 @@ where
                 }
                 tracing::warn!("Retry {}/{} after {:?}: {:?}", retries + 1, max_retries, delay, e);
                 sleep(delay).await;
-                delay = delay * 2;
+                delay *= 2;
                 retries += 1;
             }
         }

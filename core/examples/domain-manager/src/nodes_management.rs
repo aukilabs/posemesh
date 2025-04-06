@@ -83,7 +83,7 @@ impl NodesManagement {
         let mut exists = false;
 
         let mut nodes = self.nodes.lock().await;
-        if let Some(_) = nodes.insert(node_id.clone(), node.clone()) {
+        if nodes.insert(node_id.clone(), node.clone()).is_some() {
             exists = true;
             tracing::warn!("Node {} already registered", node_id);
         }
