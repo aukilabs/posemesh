@@ -1,6 +1,6 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use libp2p::Stream;
-use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig}};
 use nodes_management::NodesManagement;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tasks_management::{task_id, TaskHandler, TasksManagement};
@@ -9,7 +9,6 @@ use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
 use domain::{message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
-use hex;
 use serde::{Serialize, Deserialize};
 mod tasks_management;
 mod nodes_management;
@@ -144,7 +143,7 @@ impl DomainManager {
         let job = read_prefix_size_message::<JobRequest>(reader).await.expect("failed to load job request");
 
         let mut hasher = Sha256::new();
-        hasher.update(&serialize_into_vec(&job).unwrap());
+        hasher.update(serialize_into_vec(&job).unwrap());
         let result = hasher.finalize();
         let job_id = hex::encode(result);
         println!("Job received: {:?}-{}", job.name, job_id);
@@ -170,11 +169,11 @@ impl DomainManager {
                 writer.flush().await.expect("failed to flush result");
                 task_mgmt.remove_job(&job_id).await;
                 return;
-            } else {
-                if res.unwrap() {
-                    tasks.push(task_id(&job_id, &task_req.name));
-                }
             }
+            else if res.unwrap() {
+                tasks.push(task_id(&job_id, &task_req.name));
+            }
+
         }
         writer.write_all(&prefix_size_message(&resp)).await.expect("failed to write job submittion response");
         writer.flush().await.expect("failed to flush result");
@@ -308,7 +307,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if args.len() == 5 {
         private_key_path = args[4].clone();
     }
-    let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let cfg = &NetworkingConfig{
         port,
