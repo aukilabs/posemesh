@@ -56,11 +56,10 @@ $CMakeArgs = @(
     "-DCMAKE_CXX_STANDARD=17"
 )
 
-# TODO: Fix platforms
+$Arch = $Architecture
 $UseEmscripten = $False
 switch ($Platform) {
     "macOS" {
-        $Arch = $Architecture
         if ($Arch -like "amd64") {
             $Arch = "x86_64"
         }
@@ -70,7 +69,6 @@ switch ($Platform) {
         $CMakeArgs += "-DCMAKE_OSX_ARCHITECTURES=$Arch"
     }
     "Mac-Catalyst" {
-        $Arch = $Architecture
         if ($Arch -like "amd64") {
             $Arch = "x86_64"
             $CXXFlags = "-target x86_64-apple-ios-macabi"
@@ -87,7 +85,6 @@ switch ($Platform) {
         $CMakeArgs += "-DCMAKE_EXE_LINKER_FLAGS=$CXXFlags"
     }
     "iOS" {
-        $Arch = $Architecture
         if ($Arch -like "ARM64") {
             $Arch = "arm64"
         }
@@ -95,7 +92,6 @@ switch ($Platform) {
         $CMakeArgs += "-DCMAKE_SYSTEM_NAME=iOS"
     }
     "iOS-Simulator" {
-        $Arch = $Architecture
         if ($Arch -like "amd64") {
             $Arch = "x86_64"
         }
@@ -111,7 +107,6 @@ switch ($Platform) {
         $UseEmscripten = $True
     }
     "Linux" {
-        $Arch = $Architecture
         if ($Arch -like "arm64") {
             $Arch = "arm64"
             $CMakeArgs += "-DCMAKE_SYSTEM_NAME=Linux"

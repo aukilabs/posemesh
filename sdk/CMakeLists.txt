@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.30.2 FATAL_ERROR)
 
-set(CMAKE_MESSAGE_LOG_LEVEL TRACE) # for easier debugging
-
 set(GENERATED_INTERFACE_FILES_CMAKE_FILE "${CMAKE_CURRENT_LIST_DIR}/cmake/GeneratedInterfaceFiles.cmake")
 if(NOT EXISTS "${GENERATED_INTERFACE_FILES_CMAKE_FILE}" OR IS_DIRECTORY "${GENERATED_INTERFACE_FILES_CMAKE_FILE}")
     message(FATAL_ERROR "Required generated file 'cmake/GeneratedInterfaceFiles.cmake' is missing. Did you run 'npm run generate' in 'sdk/gentool' directory?")
