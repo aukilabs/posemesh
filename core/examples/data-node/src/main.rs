@@ -45,7 +45,7 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
     let mut data_ids = Vec::<String>::new();
     let domain_id = claim.domain_id.clone();
 
-    let mut producer = fs_datastore.produce(domain_id.clone()).await;
+    let mut producer = fs_datastore.upsert(domain_id.clone()).await;
 
     loop {
         let mut length_buf = [0u8; 4];
@@ -68,20 +68,16 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
 
         let data_id = metadata.id.clone().expect("Failed to get data id");
 
-        let default_chunk_size = 5 * 1024;
+        let default_chunk_size = 10 * 1024;
         let mut read_size: usize = 0;
         let data_size = metadata.size as usize;
-        let mut content = Vec::<u8>::with_capacity(data_size);
+        let mut data_writer = producer.push(&metadata).await?;
         loop {
             // TODO: add timeout so stream wont be idle for too long
             let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
             if chunk_size == 0 {
                 data_ids.push(data_id.clone());
-                producer.push(&Data {
-                    domain_id: domain_id.clone(),
-                    metadata: metadata.clone(),
-                    content,
-                }).await?;
+                data_writer.push_chunk(&vec![], false).await?;
                 println!("Stored data: {}, size: {}", metadata.name, metadata.size);
                 stream.write_all(&length_buf).await?;
                 stream.write_all(&buffer).await?;
@@ -93,7 +89,7 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
 
             read_size+=chunk_size;
 
-            content.extend_from_slice(&buffer);
+            data_writer.push_chunk(&buffer, true).await?;
             println!("Received chunk: {}/{}", read_size, metadata.size);
         }
     }
@@ -114,7 +110,7 @@ async fn serve_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
         }
     }
     let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf)?;
-    let mut consumer = fs_datastore.consume(header.domain_id.clone(), input.query, input.keep_alive).await;
+    let mut consumer = fs_datastore.load(header.domain_id.clone(), input.query, input.keep_alive).await;
     loop {
         select! {
             result = consumer.next() => {
@@ -180,8 +176,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _ = std::fs::remove_dir_all(path.clone());
     std::fs::create_dir_all(path.clone()).expect("Failed to create domain_data directory");
 
-    let metadata_store = MetadataStore::new(conn_str, path.clone().as_str()).await.expect("Failed to create metadata store");
-    let fs_datastore = FsDatastore::new(metadata_store).await;
+    let metadata_store = MetadataStore::new(conn_str).await.expect("Failed to create metadata store");
+    let fs_datastore = FsDatastore::new(metadata_store, path.clone()).await;
 
     loop {
         select! {

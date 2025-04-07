@@ -4,7 +4,7 @@ use tokio::{spawn, sync::{oneshot, Mutex}};
 use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 use crate::protobuf::domain_data::{Data, Metadata, Query};
-use super::common::{DataReader, DataWriter, Datastore, DomainData, DomainError, Reader, ReliableDataProducer, Writer};
+use super::{common::{data_id_generator, DataReader, DataWriter, Datastore, DomainData, DomainError, Reader, ReliableDataProducer, Writer}, fs::from_path_to_hash};
 use async_trait::async_trait;
 
 pub(crate) struct InstantPush {
@@ -54,11 +54,10 @@ impl ReliableDataProducer for MetadataProducer {
 #[derive(Clone)]
 pub struct MetadataStore {
     client: Arc<Mutex<Client>>,
-    path: String,
 }
 
 impl MetadataStore {
-    pub async fn new(conn_str: &str, path: &str) -> Result<MetadataStore, tokio_postgres::Error> {
+    pub async fn new(conn_str: &str) -> Result<MetadataStore, tokio_postgres::Error> {
         let (client, connection) = tokio_postgres::connect(conn_str, NoTls).await?;
 
         // Spawn a task to manage the connection
@@ -68,7 +67,7 @@ impl MetadataStore {
             }
         });
 
-        Ok(MetadataStore { client: Arc::new(Mutex::new(client)), path: path.to_string() })
+        Ok(MetadataStore { client: Arc::new(Mutex::new(client)) })
     }
 }
 
@@ -123,7 +122,7 @@ impl Query {
 
 #[async_trait]
 impl Datastore for MetadataStore {
-    async fn consume(&mut self, domain_id: String, query: Query, keep_alive: bool) -> DataReader {
+    async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> DataReader {
         let (sql, params) = query.to_sql(domain_id);
         let (mut writer, reader) = channel::<Result<Data, DomainError>>(240);
         let client = self.client.clone();
@@ -134,7 +133,7 @@ impl Datastore for MetadataStore {
             let rows = client.query(&sql, &params_refs[..]).await.unwrap();
             for row in rows {
                 let link: String = row.get("link");
-                let hash = link.split('.').last().unwrap();
+                let hash = from_path_to_hash(&link).unwrap();
                 let data = Data {
                     domain_id: row.get("domain_id"),
                     metadata: Metadata {
@@ -142,7 +141,7 @@ impl Datastore for MetadataStore {
                         name: row.get("name"),
                         data_type: row.get("data_type"),
                         properties: HashMap::new(),
-                        size: row.get("size"),
+                        size: row.get("data_size"),
                         link: Some(link.clone()),
                         hash: Some(hash.to_string()),
                     },
@@ -159,31 +158,45 @@ impl Datastore for MetadataStore {
         reader
     }
 
-    async fn produce(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
+    async fn upsert(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
         let client = self.client.clone();
         
         let (writer, mut reader) = channel::<InstantPush>(240);
         
-        let path = self.path.clone();
         spawn(async move {
             while let Some(push) = reader.next().await {
-                let metadata = push.data;
+                let mut metadata = push.data;
                 let response_writer = push.response;
-                let mut sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name, domain_id) DO UPDATE SET data_type=$3,size=$4,link=$5,updated_at=now()";
+                let mut sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name, domain_id) DO UPDATE SET data_type=$3,data_size=$4,link=$5,updated_at=now()";
+                let id = metadata.id.clone().unwrap_or(data_id_generator());
                 if metadata.id.is_none() {
-                    // let id = Uuid::new_v4().to_string();
-                    // metadata.id = Some(id.clone());
-                    // metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, id, metadata.hash.as_ref().unwrap()));
-                // } else {
-                    // metadata.link = Some(format!("{}/{}/{}.{}", path, domain_id, metadata.id.as_ref().unwrap(), metadata.hash.as_ref().unwrap()));
-                    sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$2,data_type=$3,size=$4,link=$5,domain_id=$6,updated_at=now()";
+                    metadata.id = Some(id.clone());
+                } else {
+                    sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$2,data_type=$3,data_size=$4,link=$5,domain_id=$6,updated_at=now()";
                 }
+                let id_parse_result = Uuid::parse_str(&id.clone());
+                if let Err(e) = id_parse_result {
+                    tracing::error!("{}", e);
+                    response_writer.send(Err(DomainError::Cancelled(format!("Invalid id: {} {}", id, e)))).expect("send error");
+                    continue;
+                }
+                let id = id_parse_result.unwrap();
+                let size = i64::from(metadata.size);
+                
+                let domain_id_parse_result = Uuid::parse_str(&domain_id.clone());
+                if let Err(e) = domain_id_parse_result {
+                    tracing::error!("{}", e);
+                    response_writer.send(Err(DomainError::Cancelled(format!("Invalid domain id: {} {}", domain_id, e)))).expect("send error");
+                    continue;
+                }
+                let domain_id = domain_id_parse_result.unwrap();
+
                 let client = client.lock().await;
                 if let Err(e) = client.execute(sql, &[
-                    &metadata.id,
+                    &id,
                     &metadata.name,
                     &metadata.data_type,
-                    &metadata.size,
+                    &size,
                     &metadata.link,
                     &domain_id,
                 ]).await {

@@ -52,8 +52,8 @@ pub trait ReliableDataProducer: Send + Sync {
 
 #[async_trait]
 pub trait Datastore: Send + Sync + Clone {
-    async fn consume(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
-    async fn produce(self: &mut Self, domain_id: String) -> Box<dyn ReliableDataProducer>;
+    async fn load(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
+    async fn upsert(self: &mut Self, domain_id: String) -> Box<dyn ReliableDataProducer>;
 }
 
 pub fn data_id_generator() -> String {

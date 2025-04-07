@@ -13,5 +13,5 @@ tokio = { workspace = true }
 futures = { workspace = true }
 jsonwebtoken = "9.3.0"
 uuid = "1.13.2"
-domain = {workspace = true}
+domain = {workspace = true, features = ["fs"]}
 regex = "1.11.1"

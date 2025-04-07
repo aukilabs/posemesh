@@ -1,6 +1,6 @@
 pub mod remote;
 pub mod common;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "fs"))]
 pub mod metadata;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "fs"))]
 pub mod fs;
