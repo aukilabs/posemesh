@@ -1,56 +1,39 @@
+use std::sync::Arc;
+
 use crate::protobuf::domain_data::{Data, Metadata, Query};
 use tokio::{fs::{self, OpenOptions}, io::AsyncWriteExt, sync::oneshot, spawn};
-use super::{common::{data_id_generator, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer}, metadata::{InstantPush, MetadataProducer, MetadataStore}};
+use super::{common::{data_id_generator, hash_chunk, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer}, metadata::{InstantPush, MetadataProducer, MetadataStore}};
 use async_trait::async_trait;
-use futures::{channel::mpsc::{channel, Sender}, SinkExt, StreamExt};
+use futures::{channel::mpsc::{channel, Sender}, lock::Mutex, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 use uuid::Uuid;
 
 pub struct FsDomainDataProducer {
-    writer: Sender<InstantPush>,
+    metadata_writer: Arc<Mutex<Box<dyn ReliableDataProducer>>>,
     base_path: String,
 }
 
 #[async_trait]
 impl ReliableDataProducer for FsDomainDataProducer {
     async fn push(&mut self, data: &Metadata) -> Result<Box<dyn DomainData>, DomainError> {
-        Ok(Box::new(FsDomainData::new(data, self.writer.clone(), self.base_path.clone())))
+        Ok(Box::new(FsDomainData::new(data, self.metadata_writer.clone(), self.base_path.clone())))
     }
 
     async fn is_completed(&self) -> bool {
         true
     }
 
-    async fn close(self) {
-        drop(self.writer);
+    async fn close(&mut self) {
+        let mut metadata_writer = self.metadata_writer.lock().await;
+        metadata_writer.close().await;
     }
 }
-
-fn hash_chunk(chunk: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256Hasher::new();
-    hasher.update(chunk);
-    hasher.finalize().into()
-}
-
-// fn hash_content(content: &[u8]) -> String {
-//     let chunk_size = 1024 * 1024;
-//     let mut chunks = content.chunks(chunk_size);
-//     let mut merkle_tree = MerkleTree::<Sha256>::new();
-//     while let Some(chunk) = chunks.next() {
-//          merkle_tree.insert(hash_chunk(chunk));
-//     }
-//     let res = merkle_tree.root();
-//     if res.is_none() {
-//         panic!("Error calculating merkle tree root");
-//     }
-//     hex::encode(res.unwrap())
-// }
 
 pub(crate) struct FsDomainData {
     merkle_tree: MerkleTree<Sha256>,
     metadata: Metadata,
-    writer: Sender<InstantPush>,
+    metadata_writer: Arc<Mutex<Box<dyn ReliableDataProducer>>>,
     base_path: String,
     temp_path: String,
 }
@@ -69,7 +52,7 @@ pub fn from_path_to_hash(path: &String) -> Result<&str, DomainError> {
 }
 
 impl FsDomainData {
-    pub fn new(metadata: &Metadata, writer: Sender<InstantPush>, base_path: String) -> FsDomainData {
+    pub fn new(metadata: &Metadata, metadata_writer: Arc<Mutex<Box<dyn ReliableDataProducer>>>, base_path: String) -> FsDomainData {
         let temp_hash = data_id_generator();
         let temp_path = {
             if metadata.link.is_some() {
@@ -81,7 +64,7 @@ impl FsDomainData {
         FsDomainData {
             merkle_tree: MerkleTree::<Sha256>::new(),
             metadata: metadata.clone(),
-            writer,
+            metadata_writer: metadata_writer.clone(),
             base_path,
             temp_path,
         }
@@ -121,20 +104,11 @@ impl DomainData for FsDomainData {
             fs::rename(self.temp_path.clone(), path.clone()).await.map_err(|e| DomainError::IoError(e))?;
             metadata.link = Some(path.clone());
 
-            let (response, receiver) = oneshot::channel::<Result<Metadata, DomainError>>();
-            let push = InstantPush {
-                response,
-                data: metadata,
-            };
-            if let Err(e) = self.writer.send(push).await {
-                return Err(DomainError::InternalError(Box::new(e)));
-            }
-            let res = receiver.await.unwrap();
-            if let Err(e) = res {
-                return Err(e);
-            }
-
-            Ok(res.unwrap().id.unwrap())
+            let mut metadata_writer = self.metadata_writer.lock().await;
+            let mut chunk = metadata_writer.push(&metadata).await?;
+            drop(metadata_writer);
+            chunk.push_chunk(&[], false).await?;
+            Ok(hash)
         }
     }
 }
@@ -192,29 +166,9 @@ impl Datastore for FsDatastore {
     async fn upsert(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
         let _ = Uuid::parse_str(&domain_id).expect("Failed to parse domain id"); // TODO: handle error
         let path = format!("{}/{}", self.base_path, domain_id);
-        fs::create_dir_all(path.clone()).await.expect("Failed to create domain data path");
-        let mut meta_writer = self.metadata_store.upsert(domain_id).await;
-        let (writer, mut reader) = channel::<InstantPush>(240);
+        fs::create_dir_all(path.clone()).await.expect(&format!("Failed to create domain data path: {}", path));
+        let meta_writer = self.metadata_store.upsert(domain_id).await;
 
-        spawn(async move {
-            while let Some(data) = reader.next().await {
-                let response = data.response;
-                let mut data = data.data;
-                let res = meta_writer.push(&data).await;
-                if let Err(e) = res {
-                    if let Err(e) = fs::remove_file(data.link.clone().unwrap()).await {
-                        let _ = response.send(Err(DomainError::IoError(e)));
-                    } else {
-                        let _ = response.send(Err(e));
-                    }
-                    continue;
-                }
-                let link = res.unwrap().push_chunk(&vec![], false).await.unwrap();
-                data.link = Some(link);
-                let _ = response.send(Ok(data));
-            }
-        });
-
-        Box::new(FsDomainDataProducer { writer, base_path: path.clone() })
+        Box::new(FsDomainDataProducer { metadata_writer: Arc::new(Mutex::new(meta_writer)), base_path: path.clone() })
     }
 }

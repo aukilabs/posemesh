@@ -42,7 +42,6 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
     let claim = handshake(&mut stream).await?;
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await?;
-    let mut data_ids = Vec::<String>::new();
     let domain_id = claim.domain_id.clone();
 
     let mut producer = fs_datastore.upsert(domain_id.clone()).await;
@@ -66,8 +65,6 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
         let metadata = deserialize_from_slice::<Metadata>(&buffer)?;
         println!("Received buffer: {:?}", metadata);
 
-        let data_id = metadata.id.clone().expect("Failed to get data id");
-
         let default_chunk_size = 10 * 1024;
         let mut read_size: usize = 0;
         let data_size = metadata.size as usize;
@@ -76,7 +73,6 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
             // TODO: add timeout so stream wont be idle for too long
             let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
             if chunk_size == 0 {
-                data_ids.push(data_id.clone());
                 data_writer.push_chunk(&vec![], false).await?;
                 println!("Stored data: {}, size: {}", metadata.name, metadata.size);
                 stream.write_all(&length_buf).await?;
@@ -173,7 +169,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let conn_str = "postgres://test:test@localhost:5433/domain-server?sslmode=disable";
     let path = format!("{}/output/domain_data", base_path);
-    let _ = std::fs::remove_dir_all(path.clone());
     std::fs::create_dir_all(path.clone()).expect("Failed to create domain_data directory");
 
     let metadata_store = MetadataStore::new(conn_str).await.expect("Failed to create metadata store");

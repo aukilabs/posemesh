@@ -11,8 +11,9 @@ use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use super::common::{data_id_generator, DomainData, Reader, ReliableDataProducer, Writer};
+use super::common::{data_id_generator, hash_chunk, DomainData, Reader, ReliableDataProducer, Writer};
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
+use rs_merkle::{algorithms::Sha256, MerkleTree};
 
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/consume/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/produce/v1";
@@ -53,66 +54,16 @@ async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mu
     }
 }
 
-async fn write_to_stream(src: Arc<Mutex<DataReader>>, stream: Stream, mut response_sender: Writer<Metadata>) {
-    let mut src = src.lock().await;
-
-    let (mut reader, mut writer) = stream.split();
-    
-    while let Some(data) = src.next().await {
-        match data {
-            Ok(data) => {
-                let m_buf = prefix_size_message(&data.metadata);
-
-                tracing::debug!("Uploading data {}, {}/{}", data.metadata.name, data.metadata.size, data.content.len());
-                assert_eq!(data.metadata.size as usize, data.content.len(), "size should match");
-            
-                writer.write_all(&m_buf).await.expect("Failed to write metadata");
-                writer.flush().await.expect("Failed to flush");
-
-                let default_chunk_size = 5 * 1024; // wasm allows 8192 = 8KB the most
-                let mut chunk_size = default_chunk_size;
-                // let mut offset = 0;
-                let mut written = 0;
-                while written < data.content.len() {
-                    if written + chunk_size > data.content.len() {
-                        chunk_size = data.content.len() - written;
-                    }
-                    tracing::debug!("Uploading chunk: {}/{}", written, data.content.len());
-                    match writer.write(&data.content[written..written + chunk_size]).await {
-                        Ok(0) => {
-                            tracing::error!("Failed to write content, is it backpressure?");
-                            continue;
-                        }
-                        Ok(n) => {
-                            written += n;
-                            tracing::debug!("Uploaded chunk: {}/{}", written, data.content.len());
-                        },
-                        Err(e) => {
-                            tracing::error!("Failed to write content: {:?}", e);
-                            break;
-                        }
-                    }
-                    writer.flush().await.expect("Failed to flush after chunk");
-                }
-            },
-            Err(e) => {
-                tracing::error!("Failed to read data: {:?}", e);
-                return;
-            }
-        }
-    }
-    tracing::info!("Flushed all data");
-}
 pub(crate) struct RemoteDomainData {
     writer: Arc<Mutex<WriteHalf<Stream>>>,
     expected_size: usize,
     sent_size: Arc<Mutex<usize>>,
-    id: String,
+    merkle_tree: MerkleTree<Sha256>,
 }
 
 impl RemoteDomainData {
-    pub fn new(id: String, expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>) -> Self {
-        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), id }
+    pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>) -> Self {
+        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new() }
     }
 }
 
@@ -125,6 +76,8 @@ impl DomainData for RemoteDomainData {
             let mut writer = self.writer.lock().await;
             let chunks = datum.chunks(chunk_size);
             for chunk in chunks {
+                let hash = hash_chunk(chunk);
+                self.merkle_tree.insert(hash);
                 writer.write_all(chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
                 writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
                 let mut sent_size = self.sent_size.lock().await;
@@ -138,51 +91,31 @@ impl DomainData for RemoteDomainData {
             if *sent_size != self.expected_size {
                 return Err(DomainError::Cancelled(format!("size mismatch: expected {}, got {}", self.expected_size, *sent_size)));
             }
+            self.merkle_tree.commit();
+            let hash = self.merkle_tree.root();
+            if hash.is_none() {
+                return Err(DomainError::InternalError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to calculate merkle tree root"))));
+            }
+            Ok(hex::encode(hash.unwrap()))
+        } else {
+            Ok(String::new())
         }
-
-        Ok(self.id.clone())
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct RemoteReliableDataProducer {
-    // writer: DataWriter,
     pendings: Arc<Mutex<HashSet<String>>>,
-    // pub progress: Arc<Mutex<Receiver<i32>>>,
-    total: Arc<Mutex<i32>>,
     stream: Option<Arc<Mutex<WriteHalf<Stream>>>>,
 }
 
 impl RemoteReliableDataProducer {
     pub fn new() -> Self {
         let pendings = Arc::new(Mutex::new(HashSet::new()));
-        // let pending_clone = pendings.clone();
-        let total: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
-        // let total_clone = total.clone();
-        // spawn(async move {
-        //     while let Some(m) = response.next().await {
-        //         match m {
-        //             Ok(metadata) => {
-        //                 let id = metadata.id.unwrap_or("why no id".to_string());
-        //                 let mut pendings = pending_clone.lock().await;
-        //                 let total = total_clone.lock().await;
-        //                 let completed = *total as usize - pendings.len() + 1;
-        //                 pendings.remove(&id);
-        //                 let progress = completed * 100 / *total as usize;
-        //                 progress_sender.send(progress as i32).await.expect("can't send progress");
-        //             }
-        //             Err(e) => {
-        //                 eprintln!("{}", e);
-        //             }
-        //         }
-        //     }
-        // });
 
         Self {
             stream: None,
             pendings,
-            // progress: Arc::new(Mutex::new(progress_receiver)),
-            total,
         }
     }
 
@@ -190,9 +123,6 @@ impl RemoteReliableDataProducer {
         let (mut reader, writehalf) = stream.split();
         self.stream = Some(Arc::new(Mutex::new(writehalf)));
         let pending_clone = self.pendings.clone();
-        // let total_clone = self.total.clone();
-        // let (mut progress_sender, progress_receiver) = mpsc::channel(100);
-        // let progress_sender = self.progress_sender.clone();
 
         spawn(async move {
             loop {
@@ -212,10 +142,6 @@ impl RemoteReliableDataProducer {
                 let id = metadata.id.unwrap_or("why no id".to_string());
                 let mut pendings = pending_clone.lock().await;
                 pendings.remove(&id);
-                // let total = total_clone.lock().await;
-                // let completed = *total as usize - pendings.len() + 1;
-                // let progress = completed * 100 / *total as usize;
-                // progress_sender.send(progress as i32).await.expect("can't send progress");
             }
         });
     }
@@ -224,11 +150,7 @@ impl RemoteReliableDataProducer {
 #[async_trait]
 impl ReliableDataProducer for RemoteReliableDataProducer {
     async fn push(&mut self, data: &domain_data::Metadata) -> Result<Box<dyn DomainData>, DomainError> {
-        let mut data = data.clone();
-        if data.id.is_none() {
-            data.id = Some(data_id_generator());
-        }
-        let id = data.id.clone().unwrap();
+        let data = data.clone();
         if self.stream.is_none() {
             return Err(DomainError::InternalError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Stream not initialized"))));
         }
@@ -237,7 +159,7 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         writer.write_all(&prefix_size_message(&data)).await.expect("Failed to write metadata");
         writer.flush().await.expect("Failed to flush");
         drop(writer);
-        Ok(Box::new(RemoteDomainData::new(id, data.size as usize, stream)))
+        Ok(Box::new(RemoteDomainData::new(data.size as usize, stream)))
     }
 
     async fn is_completed(&self) -> bool {
@@ -245,9 +167,7 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         pendings.await.is_empty()
     }
 
-    async fn close(mut self) {
-        // self.writer.close().await.expect("can't close writer");
-        // self.progress.lock().await.close();
+    async fn close(&mut self) {
         if !self.is_completed().await {
             tracing::warn!("You are closing the producer before it's completed");
         }

@@ -32,10 +32,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let input_dir = format!("{}/input", base_path);
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
-
-    let mut producer = remote_datastore.upsert(data_id_generator()).await;
     let scan = "2025-02-26_11-19-47".to_string();
-    let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
+
+    let domain_id = data_id_generator();
+    let query = Query {
+        ids: vec![],
+        names: vec![],
+        data_types: vec![],
+        name_regexp: Some(format!(".*_{}", scan)),
+        data_type_regexp: None,
+    };
+
+    let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await;
+
+    let mut name_to_id = HashMap::new();
+    loop {
+        let data = downloader.next().await;
+        if data.is_none() {
+            break;
+        }
+        let data = data.unwrap().unwrap();
+        name_to_id.insert(data.metadata.name, data.metadata.id.unwrap());
+    }
+
+    println!("downloaded {} files", name_to_id.len());
+
+    let mut producer = remote_datastore.upsert(domain_id.clone()).await;
 
     for entry in dir {
         let entry = entry.unwrap();
@@ -57,8 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let data_type = parts.last().unwrap();
                 let name = format!("{}_{}", parts[..parts.len()-1].join("."), scan);
 
+                let id = name_to_id.get(&name).map(|id| id.clone());
                 let metadata = Metadata {
-                    id: Some(data_id_generator()),
+                    id,
                     name,
                     data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
