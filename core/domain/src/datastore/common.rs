@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
+use sha2::{Digest, Sha256 as Sha256Hasher};
+
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
 pub type Writer<T> = Sender<Result<T, DomainError>>;
 
@@ -46,7 +48,7 @@ pub trait DomainData: Send + Sync {
 pub trait ReliableDataProducer: Send + Sync {
     async fn push(&mut self, metadata: &domain_data::Metadata) -> Result<Box<dyn DomainData>, DomainError>;
     async fn is_completed(&self) -> bool;
-    async fn close(self) -> ();
+    async fn close(&mut self) -> ();
 }
 
 
@@ -58,4 +60,10 @@ pub trait Datastore: Send + Sync + Clone {
 
 pub fn data_id_generator() -> String {
     Uuid::new_v4().to_string()
+}
+
+pub fn hash_chunk(chunk: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256Hasher::new();
+    hasher.update(chunk);
+    hasher.finalize().into()
 }

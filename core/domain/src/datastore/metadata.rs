@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, VecDeque}, fmt::write, sync::Arc};
 use futures::{channel::mpsc::{self, channel}, SinkExt, StreamExt};
 use tokio::{spawn, sync::{oneshot, Mutex}};
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::{types::ToSql, Client, NoTls};
 use uuid::Uuid;
 use crate::protobuf::domain_data::{Data, Metadata, Query};
 use super::{common::{data_id_generator, DataReader, DataWriter, Datastore, DomainData, DomainError, Reader, ReliableDataProducer, Writer}, fs::from_path_to_hash};
@@ -17,13 +17,13 @@ pub struct MetadataProducer {
 }
 
 pub struct MetadataDomainData {
-    pub link: String,
+    pub hash: String,
 }
 
 #[async_trait]
 impl DomainData for MetadataDomainData {
     async fn push_chunk(&mut self, _: &[u8], _: bool) -> Result<String, DomainError> {
-        Ok(self.link.clone())
+        Ok(self.hash.clone())
     }
 }
 
@@ -37,7 +37,7 @@ impl ReliableDataProducer for MetadataProducer {
         };
         self.writer.send(push).await.unwrap();
         match receiver.await.unwrap() {
-            Ok(metadata) => Ok(Box::new(MetadataDomainData { link: metadata.link.unwrap() })),
+            Ok(metadata) => Ok(Box::new(MetadataDomainData { hash: metadata.hash.unwrap() })),
             Err(e) => Err(e),
         }
     }
@@ -46,8 +46,8 @@ impl ReliableDataProducer for MetadataProducer {
         true
     }
 
-    async fn close(self) {
-        drop(self.writer);
+    async fn close(&mut self) {
+        let _ = self.writer.close().await;
     }
 }
 
@@ -72,76 +72,75 @@ impl MetadataStore {
 }
 
 impl Query {
-    pub fn to_sql(&self, domain_id: String) -> (String, Vec<String>) {
+    pub fn to_sql(&self, domain_id: Uuid) -> (String, Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>) {
         let mut sql = String::from("SELECT id, name, data_type, data_size, link, domain_id FROM domain_data WHERE domain_id = $1");
-        let mut params: VecDeque<String> = VecDeque::new();
-        params.push_back(domain_id);
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        params.push(Box::new(domain_id));
         let mut param_index = 2;
 
         if !self.ids.is_empty() {
-            let placeholders: Vec<String> = self.ids.iter().enumerate()
-                .map(|(i, _)| format!("${}", param_index + i))
-                .collect();
-            sql.push_str(&format!(" AND id IN ({})", placeholders.join(", ")));
-            params.extend(self.ids.clone());
-            param_index += self.ids.len();
+            sql.push_str(&format!(" AND id = ANY({})", param_index));
+            params.push(Box::new(self.ids.clone().iter().map(|id| Uuid::parse_str(id).unwrap()).collect::<Vec<Uuid>>()));
+            param_index += 1;
         }
 
         if let Some(name_regexp) = &self.name_regexp {
             sql.push_str(&format!(" AND name ~ ${}", param_index));
-            params.push_back(name_regexp.clone());
+            params.push(Box::new(name_regexp.clone()));
             param_index += 1;
         }
 
         if let Some(data_type_regexp) = &self.data_type_regexp {
             sql.push_str(&format!(" AND data_type ~ ${}", param_index));
-            params.push_back(data_type_regexp.clone());
+            params.push(Box::new(data_type_regexp.clone()));
             param_index += 1;
         }
 
         if !self.names.is_empty() {
-            let placeholders: Vec<String> = self.names.iter().enumerate()
-                .map(|(i, _)| format!("${}", param_index + i))
-                .collect();
-            sql.push_str(&format!(" AND name IN ({})", placeholders.join(", ")));
-            params.extend(self.names.clone());
-            param_index += self.names.len();
+            sql.push_str(&format!(" AND name = ANY({})", param_index));
+            params.push(Box::new(self.names.clone()));
+            param_index += 1;
         }
 
         if !self.data_types.is_empty() {
-            let placeholders: Vec<String> = self.data_types.iter().enumerate()
-                .map(|(i, _)| format!("${}", param_index + i))
-                .collect();
-            sql.push_str(&format!(" AND data_type IN ({})", placeholders.join(", ")));
-            params.extend(self.data_types.clone());
+            sql.push_str(&format!(" AND data_type = ANY({})", param_index));
+            params.push(Box::new(self.data_types.clone()));
         }
 
-        (sql, params.into_iter().collect())
+        (sql, params)
     }
 }
 
 #[async_trait]
 impl Datastore for MetadataStore {
     async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> DataReader {
+        let domain_id_res = Uuid::parse_str(&domain_id);
+        if let Err(e) = domain_id_res {
+            panic!("{}", e);
+        }
+        let domain_id = domain_id_res.unwrap();
         let (sql, params) = query.to_sql(domain_id);
         let (mut writer, reader) = channel::<Result<Data, DomainError>>(240);
         let client = self.client.clone();
 
         spawn(async move {
             let client = client.lock().await;
-            let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|s| s as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+            let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|s| s.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
             let rows = client.query(&sql, &params_refs[..]).await.unwrap();
             for row in rows {
                 let link: String = row.get("link");
                 let hash = from_path_to_hash(&link).unwrap();
+                let domain_id: Uuid = row.get("domain_id");
+                let id: Uuid = row.get("id");
+                let size: i64 = row.get("data_size");
                 let data = Data {
-                    domain_id: row.get("domain_id"),
+                    domain_id: domain_id.to_string(),
                     metadata: Metadata {
-                        id: row.get("id"),
+                        id: Some(id.to_string()),
                         name: row.get("name"),
                         data_type: row.get("data_type"),
                         properties: HashMap::new(),
-                        size: row.get("data_size"),
+                        size: size as u32,
                         link: Some(link.clone()),
                         hash: Some(hash.to_string()),
                     },
