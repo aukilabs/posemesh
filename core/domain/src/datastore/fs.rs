@@ -1,8 +1,6 @@
-use std::io::Write;
-
 use crate::protobuf::domain_data::{Data, Metadata, Query};
 use tokio::{fs::{self, OpenOptions}, io::AsyncWriteExt, sync::oneshot, spawn};
-use super::{common::{DataReader, Datastore, DomainData, DomainError, ReliableDataProducer}, metadata::{InstantPush, MetadataProducer, MetadataStore}};
+use super::{common::{data_id_generator, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer}, metadata::{InstantPush, MetadataProducer, MetadataStore}};
 use async_trait::async_trait;
 use futures::{channel::mpsc::{channel, Sender}, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
@@ -17,10 +15,7 @@ pub struct FsDomainDataProducer {
 #[async_trait]
 impl ReliableDataProducer for FsDomainDataProducer {
     async fn push(&mut self, data: &Metadata) -> Result<Box<dyn DomainData>, DomainError> {
-        let path = format!("{}/{}-{}.{}", self.base_path, data.name.clone(), Uuid::new_v4().to_string(), data.data_type.clone());
-        let mut metadata = data.clone();
-        metadata.link = Some(path.clone());
-        Ok(Box::new(FsDomainData::new(metadata, self.writer.clone())))
+        Ok(Box::new(FsDomainData::new(data, self.writer.clone(), self.base_path.clone())))
     }
 
     async fn is_completed(&self) -> bool {
@@ -38,34 +33,61 @@ fn hash_chunk(chunk: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn hash_content(content: &[u8]) -> String {
-    let chunk_size = 1024 * 1024;
-    let mut chunks = content.chunks(chunk_size);
-    let mut merkle_tree = MerkleTree::<Sha256>::new();
-    while let Some(chunk) = chunks.next() {
-         merkle_tree.insert(hash_chunk(chunk));
-    }
-    let res = merkle_tree.root();
-    if res.is_none() {
-        panic!("Error calculating merkle tree root");
-    }
-    hex::encode(res.unwrap())
-}
+// fn hash_content(content: &[u8]) -> String {
+//     let chunk_size = 1024 * 1024;
+//     let mut chunks = content.chunks(chunk_size);
+//     let mut merkle_tree = MerkleTree::<Sha256>::new();
+//     while let Some(chunk) = chunks.next() {
+//          merkle_tree.insert(hash_chunk(chunk));
+//     }
+//     let res = merkle_tree.root();
+//     if res.is_none() {
+//         panic!("Error calculating merkle tree root");
+//     }
+//     hex::encode(res.unwrap())
+// }
 
-pub struct FsDomainData {
+pub(crate) struct FsDomainData {
     merkle_tree: MerkleTree<Sha256>,
     metadata: Metadata,
     writer: Sender<InstantPush>,
+    base_path: String,
+    temp_path: String,
 }
+
+fn data_path_v2(name: &String, data_type: &String, hash: &String, base_path: &String) -> String {
+    format!("{}/{}-{}.{}", base_path, name, data_type, hash)
+}
+
+// v1 used in old version of domain server
+fn data_path_v1(id: &String, base_path: &String) -> String {
+    format!("{}/{}.{}", base_path, id, data_id_generator())
+}
+
+pub fn from_path_to_hash(path: &String) -> Result<&str, DomainError> {
+    Ok(path.split('.').last().unwrap())
+}
+
 impl FsDomainData {
-    pub fn new(metadata: Metadata, writer: Sender<InstantPush>) -> FsDomainData {
+    pub fn new(metadata: &Metadata, writer: Sender<InstantPush>, base_path: String) -> FsDomainData {
+        let temp_hash = data_id_generator();
+        let temp_path = {
+            if metadata.link.is_some() {
+                metadata.link.clone().unwrap()
+            } else {
+                data_path_v2(&metadata.name, &metadata.data_type, &temp_hash, &base_path)
+            }
+        };
         FsDomainData {
             merkle_tree: MerkleTree::<Sha256>::new(),
-            metadata,
+            metadata: metadata.clone(),
             writer,
+            base_path,
+            temp_path,
         }
     }
-    pub fn root(&self) -> Result<String, DomainError> {
+    pub fn root(&mut self) -> Result<String, DomainError> {
+        self.merkle_tree.commit();
         let res = self.merkle_tree.root();
         if res.is_none() {
             return Err(DomainError::IoError(std::io::Error::new(std::io::ErrorKind::Other, "Failed to calculate merkle tree root")));
@@ -82,7 +104,7 @@ impl DomainData for FsDomainData {
         let mut f = OpenOptions::new()
             .append(true)
             .create(true)
-            .open(self.metadata.link.clone().unwrap()).await.map_err(|e| DomainError::IoError(e))?;
+            .open(self.temp_path.clone()).await.map_err(|e| DomainError::IoError(e))?;
         f.write_all(chunk).await.map_err(|e| DomainError::IoError(e))?;
         if more {
             Ok(hex::encode(hash))
@@ -94,7 +116,10 @@ impl DomainData for FsDomainData {
 
             let hash = self.root()?;
             let mut metadata = self.metadata.clone();
-            metadata.hash = Some(hash);
+            metadata.hash = Some(hash.clone());
+            let path = data_path_v2(&metadata.name, &metadata.data_type, &hash, &self.base_path);
+            fs::rename(self.temp_path.clone(), path.clone()).await.map_err(|e| DomainError::IoError(e))?;
+            metadata.link = Some(path.clone());
 
             let (response, receiver) = oneshot::channel::<Result<Metadata, DomainError>>();
             let push = InstantPush {
@@ -109,7 +134,7 @@ impl DomainData for FsDomainData {
                 return Err(e);
             }
 
-            Ok(res.unwrap().link.unwrap())
+            Ok(res.unwrap().id.unwrap())
         }
     }
 }
@@ -123,14 +148,15 @@ pub struct FsDatastore {
 
 impl FsDatastore {
     pub async fn new(metadata_store: MetadataStore, base_path: String) -> FsDatastore {
+        std::fs::create_dir_all(base_path.clone()).expect(&format!("Failed to create base path: {}", base_path));
         FsDatastore { metadata_store, base_path }
     }
 }
 
 #[async_trait]
 impl Datastore for FsDatastore {
-    async fn consume(&mut self, domain_id: String, query: Query, keep_alive: bool) -> DataReader {
-        let meta_reader = self.metadata_store.consume(domain_id, query, keep_alive).await;
+    async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> DataReader {
+        let meta_reader = self.metadata_store.load(domain_id, query, keep_alive).await;
         let (mut writer, reader) = channel::<Result<Data, DomainError>>(240);
 
         spawn(async move {
@@ -163,15 +189,17 @@ impl Datastore for FsDatastore {
         reader
     }
 
-    async fn produce(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
-        let mut meta_writer = self.metadata_store.produce(domain_id).await;
+    async fn upsert(&mut self, domain_id: String) -> Box<dyn ReliableDataProducer> {
+        let _ = Uuid::parse_str(&domain_id).expect("Failed to parse domain id"); // TODO: handle error
+        let path = format!("{}/{}", self.base_path, domain_id);
+        fs::create_dir_all(path.clone()).await.expect("Failed to create domain data path");
+        let mut meta_writer = self.metadata_store.upsert(domain_id).await;
         let (writer, mut reader) = channel::<InstantPush>(240);
 
         spawn(async move {
             while let Some(data) = reader.next().await {
                 let response = data.response;
                 let mut data = data.data;
-                // data.metadata.hash = Some(hash_content(&data.content));
                 let res = meta_writer.push(&data).await;
                 if let Err(e) = res {
                     if let Err(e) = fs::remove_file(data.link.clone().unwrap()).await {
@@ -187,6 +215,6 @@ impl Datastore for FsDatastore {
             }
         });
 
-        Box::new(MetadataProducer { writer })
+        Box::new(FsDomainDataProducer { writer, base_path: path.clone() })
     }
 }

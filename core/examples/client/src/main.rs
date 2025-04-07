@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     fs::create_dir_all(&input_dir).expect("cant create input dir");
     let dir = fs::read_dir(input_dir).unwrap();
 
-    let mut producer = remote_datastore.produce("".to_string()).await;
+    let mut producer = remote_datastore.upsert(data_id_generator()).await;
     let scan = "2025-02-26_11-19-47".to_string();
     let _ = std::fs::remove_dir_all("./volume/data_node/output/domain_data");
 
@@ -68,13 +68,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let mut content = vec![0u8; metadata.size as usize];
                 f.read_exact(&mut content).expect("cant read file");
 
-                let data = Data {
-                    domain_id: "".to_string(),
-                    metadata: metadata.clone(),
-                    content
-                };
-
-                let _ = producer.push(&data).await.expect("cant push data");
+                let mut writer = producer.push(&metadata).await.expect("cant push data");
+                writer.push_chunk(&content, false).await.expect("cant push chunk");
             }
             Err(e) => {
                 println!("Error reading file: {:?}", e);
