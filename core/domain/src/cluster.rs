@@ -195,6 +195,7 @@ impl DomainCluster {
             port,
             enable_websocket,
             enable_webrtc,
+            domain: None,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
 

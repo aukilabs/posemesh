@@ -98,6 +98,7 @@ pub struct NetworkingConfig {
     pub name: String,
     pub enable_websocket: bool,
     pub enable_webrtc: bool,
+    pub domain: Option<String>,
 }
 
 impl Default for NetworkingConfig {
@@ -114,6 +115,7 @@ impl Default for NetworkingConfig {
             name: "Placeholder".to_string(),
             enable_webrtc: false,
             enable_websocket: false, // placeholder
+            domain: None,
         }
     }
 }
@@ -325,9 +327,9 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-fn build_listeners(port: u16) -> Vec<Multiaddr> {
+fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     #[cfg(not(target_family="wasm"))]
-    return vec![
+    let mut listeners = vec![
         Multiaddr::empty()
             .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(port)),
@@ -335,8 +337,21 @@ fn build_listeners(port: u16) -> Vec<Multiaddr> {
             .with(Protocol::Udp(port))
             .with(Protocol::QuicV1),
     ];
+
     #[cfg(target_family="wasm")]
-    return vec![];
+    let listeners = vec![];
+
+    if let Some(domain) = domain {
+        listeners.push(Multiaddr::empty()
+            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
+            .with(Protocol::Tcp(port)));
+        listeners.push(Multiaddr::empty()
+            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
+            .with(Protocol::Udp(port))
+            .with(Protocol::QuicV1));
+    }
+
+    return listeners;
 }
 
 fn enable_websocket(port: u16) -> Multiaddr {
@@ -365,7 +380,7 @@ impl Libp2p {
 
         let mut swarm = build_swarm(key.clone(), behaviour).await?;
 
-        let mut listeners = build_listeners(cfg.port);
+        let mut listeners = build_listeners(cfg.port, cfg.domain.clone());
         if cfg.enable_websocket {
             listeners.push(enable_websocket(cfg.port));
         }
