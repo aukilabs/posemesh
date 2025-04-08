@@ -24,6 +24,7 @@ function(ADD_PROTOBUF_LIBRARIES NAME PROTOBUF_LIBRARY_ROOT)
         libabsl_flags_config.a
         libabsl_flags_internal.a
         libabsl_flags_reflection.a
+        libabsl_graphcycles_internal.a
         libabsl_hash.a
         libabsl_int128.a
         libabsl_kernel_timeout_internal.a
@@ -56,6 +57,7 @@ function(ADD_PROTOBUF_LIBRARIES NAME PROTOBUF_LIBRARY_ROOT)
         libabsl_strings_internal.a
         libabsl_symbolize.a
         libabsl_synchronization.a
+        libabsl_throw_delegate.a
         libabsl_time.a
         libabsl_time_zone.a
         libabsl_utf8_for_code_point.a
