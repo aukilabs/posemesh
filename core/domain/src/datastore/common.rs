@@ -21,6 +21,7 @@ pub enum DomainError {
     Interrupted,
     Cancelled(String),
     IoError(std::io::Error),
+    #[cfg(all(feature="fs", not(target_family="wasm")))]
     PostgresError(tokio_postgres::Error),
     InternalError(Box<dyn Error + Send + Sync>),
 }
@@ -33,6 +34,7 @@ impl std::fmt::Display for DomainError {
             DomainError::Interrupted => write!(f, "Interrupted"),
             DomainError::Cancelled(s) => write!(f, "Cancelled: {}", s),
             DomainError::IoError(e) => write!(f, "IO error: {}", e),
+            #[cfg(all(feature="fs", not(target_family="wasm")))]
             DomainError::PostgresError(e) => write!(f, "Postgres error: {}", e),
             DomainError::InternalError(e) => write!(f, "Internal error: {}", e),
         }
