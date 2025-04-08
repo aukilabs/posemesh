@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct DatastoreWrapper DatastoreWrapper;
+typedef struct DatastoreWrapper_RemoteDatastore DatastoreWrapper_RemoteDatastore;
 
 typedef struct DomainCluster DomainCluster;
 
@@ -16,7 +16,7 @@ typedef struct DomainData {
   const char *id;
   const char *name;
   const char *data_type;
-  const char *metadata;
+  const char *properties;
   void *content;
   uintptr_t content_size;
 } DomainData;
@@ -51,11 +51,11 @@ struct DomainCluster *init_domain_cluster(const char *domain_manager_addr, const
 
 void free_domain_cluster(struct DomainCluster *cluster);
 
-struct DatastoreWrapper *init_remote_storage(struct DomainCluster *cluster);
+struct DatastoreWrapper_RemoteDatastore *init_remote_storage(struct DomainCluster *cluster);
 
-void free_datastore(struct DatastoreWrapper *store);
+void free_datastore(struct DatastoreWrapper_RemoteDatastore *store);
 
-void find_domain_data(struct DatastoreWrapper *store,
+void find_domain_data(struct DatastoreWrapper_RemoteDatastore *store,
                       const char *domain_id,
                       struct Query *query,
                       bool keep_alive,

@@ -1,6 +1,5 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
-use libp2p::Stream;
-use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}, AsyncStream};
 use nodes_management::NodesManagement;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tasks_management::{task_id, TaskHandler, TasksManagement};
@@ -139,7 +138,7 @@ impl DomainManager {
     }
 
     #[tracing::instrument]
-    async fn accept_job(node_mgmt: NodesManagement, task_mgmt: TasksManagement, mut peer: Client, stream: Stream) {
+    async fn accept_job<S: AsyncStream>(node_mgmt: NodesManagement, task_mgmt: TasksManagement, mut peer: Client, stream: S) {
         let (reader, mut writer) = stream.split();
         let job = read_prefix_size_message::<JobRequest>(reader).await.expect("failed to load job request");
 

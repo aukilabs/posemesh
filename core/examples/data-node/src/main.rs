@@ -1,11 +1,9 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, fs::FsDatastore, metadata::MetadataStore, remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::{Data, Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
+use domain::{cluster::DomainCluster, datastore::{common::Datastore, fs::FsDatastore, metadata::MetadataStore, remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::Metadata, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
-use libp2p::Stream;
-use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::{libp2p::Networking, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select, signal::unix::{signal, SignalKind}};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use std::{fs::{self, OpenOptions}, io::{Read, Write}};
 use serde::{Deserialize, Serialize};
 
 async fn shutdown_signal() {
@@ -33,12 +31,12 @@ fn decode_jwt(token: &str) -> Result<TaskTokenClaim, Box<dyn std::error::Error +
     Ok(token_data.claims)
 }
 
-async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
+async fn handshake<S: AsyncStream>(stream: &mut S) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
     let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
     decode_jwt(header.access_token.as_str())
 }
 
-async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn store_data_v1<S: AsyncStream>(mut stream: S, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let claim = handshake(&mut stream).await?;
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await?;
@@ -91,7 +89,7 @@ async fn store_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: 
     }
 }
 
-async fn serve_data_v1(mut stream: Stream, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn serve_data_v1<S: AsyncStream>(mut stream: S, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let header = handshake(&mut stream).await?;
     c.client.subscribe(header.job_id.clone()).await?;
     
@@ -162,7 +160,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
     let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true, None, Some(private_key_path));
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
