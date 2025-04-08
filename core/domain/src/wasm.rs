@@ -6,7 +6,7 @@ use serde::de;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::{RemoteDatastore as r_RemoteDatastore}}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -58,13 +58,13 @@ pub struct Metadata {
     pub data_type: String,
     pub size: usize,
     pub properties: JsValue,
-    pub id: String,
+    pub id: Option<String>,
 }
 
 #[wasm_bindgen]
 impl Metadata {
     #[wasm_bindgen(constructor)]
-    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: String) -> Self {
+    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: Option<String>) -> Self {
         Self {
             name,
             data_type,
@@ -81,7 +81,7 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
         data_type: r_metadata.data_type.clone(),
         size: r_metadata.size as usize,
         properties: to_value(&r_metadata.properties).unwrap(),
-        id: r_metadata.id.clone().unwrap_or("from".to_string()),
+        id: r_metadata.id.clone(),
     }
 }
 
@@ -90,8 +90,10 @@ fn to_r_metadata(metadata: &Metadata) -> domain_data::Metadata {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
         properties: from_value(metadata.properties.clone()).unwrap(),
-        id: Some(metadata.id.clone()),
+        id: metadata.id.clone(),
         size: metadata.size as u32,
+        link: None,
+        hash: None,
     }
 }
 
@@ -179,21 +181,26 @@ impl DomainCluster {
 
 #[wasm_bindgen]
 struct ReliableDataProducer {
-    inner: r_ReliableDataProducer
+    inner: Arc<Mutex<Box<dyn r_ReliableDataProducer>>>
 }
 
 #[wasm_bindgen]
 impl ReliableDataProducer {
     #[wasm_bindgen]
-    pub fn push(&mut self, mut data: DomainData) -> js_sys::Promise {
-        let id = data.metadata.id.is_empty().then(|| data_id_generator());
-        data.metadata.id = id.unwrap();
+    pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
         let data = to_r_data(&data);
-        let mut writer = self.inner.clone();
+        let writer = self.inner.clone();
         let future = async move {
-            let res = writer.push(&data).await;
+            let mut writer = writer.lock().unwrap();
+            let res = writer.push(&data.metadata).await;
+            drop(writer);
             match res {
-                Ok(id) => Ok(JsValue::from_str(&id)),
+                Ok(mut data_push) => {
+                    match data_push.push_chunk(&data.content, false).await {
+                        Ok(hash) => Ok(JsValue::from_str(&hash)),
+                        Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+                    }
+                },
                 Err(e) => Err(JsValue::from_str(&format!("{}", e))),
             }
         };
@@ -204,6 +211,7 @@ impl ReliableDataProducer {
     pub fn is_completed(&self) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async move{
+            let inner = inner.lock().unwrap();
             Ok(JsValue::from_bool(inner.is_completed().await))
         })
     }
@@ -211,7 +219,8 @@ impl ReliableDataProducer {
     #[wasm_bindgen]
     pub fn close(&self) -> Promise {
         let inner = self.inner.clone();
-        future_to_promise(async {
+        future_to_promise(async move {
+            let mut inner = inner.lock().unwrap();
             inner.close().await;
             Ok(JsValue::NULL)
         })
@@ -245,7 +254,7 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.consume(domain_id, query.inner, false).await;
+            let stream = inner.load(domain_id, query.inner, false).await;
             let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
             
             Ok(JsValue::from(stream))
@@ -261,8 +270,8 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let r = inner.produce(domain_id).await;
-            Ok(JsValue::from(ReliableDataProducer {inner: r}))
+            let r = inner.upsert(domain_id).await;
+            Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r))}))
         })
     }
 }
