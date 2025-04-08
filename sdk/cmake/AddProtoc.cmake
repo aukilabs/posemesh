@@ -1,24 +1,4 @@
 function(ADD_PROTOC NAME PROTO_BUILD_PATH)
-    # TODO: Check if protoc already exists at target directory, might want to skip rebuilding every run.
-    
-    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-        set(PROTOBUF_OS "linux")
-    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-        set(PROTOBUF_OS "darwin")
-    else()
-        message(FATAL_ERROR "Unsupported host operating system: ${CMAKE_HOST_SYSTEM_NAME}")
-    endif()
-
-    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" OR 
-    CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
-        set(PROTOBUF_ARCH "x86_64")
-    elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64" OR 
-        CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        set(PROTOBUF_ARCH "arm64")
-    else()
-        message(FATAL_ERROR "Unsupported host architecture: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
-    endif()
-
     if(NOT Protobuf_SRC_ROOT_FOLDER)
         message(FATAL_ERROR "Protobuf_SRC_ROOT_FOLDER must be set to the protobuf source directory")
     endif()
