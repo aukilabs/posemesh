@@ -3,7 +3,6 @@ include(AddProtoc)
 include(CompileProtoFiles)
 
 function(ADD_PROTOBUF NAME)
-    # extract platform & arcitecture from installation dir
     string(REGEX MATCH "out-([a-zA-Z0-9_]+-[a-zA-Z0-9_]+|[a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)-([a-zA-Z0-9_]+)$" match ${CMAKE_INSTALL_PREFIX})
     set(INSTALL_PLATFORM "${CMAKE_MATCH_1}")
     set(INSTALL_ARCHITECTURE "${CMAKE_MATCH_2}")
@@ -22,7 +21,6 @@ function(ADD_PROTOBUF NAME)
     endif()
 
     set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_ROOT}/include)
-    set(PROTOBUF_LIBS_DIR ${PROTOBUF_ROOT}/lib PARENT_SCOPE)
     set(Protobuf_SRC_ROOT_FOLDER "${THIRD_PARTY_DIR}/protobuf" CACHE STRING INTERNAL)
 
     add_protoc(${NAME} ${PROTOBUF_ROOT})

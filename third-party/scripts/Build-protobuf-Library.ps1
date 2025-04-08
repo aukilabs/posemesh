@@ -49,6 +49,8 @@ $CMakeArgs = @(
     "-Dprotobuf_BUILD_CONFORMANCE=OFF",
     "-Dprotobuf_BUILD_EXAMPLES=OFF",
     "-Dprotobuf_BUILD_PROTOBUF_BINARIES=ON",
+    "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+    "-Dprotobuf_BUILD_LIBPROTOC=OFF",
     "-Dprotobuf_FORCE_FETCH_DEPENDENCIES=ON",
     "-Dprotobuf_BUILD_SHARED_LIBS=OFF",
     "-DCMAKE_INSTALL_PREFIX=$InstallDir",
@@ -133,7 +135,6 @@ if (-not $UseEmscripten) {
     cmake `
         --build . `
         --config $BuildType `
-        --target protoc `
         --target libprotobuf `
         --target libprotobuf-lite `
         --target libupb `

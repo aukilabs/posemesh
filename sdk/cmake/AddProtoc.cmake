@@ -6,7 +6,6 @@ function(ADD_PROTOC NAME PROTO_BUILD_PATH)
     set(PROTOC_BUILD_DIR "${PROTO_BUILD_PATH}/build-protoc-${PROTOBUF_OS}-${PROTOBUF_ARCH}")
     file(MAKE_DIRECTORY ${PROTOC_BUILD_DIR})
 
-    # CMake configuration options
     set(PROTOBUF_CMAKE_ARGS
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -Dprotobuf_BUILD_TESTS=OFF
