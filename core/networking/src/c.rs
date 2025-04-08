@@ -62,6 +62,8 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         enable_relay_server: false,
         port: 0,
         name: name.to_string(),
+        enable_websocket: false,
+        enable_webrtc: false,
     }
 }
 

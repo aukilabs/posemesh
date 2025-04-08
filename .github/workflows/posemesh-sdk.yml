@@ -1,6 +1,14 @@
 name: Posemesh SDK
 on:
+  pull_request:
+    paths-ignore:
+      - '**/examples/**'
+      - '*.md'
+      - '.vscode/**'
+      - '.github/**'
   push:
+    branches:
+      - main
     paths-ignore:
       - '**/examples/**'
       - '*.md'
@@ -14,7 +22,7 @@ concurrency:
 jobs:
   build_apple_frameworks:
     name: Build Apple SDK
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:

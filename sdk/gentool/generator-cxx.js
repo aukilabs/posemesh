@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateHeader(interfaceName, interfaceJson) {
+function generateHeader(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.CXX);
   const classStatic = util.getClassStatic(interfaceJson);
   const classFinal = util.getClassFinal(interfaceJson);
@@ -180,7 +180,7 @@ function generateHeader(interfaceName, interfaceJson) {
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
     let shouldAddIncludes = false;
-    const propType = util.getPropertyType(propertyJson, util.CXX);
+    const propType = util.getPropertyType(interfaces, propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
     const propStaticPfx = propStatic ? 'static ' : '';
     if (util.getPropertyHasMemberVar(propertyJson)) {
@@ -197,7 +197,7 @@ function generateHeader(interfaceName, interfaceJson) {
       const getterConstExt = propertyJson.getterConst ? ' const' : '';
       const getterNoexceptExt = propertyJson.getterNoexcept ? ' noexcept' : '';
       const getterName = util.getPropertyGetterName(propertyJson, util.CXX);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.CXX);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.CXX);
       const getterMode = util.getPropertyGetterMode(propertyJson);
       const getterVirtualPfx = getterMode !== util.MethodMode.regular ? 'virtual ' : '';
       const getterVirtualExt = getterMode === util.MethodMode.pureVirtual ? ' = 0' : (getterMode === util.MethodMode.override ? ' override' : '');
@@ -234,7 +234,7 @@ function generateHeader(interfaceName, interfaceJson) {
       const setterConstExt = propertyJson.setterConst ? ' const' : '';
       const setterNoexceptExt = propertyJson.setterNoexcept ? ' noexcept' : '';
       const setterName = util.getPropertySetterName(propertyJson, util.CXX);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.CXX);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.CXX);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.CXX);
       const setterMode = util.getPropertySetterMode(propertyJson);
       const setterVirtualPfx = setterMode !== util.MethodMode.regular ? 'virtual ' : '';
@@ -271,8 +271,13 @@ function generateHeader(interfaceName, interfaceJson) {
       const propTypeRaw = propertyJson.type;
       if (util.isIntType(propTypeRaw)) {
         includesFirst.add('#include <cstdint>');
-      } else if (propTypeRaw === 'string') {
+      } else if (propTypeRaw === 'string' || propTypeRaw === 'string_ref' || propTypeRaw === 'string_mix') {
         includesFirst.add('#include <string>');
+      } else if (util.isClassOfAnyType(propTypeRaw)) {
+        if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
+        }
+        includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.hpp"`);
       }
     }
   }
@@ -281,6 +286,15 @@ function generateHeader(interfaceName, interfaceJson) {
   if (hashOperator.defined) {
     privateFriends += `    friend struct std::hash<${name}>;\n`;
     includesFirst.add('#include <functional>');
+  }
+
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    publicOperators += `    PSM_API operator std::string() const;\n`;
+    includesFirst.add('#include <string>');
+    privateFriends += `    friend std::ostream& operator<<(std::ostream& outputStream, const ${name}& ${argName});\n`;
+    includesFirst.add('#include <ostream>');
   }
 
   let public = publicCtors, protected = protectedCtors, private = privateCtors;
@@ -404,6 +418,14 @@ function generateHeader(interfaceName, interfaceJson) {
   for (const alias of aliases) {
     code += `using ${alias} = ${name};\n`;
   }
+
+  if (toStringOperator.defined) {
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `\n`;
+    code += `std::ostream& PSM_API operator<<(std::ostream& outputStream, const ${name}& ${argName});\n`;
+    includesFirst.add('#include <ostream>');
+  }
+
   code += '\n';
   code += '}\n';
 
@@ -444,7 +466,7 @@ function generateHeader(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateSource(interfaceName, interfaceJson) {
+function generateSource(interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.CXX);
   const classStatic = util.getClassStatic(interfaceJson);
 
@@ -962,9 +984,21 @@ function generateSource(interfaceName, interfaceJson) {
     }
   }
 
+  const toStringOperator = interfaceJson.toStringOperator;
+  if (toStringOperator.defined) {
+    if (publicOperators.length > 0) { publicOperators += '\n'; }
+    publicOperators += `${name}::operator std::string() const\n`;
+    publicOperators += `{\n`;
+    publicOperators += `    std::ostringstream outputStringStream;\n`;
+    publicOperators += `    outputStringStream << *this;\n`;
+    publicOperators += `    return outputStringStream.str();\n`;
+    publicOperators += `}\n`;
+    includesFirst.add('#include <sstream>');
+  }
+
   for (const propertyJson of util.getProperties(interfaceJson)) {
     const propName = util.getPropertyName(propertyJson, util.CXX);
-    const propType = util.getPropertyType(propertyJson, util.CXX);
+    const propType = util.getPropertyType(interfaces, propertyJson, util.CXX);
     const propStatic = util.getPropertyStatic(propertyJson);
     const propDefaultValue = util.getPropertyDefaultValue(propertyJson);
     if (propStatic) {
@@ -977,7 +1011,7 @@ function generateSource(interfaceName, interfaceJson) {
       const getterConstExt = propertyJson.getterConst ? ' const' : '';
       const getterNoexceptExt = propertyJson.getterNoexcept ? ' noexcept' : '';
       const getterName = util.getPropertyGetterName(propertyJson, util.CXX);
-      const getterType = util.getPropertyTypeForGetter(propertyJson, util.CXX);
+      const getterType = util.getPropertyTypeForGetter(interfaces, propertyJson, util.CXX);
       let getter = `${getterType} ${name}::${getterName}()${getterConstExt}${getterNoexceptExt}\n`;
       getter += '{\n';
       getter += `    return ${propName};\n`;
@@ -1021,11 +1055,17 @@ function generateSource(interfaceName, interfaceJson) {
       const setterConstExt = propertyJson.setterConst ? ' const' : '';
       const setterNoexceptExt = propertyJson.setterNoexcept ? ' noexcept' : '';
       const setterName = util.getPropertySetterName(propertyJson, util.CXX);
-      const setterType = util.getPropertyTypeForSetter(propertyJson, util.CXX);
+      const setterType = util.getPropertyTypeForSetter(interfaces, propertyJson, util.CXX);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.CXX);
       let setter = `void ${name}::${setterName}(${setterType} ${setterArgName})${setterConstExt}${setterNoexceptExt}\n`;
       setter += '{\n';
-      if (propertyJson.type === 'string') {
+      if (propertyJson.type === 'string' || propertyJson.type === 'string_mix') {
+        includesFirst.add('#include <utility>');
+        setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+        includesFirst.add('#include <utility>');
+        setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else if (util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
         includesFirst.add('#include <utility>');
         setter += `    ${propName} = std::move(${setterArgName});\n`;
       } else {
@@ -1164,6 +1204,18 @@ function generateSource(interfaceName, interfaceJson) {
     code += private;
   }
 
+  if (toStringOperator.defined && !toStringOperator.custom) {
+    namespaceBodyNeedsAdditionalNewLine = true;
+    if (public.length > 0 || protected.length > 0 || private.length > 0) {
+      code += '\n';
+    }
+    const argName = util.getStyleName('name', interfaceJson, util.camelBack);
+    code += `std::ostream& operator<<(std::ostream& outputStream, const ${name}& ${argName})\n`;
+    code += `{\n`;
+    code += `    return outputStream << "(Posemesh.${name})";\n`;
+    code += `}\n`;
+  }
+
   if (namespaceBodyNeedsAdditionalNewLine) { code += '\n'; }
   code += '}\n';
 
@@ -1231,12 +1283,12 @@ function generateSource(interfaceName, interfaceJson) {
   return code;
 }
 
-function generateInterfaceCXX(interfaceName, interfaceJson) {
+function generateInterfaceCXX(interfaces, interfaceName, interfaceJson) {
   const headerFilePath = path.resolve(__dirname, '..', 'include', 'Posemesh', `${interfaceName}.hpp`);
   const sourceFilePath = path.resolve(__dirname, '..', 'src', `${interfaceName}.gen.cpp`);
 
-  let headerCode = generateHeader(interfaceName, interfaceJson);
-  let sourceCode = generateSource(interfaceName, interfaceJson);
+  let headerCode = generateHeader(interfaces, interfaceName, interfaceJson);
+  let sourceCode = generateSource(interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(headerFilePath, headerCode);
   util.writeFileContentIfDifferent(sourceFilePath, sourceCode);

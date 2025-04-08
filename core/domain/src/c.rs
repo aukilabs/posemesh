@@ -204,7 +204,7 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
 pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: *const c_char) -> *mut DomainCluster {
     let name = unsafe { CStr::from_ptr(name).to_string_lossy().into_owned() };
     let domain_manager_addr = unsafe { CStr::from_ptr(domain_manager_addr).to_string_lossy().into_owned() };
-    let cluster = DomainCluster::new(domain_manager_addr, name, false, None, None);
+    let cluster = DomainCluster::new(domain_manager_addr, name, false, 0, false, false, None, None);
     Box::into_raw(Box::new(cluster))
 }
 

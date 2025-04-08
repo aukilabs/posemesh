@@ -11,16 +11,19 @@ serde_json = { workspace = true }
 rand = "0.8.5"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+utils = {workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
+libp2p = { workspace = true, features = [ "dcutr", "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat", "websocket" ] }
 tokio = { workspace = true, features = ["full"] }
 libp2p-webrtc = { workspace = true, features = ["tokio"] }
+libp2p-websocket = { workspace = true }
 runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
-libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay" ] }
+libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay", "noise", "yamux", "dcutr" ] }
 libp2p-webrtc-websys = { workspace = true }
+libp2p-websocket-websys = { workspace = true }
 tracing-wasm = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
@@ -31,7 +34,6 @@ console_error_panic_hook = { workspace = true }
 [features]
 default = []
 c = []
-wasm = []
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
