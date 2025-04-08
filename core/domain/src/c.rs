@@ -1,15 +1,13 @@
-use std::any::Any;
 use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
-use std::sync::{Arc, Mutex};
-use networking::libp2p::Networking;
 use futures::stream::StreamExt;
 use runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::{common::Datastore, remote::RemoteDatastore};
+use crate::datastore::common::Datastore;
 use crate::binding_helper::init_r_remote_storage;
+use crate::datastore::remote::RemoteDatastore;
 use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
 
 #[repr(C)]
@@ -19,7 +17,7 @@ pub struct DomainData {
     pub id: *const c_char,
     pub name: *const c_char,           // Pointer to the null-terminated C string (no fixed size)
     pub data_type: *const c_char,      // Pointer to the null-terminated C string (no fixed size)
-    pub metadata: *const c_char,
+    pub properties: *const c_char,
     pub content: *mut c_void,
     pub content_size: usize,
 }
@@ -37,7 +35,7 @@ fn to_rust(c_domain_data: *const DomainData) -> Data {
     };
     let name = unsafe { CStr::from_ptr(c_domain_data_ref.name).to_string_lossy().into_owned() };
     let data_type = unsafe { CStr::from_ptr(c_domain_data_ref.data_type).to_string_lossy().into_owned() };
-    let metadata = unsafe { CStr::from_ptr(c_domain_data_ref.metadata).to_string_lossy().into_owned() };
+    let properties = unsafe { CStr::from_ptr(c_domain_data_ref.properties).to_string_lossy().into_owned() };
 
     let content = unsafe {
         if c_domain_data_ref.content.is_null() {
@@ -52,13 +50,15 @@ fn to_rust(c_domain_data: *const DomainData) -> Data {
     let content_size = content.len();
 
     Data {
-        domain_id: domain_id,
+        domain_id,
         metadata: Metadata {
             name,
             data_type,
-            properties: serde_json::from_str(&metadata).unwrap(),
+            properties: serde_json::from_str(&properties).unwrap(),
             size: content_size as u32,
             id,
+            link: None,
+            hash: None,
         },
         content,
     }
@@ -73,7 +73,7 @@ fn from_rust(r_domain_data: &Data) -> DomainData {
     let domain_id = CString::new(r_domain_data.domain_id.clone()).unwrap().into_raw();
     let name = CString::new(metadata.name.clone()).unwrap().into_raw();
     let data_type = CString::new(metadata.data_type.clone()).unwrap().into_raw();
-    let metadata = CString::new(serde_json::to_string(&metadata.properties).unwrap()).unwrap().into_raw();
+    let properties = CString::new(serde_json::to_string(&metadata.properties).unwrap()).unwrap().into_raw();
 
     let content = if r_domain_data.content.is_empty() {
         ptr::null_mut()
@@ -90,7 +90,7 @@ fn from_rust(r_domain_data: &Data) -> DomainData {
         id,
         name,
         data_type,
-        metadata,
+        properties,
         content,
         content_size,
     }
@@ -190,7 +190,7 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
     free_c_string(data.id);
     free_c_string(data.name);
     free_c_string(data.data_type);
-    free_c_string(data.metadata);
+    free_c_string(data.properties);
 
     if !data.content.is_null() {
         drop(Vec::from_raw_parts(data.content as *mut u8, data.content_size, data.content_size));
@@ -220,12 +220,12 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper {
+pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper<RemoteDatastore> {
     Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)))))
 }
 
 #[no_mangle]
-pub extern "C" fn free_datastore(store: *mut DatastoreWrapper) {
+pub extern "C" fn free_datastore(store: *mut DatastoreWrapper<RemoteDatastore>) {
     if store.is_null() {
         return;
     }
@@ -235,19 +235,19 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper) {
     }
 }
 
-pub struct DatastoreWrapper {
-    pub inner: Box<dyn Datastore>,
+pub struct DatastoreWrapper<D: Datastore> {
+    pub inner: Box<D>,
 }
 
-impl DatastoreWrapper {
-    fn new(store: Box<dyn Datastore>) -> Self {
+impl<D: Datastore> DatastoreWrapper<D> {
+    fn new(store: Box<D>) -> Self {
         DatastoreWrapper { inner: store }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn find_domain_data(
-    store: *mut DatastoreWrapper, // Pointer to Rust struct
+    store: *mut DatastoreWrapper<RemoteDatastore>, // Pointer to Rust struct
     domain_id: *const c_char,    // C string
     query: *mut domain_data::Query, // Pointer to query struct
     keep_alive: bool,
@@ -273,7 +273,7 @@ pub extern "C" fn find_domain_data(
 
     // Spawn a Tokio task to process the receiver
     get_runtime().spawn(async move {
-        let stream = store_wrapper.inner.consume(domain_id, query_clone, keep_alive).await;
+        let stream = store_wrapper.inner.load(domain_id, query_clone, keep_alive).await;
         let mut stream = Box::pin(stream);
 
         while let Some(result) = stream.next().await {
