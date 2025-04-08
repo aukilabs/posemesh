@@ -40,7 +40,7 @@ fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, rece
         sub: "".to_string(),
     };
 
-    // TODO: use ed25519 key
+    // TODO: use ed25519 or ethereum key instead
     let token = encode(
         &Header::default(),
         &claims,
@@ -50,22 +50,23 @@ fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, rece
     Ok(token)
 }
 
-
 #[derive(Clone, Debug)]
 struct DomainManager {
     peer: Networking,
     domain_id: String,
     task_mgmt: TasksManagement,
     node_mgmt: NodesManagement,
+    secret: String,
 }
 
 impl DomainManager {
-    fn new(domain_id: String, peer: Networking) -> Self {
+    fn new(domain_id: String, peer: Networking, secret: String) -> Self {
         DomainManager {
             peer,
             domain_id,
             task_mgmt: TasksManagement::new(),
             node_mgmt: NodesManagement::new(),
+            secret,
         }
     }
 
@@ -118,8 +119,9 @@ impl DomainManager {
                             let node_mgmt = self.node_mgmt.clone();
                             let domain_id = self.domain_id.clone();
                             let peer = self.peer.clone();
+                            let secret = self.secret.clone();
                             spawn(async move {
-                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt).await;
+                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt, &secret).await;
                             });
                         }
                         None => sleep(Duration::from_secs(5)).await
@@ -181,7 +183,7 @@ impl DomainManager {
     }
 
     #[tracing::instrument]
-    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement) {
+    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement, secret: &str) {
         let mut serialized_input: Vec<u8> = vec![];
         let mut t = th.task.clone();
         let input = th.input.clone();
@@ -246,7 +248,7 @@ impl DomainManager {
         }
         
         let receiver = t.receiver.clone().unwrap();
-        let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, "secret").expect("failed to encode jwt");
+        let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, secret).expect("failed to encode jwt");
         t.status = Status::PENDING;
         if t.sender == peer.id {
             if let Err(e) = handshake_then_vec(peer.client, &access_token, &receiver, &t.endpoint, serialized_input, th.timeout).await {
@@ -321,9 +323,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name,
         enable_websocket: true,
         enable_webrtc: true,
+        domain: None,
     };
     let c = Networking::new(cfg)?;
-    let mut domain_manager = DomainManager::new(domain_id, c);
+    let mut domain_manager = DomainManager::new(domain_id.clone(), c, domain_id.clone());
     
     domain_manager.start().await
 }
