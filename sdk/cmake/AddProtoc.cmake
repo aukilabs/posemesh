@@ -1,4 +1,4 @@
-function(ADD_PROTOC NAME PROTO_BUILD_PATH)
+function(ADD_PROTOC NAME PROTO_SRC_ROOT_FOLDER PROTO_BUILD_PATH)
     if(NOT Protobuf_SRC_ROOT_FOLDER)
         message(FATAL_ERROR "Protobuf_SRC_ROOT_FOLDER must be set to the protobuf source directory")
     endif()
