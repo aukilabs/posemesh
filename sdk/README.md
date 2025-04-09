@@ -100,12 +100,17 @@ npm run generate
 popd
 ```
 
-5. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
+5. Build Protobuf
+```sh
+./third-party/scripts/Build-protobuf-Library.ps1 macOS ARM64 Debug
+```
+
+6. Build SDK library (example debug build for macOS, same supported platforms & architectures as the base library from step 2):
 ```sh
 ./sdk/scripts/Build-Library.ps1 macOS ARM64 Debug
 ```
 
-6. Build output can be found in `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
+7. Build output can be found in `./sdk/out-macOS-ARM64-Debug/` (the general case is `./sdk/out-[platform]-[architecture]-[Debug|Release]/`)
 
 # Apple entitlements
 

@@ -182,9 +182,9 @@ function(ADD_PLATFORM_LIBRARY NAME)
     set_target_properties(
         ${NAME}
         PROPERTIES
-            C_STANDARD 14
+            C_STANDARD 17
             C_STANDARD_REQUIRED ON
-            CXX_STANDARD 14
+            CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
     )
     if(LINUX)
