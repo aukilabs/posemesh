@@ -339,7 +339,7 @@ fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     ];
 
     #[cfg(target_family="wasm")]
-    let listeners = vec![];
+    let mut listeners = vec![];
 
     if let Some(domain) = domain {
         listeners.push(Multiaddr::empty()
