@@ -59,6 +59,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Config.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/PoseEstimation.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/ArucoDetection.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
         "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
@@ -66,6 +67,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Config.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseEstimation.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/ArucoDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS}"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
@@ -73,11 +75,13 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/ArucoDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
         "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/QRDetection.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/ArucoDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
@@ -105,6 +109,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/PoseEstimation.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/QRDetection.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/ArucoDetection.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
@@ -114,11 +119,13 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Posemesh.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/ArucoDetection.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/ArucoDetection.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
@@ -140,6 +147,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Config.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/PoseEstimation.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/ArucoDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
             "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
