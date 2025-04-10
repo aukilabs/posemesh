@@ -12,6 +12,7 @@ const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 {
         println!("Usage: {} <port> <name> <bootstraps>", args[0]);

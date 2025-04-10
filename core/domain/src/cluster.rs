@@ -180,9 +180,6 @@ pub struct DomainCluster {
 
 impl DomainCluster {
     pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, enable_websocket: bool, enable_webrtc: bool, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        #[cfg(not(target_family="wasm"))]
-        tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
-
         let networking = Networking::new(&NetworkingConfig {
             bootstrap_nodes: vec![manager_addr.clone()],
             relay_nodes: vec![manager_addr.clone()],
