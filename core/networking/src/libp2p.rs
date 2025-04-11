@@ -1,7 +1,7 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
 use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, relay, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
-use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration, pin::Pin};
+use std::{borrow::Cow, collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, pin::Pin, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{de, Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
@@ -99,6 +99,7 @@ pub struct NetworkingConfig {
     pub name: String,
     pub enable_websocket: bool,
     pub enable_webrtc: bool,
+    pub domain: Option<String>,
 }
 
 impl Default for NetworkingConfig {
@@ -115,6 +116,7 @@ impl Default for NetworkingConfig {
             name: "Placeholder".to_string(),
             enable_webrtc: false,
             enable_websocket: false, // placeholder
+            domain: None,
         }
     }
 }
@@ -326,9 +328,9 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-fn build_listeners(port: u16) -> Vec<Multiaddr> {
+fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     #[cfg(not(target_family="wasm"))]
-    return vec![
+    let mut listeners = vec![
         Multiaddr::empty()
             .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(port)),
@@ -336,8 +338,21 @@ fn build_listeners(port: u16) -> Vec<Multiaddr> {
             .with(Protocol::Udp(port))
             .with(Protocol::QuicV1),
     ];
+
     #[cfg(target_family="wasm")]
-    return vec![];
+    let mut listeners = vec![];
+
+    if let Some(domain) = domain {
+        listeners.push(Multiaddr::empty()
+            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
+            .with(Protocol::Tcp(port)));
+        listeners.push(Multiaddr::empty()
+            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
+            .with(Protocol::Udp(port))
+            .with(Protocol::QuicV1));
+    }
+
+    return listeners;
 }
 
 fn enable_websocket(port: u16) -> Multiaddr {
@@ -366,7 +381,7 @@ impl Libp2p {
 
         let mut swarm = build_swarm(key.clone(), behaviour).await?;
 
-        let mut listeners = build_listeners(cfg.port);
+        let mut listeners = build_listeners(cfg.port, cfg.domain.clone());
         if cfg.enable_websocket {
             listeners.push(enable_websocket(cfg.port));
         }

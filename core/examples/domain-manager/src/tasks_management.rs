@@ -2,7 +2,7 @@ use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::{Dura
 
 use domain::{message::prefix_size_message, protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest}};
 use futures::AsyncWriteExt;
-use libp2p::{swarm::ConnectionId, Stream};
+use networking::AsyncStream;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{sync::mpsc::{self, Receiver}, task::JoinHandle};
 use tokio::{sync::Mutex, spawn};
@@ -278,7 +278,7 @@ impl TasksManagement {
     }
 
     #[tracing::instrument]
-    pub async fn monitor_tasks(&self, mut stream: Stream) {
+    pub async fn monitor_tasks<S: AsyncStream>(&self, mut stream: S) {
         let tasks = self.tasks.clone();
         let tasks = tasks.lock().await;
         for (_, task) in tasks.iter() {

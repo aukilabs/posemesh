@@ -1,56 +1,17 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
-use libp2p::Stream;
-use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::{client::Client, event, libp2p::{Networking, NetworkingConfig, Node}, AsyncStream};
 use nodes_management::NodesManagement;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tasks_management::{task_id, TaskHandler, TasksManagement};
 use tokio::{self, select, spawn, time::sleep};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
-use domain::{message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
+use domain::{auth::encode_jwt, message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
 use hex;
 use serde::{Serialize, Deserialize};
 mod tasks_management;
 mod nodes_management;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TaskTokenClaim {
-    domain_id: String,
-    task_name: String,
-    job_id: String,
-    sender: String,
-    receiver: String,
-    exp: usize,
-    iat: usize,
-    sub: String,
-}
-
-fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let exp = now + Duration::from_secs(60*60);
-    let claims = TaskTokenClaim {
-        domain_id: domain_id.to_string(),
-        task_name: task_name.to_string(),
-        sender: sender.to_string(),
-        receiver: receiver.to_string(),
-        job_id: job_id.to_string(),
-        // TODO: set exp, iat, sub and scope
-        exp: exp.as_secs() as usize,
-        iat: 0,
-        sub: "".to_string(),
-    };
-
-    // TODO: use ed25519 key
-    let token = encode(
-        &Header::default(),
-        &claims,
-           &EncodingKey::from_secret(secret.as_ref()),
-    )?;
-
-    Ok(token)
-}
-
 
 #[derive(Clone, Debug)]
 struct DomainManager {
@@ -58,15 +19,17 @@ struct DomainManager {
     domain_id: String,
     task_mgmt: TasksManagement,
     node_mgmt: NodesManagement,
+    secret: String,
 }
 
 impl DomainManager {
-    fn new(domain_id: String, peer: Networking) -> Self {
+    fn new(domain_id: String, peer: Networking, secret: String) -> Self {
         DomainManager {
             peer,
             domain_id,
             task_mgmt: TasksManagement::new(),
             node_mgmt: NodesManagement::new(),
+            secret,
         }
     }
 
@@ -119,8 +82,9 @@ impl DomainManager {
                             let node_mgmt = self.node_mgmt.clone();
                             let domain_id = self.domain_id.clone();
                             let peer = self.peer.clone();
+                            let secret = self.secret.clone();
                             spawn(async move {
-                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt).await;
+                                DomainManager::run_task(&domain_id, peer, &task, task_mgmt, node_mgmt, &secret).await;
                             });
                         }
                         None => sleep(Duration::from_secs(5)).await
@@ -139,7 +103,7 @@ impl DomainManager {
     }
 
     #[tracing::instrument]
-    async fn accept_job(node_mgmt: NodesManagement, task_mgmt: TasksManagement, mut peer: Client, stream: Stream) {
+    async fn accept_job<S: AsyncStream>(node_mgmt: NodesManagement, task_mgmt: TasksManagement, mut peer: Client, stream: S) {
         let (reader, mut writer) = stream.split();
         let job = read_prefix_size_message::<JobRequest>(reader).await.expect("failed to load job request");
 
@@ -182,7 +146,7 @@ impl DomainManager {
     }
 
     #[tracing::instrument]
-    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement) {
+    async fn run_task(domain_id:&str, mut peer: Networking, th: &TaskHandler, task_mgmt: TasksManagement, node_mgmt: NodesManagement, secret: &str) {
         let mut serialized_input: Vec<u8> = vec![];
         let mut t = th.task.clone();
         let input = th.input.clone();
@@ -247,7 +211,7 @@ impl DomainManager {
         }
         
         let receiver = t.receiver.clone().unwrap();
-        let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, "secret").expect("failed to encode jwt");
+        let access_token = encode_jwt(domain_id, &t.job_id, &t.name, &t.sender, &receiver, secret).expect("failed to encode jwt");
         t.status = Status::PENDING;
         if t.sender == peer.id {
             if let Err(e) = handshake_then_vec(peer.client, &access_token, &receiver, &t.endpoint, serialized_input, th.timeout).await {
@@ -322,9 +286,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name,
         enable_websocket: true,
         enable_webrtc: true,
+        domain: None,
     };
     let c = Networking::new(cfg)?;
-    let mut domain_manager = DomainManager::new(domain_id, c);
+    let mut domain_manager = DomainManager::new(domain_id.clone(), c, domain_id.clone());
     
     domain_manager.start().await
 }

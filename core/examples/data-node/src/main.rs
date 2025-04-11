@@ -1,15 +1,24 @@
-use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
+use domain::{auth::handshake, cluster::DomainCluster, datastore::{common::Datastore, fs::FsDatastore, metadata::MetadataStore, remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::Metadata, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
-use libp2p::Stream;
-use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::{libp2p::Networking, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{self, select};
+use tokio::{self, select, signal::unix::{signal, SignalKind}};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use std::{fs::{self, OpenOptions}, io::{Read, Write}};
 use serde::{Deserialize, Serialize};
+
+async fn shutdown_signal() {
+    let mut term_signal = signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+    let mut int_signal = signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
+
+    select! {
+        _ = term_signal.recv() => println!("Received SIGTERM, exiting..."),
+        _ = int_signal.recv() => println!("Received SIGINT, exiting..."),
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TaskTokenClaim {
+    domain_id: String,
     task_name: String,
     job_id: String,
     sender: String,
@@ -17,21 +26,13 @@ struct TaskTokenClaim {
     // exp: usize,
 }
 
-fn decode_jwt(token: &str) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let token_data = decode::<TaskTokenClaim>(token, &DecodingKey::from_secret("secret".as_ref()), &Validation::new(Algorithm::HS256))?;
-    Ok(token_data.claims)
-}
-
-async fn handshake(stream: &mut Stream) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
-    decode_jwt(header.access_token.as_str())
-}
-
-async fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn store_data_v1<S: AsyncStream>(mut stream: S, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let claim = handshake(&mut stream).await?;
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await?;
-    let mut data_ids = Vec::<String>::new();
+    let domain_id = claim.domain_id.clone();
+
+    let mut producer = fs_datastore.upsert(domain_id.clone()).await;
 
     loop {
         let mut length_buf = [0u8; 4];
@@ -52,33 +53,19 @@ async fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         let metadata = deserialize_from_slice::<Metadata>(&buffer)?;
         println!("Received buffer: {:?}", metadata);
 
-        let data_id = metadata.id.expect("Failed to get data id");
-
-        // create domain_data directory if it doesn't exist
-        let path = format!("{}/output/domain_data/{}", base_path, data_id.clone());
-        std::fs::create_dir_all(path.clone())?;
-        let mut metadata_file = OpenOptions::new().append(true).create(true).open(format!("{}/metadata.bin", path.clone()))?;
-        metadata_file.write_all(&buffer)?;
-        metadata_file.flush()?;
-
-        let mut content_file = OpenOptions::new().append(true).create(true).open(format!("{}/content.bin", path.clone()))?;
         let default_chunk_size = 10 * 1024;
         let mut read_size: usize = 0;
         let data_size = metadata.size as usize;
+        let mut data_writer = producer.push(&metadata).await?;
         loop {
             // TODO: add timeout so stream wont be idle for too long
             let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
             if chunk_size == 0 {
+                data_writer.push_chunk(&vec![], false).await?;
+                println!("Stored data: {}, size: {}", metadata.name, metadata.size);
                 stream.write_all(&length_buf).await?;
-                
                 stream.write_all(&buffer).await?;
                 stream.flush().await?;
-
-                data_ids.push(data_id.clone());
-
-                content_file.flush()?;
-                println!("Stored data: {}, size: {}", metadata.name, metadata.size);
-                // notify.send(path.clone()).await.expect("Failed to send notification");
                 break;
             }
             let mut buffer = vec![0u8; chunk_size];
@@ -86,69 +73,46 @@ async fn store_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
 
             read_size+=chunk_size;
 
-            content_file.write_all(&buffer)?;
+            data_writer.push_chunk(&buffer, true).await?;
             println!("Received chunk: {}/{}", read_size, metadata.size);
         }
-    };
+    }
 }
 
-async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn serve_data_v1<S: AsyncStream>(mut stream: S, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let header = handshake(&mut stream).await?;
     c.client.subscribe(header.job_id.clone()).await?;
-    let mut buf = Vec::new();
-    let _ = stream.read_to_end(&mut buf).await?;
-    let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf)?;
-    // let query = input.query.clone();
-    let name_regexp = {
-        let query = input.query.clone();
-        if let Some(name_regexp) = query.name_regexp {
-            name_regexp
+    
+    let mut buf = Vec::<u8>::new();
+    let res = stream.read_to_end(&mut buf).await;
+    if res.is_err() {
+        let err = res.err().unwrap();
+        if err.kind() == std::io::ErrorKind::UnexpectedEof {
+            return Ok(());
         } else {
-            ".*".to_string()
+            return Err(err.into());
         }
-    };
-    let ids_filter ={
-        let query = input.query.clone();
-        query.ids.clone()
-    };
-    // let listener = listener.clone();
-    let paths = std::fs::read_dir(format!("{}/output/domain_data", base_path))?;
-
-    for path in paths {
-        let path = path.expect("Failed to read path").path();
-        let data_id = path.file_name().expect("Failed to get file name").to_str().expect("Failed to convert to str").to_string();
-        let metadata_path = format!("{}/metadata.bin", path.to_str().expect("Failed to convert to str"));
-        let content_path = format!("{}/content.bin", path.to_str().expect("Failed to convert to str"));
-
-        let metadata_buf = std::fs::read(metadata_path)?;
-        let metadata = deserialize_from_slice::<Metadata>(&metadata_buf)?;
-        if !regex::Regex::new(&name_regexp).unwrap().is_match(metadata.name.as_str()) {
-            continue;
-        }
-        if ids_filter.len() > 0 && !ids_filter.contains(&metadata.id.unwrap()) {
-            continue;
-        }
-        let mut length_buf = [0u8; 4];
-        let length = metadata_buf.len() as u32;
-        length_buf.copy_from_slice(&length.to_be_bytes());
-        stream.write_all(&length_buf).await?;
-        stream.write_all(&metadata_buf).await?;
-        
-        let mut f = fs::File::open(content_path)?;
-        let mut written = 0;
-        let chunk_size = 2 * 1024;
-        loop {
-            let mut buf = vec![0; chunk_size];
-            let n = f.read(&mut buf)?;
-            if n == 0 {
-                break;
+    }
+    let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf)?;
+    let mut consumer = fs_datastore.load(header.domain_id.clone(), input.query, input.keep_alive).await;
+    loop {
+        select! {
+            result = consumer.next() => {
+                match result {
+                    Some(Ok(data)) => {
+                        stream.write_all(&prefix_size_message(&data.metadata)).await?;
+                        stream.write_all(&data.content).await?;
+                        stream.flush().await?;
+                        println!("Served data: {}, size: {}", data.metadata.name, data.metadata.size);
+                    }
+                    Some(Err(e)) => {
+                        println!("Error: {:?}", e);
+                        return Err(e.into());
+                    }
+                    None => break
+                }
             }
-            written += n;
-            println!("Served chunk: {}/{}", written, metadata.size);
-            stream.write_all(&buf[..n]).await?;
-            stream.flush().await?;
         }
-        println!("Served data: {}, size: {}", metadata.name, metadata.size);
     }
 
     if !input.keep_alive {
@@ -186,38 +150,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
     let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true, None, Some(private_key_path));
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();
     let mut consume_handler = n.client.set_stream_handler(CONSUME_DATA_PROTOCOL_V1.to_string()).await.unwrap();
-    let _ = std::fs::remove_dir_all(format!("{}/output/domain_data", base_path));
-    std::fs::create_dir_all(format!("{}/output/domain_data", base_path)).expect("Failed to create domain_data directory");
+    let conn_str = "postgres://test:test@localhost:5433/domain-server?sslmode=disable";
+    let path = format!("{}/output/domain_data", base_path);
+    std::fs::create_dir_all(path.clone()).expect("Failed to create domain_data directory");
+
+    let metadata_store = MetadataStore::new(conn_str).await.expect("Failed to create metadata store");
+    let fs_datastore = FsDatastore::new(metadata_store, path.clone()).await;
 
     loop {
         select! {
             Some((_, stream)) = produce_handler.next() => {
-                // let tx = tx.clone();
-                let base_path = base_path.clone();
                 let n = n.clone();
+                let fs_datastore = fs_datastore.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = store_data_v1(base_path, stream, n).await {
+                    if let Err(e) = store_data_v1(stream, n, fs_datastore).await {
                         println!("Error storing data: {}", e);
                     }
                 });
             }
             Some((_, stream)) = consume_handler.next() => {
-                let base_path = base_path.clone();
                 let n = n.clone();
+                let fs_datastore = fs_datastore.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = serve_data_v1(base_path, stream, n).await {
+                    if let Err(e) = serve_data_v1(stream, n, fs_datastore).await {
                         println!("Error serving data: {}", e);
                     }
                 });
             }
-            else => break
+            _ = shutdown_signal() => {
+                println!("Received shutdown signal, exiting...");
+                break;
+            }
         }
     }
+
+    println!("Exit");
 
     Ok(())
 }
