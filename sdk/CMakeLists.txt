@@ -197,6 +197,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/PoseEstimation.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/ArucoDetection.js"
             "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"

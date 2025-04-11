@@ -7,7 +7,7 @@ __internalPosemeshAPI.builderFunctions.push(function() {
             imageBytesVector = __internalPosemeshAPI.toVectorUint8(imageBytes);
             outContentsVector = new __internalPosemesh.VectorString();
             outCornersVector = new __internalPosemesh.VectorVector2();
-            let result = __internalPosemesh.QRDetection.__detectArucoFromLuminance(imageBytesVector, width, height, outContentsVector, outCornersVector);
+            let result = __internalPosemesh.ArucoDetection.__detectArucoFromLuminance(imageBytesVector, width, height, outContentsVector, outCornersVector);
 
             if (result) {
                 outContents.length = 0;
