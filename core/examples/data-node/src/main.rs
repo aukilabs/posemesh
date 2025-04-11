@@ -1,4 +1,4 @@
-use domain::{cluster::DomainCluster, datastore::{common::Datastore, fs::FsDatastore, metadata::MetadataStore, remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::Metadata, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
+use domain::{auth::handshake, cluster::DomainCluster, datastore::{common::Datastore, fs::FsDatastore, metadata::MetadataStore, remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::Metadata, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use networking::{libp2p::Networking, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
@@ -24,16 +24,6 @@ struct TaskTokenClaim {
     sender: String,
     receiver: String,
     // exp: usize,
-}
-
-fn decode_jwt(token: &str) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let token_data = decode::<TaskTokenClaim>(token, &DecodingKey::from_secret("secret".as_ref()), &Validation::new(Algorithm::HS256))?;
-    Ok(token_data.claims)
-}
-
-async fn handshake<S: AsyncStream>(stream: &mut S) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
-    decode_jwt(header.access_token.as_str())
 }
 
 async fn store_data_v1<S: AsyncStream>(mut stream: S, mut c: Networking, mut fs_datastore: FsDatastore) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

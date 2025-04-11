@@ -6,49 +6,12 @@ use tasks_management::{task_id, TaskHandler, TasksManagement};
 use tokio::{self, select, spawn, time::sleep};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use std::{error::Error, time::{Duration, SystemTime, UNIX_EPOCH}};
-use domain::{message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
+use domain::{auth::encode_jwt, message::{handshake_then_vec, prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Code, GlobalRefinementInputV1, JobRequest, LocalRefinementOutputV1, Status}};
 use sha2::{Digest, Sha256};
 use hex;
 use serde::{Serialize, Deserialize};
 mod tasks_management;
 mod nodes_management;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TaskTokenClaim {
-    domain_id: String,
-    task_name: String,
-    job_id: String,
-    sender: String,
-    receiver: String,
-    exp: usize,
-    iat: usize,
-    sub: String,
-}
-
-fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let exp = now + Duration::from_secs(60*60);
-    let claims = TaskTokenClaim {
-        domain_id: domain_id.to_string(),
-        task_name: task_name.to_string(),
-        sender: sender.to_string(),
-        receiver: receiver.to_string(),
-        job_id: job_id.to_string(),
-        // TODO: set exp, iat, sub and scope
-        exp: exp.as_secs() as usize,
-        iat: 0,
-        sub: "".to_string(),
-    };
-
-    // TODO: use ed25519 or ethereum key instead
-    let token = encode(
-        &Header::default(),
-        &claims,
-           &EncodingKey::from_secret(secret.as_ref()),
-    )?;
-
-    Ok(token)
-}
 
 #[derive(Clone, Debug)]
 struct DomainManager {
