@@ -15,9 +15,6 @@ use js_sys::Promise;
 use wasm_bindgen::JsValue;
 
 #[cfg(target_family = "wasm")]
-use gloo_timers::future::TimeoutFuture;
-
-#[cfg(target_family = "wasm")]
 pub async fn sleep(duration: Duration) {
     let window = web_sys::window().expect("no window");
     let promise = Promise::new(&mut |resolve, _| {
