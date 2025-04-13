@@ -1,5 +1,5 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::{muxing::StreamMuxerBox}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::{muxing::StreamMuxerBox}, dcutr, yamux, noise, gossipsub::{self, IdentTopic, Version}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
