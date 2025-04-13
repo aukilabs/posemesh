@@ -1,6 +1,6 @@
 use std::time::Duration;
 use std::{error::Error, io};
-use futures::{self, Future};
+use futures::{self, Future, FutureExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
