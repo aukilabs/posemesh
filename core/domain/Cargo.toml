@@ -21,6 +21,7 @@ networking = { workspace = true }
 rs_merkle = "1.5.0"
 sha2 = "0.10.8"
 hex = "0.4.3"
+thiserror = { workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
