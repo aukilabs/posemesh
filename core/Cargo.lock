@@ -774,21 +774,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "data-node"
-version = "0.1.0"
-dependencies = [
- "domain",
- "futures",
- "jsonwebtoken",
- "networking",
- "quick-protobuf",
- "regex",
- "serde",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "der"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -889,24 +874,6 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "domain-manager"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "domain",
- "futures",
- "hex",
- "jsonwebtoken",
- "networking",
- "quick-protobuf",
- "serde",
- "sha2",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

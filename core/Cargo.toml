@@ -4,8 +4,6 @@ members = [
     "domain",
     "runtime",
     "examples/client",
-    "examples/domain-manager",
-    "examples/data-node",
     "base",
     "examples/relay",
     "examples/test-concurrent",
