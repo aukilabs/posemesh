@@ -1,0 +1,14 @@
+{
+  "name": "Test_Enum",
+  "type": "default",
+  "constants": [
+    {
+      "name": "First_Value",
+      "value": 10
+    },
+    {
+      "name": "Second_Value",
+      "value": 99
+    }
+  ]
+}

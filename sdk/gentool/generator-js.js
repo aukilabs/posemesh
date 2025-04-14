@@ -1,7 +1,7 @@
 const path = require('path');
 const util = require('./util');
 
-function generateCppSource(interfaces, interfaceName, interfaceJson) {
+function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const nameCxx = util.getLangClassName(interfaceJson, util.CXX);
   const static = util.getClassStatic(interfaceJson);
@@ -98,7 +98,35 @@ function generateCppSource(interfaces, interfaceName, interfaceJson) {
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         let funcName = `${nameCxx}::${getterNameCxx}`;
-        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+        if (util.isEnumType(propertyJson.type)) {
+          funcName = getterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+          if (typeof propTypeEnumJson === 'undefined') {
+            throw new Error(`Unknown enum: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.getterConst) {
+              selfArg = `const ${nameCxx}& self`;
+            } else {
+              selfArg = `${nameCxx}& self`;
+            }
+          }
+          const isFlagType = propTypeEnumJson.type === 'flag';
+          unnamedNamespace += `${isFlagType ? 'std::uint32_t' : 'std::int32_t'} ${funcName}(${selfArg})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    return static_cast<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>(${nameCxx}::${getterNameCxx}());\n`;
+          } else {
+            unnamedNamespace += `    return static_cast<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>(self.${getterNameCxx}());\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cstdint>');
+        } else if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           funcName = getterNameCxx;
           const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
           const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
@@ -149,7 +177,35 @@ function generateCppSource(interfaces, interfaceName, interfaceJson) {
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
         let funcName = `${nameCxx}::${setterNameCxx}`;
-        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+        if (util.isEnumType(propertyJson.type)) {
+          funcName = setterNameCxx;
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+          if (typeof propTypeEnumJson === 'undefined') {
+            throw new Error(`Unknown enum: ${propTypeRawWithoutPfx}`);
+          }
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.setterConst) {
+              selfArg = `const ${nameCxx}& self, `;
+            } else {
+              selfArg = `${nameCxx}& self, `;
+            }
+          }
+          const isFlagType = propTypeEnumJson.type === 'flag';
+          unnamedNamespace += `void ${setterNameCxx}(${selfArg}${isFlagType ? 'std::uint32_t' : 'std::int32_t'} ${setterArgName})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(static_cast<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}>(${setterArgName}));\n`;
+          } else {
+            unnamedNamespace += `    self.${setterNameCxx}(static_cast<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}>(${setterArgName}));\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cstdint>');
+        } else if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           funcName = setterNameCxx;
           const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
           const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
@@ -217,7 +273,7 @@ function generateCppSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateJsSource(interfaces, interfaceName, interfaceJson) {
+function generateJsSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.JS);
   const aliases = util.getLangAliases(interfaceJson, util.JS);
 
@@ -282,7 +338,7 @@ function generateJsSource(interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
-function generateTransformTsDefScript(interfaces, interfaceName, interfaceJson) {
+function generateTransformTsDefScript(enums, interfaces, interfaceName, interfaceJson) {
   // TODO: TEMP: this needs to be fully reworked !!!
   const name = util.getLangClassName(interfaceJson, util.JS);
   const fixFuncName = `fix${name}`;
@@ -347,14 +403,14 @@ function generateTransformTsDefScript(interfaces, interfaceName, interfaceJson) 
   return code;
 }
 
-function generateInterfaceJS(interfaces, interfaceName, interfaceJson) {
+function generateInterfaceJS(enums, interfaces, interfaceName, interfaceJson) {
   const cppSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', 'src', `${interfaceName}.cpp`);
   const jsSourceFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `${interfaceName}.js`);
   const transformTsDefScriptFilePath = path.resolve(__dirname, '..', 'platform', 'Web', `transform-typescript-definition-${interfaceName}.js`);
 
-  let cppSourceCode = generateCppSource(interfaces, interfaceName, interfaceJson);
-  let jsSourceCode = generateJsSource(interfaces, interfaceName, interfaceJson);
-  let transformTsDefScriptCode = generateTransformTsDefScript(interfaces, interfaceName, interfaceJson);
+  let cppSourceCode = generateCppSource(enums, interfaces, interfaceName, interfaceJson);
+  let jsSourceCode = generateJsSource(enums, interfaces, interfaceName, interfaceJson);
+  let transformTsDefScriptCode = generateTransformTsDefScript(enums, interfaces, interfaceName, interfaceJson);
 
   util.writeFileContentIfDifferent(cppSourceFilePath, cppSourceCode);
   util.writeFileContentIfDifferent(jsSourceFilePath, jsSourceCode);
