@@ -90,6 +90,20 @@ function getLangName(key, json, language) {
   throw new Error(`Unknown language: ${language}`);
 }
 
+let defaultEnumNameLangToTransformationMap = {};
+defaultEnumNameLangToTransformationMap[Language.CXX] = '%';
+defaultEnumNameLangToTransformationMap[Language.C] = 'psm_%_e';
+defaultEnumNameLangToTransformationMap[Language.ObjC] = 'PSM%';
+defaultEnumNameLangToTransformationMap[Language.Swift] = '%';
+defaultEnumNameLangToTransformationMap[Language.JS] = '%';
+
+let defaultEnumConstantNameLangToTransformationMap = {};
+defaultEnumConstantNameLangToTransformationMap[Language.CXX] = '%';
+defaultEnumConstantNameLangToTransformationMap[Language.C] = '%';
+defaultEnumConstantNameLangToTransformationMap[Language.ObjC] = '%';
+defaultEnumConstantNameLangToTransformationMap[Language.Swift] = '%'; // don't care
+defaultEnumConstantNameLangToTransformationMap[Language.JS] = '%';
+
 let defaultClassNameLangToTransformationMap = {};
 defaultClassNameLangToTransformationMap[Language.CXX] = '%';
 defaultClassNameLangToTransformationMap[Language.C] = 'psm_%_t';
@@ -107,6 +121,14 @@ function getLangTransformedName(key, json, language, nameLangToTransformationMap
     throw new Error('Invalid transformation.');
   }
   return parts[0] + getLangName(key, json, language) + parts[1];
+}
+
+function getLangEnumName(enumJson, language, nameLangToTransformationMap = defaultEnumNameLangToTransformationMap) {
+  return getLangTransformedName('name', enumJson, language, nameLangToTransformationMap);
+}
+
+function getLangEnumConstantName(constantJson, language, nameLangToTransformationMap = defaultEnumConstantNameLangToTransformationMap) {
+  return getLangTransformedName('name', constantJson, language, nameLangToTransformationMap);
 }
 
 function getLangClassName(interfaceJson, language, nameLangToTransformationMap = defaultClassNameLangToTransformationMap) {
@@ -367,6 +389,19 @@ function getStringMixType(language, typeFor = TypeFor.Any) {
   return getStringType(language);
 }
 
+function getEnumType(enums, language, type) {
+  const enumPfx = 'ENUM:';
+  if (!type.startsWith(enumPfx)) {
+    throw new Error(`Missing '${enumPfx}' enum prefix.`);
+  }
+  const name = type.substring(enumPfx.length);
+  const enumJson = enums[name];
+  if (typeof enumJson === 'undefined') {
+    throw new Error(`Unknown enum name: ${name}`);
+  }
+  return getLangEnumName(enumJson, language);
+}
+
 function getClassType(interfaces, language, type, classPfx = 'CLASS:') {
   if (!type.startsWith(classPfx)) {
     throw new Error(`Missing '${classPfx}' class prefix.`);
@@ -501,7 +536,7 @@ function getClassPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
   return type;
 }
 
-function getPropertyType(interfaces, propertyJson, language) {
+function getPropertyType(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -514,6 +549,9 @@ function getPropertyType(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -551,7 +589,7 @@ function getPropertyType(interfaces, propertyJson, language) {
   }
 }
 
-function getPropertyTypeForGetter(interfaces, propertyJson, language) {
+function getPropertyTypeForGetter(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -564,6 +602,9 @@ function getPropertyTypeForGetter(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -601,7 +642,7 @@ function getPropertyTypeForGetter(interfaces, propertyJson, language) {
   }
 }
 
-function getPropertyTypeForSetter(interfaces, propertyJson, language) {
+function getPropertyTypeForSetter(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
     throw new Error(`Missing '${key}' key.`);
@@ -614,6 +655,9 @@ function getPropertyTypeForSetter(interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('uint')) {
     return getIntType(false, propertyJson[key].substring(4), language);
+  }
+  if (propertyJson[key].startsWith('ENUM:')) {
+    return getEnumType(enums, language, propertyJson[key]);
   }
   if (propertyJson[key].startsWith('CLASS:')) {
     return getClassType(interfaces, language, propertyJson[key]);
@@ -691,6 +735,10 @@ function isIntType(type) {
   return type.startsWith('int') || type.startsWith('uint');
 }
 
+function isEnumType(type) {
+  return type.startsWith('ENUM:');
+}
+
 function isClassType(type) {
   return type.startsWith('CLASS:');
 }
@@ -724,6 +772,9 @@ function isPrimitiveType(type) {
   if (isIntType(type)) {
     return true;
   }
+  if (isEnumType(type)) {
+    return true;
+  }
   if (isClassOfAnyType(type)) {
     return false;
   }
@@ -744,6 +795,9 @@ function isPrimitiveType(type) {
 function getTypeImplicitDefaultValue(type) {
   if (isIntType(type)) {
     return '0';
+  }
+  if (isEnumType(type)) {
+    return '';
   }
   if (isClassOfAnyType(type)) {
     return '';
@@ -766,6 +820,9 @@ function getTypeImplicitDefaultValue(type) {
 
 function getTypeMembVarCopyOp(type, membVar) {
   if (isIntType(type)) {
+    return membVar;
+  }
+  if (isEnumType(type)) {
     return membVar;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
@@ -791,6 +848,9 @@ function getTypeMembVarMoveOp(type, membVar) {
   if (isIntType(type)) {
     return membVar;
   }
+  if (isEnumType(type)) {
+    return membVar;
+  }
   if (isClassOfAnyType(type)) {
     return `std::move(${membVar})`;
   }
@@ -810,6 +870,9 @@ function getTypeMembVarMoveOp(type, membVar) {
 
 function getTypePropEqOp(type, clsParam, prpParam) {
   if (isIntType(type)) {
+    return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+  if (isEnumType(type)) {
     return `${prpParam} == ${clsParam}.${prpParam}`;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
@@ -834,6 +897,9 @@ function getTypePropEqOp(type, clsParam, prpParam) {
 function getTypePropHasher(type, param) {
   if (isIntType(type)) {
     return `hash<${type}_t> {}(${param})`;
+  }
+  if (isEnumType(type)) {
+    return `hash<decltype(${param})> {}(${param})`;
   }
   if (isClassType(type) || isClassRefType(type) || isClassMixType(type)) {
     return `hash<decltype(${param})> {}(${param})`;
@@ -986,6 +1052,20 @@ function convertNameStyle(name, nameStyle) {
   return convertedName;
 }
 
+let defaultEnumNameLangToStyleMap = {};
+defaultEnumNameLangToStyleMap[Language.CXX] = NameStyle.CamelCase;
+defaultEnumNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultEnumNameLangToStyleMap[Language.ObjC] = NameStyle.CamelCase;
+defaultEnumNameLangToStyleMap[Language.Swift] = NameStyle.CamelCase;
+defaultEnumNameLangToStyleMap[Language.JS] = NameStyle.CamelCase;
+
+let defaultEnumConstantNameLangToStyleMap = {};
+defaultEnumConstantNameLangToStyleMap[Language.CXX] = NameStyle.CamelCase;
+defaultEnumConstantNameLangToStyleMap[Language.C] = NameStyle.UPPER_CASE;
+defaultEnumConstantNameLangToStyleMap[Language.ObjC] = NameStyle.CamelCase;
+defaultEnumConstantNameLangToStyleMap[Language.Swift] = NameStyle.camelBack; // don't care
+defaultEnumConstantNameLangToStyleMap[Language.JS] = NameStyle.UPPER_CASE;
+
 let defaultClassNameLangToStyleMap = {};
 defaultClassNameLangToStyleMap[Language.CXX] = NameStyle.CamelCase;
 defaultClassNameLangToStyleMap[Language.C] = NameStyle.lower_case;
@@ -1035,6 +1115,91 @@ function fillName(key, json, nameLangToStyleMap) {
     } else {
       throw new Error(`Invalid '${nameKey}' key type.`);
     }
+  }
+}
+
+function fillEnumName(enumJson, nameLangToStyleMap = defaultEnumNameLangToStyleMap) {
+  fillName('name', enumJson, nameLangToStyleMap);
+}
+
+function fillEnumType(enumJson) {
+  const nameKey = 'type';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof enumJson[nameKey] === 'undefined') {
+    enumJson[nameKey] = 'default';
+    enumJson[nameKeyGen] = true;
+  } else if (typeof enumJson[nameKey] === 'string') {
+    const type = enumJson[nameKey];
+    if (type !== 'default' && type !== 'flag') {
+      throw new Error(`Invalid '${nameKey}' key value.`);
+    }
+    enumJson[nameKeyGen] = false;
+  } else {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+}
+
+function fillEnumConstantName(constantJson, nameLangToStyleMap = defaultEnumConstantNameLangToStyleMap) {
+  fillName('name', constantJson, nameLangToStyleMap);
+}
+
+function fillEnumConstants(enumJson, nameLangToStyleMap = defaultEnumConstantNameLangToStyleMap) {
+  const nameKey = 'constants';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof enumJson[nameKey] === 'undefined') {
+    enumJson[nameKey] = [];
+    enumJson[nameKeyGen] = true;
+  } else if (Array.isArray(enumJson[nameKey])) {
+    const isFlagType = enumJson['type'] === 'flag';
+    let nextConstantValue = isFlagType ? 1 : 0;
+    let hasUndefinedValues = false;
+    let hasDefinedValues = false;
+    for (const constantJson of enumJson[nameKey]) {
+      fillEnumConstantName(constantJson, nameLangToStyleMap);
+      if (typeof constantJson['value'] === 'undefined') {
+        if (isFlagType) {
+          if (nextConstantValue < 0 || nextConstantValue > 4294967295) {
+            throw new Error(`Auto-generated constant value '${nextConstantValue}' is outside of the uint32 domain range.`);
+          }
+        } else if (nextConstantValue < -2147483648 || nextConstantValue > 2147483647) {
+          throw new Error(`Auto-generated constant value '${nextConstantValue}' is outside of the int32 domain range.`);
+        }
+        hasUndefinedValues = true;
+        constantJson['value'] = nextConstantValue;
+        constantJson['value.gen'] = true;
+        if (isFlagType) {
+          nextConstantValue = nextConstantValue * 2;
+          if (hasDefinedValues) {
+            throw new Error(`Enum '${enumJson['name']}' is missing a value for '${constantJson['name']}' constant. Flag type enums require either all or none of the values to be defined explicitly.`);
+          }
+        } else {
+          nextConstantValue = nextConstantValue + 1;
+        }
+      } else if (typeof constantJson['value'] === 'number' && Number.isInteger(constantJson['value'])) {
+        if (isFlagType) {
+          if (constantJson['value'] < 0 || constantJson['value'] > 4294967295) {
+            throw new Error(`Explicit constant value '${constantJson['value']}' is outside of the uint32 domain range.`);
+          }
+        } else if (constantJson['value'] < -2147483648 || constantJson['value'] > 2147483647) {
+          throw new Error(`Explicit constant value '${constantJson['value']}' is outside of the int32 domain range.`);
+        }
+        hasDefinedValues = true;
+        constantJson['value.gen'] = false;
+        if (isFlagType) {
+          nextConstantValue = constantJson['value'] * 2;
+          if (hasUndefinedValues) {
+            throw new Error(`Enum '${enumJson['name']}' has a value for '${constantJson['name']}' constant. Flag type enums require either all or none of the values to be defined explicitly.`);
+          }
+        } else {
+          nextConstantValue = constantJson['value'] + 1;
+        }
+      } else {
+        throw new Error(`Invalid 'value' key type.`);
+      }
+    }
+    enumJson[nameKeyGen] = false;
+  } else {
+    throw new Error(`Invalid '${nameKey}' key type.`);
   }
 }
 
@@ -2292,8 +2457,12 @@ module.exports = {
   getName,
   getStyleName,
   getLangName,
+  defaultEnumNameLangToTransformationMap,
+  defaultEnumConstantNameLangToTransformationMap,
   defaultClassNameLangToTransformationMap,
   getLangTransformedName,
+  getLangEnumName,
+  getLangEnumConstantName,
   getLangClassName,
   getClassStatic,
   getClassFinal,
@@ -2331,6 +2500,7 @@ module.exports = {
   TypeFor,
   getStringRefType,
   getStringMixType,
+  getEnumType,
   getClassType,
   getClassRefType,
   getClassMixType,
@@ -2350,6 +2520,7 @@ module.exports = {
   getPropertyDefaultValue,
   getPropertyStatic,
   isIntType,
+  isEnumType,
   isClassType,
   isClassRefType,
   isClassMixType,
@@ -2371,8 +2542,14 @@ module.exports = {
   getPropertySetterArgName,
   getProperties,
   convertNameStyle,
+  defaultEnumNameLangToStyleMap,
+  defaultEnumConstantNameLangToStyleMap,
   defaultClassNameLangToStyleMap,
   fillName,
+  fillEnumName,
+  fillEnumType,
+  fillEnumConstantName,
+  fillEnumConstants,
   fillClassName,
   fillClassStatic,
   fillClassFinal,
