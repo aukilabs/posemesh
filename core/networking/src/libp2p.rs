@@ -130,14 +130,13 @@ pub struct Node {
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
 struct Libp2p {
-    // nodes_map: HashMap<String, Node>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
     command_receiver: mpsc::Receiver<client::Command>,
     pub node: Node,
-    // node_regsiter_topic: IdentTopic,
     event_sender: mpsc::Sender<event::Event>,
     find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
+    cancel_sender: Option<oneshot::Sender<()>>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -403,20 +402,29 @@ impl Libp2p {
             name: cfg.name.clone(),
             capabilities: vec![],
         };
+        let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
+        let mut cancel_receiver = cancel_receiver.fuse();
 
         let networking = Libp2p {
             cfg: cfg.clone(),
-            // nodes_map: nodes_map,
             swarm: swarm,
             command_receiver: command_receiver,
             node: node.clone(),
-            // node_regsiter_topic: topic,
             event_sender: event_sender,
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
+            cancel_sender: Some(cancel_sender),
         };
-
+        
         spawn(async move {
-            let _ = networking.run().await;
+            futures::select! {
+                _ = cancel_receiver => {
+                    tracing::info!("Cancelling networking");
+                    return;
+                }
+                _ = networking.run().fuse() => {
+                    tracing::info!("Networking complete");
+                }
+            }
         });
 
         Ok(node)
@@ -654,7 +662,7 @@ impl Libp2p {
                 let node = Node {
                     id: peer_id.to_string(),
                     name: agent_version,
-                    capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") ).collect::<Vec<String>>(),
+                    capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") && !p.contains("/meshsub/1.0.0") ).collect::<Vec<String>>(),
                 };
 
                 self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
@@ -692,6 +700,14 @@ impl Libp2p {
                     return;
                 }
                 let _ = sender.send(Ok(()));
+            }
+            client::Command::Cancel { sender } => {
+                let Some(cancel_sender) = self.cancel_sender.take() else {
+                    tracing::error!("No cancel sender found, it was already cancelled");
+                    return;
+                };
+                let _ = cancel_sender.send(());
+                let _ = sender.send(());
             }
         }
     }
