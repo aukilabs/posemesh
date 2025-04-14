@@ -172,7 +172,7 @@ function generateEnumObjC(enums, enumName, enumJson) {
   headerCode += `\n`;
   headerCode += `#import <Foundation/Foundation.h>\n`;
   headerCode += `\n`;
-  headerCode += `typedef NS_ENUM(${isFlagType ? 'NSUInteger' : 'NSInteger'}, ${name}) {`;
+  headerCode += `typedef ${isFlagType ? 'NS_OPTIONS' : 'NS_ENUM'}(${isFlagType ? 'NSUInteger' : 'NSInteger'}, ${name}) {`;
   let firstConstant = true;
   for (const constantJson of constants) {
     if (firstConstant) {
@@ -200,7 +200,7 @@ function generateEnumObjC(enums, enumName, enumJson) {
     headerCode += `#else\n`;
     for (const aliasJson of aliases) {
       const alias = util.getLangEnumName(aliasJson, util.ObjC);
-      headerCode += `typedef NS_ENUM(${isFlagType ? 'NSUInteger' : 'NSInteger'}, ${alias}) {`;
+      headerCode += `typedef ${isFlagType ? 'NS_OPTIONS' : 'NS_ENUM'}(${isFlagType ? 'NSUInteger' : 'NSInteger'}, ${alias}) {`;
       let firstAliasConstant = true;
       for (const constantJson of constants) {
         if (firstAliasConstant) {
