@@ -36,4 +36,4 @@ target/
 node_modules
 
 /sdk/build/
-/sdk/include/Posemesh/Protobuf
+/sdk/src/Protobuf

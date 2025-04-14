@@ -11,16 +11,14 @@ function(COMPILE_PROTO_FILES)
         return()
     endif()
 
-    set(TEMP_DIR "${CMAKE_BINARY_DIR}/protobuf_temp")
-    set(OUT_HEADER_DIR "${CMAKE_SOURCE_DIR}/include/Posemesh/Protobuf")
-    file(MAKE_DIRECTORY "${TEMP_DIR}")
-    file(MAKE_DIRECTORY "${OUT_HEADER_DIR}")
+    set(PROTO_OUT_DIR "${CMAKE_SOURCE_DIR}/src/Protobuf")
+    file(MAKE_DIRECTORY "${PROTO_OUT_DIR}")
 
     foreach(PROTO_FILE ${PROTO_FILES})
     execute_process(
         COMMAND ${Protobuf_PROTOC_EXECUTABLE}
         --proto_path=${PROTO_SRC_DIR} 
-        --cpp_out=${TEMP_DIR} 
+        --cpp_out=${PROTO_OUT_DIR} 
         ${PROTO_FILE}
         RESULT_VARIABLE PROTOC_RESULT
     )
@@ -29,20 +27,8 @@ function(COMPILE_PROTO_FILES)
     endif()
     endforeach()
 
-    file(GLOB GENERATED_HEADERS "${TEMP_DIR}/*.pb.h")
-    file(GLOB GENERATED_SOURCES "${TEMP_DIR}/*.pb.cc")
-
-    file(COPY ${GENERATED_HEADERS} DESTINATION "${OUT_HEADER_DIR}")
-
-    foreach(SOURCE ${GENERATED_SOURCES})
-        get_filename_component(SOURCE_NAME ${SOURCE} NAME_WE)
-        file(RENAME "${SOURCE}" "${OUT_HEADER_DIR}/${SOURCE_NAME}.pb.cpp")
-    endforeach()
-
-    file(REMOVE_RECURSE "${TEMP_DIR}")
-
-    file(GLOB PROTO_HEADERS "${OUT_HEADER_DIR}/*.pb.h")
-    file(GLOB PROTO_SOURCES "${OUT_HEADER_DIR}/*.pb.cpp")
+    file(GLOB PROTO_HEADERS "${PROTO_OUT_DIR}/*.pb.h")
+    file(GLOB PROTO_SOURCES "${PROTO_OUT_DIR}/*.pb.cc")
     set(POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS ${PROTO_HEADERS} CACHE STRING INTERNAL)
     set(POSEMESH_GENERATED_PROTOBUF_CXX_SOURCES ${PROTO_SOURCES} CACHE STRING INTERNAL)
 
