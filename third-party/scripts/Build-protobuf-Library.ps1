@@ -53,7 +53,7 @@ $CMakeArgs = @(
     "-Dprotobuf_BUILD_LIBPROTOC=OFF",
     "-Dprotobuf_FORCE_FETCH_DEPENDENCIES=ON",
     "-Dprotobuf_BUILD_SHARED_LIBS=OFF",
-    "-DCMAKE_INSTALL_PREFIX=$InstallDir",
+    "-DCMAKE_INSTALL_PREFIX=$InstallPath",
     "-Dprotobuf_INSTALL=ON",
     "-DCMAKE_CXX_STANDARD=17"
 )
@@ -122,12 +122,12 @@ switch ($Platform) {
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 
-if (-not $UseEmscripten) {
-    Push-Location $BuildPath
+Push-Location $BuildPath
 
+if (-not $UseEmscripten) {
     cmake $ProtobufSource @CMakeArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "CMake configuration failed" -ForegroundColor Red
+        Write-Error "CMake configuration failed"
         Exit 1
     }
 
@@ -152,18 +152,22 @@ if (-not $UseEmscripten) {
         --target log_flags `
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Build failed" -ForegroundColor Red
+        Write-Error "Build failed"
         Exit 1
     }
 
     cmake --install .
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Build install step failed"
+        Exit 1
+    }
 }
 Else {
-    if (-not (Test-Path env:EMSDK)) {
+    if (-not (Test-Path $env:EMSDK)) {
         Write-Error "Emscripten environment not found. Run emsdk_env script first."
         exit 1
     }
-    
+
     Write-Host "Configuring build with CMake..."
     emcmake cmake `
         -S $ProtobufSource `
@@ -178,16 +182,22 @@ Else {
         -Dprotobuf_BUILD_SHARED_LIBS=OFF  `
         -DCMAKE_INSTALL_PREFIX="$InstallPath" `
         -DCMAKE_CXX_STANDARD=17
-    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Emscripten CMake configuration failed"
+        Exit 1
+    }
+
     emmake make -j -S $ProtobufSource -B $BuildPath
-    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Emscripten Build failed"
+        Exit 1
+    }
+
     emmake make install -j -C $BuildPath
-    
-    Write-Host "Build complete. Output files are in: $InstallPath"
-}
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build install step failed" -ForegroundColor Red
-    Exit 1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Emscripten Build install step failed"
+        Exit 1
+    }
 }
 
 $sw.Stop()
