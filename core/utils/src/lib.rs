@@ -83,7 +83,7 @@ where
 }
 
 #[cfg(target_family = "wasm")]
-pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Box<dyn Error + Send + Sync>>
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
 where
     F: Future<Output = T> + 'static + Send,
     T: 'static + Send,
@@ -94,12 +94,12 @@ where
     let timeout_fut = gloo_timers::future::TimeoutFuture::new(duration.as_millis() as u32);
     futures::select! {
         result = future.fuse() => Ok(result),
-        _ = timeout_fut.fuse() => Err(Box::new(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>),
+        _ = timeout_fut.fuse() => Err(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")),
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
-pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Box<dyn Error + Send + Sync>>
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
 where
     F: Future<Output = T>,
 {
@@ -108,5 +108,5 @@ where
     }
     tokio::time::timeout(duration, future)
         .await
-        .map_err(|_| Box::new(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")) as Box<dyn Error + Send + Sync>)
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Operation timed out"))
 }
