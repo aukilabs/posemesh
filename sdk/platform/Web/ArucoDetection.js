@@ -1,13 +1,13 @@
 posemeshModule.ArucoDetection = null;
 
 __internalPosemeshAPI.builderFunctions.push(function() {
-    __internalPosemesh.ArucoDetection.detectArucoFromLuminance = function(imageBytes, width, height, outContents, outCorners) {
+    __internalPosemesh.ArucoDetection.detectArucoFromLuminance = function(imageBytes, width, height, markerFormat, outContents, outCorners) {
         let imageBytesVector = undefined, outContentsVector = undefined, outCornersVector = undefined;
         try {
             imageBytesVector = __internalPosemeshAPI.toVectorUint8(imageBytes);
             outContentsVector = new __internalPosemesh.VectorString();
             outCornersVector = new __internalPosemesh.VectorVector2();
-            let result = __internalPosemesh.ArucoDetection.__detectArucoFromLuminance(imageBytesVector, width, height, outContentsVector, outCornersVector);
+            let result = __internalPosemesh.ArucoDetection.__detectArucoFromLuminance(imageBytesVector, width, height, markerFormat, outContentsVector, outCornersVector);
 
             if (result) {
                 outContents.length = 0;

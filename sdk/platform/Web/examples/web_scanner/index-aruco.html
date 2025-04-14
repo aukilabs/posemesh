@@ -214,7 +214,8 @@
             const corners = [];
 
             const startTime = performance.now();
-            const detected = Posemesh.ArucoDetection.detectArucoFromLuminance(imageBytes, width, height, contents, corners);
+            const markerFormat =  Posemesh.ArucoMarkerFormat.SET_ARUCO_ORIGINAL;
+            const detected = Posemesh.ArucoDetection.detectArucoFromLuminance(imageBytes, width, height, markerFormat, contents, corners);
             const endTime = performance.now();
 
             hasDetectedAruco = detected;

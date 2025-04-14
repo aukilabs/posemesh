@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "API.hpp"
+#include "ArucoMarkerFormat.hpp"
 
 namespace psm {
 
@@ -18,6 +19,7 @@ public:
         std::size_t imageBytesSize,
         int width,
         int height,
+        ArucoMarkerFormat markerFormat,
         std::vector<std::string>& outContents,
         std::vector<Vector2>& outCorners);
 

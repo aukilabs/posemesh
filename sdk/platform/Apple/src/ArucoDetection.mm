@@ -5,10 +5,11 @@
 @implementation PSMArucoDetection
 
 + (BOOL)detectArucoFromLuminanceImageData:(NSData*)imageData
-                               ofWidth:(int32_t)width
-                             andHeight:(int32_t)height
-                       withOutContents:(NSMutableArray<NSString*>*)outContents
-                         andOutCorners:(NSMutableArray<PSMVector2*>*)outCorners
+                                  ofWidth:(int32_t)width
+                                andHeight:(int32_t)height
+                          forMarkerFormat:(PSMArucoMarkerFormat)markerFormat
+                          withOutContents:(NSMutableArray<NSString*>*)outContents
+                            andOutCorners:(NSMutableArray<PSMVector2*>*)outCorners
 {
     NSAssert(imageData, @"imageData is null");
     NSAssert(outContents, @"outContents is null");
@@ -16,7 +17,7 @@
 
     std::vector<std::string> contents;
     std::vector<psm::Vector2> corners;
-    const bool result = psm::ArucoDetection::detectArucoFromLuminance(static_cast<const std::uint8_t*>([imageData bytes]), [imageData length], width, height, contents, corners);
+    const bool result = psm::ArucoDetection::detectArucoFromLuminance(static_cast<const std::uint8_t*>([imageData bytes]), [imageData length], width, height, (psm::ArucoMarkerFormat)markerFormat, contents, corners);
     if (!result) {
         return NO;
     }

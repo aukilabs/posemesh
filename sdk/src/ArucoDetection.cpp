@@ -13,6 +13,7 @@ bool ArucoDetection::detectArucoFromLuminance(
     std::size_t imageBytesSize,
     int width,
     int height,
+    ArucoMarkerFormat markerFormat,
     std::vector<std::string>& outContents,
     std::vector<Vector2>& outCorners)
 {
@@ -31,7 +32,7 @@ bool ArucoDetection::detectArucoFromLuminance(
         const cv::Mat cvImage(cv::Size(width, height), CV_8U, const_cast<std::uint8_t*>(imageBytes));
 
         cv::aruco::DetectorParameters detectorParams;
-        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_ARUCO_ORIGINAL);
+        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary((cv::aruco::PredefinedDictionaryType)markerFormat);
         cv::aruco::ArucoDetector detector(dictionary, detectorParams);
 
         std::vector<std::vector<cv::Point2f>> cornersFound;
@@ -40,7 +41,7 @@ bool ArucoDetection::detectArucoFromLuminance(
         detector.detectMarkers(cvImage, cornersFound, contentsFound);
 
         if (contentsFound.empty()) {
-            return false; // No markers found
+            return false;
         }
 
         outContents.clear();
@@ -52,7 +53,6 @@ bool ArucoDetection::detectArucoFromLuminance(
         for (std::size_t i = 0; i < contentsFound.size(); ++i) {
             outContents.push_back(std::to_string(contentsFound[i]));
 
-            // Each marker has 4 corners
             for (const auto& p : cornersFound[i]) {
                 Vector2 corner;
                 corner.setX(p.x);

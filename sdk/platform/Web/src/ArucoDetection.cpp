@@ -10,11 +10,12 @@ bool detectArucoFromLuminance(
     const std::vector<uint8_t>& imageBytes,
     int width,
     int height,
+    int markerFormat,
     std::vector<std::string>& outContents,
     std::vector<std::shared_ptr<Vector2>>& outCorners)
 {
     std::vector<Vector2> corners;
-    bool detectionResult = ArucoDetection::detectArucoFromLuminance(imageBytes.data(), imageBytes.size(), width, height, outContents, corners);
+    bool detectionResult = ArucoDetection::detectArucoFromLuminance(imageBytes.data(), imageBytes.size(), width, height, (ArucoMarkerFormat)markerFormat, outContents, corners);
 
     outCorners.clear();
     for (auto& corner : corners) {
@@ -25,8 +26,8 @@ bool detectArucoFromLuminance(
 }
 }
 
-EMSCRIPTEN_BINDINGS(QRDetection)
+EMSCRIPTEN_BINDINGS(ArucoDetection)
 {
     class_<ArucoDetection>("ArucoDetection")
-        .class_function("__detectArucoFromLuminance(imageBytes, width, height, outContents, outCorners)", &detectArucoFromLuminance);
+        .class_function("__detectArucoFromLuminance(imageBytes, width, height, markerFormat, outContents, outCorners)", &detectArucoFromLuminance);
 }

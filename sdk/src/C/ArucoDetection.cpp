@@ -11,6 +11,7 @@ bool PSM_API psm_aruco_detection_detect_aruco(
     size_t image_bytes_size,
     int width,
     int height,
+    psm_aruco_marker_format markerFormat,
     const char* const** out_contents,
     uint32_t* out_contents_count,
     const psm_vector2_t* const** out_corners,
@@ -26,7 +27,7 @@ bool PSM_API psm_aruco_detection_detect_aruco(
     }
     std::vector<std::string> contents;
     std::vector<psm::Vector2> corners;
-    const bool result = psm::ArucoDetection::detectArucoFromLuminance(image_bytes, image_bytes_size, width, height, contents, corners);
+    const bool result = psm::ArucoDetection::detectArucoFromLuminance(image_bytes, image_bytes_size, width, height, (psm::ArucoMarkerFormat)markerFormat, contents, corners);
     if (!result) {
         return false;
     }
