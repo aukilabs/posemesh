@@ -117,7 +117,6 @@ switch ($Platform) {
             $CMakeArgs += "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"
             $CMakeArgs += "-DCMAKE_LINKER=aarch64-linux-gnu-ld"
         }
-        $CMakeArgs += "-DCMAKE_SYSTEM_PROCESSOR=$Arch"
     }
 }
 
