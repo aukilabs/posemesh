@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "API.h"
-#include "Vector2.h"
 #include "ArucoMarkerFormat.h"
+#include "Vector2.h"
 
 #if defined(__cplusplus)
 namespace psm {
