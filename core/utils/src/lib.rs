@@ -1,5 +1,4 @@
 use std::time::Duration;
-use tracing;
 use std::{error::Error, io};
 use futures::{self, Future, FutureExt};
 
@@ -14,9 +13,6 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Promise;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsValue;
-
-#[cfg(target_family = "wasm")]
-use gloo_timers::future::TimeoutFuture;
 
 #[cfg(target_family = "wasm")]
 pub async fn sleep(duration: Duration) {
@@ -79,7 +75,7 @@ where
                 }
                 tracing::warn!("Retry {}/{} after {:?}: {:?}", retries + 1, max_retries, delay, e);
                 sleep(delay).await;
-                delay = delay * 2;
+                delay *= 2;
                 retries += 1;
             }
         }

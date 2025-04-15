@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let protocol = "/chat".to_string();
     let mut chat_handler = relay.client.set_stream_handler(protocol).await.unwrap();
 
-    let bootstrap_addr = format!("/ip4/192.168.31.39/udp/8080/quic-v1/p2p/{}", relay.id.clone());
+    let _bootstrap_addr = format!("/ip4/192.168.31.39/udp/8080/quic-v1/p2p/{}", relay.id.clone());
 
     loop {
         let relay_events = relay.event_receiver.clone();

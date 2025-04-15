@@ -1,11 +1,9 @@
 
 use std::{collections::HashSet, error::Error, sync::Arc};
 
-use crate::protobuf::{domain_data::{self, Data}, task::{Status, Task}};
+use crate::protobuf::{domain_data::{self, Data}};
 use async_trait::async_trait;
 use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
-use networking::client::Client;
-use quick_protobuf::{serialize_into_slice, serialize_into_vec};
 use uuid::Uuid;
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -41,8 +39,8 @@ impl std::fmt::Display for DomainError {
 
 #[async_trait]
 pub trait Datastore: Send + Sync {
-    async fn consume(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
-    async fn produce(self: &mut Self, domain_id: String) -> ReliableDataProducer;
+    async fn consume(&mut self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
+    async fn produce(&mut self, domain_id: String) -> ReliableDataProducer;
 }
 
 pub fn data_id_generator() -> String {

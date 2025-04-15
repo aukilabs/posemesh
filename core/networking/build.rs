@@ -1,4 +1,4 @@
-use std::{env, process::Command};
+use std::process::Command;
 
 fn main() {
     let output = Command::new("git").args(&["log", "-1", "--format=%H"]).output().unwrap();

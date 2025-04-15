@@ -1,7 +1,7 @@
-use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::{Metadata, Query}, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
+use domain::{cluster::DomainCluster, datastore::remote::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, message::read_prefix_size_message, protobuf::{domain_data::Metadata, task::{ConsumeDataInputV1, DomainClusterHandshake, Status, Task}}};
 use jsonwebtoken::{decode, DecodingKey,Validation, Algorithm};
 use libp2p::Stream;
-use networking::{event, libp2p::{Networking, NetworkingConfig, Node}};
+use networking::libp2p::Networking;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use tokio::{self, select};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
@@ -116,7 +116,7 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
 
     for path in paths {
         let path = path.expect("Failed to read path").path();
-        let data_id = path.file_name().expect("Failed to get file name").to_str().expect("Failed to convert to str").to_string();
+        let _data_id = path.file_name().expect("Failed to get file name").to_str().expect("Failed to convert to str").to_string();
         let metadata_path = format!("{}/metadata.bin", path.to_str().expect("Failed to convert to str"));
         let content_path = format!("{}/content.bin", path.to_str().expect("Failed to convert to str"));
 
@@ -125,7 +125,7 @@ async fn serve_data_v1(base_path: String, mut stream: Stream, mut c: Networking)
         if !regex::Regex::new(&name_regexp).unwrap().is_match(metadata.name.as_str()) {
             continue;
         }
-        if ids_filter.len() > 0 && !ids_filter.contains(&metadata.id.unwrap()) {
+        if !ids_filter.is_empty() && !ids_filter.contains(&metadata.id.unwrap()) {
             continue;
         }
         let mut length_buf = [0u8; 4];
@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let domain_manager = args[3].clone();
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
+    let _domain_manager_id = domain_manager.split("/").last().unwrap().to_string();
     let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, true, true, None, Some(private_key_path));
     let mut n = domain_cluster.peer;
     let mut produce_handler = n.client.set_stream_handler(PRODUCE_DATA_PROTOCOL_V1.to_string()).await.unwrap();

@@ -1,10 +1,10 @@
-use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::{Duration, SystemTime}};
+use std::{collections::{HashMap, VecDeque}, error::Error, sync::Arc, time::SystemTime};
 
 use domain::{message::prefix_size_message, protobuf::task::{self, mod_ResourceRecruitment as ResourceRecruitment, Status, Task, TaskRequest}};
 use futures::AsyncWriteExt;
-use libp2p::{swarm::ConnectionId, Stream};
+use libp2p::Stream;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{sync::mpsc::{self, Receiver}, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tokio::{sync::Mutex, spawn};
 use crate::nodes_management::NodesManagement;
 
@@ -169,9 +169,7 @@ impl TasksManagement {
                     return Ok(true);
                 }
                 drop(tasks);
-                if let Err(e) = self.task_state_machine(&id, TaskAction::Add).await {
-                    return Err(e);
-                }
+                self.task_state_machine(&id, TaskAction::Add).await?;
                 let tasks = self.tasks.lock().await;
                 task_handler = tasks.get(&id).unwrap().clone();
             }
@@ -319,15 +317,11 @@ impl TasksManagement {
         match action {
             TaskAction::Add => {
                 match task.task.status {
-                    Status::STARTED | Status::PROCESSING | Status::PENDING => {
-                        return Err(TaskManagementError::TaskAlreadyExists);
-                    }
-                    Status::WAITING_FOR_RESOURCE | Status::DONE => {
-                        return Ok(());
-                    }
+                    Status::STARTED | Status::PROCESSING | Status::PENDING => Err(TaskManagementError::TaskAlreadyExists),
+                    Status::WAITING_FOR_RESOURCE | Status::DONE => Ok(()),
                     _ => {
                         drop(tasks);
-                        return Box::pin(self.task_state_machine(key, TaskAction::Retry)).await;
+                        Box::pin(self.task_state_machine(key, TaskAction::Retry)).await
                     }
                 }
             }
@@ -360,11 +354,9 @@ impl TasksManagement {
                             task.updated_at = SystemTime::now();
                             return Ok(());
                         }
-                        return Err(TaskManagementError::TaskAlreadyExists);
+                        Err(TaskManagementError::TaskAlreadyExists)
                     }
-                    _ => {
-                        return Err(TaskManagementError::TaskAlreadyExists);
-                    }
+                    _ => Err(TaskManagementError::TaskAlreadyExists),
                 }
             }
             TaskAction::Queue => {
@@ -382,7 +374,7 @@ impl TasksManagement {
                     task.updated_at = SystemTime::now();
                     return Ok(());
                 }
-                return Err(TaskManagementError::TaskAlreadyExists);
+                Err(TaskManagementError::TaskAlreadyExists)
             }
             TaskAction::Start => {
                 if task.task.status != Status::PENDING {
@@ -390,7 +382,7 @@ impl TasksManagement {
                 }
                 task.task.status = Status::STARTED;
                 task.updated_at = SystemTime::now();
-                return Ok(());
+                Ok(())
             }
             TaskAction::Done {mut node_mgmt} => {
                 if task.task.status != Status::PROCESSING && task.task.status != Status::STARTED && task.task.status != Status::DONE {
@@ -402,7 +394,7 @@ impl TasksManagement {
                 let mut tasks = self.tasks.lock().await;
                 for (_, handler) in tasks.iter_mut() {
                     if let Some(completed) = handler.dependencies.get_mut(key) {
-                        if *completed == false {
+                        if !(*completed) {
                             *completed = true;
                             handler.in_degrees-=1;
                             if handler.in_degrees == 0 {
@@ -418,7 +410,7 @@ impl TasksManagement {
                         }
                     }
                 }
-                return Ok(());
+                Ok(())
             }
             TaskAction::Fail => {
                 task.task.status = Status::FAILED;
@@ -428,7 +420,7 @@ impl TasksManagement {
                         let _ = Box::pin(self.task_state_machine(&task_id(&handler.job_id, &handler.task.name), TaskAction::Fail)).await;
                     }
                 }
-                return Ok(());
+                Ok(())
             }
         }
     }
