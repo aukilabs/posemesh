@@ -25,7 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let private_key_path = format!("{}/pkey", base_path);
 
     let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
-    let _peer_id = domain_cluster.peer.id.clone();
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
@@ -38,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ids: vec![],
         names: vec![],
         data_types: vec![],
-        name_regexp: Some(format!(".*_{}", scan)),
+        name_regexp: None,
         data_type_regexp: None,
     };
 
