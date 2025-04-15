@@ -22,7 +22,7 @@ function(ADD_PROTOBUF NAME)
     set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_ROOT}/include CACHE STRING INTERNAL)
     set(Protobuf_SRC_ROOT_FOLDER "${THIRD_PARTY_DIR}/protobuf")
 
-    add_protoc(${NAME} ${Protobuf_SRC_ROOT_FOLDER} ${PROTOBUF_ROOT})
+    add_protoc(${NAME} ${Protobuf_SRC_ROOT_FOLDER} ${PROTOBUF_ROOT} ${BUILD_DIRECTORY_SUFFIX})
     add_protobuf_libraries(${NAME} ${PROTOBUF_ROOT})
     compile_proto_files()
 endfunction()

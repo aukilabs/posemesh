@@ -2,7 +2,7 @@ use libp2p::{PeerId, Stream, StreamProtocol};
 use libp2p_stream::IncomingStreams;
 use utils;
 use std::{error::Error, time::Duration};
-use futures::{channel::{mpsc, oneshot}, SinkExt, FutureExt};
+use futures::{channel::{mpsc, oneshot}, SinkExt};
 use std::str::FromStr;
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;

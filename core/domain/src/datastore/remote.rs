@@ -10,7 +10,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
+use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status}}};
 use futures::{channel::{mpsc::channel, oneshot}, io::ReadHalf, lock::Mutex, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 
 use super::common::{ReliableDataProducer, Writer};
@@ -282,7 +282,7 @@ impl Datastore for RemoteDatastore {
         });
 
         let res = rx.await;
-        if let Err(e) = res {
+        if let Err(_) = res {
             data_sender_clone.send(Err(DomainError::Cancelled)).await.expect("Failed to send error");
         } else if res == Ok(false) {
             data_sender_clone.send(Err(DomainError::Interrupted)).await.expect("Failed to send error");

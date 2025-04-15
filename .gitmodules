@@ -13,3 +13,4 @@
 [submodule "third-party/protobuf"]
 	path = third-party/protobuf
 	url = https://github.com/aukilabs/protobuf/
+	branch = release/custom
