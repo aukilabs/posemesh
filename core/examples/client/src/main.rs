@@ -1,7 +1,6 @@
-use tokio::{self, select};
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::{domain_data::{Data, Metadata}}, spatial::reconstruction::reconstruction_job};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query}, spatial::reconstruction::reconstruction_job};
 
 const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 
