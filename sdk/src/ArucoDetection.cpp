@@ -8,6 +8,59 @@
 
 namespace psm {
 
+cv::aruco::PredefinedDictionaryType toCvArucoPredefinedDictionaryType(psm::ArucoMarkerFormat format)
+{
+    switch (format) {
+    case ArucoMarkerFormat::Set4x4Codes50:
+        return cv::aruco::PredefinedDictionaryType::DICT_4X4_50;
+    case ArucoMarkerFormat::Set4x4Codes100:
+        return cv::aruco::PredefinedDictionaryType::DICT_4X4_100;
+    case ArucoMarkerFormat::Set4x4Codes250:
+        return cv::aruco::PredefinedDictionaryType::DICT_4X4_250;
+    case ArucoMarkerFormat::Set4x4Codes1000:
+        return cv::aruco::PredefinedDictionaryType::DICT_4X4_1000;
+    case ArucoMarkerFormat::Set5x5Codes50:
+        return cv::aruco::PredefinedDictionaryType::DICT_5X5_50;
+    case ArucoMarkerFormat::Set5x5Codes100:
+        return cv::aruco::PredefinedDictionaryType::DICT_5X5_100;
+    case ArucoMarkerFormat::Set5x5Codes250:
+        return cv::aruco::PredefinedDictionaryType::DICT_5X5_250;
+    case ArucoMarkerFormat::Set5x5Codes1000:
+        return cv::aruco::PredefinedDictionaryType::DICT_5X5_1000;
+    case ArucoMarkerFormat::Set6x6Codes50:
+        return cv::aruco::PredefinedDictionaryType::DICT_6X6_50;
+    case ArucoMarkerFormat::Set6x6Codes100:
+        return cv::aruco::PredefinedDictionaryType::DICT_6X6_100;
+    case ArucoMarkerFormat::Set6x6Codes250:
+        return cv::aruco::PredefinedDictionaryType::DICT_6X6_250;
+    case ArucoMarkerFormat::Set6x6Codes1000:
+        return cv::aruco::PredefinedDictionaryType::DICT_6X6_1000;
+    case ArucoMarkerFormat::Set7x7Codes50:
+        return cv::aruco::PredefinedDictionaryType::DICT_7X7_50;
+    case ArucoMarkerFormat::Set7x7Codes100:
+        return cv::aruco::PredefinedDictionaryType::DICT_7X7_100;
+    case ArucoMarkerFormat::Set7x7Codes250:
+        return cv::aruco::PredefinedDictionaryType::DICT_7X7_250;
+    case ArucoMarkerFormat::Set7x7Codes1000:
+        return cv::aruco::PredefinedDictionaryType::DICT_7X7_1000;
+    case ArucoMarkerFormat::SetArucoOriginal:
+        return cv::aruco::PredefinedDictionaryType::DICT_ARUCO_ORIGINAL;
+    case ArucoMarkerFormat::SetApriltagCodes16h5:
+        return cv::aruco::PredefinedDictionaryType::DICT_APRILTAG_16h5;
+    case ArucoMarkerFormat::SetApriltagCodes25h9:
+        return cv::aruco::PredefinedDictionaryType::DICT_APRILTAG_25h9;
+    case ArucoMarkerFormat::SetApriltagCodes36h10:
+        return cv::aruco::PredefinedDictionaryType::DICT_APRILTAG_36h10;
+    case ArucoMarkerFormat::SetApriltagCodes36h11:
+        return cv::aruco::PredefinedDictionaryType::DICT_APRILTAG_36h11;
+    case ArucoMarkerFormat::SetArucoMipCodes36h12:
+        return cv::aruco::PredefinedDictionaryType::DICT_ARUCO_MIP_36h12;
+
+    default:
+        throw std::invalid_argument("Invalid ArucoMarkerFormat");
+    }
+}
+
 bool ArucoDetection::detectArucoFromLuminance(
     const std::uint8_t* imageBytes,
     std::size_t imageBytesSize,
@@ -32,7 +85,7 @@ bool ArucoDetection::detectArucoFromLuminance(
         const cv::Mat cvImage(cv::Size(width, height), CV_8U, const_cast<std::uint8_t*>(imageBytes));
 
         cv::aruco::DetectorParameters detectorParams;
-        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary((cv::aruco::PredefinedDictionaryType)markerFormat);
+        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(toCvArucoPredefinedDictionaryType(markerFormat));
         cv::aruco::ArucoDetector detector(dictionary, detectorParams);
 
         std::vector<std::vector<cv::Point2f>> cornersFound;
