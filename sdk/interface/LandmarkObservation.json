@@ -1,0 +1,17 @@
+{
+  "name": "LandmarkObservation",
+  "properties": [
+    {
+      "name": "Type",
+      "type": "string_mix"
+    },
+    {
+      "name": "Id",
+      "type": "string_mix"
+    },
+    {
+      "name": "Position",
+      "type": "CLASS_MIX:Vector2"
+    }
+  ]
+}
