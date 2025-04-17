@@ -4,8 +4,6 @@ members = [
     "domain",
     "runtime",
     "examples/client",
-    "examples/domain-manager",
-    "examples/data-node",
     "base",
     "examples/relay",
     "examples/test-concurrent",
@@ -23,13 +21,12 @@ libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = 
 libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 libp2p-websocket = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 libp2p-websocket-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-tls = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" } 
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
-tokio = "1.40.0"
+tokio = "1.44.2"
 tracing-wasm = "0.2.1"
 wasm-bindgen = "0.2.90"
 wasm-bindgen-futures = "0.4.42"
@@ -42,4 +39,5 @@ networking = { path = "networking" }
 runtime = { path = "runtime" }
 domain = { path = "domain" }
 utils = { path = "utils" }
-async-trait = "0.1.86"
+async-trait = "0.1.88"
+thiserror = "2.0.12"

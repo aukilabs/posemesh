@@ -64,7 +64,10 @@ impl Client {
         self.sender
             .send(Command::SetStreamHandler { protocol: pro, sender })
             .await
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            .map_err(|e| {
+                tracing::error!("set stream handler error: {:?}", e);
+                Box::new(e) as Box<dyn Error + Send + Sync>
+            })?;
 
         match receiver.await {
             Ok(result) => result,
@@ -98,6 +101,16 @@ impl Client {
         }
         Ok(())
     }
+
+    pub async fn cancel(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = oneshot::channel::<()>();
+        self.sender
+            .send(Command::Cancel { sender })
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+
+        receiver.await.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
 }
 
 #[derive(Debug)]
@@ -120,5 +133,8 @@ pub enum Command {
     Subscribe {
         topic: String,
         resp: oneshot::Sender<Box<dyn Error + Send + Sync>>,
+    },
+    Cancel {
+        sender: oneshot::Sender<()>,
     }
 }

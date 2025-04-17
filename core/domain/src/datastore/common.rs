@@ -1,28 +1,29 @@
 
-use std::{collections::HashSet, error::Error, sync::Arc};
+use std::error::Error;
 
-use crate::protobuf::{domain_data::{self, Data}};
+use crate::protobuf::domain_data::{self, Data};
 use async_trait::async_trait;
-use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
 use uuid::Uuid;
+
+use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
+use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
 pub type Writer<T> = Sender<Result<T, DomainError>>;
+
 pub type DataWriter = Writer<Data>;
 pub type DataReader = Reader<Data>;
-
-#[cfg(not(target_family = "wasm"))]
-use tokio::task::spawn;
-
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_futures::spawn_local as spawn;
 
 // Define a custom error type
 #[derive(Debug)]
 pub enum DomainError {
     NotFound,
     Interrupted,
-    Cancelled,
+    Cancelled(String),
+    IoError(std::io::Error),
+    #[cfg(all(feature="fs", not(target_family="wasm")))]
+    PostgresError(tokio_postgres::Error),
+    InternalError(Box<dyn Error + Send + Sync>),
 }
 
 impl Error for DomainError {}
@@ -31,92 +32,40 @@ impl std::fmt::Display for DomainError {
         match self {
             DomainError::NotFound => write!(f, "Not found"),
             DomainError::Interrupted => write!(f, "Interrupted"),
-            DomainError::Cancelled => write!(f, "Cancelled"),
+            DomainError::Cancelled(s) => write!(f, "Cancelled: {}", s),
+            DomainError::IoError(e) => write!(f, "IO error: {}", e),
+            #[cfg(all(feature="fs", not(target_family="wasm")))]
+            DomainError::PostgresError(e) => write!(f, "Postgres error: {}", e),
+            DomainError::InternalError(e) => write!(f, "Internal error: {}", e),
         }
     }
 }
 
+#[async_trait]
+pub trait DomainData: Send + Sync {
+    async fn push_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError>;
+}
 
 #[async_trait]
-pub trait Datastore: Send + Sync {
-    async fn consume(&mut self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
-    async fn produce(&mut self, domain_id: String) -> ReliableDataProducer;
+pub trait ReliableDataProducer: Send + Sync {
+    async fn push(&mut self, metadata: &domain_data::Metadata) -> Result<Box<dyn DomainData>, DomainError>;
+    async fn is_completed(&self) -> bool;
+    async fn close(&mut self) -> ();
+}
+
+
+#[async_trait]
+pub trait Datastore: Send + Sync + Clone {
+    async fn load(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
+    async fn upsert(self: &mut Self, domain_id: String) -> Box<dyn ReliableDataProducer>;
 }
 
 pub fn data_id_generator() -> String {
     Uuid::new_v4().to_string()
 }
 
-#[derive(Clone)]
-pub struct ReliableDataProducer {
-    writer: DataWriter,
-    pendings: Arc<Mutex<HashSet<String>>>,
-    pub progress: Arc<Mutex<Receiver<i32>>>,
-    total: Arc<Mutex<i32>>,
-}
-
-impl ReliableDataProducer {
-    pub fn new(mut response: Reader<domain_data::Metadata>, writer: DataWriter) -> Self {
-        let pendings = Arc::new(Mutex::new(HashSet::new()));
-        let pending_clone = pendings.clone();
-        let total: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
-        let total_clone = total.clone();
-        let (mut progress_sender, progress_receiver) = mpsc::channel(100);
-
-        spawn(async move {
-            while let Some(m) = response.next().await {
-                match m {
-                    Ok(metadata) => {
-                        let id = metadata.id.unwrap_or("why no id".to_string());
-                        let mut pendings = pending_clone.lock().await;
-                        let total = total_clone.lock().await;
-                        let completed = *total as usize - pendings.len() + 1;
-                        pendings.remove(&id);
-                        let progress = completed * 100 / *total as usize;
-                        progress_sender.send(progress as i32).await.expect("can't send progress");
-                    }
-                    Err(e) => {
-                        eprintln!("{}", e);
-                    }
-                }
-            }
-        });
-
-        Self {
-            writer, progress: Arc::new(Mutex::new(progress_receiver)), pendings, total
-        }
-    }
-
-    pub async fn push(&mut self, data: &domain_data::Data) -> Result<String, DomainError> {
-        let mut data = data.clone();
-        if data.metadata.id.is_none() {
-            data.metadata.id = Some(data_id_generator());
-        }
-        let id = data.metadata.id.clone().unwrap();
-        let res = self.writer.send(Ok(data)).await;
-        match res {
-            Ok(_) => {
-                let mut pendings = self.pendings.lock().await;
-                pendings.insert(id.clone());
-                let mut total = self.total.lock().await;
-                *total += 1;
-                Ok(id)
-            },
-            Err(e) => {
-                eprintln!("{}", e);
-                Err(DomainError::Interrupted)
-            },
-        }
-    }
-
-    pub async fn is_completed(&self) -> bool {
-        let pendings = self.pendings.lock();
-        pendings.await.is_empty()
-    }
-
-    pub async fn close(mut self) {
-        self.writer.close().await.expect("can't close writer");
-        self.progress.lock().await.close();
-        self.pendings.lock().await.clear();
-    }
+pub fn hash_chunk(chunk: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256Hasher::new();
+    hasher.update(chunk);
+    hasher.finalize().into()
 }
