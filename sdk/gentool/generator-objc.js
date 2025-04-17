@@ -475,7 +475,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             moveExt = ')';
           }
           getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
-          getter += `    return [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult];\n`;
+          getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else {
           getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -493,7 +493,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             moveExt = ')';
           }
           getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
-          getter += `    return [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult];\n`;
+          getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else {
           getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -547,8 +547,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setterPfx = `*static_cast<const psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}*>([`;
           setterExt = ` native${propTypeRawWithoutPfx}])`;
         } else if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
-          setterPfx = `*static_cast<const std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>*>([`;
-          setterExt = ` managed${propTypeRawWithoutPfx}])`;
+          setterPfx = `${setterArgName} ? *static_cast<const std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>*>([`;
+          setterExt = ` managed${propTypeRawWithoutPfx}]) : std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> {}`;
         }
       }
       let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
