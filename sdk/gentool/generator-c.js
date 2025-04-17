@@ -151,6 +151,9 @@ function arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgNa
     }
   } else {
     getter += `    const auto& ${setterArgName} = ${propStatic ? `psm::${nameCxx}::` : `${mainArgName}->`}${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+    getter += `    if (out_length) {\n`;
+    getter += `        *out_length = static_cast<uint64_t>(${setterArgName}.size());\n`;
+    getter += `    }\n`;
     if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
       getter += `    static_assert(sizeof(${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}) == sizeof(std::remove_reference_t<decltype(${setterArgName})>::value_type));\n`;
       getter += `    return reinterpret_cast<const ${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}*>(${setterArgName}.data());\n`;
@@ -174,6 +177,9 @@ function arraySetterIncludes(enums, interfaces, propTypeRaw, includesFirst, incl
     includesFirst.add('#include <algorithm>');
     includesFirst.add('#include <iterator>');
     if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+      if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+        includesFirst.add('#include <memory>');
+      }
       includesFirst.add('#include <utility>');
     }
   }
@@ -206,19 +212,19 @@ function arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgNa
     }
   } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
     setter += `    static_assert(sizeof(${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}) == sizeof(psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}));\n`;
-    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}), reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}) + length});\n`;
+    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({ reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}), reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}) + length });\n`;
   } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
     setter += `    std::vector<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> transformed_vector;\n`;
     setter += `    transformed_vector.reserve(length);\n`;
     if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
-      setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return std::move(*${setterArgName}_element); delete ${setterArgName}_element; });\n`;
+      setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return std::move(*raii_wrapper); });\n`;
       setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(transformed_vector));\n`;
     } else {
       setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return *${setterArgName}_element; });\n`;
       setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(transformed_vector);\n`;
     }
   } else {
-    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({${setterArgName}, ${setterArgName} + length});\n`;
+    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({ ${setterArgName}, ${setterArgName} + length });\n`;
   }
   return setter;
 }
