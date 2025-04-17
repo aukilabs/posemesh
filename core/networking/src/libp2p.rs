@@ -1,7 +1,7 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
-use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
-use std::{borrow::Cow, collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
@@ -330,7 +330,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
 
 fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     #[cfg(not(target_family="wasm"))]
-    let mut listeners = vec![
+    let listeners = vec![
         Multiaddr::empty()
             .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
             .with(Protocol::Tcp(port)),
@@ -340,17 +340,7 @@ fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     ];
 
     #[cfg(target_family="wasm")]
-    let mut listeners = vec![];
-
-    if let Some(domain) = domain {
-        listeners.push(Multiaddr::empty()
-            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
-            .with(Protocol::Tcp(port)));
-        listeners.push(Multiaddr::empty()
-            .with(Protocol::Dns(Cow::Borrowed(domain.as_str())))
-            .with(Protocol::Udp(port))
-            .with(Protocol::QuicV1));
-    }
+    let listeners = vec![];
 
     return listeners;
 }
