@@ -2,6 +2,7 @@
 #define __POSEMESH_POSE_ESTIMATION_HPP__
 
 #include <Posemesh/Matrix3x3.hpp>
+#include <Posemesh/SolvePnPMethod.hpp>
 #include <Posemesh/Vector2.hpp>
 #include <Posemesh/Vector3.hpp>
 
@@ -16,7 +17,8 @@ public:
         const Vector2 imagePoints[],
         const Matrix3x3& cameraMatrix,
         Matrix3x3& outR,
-        Vector3& outT);
+        Vector3& outT,
+        SolvePnpMethod method);
 
 private:
     PoseEstimation() = delete;

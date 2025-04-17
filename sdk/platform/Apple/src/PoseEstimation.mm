@@ -4,7 +4,7 @@
 
 @implementation PSMPoseEstimation
 
-+ (BOOL)solvePnPForObjectPoints:(NSArray<PSMVector3*>*)objectPoints andImagePoints:(NSArray<PSMVector2*>*)imagePoints andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withOutR:(PSMMatrix3x3*)outR andOutT:(PSMVector3*)outT;
++ (BOOL)solvePnPForObjectPoints:(NSArray<PSMVector3*>*)objectPoints andImagePoints:(NSArray<PSMVector2*>*)imagePoints andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withOutR:(PSMMatrix3x3*)outR andOutT:(PSMVector3*)outT withMethod:(PSMSolvePnpMethod)method;
 {
     NSAssert(objectPoints, @"objectPoints is null");
     NSAssert([objectPoints count] == 4, @"objectPoints array count is not 4");
@@ -28,7 +28,7 @@
     auto& outRRaw = *static_cast<psm::Matrix3x3*>([outR nativeMatrix3x3]);
     auto& outTRaw = *static_cast<psm::Vector3*>([outT nativeVector3]);
 
-    return psm::PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrixRaw, outRRaw, outTRaw) ? YES : NO;
+    return psm::PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrixRaw, outRRaw, outTRaw, (psm::SolvePnpMethod)method) ? YES : NO;
 }
 
 @end

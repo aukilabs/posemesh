@@ -5,12 +5,40 @@
 
 namespace psm {
 
+cv::SolvePnPMethod toCVSolvePnPMethod(psm::SolvePnpMethod format)
+{
+    switch (format) {
+    case SolvePnpMethod::SolvePnpIterative:
+        return cv::SOLVEPNP_ITERATIVE;
+    case SolvePnpMethod::SolvePnpEpnp:
+        return cv::SOLVEPNP_EPNP;
+    case SolvePnpMethod::SolvePnpP3p:
+        return cv::SOLVEPNP_P3P;
+    case SolvePnpMethod::SolvePnpDls:
+        return cv::SOLVEPNP_DLS;
+    case SolvePnpMethod::SolvePnpUpnp:
+        return cv::SOLVEPNP_UPNP;
+    case SolvePnpMethod::SolvePnpAp3p:
+        return cv::SOLVEPNP_AP3P;
+    case SolvePnpMethod::SolvePnpIppe:
+        return cv::SOLVEPNP_IPPE;
+    case SolvePnpMethod::SolvePnpIppeSquare:
+        return cv::SOLVEPNP_IPPE_SQUARE;
+    case SolvePnpMethod::SolvePnpSqpnp:
+        return cv::SOLVEPNP_SQPNP;
+
+    default:
+        throw std::invalid_argument("Invalid SolvePnpMethod");
+    }
+}
+
 bool PoseEstimation::solvePnP(
     const Vector3 objectPoints[],
     const Vector2 imagePoints[],
     const Matrix3x3& cameraMatrix,
     Matrix3x3& outR,
-    Vector3& outT)
+    Vector3& outT,
+    SolvePnpMethod method)
 {
     std::vector<cv::Point3f> cvObjectPoints;
     cvObjectPoints.reserve(4);
@@ -47,7 +75,7 @@ bool PoseEstimation::solvePnP(
             rvec,
             tvec,
             false,
-            cv::SOLVEPNP_IPPE_SQUARE);
+            toCVSolvePnPMethod(method));
     } catch (const cv::Exception& e) {
         std::cerr << "PoseEstimation::solvePnP(): An OpenCV exception occurred: " << e.what() << std::endl;
         return false;
@@ -72,5 +100,4 @@ bool PoseEstimation::solvePnP(
 
     return true;
 }
-
 }

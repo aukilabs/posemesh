@@ -5,6 +5,7 @@
 
 #include "API.h"
 #include "Matrix3x3.h"
+#include "SolvePnPMethod.h"
 #include "Vector2.h"
 #include "Vector3.h"
 
@@ -26,7 +27,8 @@ uint8_t PSM_API psm_pose_estimation_solve_pnp(
     const psm_vector2_t* imagePoints[],
     const psm_matrix3x3_t* cameraMatrix,
     psm_matrix3x3_t* outR,
-    psm_vector3_t* outT);
+    psm_vector3_t* outT,
+    psm_solve_pnp_method_e method);
 
 #if defined(__cplusplus)
 }

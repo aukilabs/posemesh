@@ -1,0 +1,32 @@
+{
+    "name": "Solve_PnP_Method",
+    "constants": [
+        {
+            "name": "SOLVE_PNP_ITERATIVE"
+        },
+        {
+            "name": "SOLVE_PNP_EPNP"
+        },
+        {
+            "name": "SOLVE_PNP_P3P"
+        },
+        {
+            "name": "SOLVE_PNP_DLS"
+        },
+        {
+            "name": "SOLVE_PNP_UPNP"
+        },
+        {
+            "name": "SOLVE_PNP_AP3P"
+        },
+        {
+            "name": "SOLVE_PNP_IPPE"
+        },
+        {
+            "name": "SOLVE_PNP_IPPE_SQUARE"
+        },
+        {
+            "name": "SOLVE_PNP_SQPNP"
+        }
+    ]
+}

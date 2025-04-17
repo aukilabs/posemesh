@@ -3,7 +3,8 @@ extension PoseEstimation {
                                 imagePoints: [Vector2], 
                                 cameraMatrix: Matrix3x3, 
                                 outR: inout Matrix3x3, 
-                                outT: inout Vector3) -> Bool  {
-        return __solvePnP(forObjectPoints:objectPoints, andImagePoints:imagePoints, andCameraMatrix:cameraMatrix, withOutR:outR, andOutT:outT);
+                                outT: inout Vector3,
+                                method: SolvePnpMethod) -> Bool  {
+        return __solvePnP(forObjectPoints:objectPoints, andImagePoints:imagePoints, andCameraMatrix:cameraMatrix, withOutR:outR, andOutT:outT, with:method);
     }
 }
