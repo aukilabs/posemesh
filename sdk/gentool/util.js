@@ -478,6 +478,8 @@ function getClassPtrType(interfaces, language, type, classPfx = 'CLASS_PTR:') {
     return `std::shared_ptr<${type}>`;
   } else if (language === Language.C) {
     return `${type.substring(0, type.length - '_t*'.length)}_ref_t*`;
+  } else if (language === Language.Swift) {
+    return `${type}?`;
   }
   return type;
 }
@@ -718,7 +720,7 @@ function getArrayPtrType(interfaces, language, type, typeFor = TypeFor.Any) {
     case Language.ObjC:
       return `NSArray<${type}*>*`;
     case Language.Swift:
-      return `[${type}]`;
+      return `[${type}?]`;
     case Language.JS:
       return `${type}[]`;
     default:
@@ -762,7 +764,7 @@ function getArrayPtrRefType(interfaces, language, type, typeFor = TypeFor.Any) {
     case Language.ObjC:
       return `NSArray<${type}*>*`;
     case Language.Swift:
-      return `[${type}]`;
+      return `[${type}?]`;
     case Language.JS:
       return `${type}[]`;
     default:
@@ -807,7 +809,7 @@ function getArrayPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
     case Language.ObjC:
       return `NSArray<${type}*>*`;
     case Language.Swift:
-      return `[${type}]`;
+      return `[${type}?]`;
     case Language.JS:
       return `${type}[]`;
     default:

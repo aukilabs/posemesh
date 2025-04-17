@@ -121,7 +121,9 @@ function arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgNa
       if (util.isArrayType(propTypeRaw)) {
         getter += `        *out_getter_result++ = new (std::nothrow) psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}(std::move(${setterArgName}_element));\n`;
       } else if (util.isArrayPtrType(propTypeRaw)) {
-        getter += `        *out_getter_result++ = new (std::nothrow) std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>(std::move(${setterArgName}_element));\n`;
+        getter += `        *out_getter_result++ = ${setterArgName}_element ? new (std::nothrow) std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>(std::move(${setterArgName}_element)) : nullptr;\n`;
+      } else if (util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+        getter += `        *out_getter_result++ = ${setterArgName}_element ? &${setterArgName}_element : nullptr;\n`;
       } else {
         getter += `        *out_getter_result++ = &${setterArgName}_element;\n`;
       }
@@ -192,7 +194,7 @@ function arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgNa
   setter += `        return;\n`;
   setter += `    }\n`;
   const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
-  if (underlyingArrayTypeRaw === 'string' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+  if (underlyingArrayTypeRaw === 'string' || (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)))) {
     setter += `    for (std::size_t i = 0; i < length; ++i) {\n`;
     setter += `        if (!${setterArgName}[i]) {\n`;
     setter += `            assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} contains at least one null element");\n`;
@@ -217,10 +219,18 @@ function arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgNa
     setter += `    std::vector<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> transformed_vector;\n`;
     setter += `    transformed_vector.reserve(length);\n`;
     if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
-      setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return std::move(*raii_wrapper); });\n`;
+      if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return std::move(*raii_wrapper); });\n`;
+      } else {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return raii_wrapper ? decltype(transformed_vector)::value_type { std::move(*raii_wrapper) } : decltype(transformed_vector)::value_type {}; });\n`;
+      }
       setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(transformed_vector));\n`;
     } else {
-      setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return *${setterArgName}_element; });\n`;
+      if (util.isArrayRefType(propTypeRaw)) {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return *${setterArgName}_element; });\n`;
+      } else {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return ${setterArgName}_element ? *${setterArgName}_element : decltype(transformed_vector)::value_type {}; });\n`;
+      }
       setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(transformed_vector);\n`;
     }
   } else {
@@ -765,10 +775,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return &getter_result;\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
           getter += `    const auto getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+          getter += `    return getter_result ? ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result) : nullptr;\n`;
         } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           getter += `    const auto& getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return &getter_result;\n`;
+          getter += `    return getter_result ? &getter_result : nullptr;\n`;
         } else if (isArray) {
           getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
         } else {
@@ -816,10 +826,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return &getter_result;\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
           getter += `    const auto getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+          getter += `    return getter_result ? ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result) : nullptr;\n`;
         } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           getter += `    const auto& getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return &getter_result;\n`;
+          getter += `    return getter_result ? &getter_result : nullptr;\n`;
         } else if (isArray) {
           getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
         } else {
@@ -921,25 +931,13 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrRefType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? ${setterType.substring(6/*!!!*/, setterType.length - 1)} { *${setterArgName} } : ${setterType.substring(6/*!!!*/, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrMixType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (isArray) {
           setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
         } else {
@@ -977,25 +975,13 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrRefType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? ${setterType.substring(6/*!!!*/, setterType.length - 1)} { *${setterArgName} } : ${setterType.substring(6/*!!!*/, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrMixType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (isArray) {
           setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
         } else {

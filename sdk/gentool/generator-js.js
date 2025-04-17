@@ -163,10 +163,14 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           }
           unnamedNamespace += `}\n`;
         }
+        let retValExt = '';
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          retValExt = ', nonnull<ret_val>()';
+        }
         if (propStatic) {
-          code += `\n        .class_function("__${getterName}()", &${funcName})`;
+          code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
         } else {
-          code += `\n        .function("__${getterName}()", &${funcName})`;
+          code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
         }
       }
     }
@@ -237,10 +241,14 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           unnamedNamespace += `}\n`;
           includesFirst.add('#include <cassert>');
         }
+        let retValExt = '';
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          retValExt = ', nonnull<ret_val>()';
+        }
         if (propStatic) {
-          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName})`;
+          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
         } else {
-          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName})`;
+          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
         }
       }
     }

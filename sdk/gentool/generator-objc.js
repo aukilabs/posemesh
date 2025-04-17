@@ -66,7 +66,11 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.ObjC);
       let getterTypeExt = '';
       if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type) || util.isArrayOfAnyType(propertyJson.type)) {
-        getterTypeExt = ' _Nonnull';
+        if (util.isClassPtrType(propertyJson.type) || util.isClassPtrRefType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+          getterTypeExt = ' _Nullable';
+        } else {
+          getterTypeExt = ' _Nonnull';
+        }
       }
       const getter = `${propStatic ? '+' : '-'} (${getterType}${getterTypeExt})${getterName} NS_REFINED_FOR_SWIFT;\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
@@ -84,7 +88,11 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.ObjC);
       let setterTypeExt = '';
       if (propertyJson.type === 'string' || propertyJson.type === 'string_ref' || propertyJson.type === 'string_mix' || util.isClassOfAnyType(propertyJson.type) || util.isArrayOfAnyType(propertyJson.type)) {
-        setterTypeExt = ' _Nonnull';
+        if (util.isClassPtrType(propertyJson.type) || util.isClassPtrRefType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+          setterTypeExt = ' _Nullable';
+        } else {
+          setterTypeExt = ' _Nonnull';
+        }
       }
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.ObjC);
       const setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType}${setterTypeExt})${setterArgName} NS_REFINED_FOR_SWIFT;\n`;
