@@ -1,6 +1,6 @@
 #include <Posemesh/PoseFactory.hpp>
-#include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/matrix.hpp>
 #include <opencv2/opencv.hpp>
 
 namespace psm {
@@ -31,7 +31,7 @@ Pose PoseFactory::create(const Vector3& position, const Matrix3x3& rotation)
     return create(position, q);
 }
 
-Pose PoseFactory::create(const Vector3& position, const Vector3& rodriguesRotation)
+Pose PoseFactory::createRodrigues(const Vector3& position, const Vector3& rodriguesRotation)
 {
     cv::Mat rv = cv::Mat::zeros(3, 1, CV_32F);
     rv.at<float>(0) = rodriguesRotation.getX();
@@ -54,7 +54,7 @@ Pose PoseFactory::create(const Vector3& position, const Vector3& rodriguesRotati
     return create(position, r);
 }
 
-Pose PoseFactory::create(const Vector3& position, const Vector3& eulerRotation)
+Pose PoseFactory::createEuler(const Vector3& position, const Vector3& eulerRotation)
 {
     glm::quat rq(glm::radians(glm::vec3(
         eulerRotation.getX(),
