@@ -1,0 +1,71 @@
+{
+  "name": "Aruco_Marker_Format",
+  "constants": [
+      {
+          "name": "Set_4X4_Codes_50"
+      },
+      {
+          "name": "Set_4X4_Codes_100"
+      },
+      {
+          "name": "Set_4X4_Codes_250"
+      },
+      {
+          "name": "Set_4X4_Codes_1000"
+      },
+      {
+          "name": "Set_5X5_Codes_50"
+      },
+      {
+          "name": "Set_5X5_Codes_100"
+      },
+      {
+          "name": "Set_5X5_Codes_250"
+      },
+      {
+          "name": "Set_5X5_Codes_1000"
+      },
+      {
+          "name": "Set_6X6_Codes_50"
+      },
+      {
+          "name": "Set_6X6_Codes_100"
+      },
+      {
+          "name": "Set_6X6_Codes_250"
+      },
+      {
+          "name": "Set_6X6_Codes_1000"
+      },
+      {
+          "name": "Set_7X7_Codes_50"
+      },
+      {
+          "name": "Set_7X7_Codes_100"
+      },
+      {
+          "name": "Set_7X7_Codes_250"
+      },
+      {
+          "name": "Set_7X7_Codes_1000"
+      },
+      {
+          "name": "Set_ARUCO_ORIGINAL"
+      },
+      {
+          "name": "Set_APRILTAG_Codes_16h5"
+      },
+      {
+          "name": "Set_APRILTAG_Codes_25h9"
+      },
+      {
+          "name": "Set_APRILTAG_Codes_36h10"
+      },
+      {
+          "name": "Set_APRILTAG_Codes_36h11"
+      },
+      {
+          "name": "Set_ARUCO_MIP_Codes_36h12"
+      }
+  ]
+}
