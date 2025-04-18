@@ -1,6 +1,244 @@
 const path = require('path');
 const util = require('./util');
 
+function doesArrayTypeNeedFree(interfaces, type) {
+  if (!util.isArrayOfAnyType(type)) {
+    return false;
+  }
+  if (util.isArrayType(type) || util.isArrayPtrType(type)) {
+    return true;
+  }
+  const name = type.split(':').slice(1).join(':');
+  return name === 'boolean' || name === 'string' || typeof interfaces[name] !== 'undefined';
+}
+
+function doesArrayGetterFreeFuncHaveOptionToDestroyContainedClasses(interfaces, type) {
+  if (!util.isArrayType(type) && !util.isArrayPtrType(type)) {
+    return false;
+  }
+  const name = type.split(':').slice(1).join(':');
+  return typeof interfaces[name] !== 'undefined';
+}
+
+function arrayGetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond) {
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  if (doesArrayTypeNeedFree(interfaces, propTypeRaw)) {
+    includesFirst.add('#include <new>');
+    if (underlyingArrayTypeRaw === 'string') {
+      if (util.isArrayType(propTypeRaw)) {
+        includesFirst.add('#include <cstddef>');
+        includesFirst.add('#include <cstring>');
+      }
+    } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+      includesFirst.add('#include <type_traits>');
+      includesFirst.add('#include <cstring>');
+    } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      includesFirst.add('#include <type_traits>');
+      if (util.isArrayType(propTypeRaw) || util.isArrayPtrType(propTypeRaw)) {
+        includesFirst.add('#include <utility>');
+        if (util.isArrayPtrType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
+        }
+        includesFirst.add('#include <cstddef>');
+      }
+    } else {
+      includesFirst.add('#include <type_traits>');
+      includesFirst.add('#include <cstring>');
+    }
+  } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+    includesFirst.add('#include <type_traits>');
+  }
+}
+
+function arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic) {
+  let getter = '';
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  if (doesArrayTypeNeedFree(interfaces, propTypeRaw)) {
+    const isConstRetType = (!util.isArrayType(propTypeRaw) && !util.isArrayPtrType(propTypeRaw)) || typeof interfaces[underlyingArrayTypeRaw] === 'undefined';
+    const isRefRetType = !util.isArrayType(propTypeRaw) && !util.isArrayPtrType(propTypeRaw);
+    getter += `    ${isConstRetType ? 'const ' : ''}auto${isRefRetType ? '&' : ''} ${setterArgName} = ${propStatic ? `psm::${nameCxx}::` : `${mainArgName}->`}${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+    if (underlyingArrayTypeRaw === 'boolean') {
+      getter += `    auto* getter_result = new (std::nothrow) std::uint8_t[${setterArgName}.size()];\n`;
+    } else if (underlyingArrayTypeRaw === 'string') {
+      if (util.isArrayType(propTypeRaw)) {
+        getter += `    std::size_t getter_result_size = (${setterArgName}.size() + 1) * sizeof(char*);\n`;
+        getter += `    for (const std::string& ${setterArgName}_element : ${setterArgName}) {\n`;
+        getter += `        getter_result_size += ${setterArgName}_element.size() + 1;\n`;
+        getter += `    }\n`;
+        getter += `    auto* getter_result = new (std::nothrow) char[getter_result_size];\n`;
+      } else {
+        getter += `    auto** getter_result = new (std::nothrow) char*[${setterArgName}.size() + 1];\n`;
+      }
+    } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+      getter += `    auto* getter_result = new (std::nothrow) ${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}[${setterArgName}.size()];\n`;
+    } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      if (util.isArrayType(propTypeRaw) || util.isArrayPtrType(propTypeRaw)) {
+        getter += `    auto** getter_result = new (std::nothrow) std::remove_reference_t<decltype(${setterArgName})>::value_type*[${setterArgName}.size() + 2];\n`;
+      } else {
+        getter += `    auto** getter_result = new (std::nothrow) std::remove_reference_t<decltype(${setterArgName})>::value_type*[${setterArgName}.size() + 1];\n`;
+      }
+    } else {
+      getter += `    auto* getter_result = new (std::nothrow) std::remove_reference_t<decltype(${setterArgName})>::value_type[${setterArgName}.size()];\n`;
+    }
+    getter += `    if (!getter_result) {\n`;
+    getter += `        if (out_length) {\n`;
+    getter += `            *out_length = 0;\n`;
+    getter += `        }\n`;
+    getter += `        return nullptr;\n`;
+    getter += `    }\n`;
+    if (underlyingArrayTypeRaw === 'boolean') {
+      getter += `    auto* out_getter_result = getter_result;\n`;
+      getter += `    for (bool ${setterArgName}_element : ${setterArgName}) {\n`;
+      getter += `        *out_getter_result++ = static_cast<std::uint8_t>(${setterArgName}_element);\n`;
+      getter += `    }\n`;
+    } else if (underlyingArrayTypeRaw === 'string') {
+      if (util.isArrayType(propTypeRaw)) {
+        getter += `    auto** out_getter_result_strings = reinterpret_cast<char**>(getter_result);\n`;
+        getter += `    auto* out_getter_result_chars = getter_result + (${setterArgName}.size() + 1) * sizeof(char*);\n`;
+        getter += `    for (const std::string& ${setterArgName}_element : ${setterArgName}) {\n`;
+        getter += `        *out_getter_result_strings++ = out_getter_result_chars;\n`;
+        getter += `        std::memcpy(out_getter_result_chars, ${setterArgName}_element.c_str(), ${setterArgName}_element.size() + 1);\n`;
+        getter += `        out_getter_result_chars += ${setterArgName}_element.size() + 1;\n`;
+        getter += `    }\n`;
+        getter += `    *out_getter_result_strings = nullptr;\n`;
+      } else {
+        getter += `    const auto** out_getter_result = const_cast<const char**>(getter_result);\n`;
+        getter += `    for (const std::string& ${setterArgName}_element : ${setterArgName}) {\n`;
+        getter += `        *out_getter_result++ = ${setterArgName}_element.c_str();\n`;
+        getter += `    }\n`;
+        getter += `    *out_getter_result = nullptr;\n`;
+      }
+    } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+      getter += `    static_assert(sizeof(${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}) == sizeof(std::remove_reference_t<decltype(${setterArgName})>::value_type));\n`;
+      getter += `    std::memcpy(getter_result, ${setterArgName}.data(), ${setterArgName}.size() * sizeof(std::remove_reference_t<decltype(${setterArgName})>::value_type));\n`;
+    } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      const wrapInSPtr = util.isArrayPtrType(propTypeRaw) || util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw);
+      getter += `    const auto** out_getter_result = const_cast<const ${wrapInSPtr ? 'std::shared_ptr<' : ''}psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}${wrapInSPtr ? '>' : ''}**>(getter_result);\n`;
+      if (util.isArrayType(propTypeRaw) || util.isArrayPtrType(propTypeRaw)) {
+        getter += `    *out_getter_result++ = reinterpret_cast<std::remove_reference_t<decltype(${setterArgName})>::value_type*>(${setterArgName}.size());\n`
+      }
+      getter += `    for (auto& ${setterArgName}_element : ${setterArgName}) {\n`;
+      if (util.isArrayType(propTypeRaw)) {
+        getter += `        *out_getter_result++ = new (std::nothrow) psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}(std::move(${setterArgName}_element));\n`;
+      } else if (util.isArrayPtrType(propTypeRaw)) {
+        getter += `        *out_getter_result++ = ${setterArgName}_element ? new (std::nothrow) std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>(std::move(${setterArgName}_element)) : nullptr;\n`;
+      } else if (util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+        getter += `        *out_getter_result++ = ${setterArgName}_element ? &${setterArgName}_element : nullptr;\n`;
+      } else {
+        getter += `        *out_getter_result++ = &${setterArgName}_element;\n`;
+      }
+      getter += `    }\n`;
+      getter += `    *out_getter_result = nullptr;\n`;
+    } else {
+      getter += `    std::memcpy(getter_result, ${setterArgName}.data(), ${setterArgName}.size() * sizeof(std::remove_reference_t<decltype(${setterArgName})>::value_type));\n`;
+    }
+    getter += `    if (out_length) {\n`;
+    getter += `        *out_length = static_cast<uint64_t>(${setterArgName}.size());\n`;
+    getter += `    }\n`;
+    if (underlyingArrayTypeRaw === 'string') {
+      if (util.isArrayType(propTypeRaw)) {
+        getter += `    return const_cast<const char**>(reinterpret_cast<char**>(getter_result));\n`;
+      } else {
+        getter += `    return const_cast<const char**>(getter_result);\n`;
+      }
+    } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      if (util.isArrayType(propTypeRaw) || util.isArrayPtrType(propTypeRaw)) {
+        getter += `    return getter_result + 1;\n`;
+      } else {
+        const wrapInSPtr = util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw);
+        getter += `    return const_cast<const ${wrapInSPtr ? 'std::shared_ptr<' : ''}psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}${wrapInSPtr ? '>' : ''}**>(getter_result);\n`;
+      }
+    } else {
+      getter += `    return getter_result;\n`;
+    }
+  } else {
+    getter += `    const auto& ${setterArgName} = ${propStatic ? `psm::${nameCxx}::` : `${mainArgName}->`}${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
+    getter += `    if (out_length) {\n`;
+    getter += `        *out_length = static_cast<uint64_t>(${setterArgName}.size());\n`;
+    getter += `    }\n`;
+    if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+      getter += `    static_assert(sizeof(${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}) == sizeof(std::remove_reference_t<decltype(${setterArgName})>::value_type));\n`;
+      getter += `    return reinterpret_cast<const ${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}*>(${setterArgName}.data());\n`;
+    } else {
+      getter += `    return ${setterArgName}.data();\n`;
+    }
+  }
+  return getter;
+}
+
+function arraySetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond) {
+  includesFirst.add('#include <cassert>');
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  if (underlyingArrayTypeRaw === 'string' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    includesFirst.add('#include <cstddef>');
+  }
+  if (underlyingArrayTypeRaw === 'boolean' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      includesFirst.add('#include <type_traits>');
+    }
+    includesFirst.add('#include <algorithm>');
+    includesFirst.add('#include <iterator>');
+    if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+      if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+        includesFirst.add('#include <memory>');
+      }
+      includesFirst.add('#include <utility>');
+    }
+  }
+}
+
+function arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic) {
+  let setter = '';
+  setter += `    if (!${setterArgName} && length > 0) {\n`;
+  setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null and length is greater than zero");\n`;
+  setter += `        return;\n`;
+  setter += `    }\n`;
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  if (underlyingArrayTypeRaw === 'string' || (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)))) {
+    setter += `    for (std::size_t i = 0; i < length; ++i) {\n`;
+    setter += `        if (!${setterArgName}[i]) {\n`;
+    setter += `            assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} contains at least one null element");\n`;
+    setter += `            return;\n`;
+    setter += `        }\n`;
+    setter += `    }\n`;
+  }
+  const setterRoot = propStatic ? `psm::${nameCxx}::` : `${mainArgName}->`;
+  if (underlyingArrayTypeRaw === 'boolean') {
+    setter += `    std::vector<bool> transformed_vector;\n`;
+    setter += `    transformed_vector.reserve(length);\n`;
+    setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::uint8_t ${setterArgName}_element) -> bool { return static_cast<bool>(${setterArgName}_element); });\n`;
+    if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+      setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(transformed_vector));\n`;
+    } else {
+      setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(transformed_vector);\n`;
+    }
+  } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+    setter += `    static_assert(sizeof(${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.C)}) == sizeof(psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}));\n`;
+    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({ reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}), reinterpret_cast<const psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}*>(${setterArgName}) + length });\n`;
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    setter += `    std::vector<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> transformed_vector;\n`;
+    setter += `    transformed_vector.reserve(length);\n`;
+    if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+      if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return std::move(*raii_wrapper); });\n`;
+      } else {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { std::unique_ptr<std::remove_const_t<std::remove_reference_t<decltype(**${setterArgName})>>> raii_wrapper(${setterArgName}_element); return raii_wrapper ? decltype(transformed_vector)::value_type { std::move(*raii_wrapper) } : decltype(transformed_vector)::value_type {}; });\n`;
+      }
+      setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(transformed_vector));\n`;
+    } else {
+      if (util.isArrayRefType(propTypeRaw)) {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return *${setterArgName}_element; });\n`;
+      } else {
+        setter += `    std::transform(${setterArgName}, ${setterArgName} + length, std::back_inserter(transformed_vector), [](std::remove_const_t<std::remove_reference_t<decltype(*${setterArgName})>> ${setterArgName}_element) -> decltype(transformed_vector)::value_type { return ${setterArgName}_element ? *${setterArgName}_element : decltype(transformed_vector)::value_type {}; });\n`;
+      }
+      setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}(transformed_vector);\n`;
+    }
+  } else {
+    setter += `    ${setterRoot}${util.getPropertySetterName(propertyJson, util.CXX)}({ ${setterArgName}, ${setterArgName} + length });\n`;
+  }
+  return setter;
+}
+
 function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.C);
   const nameWithoutTSuffix = name.substring(0, name.length - 2);
@@ -131,35 +369,64 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
-      const getter = `${getterType} PSM_API ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`});\n`;
-      const getterFree = `void PSM_API ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName});\n`;
+      const isArray = util.isArrayOfAnyType(propertyJson.type);
+      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : '';
+      const getter = `${getterType} PSM_API ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`}${getterExt});\n`;
+      const arrayGetterFreeFuncHasOptionToDestroyContainedClasses = doesArrayGetterFreeFuncHaveOptionToDestroyContainedClasses(interfaces, propertyJson.type);
+      const isArrayOfAnyPtrType = util.isArrayPtrType(propertyJson.type) || util.isArrayPtrRefType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type);
+      const getterFreeExt = arrayGetterFreeFuncHasOptionToDestroyContainedClasses ? (isArrayOfAnyPtrType ? ', uint8_t destroy_contained_class_refs' : ', uint8_t destroy_contained_classes') : '';
+      const getterFree = `void PSM_API ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName}${getterFreeExt});\n`;
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         shouldAddIncludes = true;
         if (propStatic) {
+          let args = [];
+          if (isArray) {
+            args.push('out_length');
+          }
           publicFuncs += getter;
           funcAliases.push({
             name: `${nameWithoutTSuffix}_${getterName}`,
-            args: []
+            args: args
           });
-          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type)) {
+          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || doesArrayTypeNeedFree(interfaces, propertyJson.type)) {
+            args = [setterArgName];
+            if (arrayGetterFreeFuncHasOptionToDestroyContainedClasses) {
+              if (isArrayOfAnyPtrType) {
+                args.push('destroy_contained_class_refs');
+              } else {
+                args.push('destroy_contained_classes');
+              }
+            }
             publicFuncs += getterFree;
             funcAliases.push({
               name: `${nameWithoutTSuffix}_${getterName}_free`,
-              args: [setterArgName]
+              args: args
             });
           }
         } else {
+          let args = [mainArgName];
+          if (isArray) {
+            args.push('out_length');
+          }
           publicMethods += getter;
           funcAliases.push({
             name: `${nameWithoutTSuffix}_${getterName}`,
-            args: [mainArgName]
+            args: args
           });
-          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type)) {
+          if (propertyJson.type === 'string' || util.isClassType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || doesArrayTypeNeedFree(interfaces, propertyJson.type)) {
+            args = [setterArgName];
+            if (arrayGetterFreeFuncHasOptionToDestroyContainedClasses) {
+              if (isArrayOfAnyPtrType) {
+                args.push('destroy_contained_class_refs');
+              } else {
+                args.push('destroy_contained_classes');
+              }
+            }
             publicMethods += getterFree;
             funcAliases.push({
               name: `${nameWithoutTSuffix}_${getterName}_free`,
-              args: [setterArgName]
+              args: args
             });
           }
         }
@@ -171,10 +438,12 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
-      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type) || ((util.isArrayType(propertyJson.type) || util.isArrayMixType(propertyJson.type) || util.isArrayPtrType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type)) && typeof interfaces[propertyJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
         setterArgName += '_consumed';
       }
-      const setter = `void PSM_API ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName});\n`;
+      const isArray = util.isArrayOfAnyType(propertyJson.type);
+      const setterExt = isArray ? `, uint64_t length` : '';
+      const setter = `void PSM_API ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName}${setterExt});\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
         shouldAddIncludes = true;
@@ -201,6 +470,12 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
         includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
+      } else if (util.isArrayOfAnyType(propTypeRaw)) {
+        includesFirst.add('#include <stdint.h>');
+        const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+        if (typeof enums[underlyingArrayTypeRaw] !== 'undefined' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+          includesSecond.add(`#include "${underlyingArrayTypeRaw}.h"`);
+        }
       }
     }
   }
@@ -470,7 +745,12 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       const getterConstPfx = propertyJson.getterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
-      let getter = `${getterType} ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`})\n`;
+      const isArray = util.isArrayOfAnyType(propertyJson.type);
+      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : '';
+      let getter = `${getterType} ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`}${getterExt})\n`;
+      const arrayGetterFreeFuncHasOptionToDestroyContainedClasses = doesArrayGetterFreeFuncHaveOptionToDestroyContainedClasses(interfaces, propertyJson.type);
+      const isArrayOfAnyPtrType = util.isArrayPtrType(propertyJson.type) || util.isArrayPtrRefType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type);
+      const getterFreeExt = arrayGetterFreeFuncHasOptionToDestroyContainedClasses ? (isArrayOfAnyPtrType ? ', uint8_t destroy_contained_class_refs' : ', uint8_t destroy_contained_classes') : '';
       getter += `{\n`;
       if (propStatic) {
         if (propTypeRaw === 'boolean') {
@@ -495,10 +775,12 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return &getter_result;\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
           getter += `    const auto getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+          getter += `    return getter_result ? ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result) : nullptr;\n`;
         } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           getter += `    const auto& getter_result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return &getter_result;\n`;
+          getter += `    return getter_result ? &getter_result : nullptr;\n`;
+        } else if (isArray) {
+          getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
         } else {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
@@ -512,6 +794,11 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         } else if (util.isEnumType(propTypeRaw)) {
           getter += `        return static_cast<${getterType}>(0);\n`;
         } else if (util.isClassOfAnyType(propTypeRaw)) {
+          getter += `        return nullptr;\n`;
+        } else if (isArray) {
+          getter += `        if (out_length) {\n`;
+          getter += `            *out_length = 0;\n`;
+          getter += `        }\n`;
           getter += `        return nullptr;\n`;
         } else {
           getter += `        return ${util.getTypeImplicitDefaultValue(propTypeRaw)};\n`;
@@ -539,18 +826,20 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return &getter_result;\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
           getter += `    const auto getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result);\n`;
+          getter += `    return getter_result ? ${getterType.substring(0, getterType.length - 3)}_clone(&getter_result) : nullptr;\n`;
         } else if (util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           getter += `    const auto& getter_result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
-          getter += `    return &getter_result;\n`;
+          getter += `    return getter_result ? &getter_result : nullptr;\n`;
+        } else if (isArray) {
+          getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
         } else {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
       }
       getter += `}\n`;
-      if (propTypeRaw === 'string' || util.isClassType(propTypeRaw) || util.isClassPtrType(propTypeRaw)) {
+      if (propTypeRaw === 'string' || util.isClassType(propTypeRaw) || util.isClassPtrType(propTypeRaw) || doesArrayTypeNeedFree(interfaces, propTypeRaw)) {
         getter += `\n`;
-        getter += `void ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName})\n`;
+        getter += `void ${nameWithoutTSuffix}_${getterName}_free(${getterType} ${setterArgName}${getterFreeExt})\n`;
         getter += `{\n`;
         if (propTypeRaw === 'string') {
           getter += `    delete[] const_cast<char*>(${setterArgName});\n`;
@@ -558,6 +847,21 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    ${getterType.substring(0, getterType.length - 3)}_destroy(${setterArgName});\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
           getter += `    ${getterType.substring(0, getterType.length - 3)}_delete(${setterArgName});\n`;
+        } else if (isArray) {
+          if (arrayGetterFreeFuncHasOptionToDestroyContainedClasses) {
+            getter += `    if (!${setterArgName}) {\n`;
+            getter += `        return;\n`;
+            getter += `    }\n`;
+            getter += `    if (${isArrayOfAnyPtrType ? 'destroy_contained_class_refs' : 'destroy_contained_classes'}) {\n`;
+            getter += `        const std::size_t length = reinterpret_cast<std::size_t>(*(${setterArgName} - 1));\n`;
+            getter += `        for (std::size_t i = 0; i < length; ++i) {\n`;
+            getter += `            delete ${setterArgName}[i];\n`;
+            getter += `        }\n`;
+            getter += `    }\n`;
+            getter += `    delete[] (${setterArgName} - 1);\n`;
+          } else {
+            getter += `    delete[] ${setterArgName};\n`;
+          }
         } else {
           getter += '    #error "Not implemented."\n';
         }
@@ -580,6 +884,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         if (propTypeRaw === 'string') {
           includesFirst.add('#include <cstring>');
           includesFirst.add('#include <new>');
+        } else if (isArray) {
+          arrayGetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond);
         }
       }
     }
@@ -590,10 +896,12 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       const setterConstPfx = propertyJson.setterConst ? 'const ' : '';
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       let setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
-      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+      if (util.isClassType(propertyJson.type) || util.isClassMixType(propertyJson.type) || util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type) || ((util.isArrayType(propertyJson.type) || util.isArrayMixType(propertyJson.type) || util.isArrayPtrType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type)) && typeof interfaces[propertyJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
         setterArgName += '_consumed';
       }
-      let setter = `void ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName})\n`;
+      const isArray = util.isArrayOfAnyType(propertyJson.type);
+      const setterExt = isArray ? `, uint64_t length` : '';
+      let setter = `void ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName}${setterExt})\n`;
       setter += `{\n`;
       if (propStatic) {
         if (propTypeRaw === 'boolean') {
@@ -623,25 +931,15 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrRefType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? ${setterType.substring(6/*!!!*/, setterType.length - 1)} { *${setterArgName} } : ${setterType.substring(6/*!!!*/, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrMixType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
+        } else if (isArray) {
+          setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
         } else {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -677,25 +975,15 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_destroy)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_destroy);\n`;
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
         } else if (util.isClassPtrType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrRefType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(*${setterArgName});\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName} ? ${setterType.substring(6/*!!!*/, setterType.length - 1)} { *${setterArgName} } : ${setterType.substring(6/*!!!*/, setterType.length - 1)} {});\n`;
         } else if (util.isClassPtrMixType(propTypeRaw)) {
-          setter += `    if (!${setterArgName}) {\n`;
-          setter += `        assert(!"${nameWithoutTSuffix}_${setterName}(): ${setterArgName} is null");\n`;
-          setter += `        return;\n`;
-          setter += `    }\n`;
           setter += `    const std::unique_ptr<${setterType.substring(0, setterType.length - 1)}, decltype(&${setterType.substring(0, setterType.length - 3)}_delete)> raii_wrapper(${setterArgName}, &${setterType.substring(0, setterType.length - 3)}_delete);\n`;
-          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(*raii_wrapper));\n`;
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
+        } else if (isArray) {
+          setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
         } else {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -721,6 +1009,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         if (util.isClassType(propTypeRaw) || util.isClassMixType(propTypeRaw) || util.isClassPtrType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           includesFirst.add('#include <memory>');
           includesFirst.add('#include <utility>');
+        } else if (isArray) {
+          arraySetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond);
         }
       }
     }

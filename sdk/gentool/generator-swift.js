@@ -14,12 +14,76 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       prop += `    public${util.getPropertyStatic(propertyJson) ? ' static' : ''} var ${util.getPropertyName(propertyJson, util.Swift)}: ${util.getPropertyType(enums, interfaces, propertyJson, util.Swift)} {\n`;
       if (hasPublicGetter) {
         prop += `        get {\n`;
-        prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}()\n`;
+        if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRaw = propertyJson.type;
+          const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+          if (underlyingArrayTypeRaw === 'float') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.floatValue }\n`;
+          } else if (underlyingArrayTypeRaw === 'double') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.doubleValue }\n`;
+          } else if (underlyingArrayTypeRaw === 'int8') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.int8Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'int16') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.int16Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'int32') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.int32Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'int64') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.int64Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'uint8') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.uint8Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'uint16') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.uint16Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'uint32') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.uint32Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'uint64') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.uint64Value }\n`;
+          } else if (underlyingArrayTypeRaw === 'boolean') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0.boolValue }\n`;
+          } else if (underlyingArrayTypeRaw === 'string') {
+            prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}()\n`;
+          } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+            if (enums[underlyingArrayTypeRaw].type === 'flag') {
+              prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { ${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.Swift)}(rawValue: $0.uintValue)! }\n`;
+            } else {
+              prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { ${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.Swift)}(rawValue: $0.intValue)! }\n`;
+            }
+          } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+            if (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+              prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}()\n`;
+            } else {
+              prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}().map { $0 as? ${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.Swift)} }\n`;
+            }
+          } else {
+            throw new Error(`Unhandled type: ${propTypeRaw}`);
+          }
+        } else {
+          prop += `            return __${util.getPropertyGetterName(propertyJson, util.ObjC)}()\n`;
+        }
         prop += `        }\n`;
       }
       if (hasPublicSetter) {
         prop += `        set {\n`;
-        prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue)\n`;
+        if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRaw = propertyJson.type;
+          const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+          if (underlyingArrayTypeRaw === 'float' || underlyingArrayTypeRaw === 'double' || util.isIntType(underlyingArrayTypeRaw) || underlyingArrayTypeRaw === 'boolean') {
+            prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue.map { NSNumber(value: $0) })\n`;
+          } else if (underlyingArrayTypeRaw === 'string') {
+            prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue)\n`;
+          } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+            prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue.map { NSNumber(value: $0.rawValue) })\n`;
+          } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+            if (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+              prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue)\n`;
+            } else {
+              prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue.map { $0 ?? NSNull() })\n`;
+            }
+          } else {
+            throw new Error(`Unhandled type: ${propTypeRaw}`);
+          }
+        } else {
+          prop += `            __${util.getPropertySetterName(propertyJson, util.ObjC)}(newValue)\n`;
+        }
         prop += `        }\n`;
       }
       prop += `    }\n`;

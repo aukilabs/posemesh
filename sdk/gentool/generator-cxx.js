@@ -280,6 +280,19 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
           includesFirst.add('#include <memory>');
         }
         includesSecond.add(`#include "${propTypeRaw.split(':').slice(1).join(':')}.hpp"`);
+      } else if (util.isArrayOfAnyType(propTypeRaw)) {
+        includesFirst.add('#include <vector>');
+        if (util.isArrayPtrType(propTypeRaw) || util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+          includesFirst.add('#include <memory>');
+        }
+        const propTypeRawInner = propTypeRaw.split(':').slice(1).join(':');
+        if (propTypeRawInner.startsWith('int') || propTypeRawInner.startsWith('uint')) {
+          includesFirst.add('#include <cstdint>');
+        } else if (propTypeRawInner === 'string') {
+          includesFirst.add('#include <string>');
+        } else if (typeof enums[propTypeRawInner] !== 'undefined' || typeof interfaces[propTypeRawInner] !== 'undefined') {
+          includesSecond.add(`#include "${propTypeRawInner}.hpp"`);
+        }
       }
     }
   }
@@ -468,14 +481,36 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   return code;
 }
 
+function regExpMatchDeps(text, includesFirst, includesSecond, namelessNamespaceFuncNames) {
+  if (new RegExp('\\bstd\\s*::\\s*move\\b').test(text)) {
+    includesFirst.add('#include <utility>');
+  }
+  if (new RegExp('\\bdeepCopyArrayPtr\\b').test(text)) {
+    includesFirst.add('#include <algorithm>');
+    includesFirst.add('#include <iterator>');
+    namelessNamespaceFuncNames.add('deepCopyArrayPtr');
+  }
+  if (new RegExp('\\bequalsArrayPtr\\b').test(text)) {
+    includesFirst.add('#include <algorithm>');
+    namelessNamespaceFuncNames.add('equalsArrayPtr');
+  }
+  if (new RegExp('\\bhashArray\\b').test(text)) {
+    namelessNamespaceFuncNames.add('hashArray');
+  }
+  if (new RegExp('\\bhashArrayPtr\\b').test(text)) {
+    namelessNamespaceFuncNames.add('hashArrayPtr');
+  }
+}
+
 function generateSource(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.CXX);
   const classStatic = util.getClassStatic(interfaceJson);
 
   let includesFirst = new Set([`#include <Posemesh/${interfaceName}.hpp>`]), includesSecond = new Set([]);
+  let namelessNamespaceFuncNames = new Set([]);
 
   let code = `/* This code is automatically generated from ${interfaceName}.json interface. Do not modify it manually as it will be overwritten! */\n`;
-  code += '%INCLUDES%\n';
+  code += '%INCLUDES_ETC%\n';
   code += 'namespace psm {\n';
   code += '\n';
 
@@ -517,9 +552,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
                   membInitExt += `\n    : ${propName}(${initPropValue})`;
                 }
               }
-              if (new RegExp('\\bstd\\s*::\\s*move\\b').test(initPropValue)) {
-                includesFirst.add('#include <utility>');
-              }
+              regExpMatchDeps(initPropValue, includesFirst, includesSecond, namelessNamespaceFuncNames);
             }
           }
           let bodyExt = ' { }';
@@ -616,9 +649,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
                 }
               }
               initializeInBodyCodeAsOp.push(`${propName} = ${initPropValueEval};`);
-              if (new RegExp('\\bstd\\s*::\\s*move\\b').test(initPropValueEval)) {
-                includesFirst.add('#include <utility>');
-              }
+              regExpMatchDeps(initPropValueEval, includesFirst, includesSecond, namelessNamespaceFuncNames);
             } else {
               initializeInBodyCodeAsOp.push(`${propName} = {};`);
             }
@@ -769,9 +800,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
                 }
               }
               initializeInBodyCodeAsOp.push(`${propName} = ${initPropValueEval};`);
-              if (new RegExp('\\bstd\\s*::\\s*move\\b').test(initPropValueEval)) {
-                includesFirst.add('#include <utility>');
-              }
+              regExpMatchDeps(initPropValueEval, includesFirst, includesSecond, namelessNamespaceFuncNames);
             } else {
               initializeInBodyCodeAsOp.push(`${propName} = {};`);
             }
@@ -960,6 +989,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             line = line.replaceAll(comparatorPropertyPlaceholder, `${propName}`);
           }
 
+          regExpMatchDeps(line, includesFirst, includesSecond, namelessNamespaceFuncNames);
+
           eqOp += `    if (!(${line})) {\n`;
           eqOp += `        return false;\n`;
           eqOp += `    }\n`;
@@ -1068,6 +1099,12 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         includesFirst.add('#include <utility>');
         setter += `    ${propName} = std::move(${setterArgName});\n`;
       } else if (util.isClassPtrType(propertyJson.type) || util.isClassPtrMixType(propertyJson.type)) {
+        includesFirst.add('#include <utility>');
+        setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else if (util.isArrayType(propertyJson.type) || util.isArrayMixType(propertyJson.type)) {
+        includesFirst.add('#include <utility>');
+        setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else if (util.isArrayPtrType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type)) {
         includesFirst.add('#include <utility>');
         setter += `    ${propName} = std::move(${setterArgName});\n`;
       } else {
@@ -1256,6 +1293,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           line = line.replaceAll(hasherPlaceholder, `${argName}.${propName}`);
         }
 
+        regExpMatchDeps(line, includesFirst, includesSecond, namelessNamespaceFuncNames);
         code += `    result ^= (${line}) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
       }
       code += `    return result;\n`;
@@ -1267,20 +1305,81 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
 
   includesFirst = Array.from(includesFirst).sort();
   includesSecond = Array.from(includesSecond).sort();
-  let includes = '';
+  namelessNamespaceFuncNames = Array.from(namelessNamespaceFuncNames).sort();
+  let includesEtc = '';
   if (includesFirst.length > 0) {
-    includes += '\n';
+    includesEtc += '\n';
     for (const include of includesFirst) {
-      includes += include + '\n';
+      includesEtc += include + '\n';
     }
   }
   if (includesSecond.length > 0) {
-    includes += '\n';
+    includesEtc += '\n';
     for (const include of includesSecond) {
-      includes += include + '\n';
+      includesEtc += include + '\n';
     }
   }
-  code = code.replaceAll('%INCLUDES%', includes);
+  if (namelessNamespaceFuncNames.length > 0) {
+    if (includesEtc.length > 0) {
+      includesEtc += '\n';
+    }
+    includesEtc += `namespace {\n`;
+    let firstFuncName = true;
+    for (const funcName of namelessNamespaceFuncNames) {
+      if (firstFuncName) {
+        firstFuncName = false;
+      } else {
+        includesEtc += '\n';
+      }
+      switch (funcName) {
+        case 'deepCopyArrayPtr':
+          includesEtc += `template <typename T>\n`;
+          includesEtc += `std::vector<std::shared_ptr<T>> deepCopyArrayPtr(const std::vector<std::shared_ptr<T>>& array) noexcept\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    std::vector<std::shared_ptr<T>> copiedArray;\n`;
+          includesEtc += `    copiedArray.reserve(array.size());\n`;
+          includesEtc += `    std::transform(array.cbegin(), array.cend(), std::back_inserter(copiedArray), [](const std::shared_ptr<T>& element) -> std::shared_ptr<T> { return element ? std::make_shared<T>(*element) : std::make_shared<T>(); });\n`;
+          includesEtc += `    return copiedArray;\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'equalsArrayPtr':
+          includesEtc += `template <typename T>\n`;
+          includesEtc += `bool equalsArrayPtr(const std::vector<std::shared_ptr<T>>& array, const std::vector<std::shared_ptr<T>>& otherArray) noexcept\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    return array.size() == otherArray.size() && std::equal(array.cbegin(), array.cend(), otherArray.cbegin(), [](const std::shared_ptr<T>& element, const std::shared_ptr<T>& otherElement) -> bool { return static_cast<bool>(element) == static_cast<bool>(otherElement) && (!element || *element == *otherElement); });\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'hashArray':
+          includesEtc += `template <typename T>\n`;
+          includesEtc += `std::size_t hashArray(const std::vector<T>& array) noexcept\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    std::size_t result = 0;\n`;
+          includesEtc += `    result ^= (std::hash<std::size_t> {}(array.size())) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
+          includesEtc += `    for (const T& element : array) {\n`;
+          includesEtc += `        result ^= (std::hash<T> {}(element)) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
+          includesEtc += `    }\n`;
+          includesEtc += `    return result;\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'hashArrayPtr':
+          includesEtc += `template <typename T>\n`;
+          includesEtc += `std::size_t hashArrayPtr(const std::vector<std::shared_ptr<T>>& array) noexcept\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    std::size_t result = 0;\n`;
+          includesEtc += `    result ^= (std::hash<std::size_t> {}(array.size())) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
+          includesEtc += `    for (const std::shared_ptr<T>& element : array) {\n`;
+          includesEtc += `        result ^= (element ? std::hash<T> {}(*element) : 0) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
+          includesEtc += `    }\n`;
+          includesEtc += `    return result;\n`;
+          includesEtc += `}\n`;
+          break;
+        default:
+          throw new Error(`Unknown nameless namespace function: ${funcName}`);
+      }
+    }
+    includesEtc += `}\n`;
+  }
+  code = code.replaceAll('%INCLUDES_ETC%', includesEtc);
 
   return code;
 }

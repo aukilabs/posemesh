@@ -478,6 +478,8 @@ function getClassPtrType(interfaces, language, type, classPfx = 'CLASS_PTR:') {
     return `std::shared_ptr<${type}>`;
   } else if (language === Language.C) {
     return `${type.substring(0, type.length - '_t*'.length)}_ref_t*`;
+  } else if (language === Language.Swift) {
+    return `${type}?`;
   }
   return type;
 }
@@ -536,6 +538,285 @@ function getClassPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
   return type;
 }
 
+function wrapInArrayType(language, type, isBoolean = false, isEnum = false, isClass = false, typeFor = TypeFor.Any) {
+  switch (language) {
+    case Language.CXX:
+      return `std::vector<${type}>`;
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+        case TypeFor.PropGetter:
+          if (isClass) {
+            return `${type}**`;
+          }
+          return `${type}*`;
+        case TypeFor.PropSetter:
+          if (type === 'const char*') {
+            return `${type} const*`;
+          } else if (isClass) {
+            return `${type}* const*`;
+          }
+          return `const ${type}*`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+      if (type === 'float' || type === 'double' || type.startsWith('int') || type.startsWith('uint') || type === 'BOOL' || isEnum) {
+        return `NSArray<NSNumber*>*`;
+      } else if (isClass) {
+        return `NSArray<${type}*>*`;
+      }
+      return `NSArray<${type}>*`;
+    case Language.Swift:
+      return `[${type}]`;
+    case Language.JS:
+      return `${type}[]`;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function wrapInArrayRefType(language, type, isBoolean = false, isEnum = false, isClass = false, typeFor = TypeFor.Any) {
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          break;
+        case TypeFor.PropGetter:
+        case TypeFor.PropSetter:
+          return `const std::vector<${type}>&`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+          break;
+        case TypeFor.PropGetter:
+          if (isBoolean || type === 'const char*') {
+            break;
+          } else if (isClass) {
+            return `const ${type}**`;
+          }
+          return `const ${type}*`;
+        case TypeFor.PropSetter:
+          if (isClass) {
+            return `const ${type}* const*`;
+          }
+          break;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+    case Language.Swift:
+    case Language.JS:
+      break;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+  return wrapInArrayType(language, type, isBoolean, isEnum, isClass, typeFor);
+}
+
+function wrapInArrayMixType(language, type, isBoolean = false, isEnum = false, isClass = false, typeFor = TypeFor.Any) {
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          break;
+        case TypeFor.PropGetter:
+          return `const std::vector<${type}>&`;
+        case TypeFor.PropSetter:
+          break;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+          break;
+        case TypeFor.PropGetter:
+          if (isBoolean || type === 'const char*') {
+            break;
+          } else if (isClass) {
+            return `const ${type}**`;
+          }
+          return `const ${type}*`;
+        case TypeFor.PropSetter:
+          break;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+    case Language.Swift:
+    case Language.JS:
+      break;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+  return wrapInArrayType(language, type, isBoolean, isEnum, isClass, typeFor);
+}
+
+function getArrayType(enums, interfaces, language, type, typeFor = TypeFor.Any, wrapInArrayTypeFunc = wrapInArrayType, arrayPfx = 'ARRAY:') {
+  if (!type.startsWith(arrayPfx)) {
+    throw new Error(`Missing '${arrayPfx}' array prefix.`);
+  }
+  const name = type.substring(arrayPfx.length);
+  if (name === 'float') {
+    return wrapInArrayTypeFunc(language, getFloatType(language), false, false, false, typeFor);
+  } else if (name === 'double') {
+    return wrapInArrayTypeFunc(language, getDoubleType(language), false, false, false, typeFor);
+  } else if (name.startsWith('int')) {
+    return wrapInArrayTypeFunc(language, getIntType(true, name.substring(3), language), false, false, false, typeFor);
+  } else if (name.startsWith('uint')) {
+    return wrapInArrayTypeFunc(language, getIntType(false, name.substring(4), language), false, false, false, typeFor);
+  } else if (name === 'boolean') {
+    return wrapInArrayTypeFunc(language, getBooleanType(language), true, false, false, typeFor);
+  } else if (name === 'string') {
+    return wrapInArrayTypeFunc(language, getStringType(language), false, false, false, typeFor);
+  }
+  const enumJson = enums[name];
+  if (typeof enumJson !== 'undefined') {
+    return wrapInArrayTypeFunc(language, getLangEnumName(enumJson, language), false, true, false, typeFor);
+  }
+  const interfaceJson = interfaces[name];
+  if (typeof interfaceJson !== 'undefined') {
+    return wrapInArrayTypeFunc(language, getLangClassName(interfaceJson, language), false, false, true, typeFor);
+  }
+  throw new Error(`Unknown enum or class name: ${name}`);
+}
+
+function getArrayRefType(enums, interfaces, language, type, typeFor = TypeFor.Any) {
+  return getArrayType(enums, interfaces, language, type, typeFor, wrapInArrayRefType, 'ARRAY_REF:');
+}
+
+function getArrayMixType(enums, interfaces, language, type, typeFor = TypeFor.Any) {
+  return getArrayType(enums, interfaces, language, type, typeFor, wrapInArrayMixType, 'ARRAY_MIX:');
+}
+
+function getArrayPtrType(interfaces, language, type, typeFor = TypeFor.Any) {
+  const arrayPtrPfx = 'ARRAY_PTR:';
+  if (!type.startsWith(arrayPtrPfx)) {
+    throw new Error(`Missing '${arrayPtrPfx}' array prefix.`);
+  }
+  const name = type.substring(arrayPtrPfx.length);
+  const interfaceJson = interfaces[name];
+  if (typeof interfaceJson === 'undefined') {
+    throw new Error(`Unknown class name: ${name}`);
+  }
+  type = getLangClassName(interfaceJson, language);
+  switch (language) {
+    case Language.CXX:
+      return `std::vector<std::shared_ptr<${type}>>`;
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+        case TypeFor.PropGetter:
+          return `${type.substring(0, type.length - 2)}_ref_t**`;
+        case TypeFor.PropSetter:
+          return `${type.substring(0, type.length - 2)}_ref_t* const*`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+      return `NSArray<NSObject*>*`;
+    case Language.Swift:
+      return `[${type}?]`;
+    case Language.JS:
+      return `${type}[]`;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getArrayPtrRefType(interfaces, language, type, typeFor = TypeFor.Any) {
+  const arrayPtrRefPfx = 'ARRAY_PTR_REF:';
+  if (!type.startsWith(arrayPtrRefPfx)) {
+    throw new Error(`Missing '${arrayPtrRefPfx}' array prefix.`);
+  }
+  const name = type.substring(arrayPtrRefPfx.length);
+  const interfaceJson = interfaces[name];
+  if (typeof interfaceJson === 'undefined') {
+    throw new Error(`Unknown class name: ${name}`);
+  }
+  type = getLangClassName(interfaceJson, language);
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return `std::vector<std::shared_ptr<${type}>>`;
+        case TypeFor.PropGetter:
+        case TypeFor.PropSetter:
+          return `const std::vector<std::shared_ptr<${type}>>&`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return `${type.substring(0, type.length - 2)}_ref_t**`;
+        case TypeFor.PropGetter:
+          return `const ${type.substring(0, type.length - 2)}_ref_t**`;
+        case TypeFor.PropSetter:
+          return `const ${type.substring(0, type.length - 2)}_ref_t* const*`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+      return `NSArray<NSObject*>*`;
+    case Language.Swift:
+      return `[${type}?]`;
+    case Language.JS:
+      return `${type}[]`;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getArrayPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
+  const arrayPtrMixPfx = 'ARRAY_PTR_MIX:';
+  if (!type.startsWith(arrayPtrMixPfx)) {
+    throw new Error(`Missing '${arrayPtrMixPfx}' array prefix.`);
+  }
+  const name = type.substring(arrayPtrMixPfx.length);
+  const interfaceJson = interfaces[name];
+  if (typeof interfaceJson === 'undefined') {
+    throw new Error(`Unknown class name: ${name}`);
+  }
+  type = getLangClassName(interfaceJson, language);
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return `std::vector<std::shared_ptr<${type}>>`;
+        case TypeFor.PropGetter:
+          return `const std::vector<std::shared_ptr<${type}>>&`;
+        case TypeFor.PropSetter:
+          return `std::vector<std::shared_ptr<${type}>>`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return `${type.substring(0, type.length - 2)}_ref_t**`;
+        case TypeFor.PropGetter:
+          return `const ${type.substring(0, type.length - 2)}_ref_t**`;
+        case TypeFor.PropSetter:
+          return `${type.substring(0, type.length - 2)}_ref_t* const*`;
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.ObjC:
+      return `NSArray<NSObject*>*`;
+    case Language.Swift:
+      return `[${type}?]`;
+    case Language.JS:
+      return `${type}[]`;
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
 function getPropertyType(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -570,6 +851,24 @@ function getPropertyType(enums, interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
     return getClassPtrMixType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY:')) {
+    return getArrayType(enums, interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY_REF:')) {
+    return getArrayRefType(enums, interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY_MIX:')) {
+    return getArrayMixType(enums, interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR:')) {
+    return getArrayPtrType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_REF:')) {
+    return getArrayPtrRefType(interfaces, language, propertyJson[key]);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_MIX:')) {
+    return getArrayPtrMixType(interfaces, language, propertyJson[key]);
   }
   switch (propertyJson[key]) {
     case 'float':
@@ -624,6 +923,24 @@ function getPropertyTypeForGetter(enums, interfaces, propertyJson, language) {
   if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
     return getClassPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
   }
+  if (propertyJson[key].startsWith('ARRAY:')) {
+    return getArrayType(enums, interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_REF:')) {
+    return getArrayRefType(enums, interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_MIX:')) {
+    return getArrayMixType(enums, interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR:')) {
+    return getArrayPtrType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_REF:')) {
+    return getArrayPtrRefType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_MIX:')) {
+    return getArrayPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropGetter);
+  }
   switch (propertyJson[key]) {
     case 'float':
       return getFloatType(language);
@@ -676,6 +993,24 @@ function getPropertyTypeForSetter(enums, interfaces, propertyJson, language) {
   }
   if (propertyJson[key].startsWith('CLASS_PTR_MIX:')) {
     return getClassPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY:')) {
+    return getArrayType(enums, interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_REF:')) {
+    return getArrayRefType(enums, interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_MIX:')) {
+    return getArrayMixType(enums, interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR:')) {
+    return getArrayPtrType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_REF:')) {
+    return getArrayPtrRefType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
+  }
+  if (propertyJson[key].startsWith('ARRAY_PTR_MIX:')) {
+    return getArrayPtrMixType(interfaces, language, propertyJson[key], TypeFor.PropSetter);
   }
   switch (propertyJson[key]) {
     case 'float':
@@ -768,6 +1103,35 @@ function isClassOfAnyType(type) {
     isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type);
 }
 
+function isArrayType(type) {
+  return type.startsWith('ARRAY:');
+}
+
+function isArrayRefType(type) {
+  return type.startsWith('ARRAY_REF:');
+}
+
+function isArrayMixType(type) {
+  return type.startsWith('ARRAY_MIX:');
+}
+
+function isArrayPtrType(type) {
+  return type.startsWith('ARRAY_PTR:');
+}
+
+function isArrayPtrRefType(type) {
+  return type.startsWith('ARRAY_PTR_REF:');
+}
+
+function isArrayPtrMixType(type) {
+  return type.startsWith('ARRAY_PTR_MIX:');
+}
+
+function isArrayOfAnyType(type) {
+  return isArrayType(type) || isArrayRefType(type) || isArrayMixType(type) ||
+    isArrayPtrType(type) || isArrayPtrRefType(type) || isArrayPtrMixType(type);
+}
+
 function isPrimitiveType(type) {
   if (isIntType(type)) {
     return true;
@@ -776,6 +1140,9 @@ function isPrimitiveType(type) {
     return true;
   }
   if (isClassOfAnyType(type)) {
+    return false;
+  }
+  if (isArrayOfAnyType(type)) {
     return false;
   }
   switch (type) {
@@ -800,6 +1167,9 @@ function getTypeImplicitDefaultValue(type) {
     return '';
   }
   if (isClassOfAnyType(type)) {
+    return '';
+  }
+  if (isArrayOfAnyType(type)) {
     return '';
   }
   switch (type) {
@@ -831,6 +1201,12 @@ function getTypeMembVarCopyOp(type, membVar) {
   if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
     return `std::make_shared<decltype(${membVar})::element_type>(*${membVar})`;
   }
+  if (isArrayType(type) || isArrayRefType(type) || isArrayMixType(type)) {
+    return membVar;
+  }
+  if (isArrayPtrType(type) || isArrayPtrRefType(type) || isArrayPtrMixType(type)) {
+    return `deepCopyArrayPtr<decltype(${membVar})::value_type::element_type>(${membVar})`;
+  }
   switch (type) {
     case 'float':
     case 'double':
@@ -852,6 +1228,9 @@ function getTypeMembVarMoveOp(type, membVar) {
     return membVar;
   }
   if (isClassOfAnyType(type)) {
+    return `std::move(${membVar})`;
+  }
+  if (isArrayOfAnyType(type)) {
     return `std::move(${membVar})`;
   }
   switch (type) {
@@ -881,6 +1260,12 @@ function getTypePropEqOp(type, clsParam, prpParam) {
   if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
     return `static_cast<bool>(${prpParam}) == static_cast<bool>(${clsParam}.${prpParam}) && (!${prpParam} || *${prpParam} == *(${clsParam}.${prpParam}))`;
   }
+  if (isArrayType(type) || isArrayRefType(type) || isArrayMixType(type)) {
+    return `${prpParam} == ${clsParam}.${prpParam}`;
+  }
+  if (isArrayPtrType(type) || isArrayPtrRefType(type) || isArrayPtrMixType(type)) {
+    return `equalsArrayPtr<decltype(${prpParam})::value_type::element_type>(${prpParam}, ${clsParam}.${prpParam})`;
+  }
   switch (type) {
     case 'float':
     case 'double':
@@ -906,6 +1291,12 @@ function getTypePropHasher(type, param) {
   }
   if (isClassPtrType(type) || isClassPtrRefType(type) || isClassPtrMixType(type)) {
     return `${param} ? hash<decltype(${param})::element_type> {}(*${param}) : 0`;
+  }
+  if (isArrayType(type) || isArrayRefType(type) || isArrayMixType(type)) {
+    return `hashArray<decltype(${param})::value_type>(${param})`;
+  }
+  if (isArrayPtrType(type) || isArrayPtrRefType(type) || isArrayPtrMixType(type)) {
+    return `hashArrayPtr<decltype(${param})::value_type::element_type>(${param})`;
   }
   switch (type) {
     case 'float':
@@ -1341,6 +1732,10 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
       propertyJson.getterNoexcept = true;
     } else if (isClassPtrRefType(propertyJson.type) || isClassPtrMixType(propertyJson.type)) {
       propertyJson.getterNoexcept = true;
+    } else if (isArrayRefType(propertyJson.type) || isArrayMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
+    } else if (isArrayPtrRefType(propertyJson.type) || isArrayPtrMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
     } else {
       propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
     }
@@ -1433,6 +1828,10 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     } else if (isClassType(propertyJson.type) || isClassMixType(propertyJson.type)) {
       propertyJson.setterNoexcept = true;
     } else if (isClassPtrType(propertyJson.type) || isClassPtrMixType(propertyJson.type)) {
+      propertyJson.setterNoexcept = true;
+    } else if (isArrayType(propertyJson.type) || isArrayMixType(propertyJson.type)) {
+      propertyJson.setterNoexcept = true;
+    } else if (isArrayPtrType(propertyJson.type) || isArrayPtrMixType(propertyJson.type)) {
       propertyJson.setterNoexcept = true;
     } else {
       propertyJson.setterNoexcept = isPrimitiveType(propertyJson.type);
@@ -1798,6 +2197,8 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson, fi
         if (initializedPropertyJson.value.length > 0 && initializedPropertyJson.value !== getTypeMembVarCopyOp(foundPropertyJson.type, initializedPropertyJson.valuePlaceholder)) {
           result.canBeDefault = false;
         } else if (isClassPtrType(foundPropertyJson.type) || isClassPtrRefType(foundPropertyJson.type) || isClassPtrMixType(foundPropertyJson.type)) {
+          result.canBeDefault = false;
+        } else if (isArrayPtrType(foundPropertyJson.type) || isArrayPtrRefType(foundPropertyJson.type) || isArrayPtrMixType(foundPropertyJson.type)) {
           result.canBeDefault = false;
         }
         break;
@@ -2507,6 +2908,15 @@ module.exports = {
   getClassPtrType,
   getClassPtrRefType,
   getClassPtrMixType,
+  wrapInArrayType,
+  wrapInArrayRefType,
+  wrapInArrayMixType,
+  getArrayType,
+  getArrayRefType,
+  getArrayMixType,
+  getArrayPtrType,
+  getArrayPtrRefType,
+  getArrayPtrMixType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
@@ -2528,6 +2938,13 @@ module.exports = {
   isClassPtrRefType,
   isClassPtrMixType,
   isClassOfAnyType,
+  isArrayType,
+  isArrayRefType,
+  isArrayMixType,
+  isArrayPtrType,
+  isArrayPtrRefType,
+  isArrayPtrMixType,
+  isArrayOfAnyType,
   isPrimitiveType,
   getTypeImplicitDefaultValue,
   getTypeMembVarCopyOp,
