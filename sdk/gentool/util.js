@@ -718,7 +718,7 @@ function getArrayPtrType(interfaces, language, type, typeFor = TypeFor.Any) {
           throw new Error(`Unknown TypeFor value: ${typeFor}`);
       }
     case Language.ObjC:
-      return `NSArray<${type}*>*`;
+      return `NSArray<NSObject*>*`;
     case Language.Swift:
       return `[${type}?]`;
     case Language.JS:
@@ -762,7 +762,7 @@ function getArrayPtrRefType(interfaces, language, type, typeFor = TypeFor.Any) {
           throw new Error(`Unknown TypeFor value: ${typeFor}`);
       }
     case Language.ObjC:
-      return `NSArray<${type}*>*`;
+      return `NSArray<NSObject*>*`;
     case Language.Swift:
       return `[${type}?]`;
     case Language.JS:
@@ -807,7 +807,7 @@ function getArrayPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
           throw new Error(`Unknown TypeFor value: ${typeFor}`);
       }
     case Language.ObjC:
-      return `NSArray<${type}*>*`;
+      return `NSArray<NSObject*>*`;
     case Language.Swift:
       return `[${type}?]`;
     case Language.JS:

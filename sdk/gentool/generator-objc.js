@@ -1,6 +1,180 @@
 const path = require('path');
 const util = require('./util');
 
+function arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic) {
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  let iteratedType = 'auto';
+  if (underlyingArrayTypeRaw === 'string') {
+    iteratedType = 'const std::string&';
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && util.isArrayType(propTypeRaw)) {
+    iteratedType = `psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}`;
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && (util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw))) {
+    iteratedType = `const psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}&`;
+  } else if (util.isArrayPtrType(propTypeRaw) || util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+    iteratedType = `std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>`;
+  }
+  let getter = '';
+  getter += `    NSMutable${getterType.substring(2/*!!!*/, getterType.length)} getterResult = [[NSMutableArray alloc] init];\n`;
+  getter += `    for (${iteratedType} arrayElement : ${propStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getPropertyGetterName(propertyJson, util.CXX)}()) {\n`
+  if (underlyingArrayTypeRaw === 'float') {
+    getter += `        [getterResult addObject:[NSNumber numberWithFloat:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'double') {
+    getter += `        [getterResult addObject:[NSNumber numberWithDouble:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'int8') {
+    getter += `        [getterResult addObject:[NSNumber numberWithChar:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'int16') {
+    getter += `        [getterResult addObject:[NSNumber numberWithShort:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'int32') {
+    getter += `        [getterResult addObject:[NSNumber numberWithInt:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'int64') {
+    getter += `        [getterResult addObject:[NSNumber numberWithLongLong:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'uint8') {
+    getter += `        [getterResult addObject:[NSNumber numberWithUnsignedChar:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'uint16') {
+    getter += `        [getterResult addObject:[NSNumber numberWithUnsignedShort:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'uint32') {
+    getter += `        [getterResult addObject:[NSNumber numberWithUnsignedInt:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'uint64') {
+    getter += `        [getterResult addObject:[NSNumber numberWithUnsignedLongLong:arrayElement]];\n`;
+  } else if (underlyingArrayTypeRaw === 'boolean') {
+    getter += `        [getterResult addObject:[NSNumber numberWithBool:static_cast<BOOL>(arrayElement)]];\n`;
+  } else if (underlyingArrayTypeRaw === 'string') {
+    getter += `        [getterResult addObject:[NSString stringWithUTF8String:arrayElement.c_str()]];\n`;
+  } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+    if (enums[underlyingArrayTypeRaw].type === 'flag') {
+      getter += `        [getterResult addObject:[NSNumber numberWithUnsignedInt:static_cast<unsigned int>(arrayElement)]];\n`;
+    } else {
+      getter += `        [getterResult addObject:[NSNumber numberWithInt:static_cast<int>(arrayElement)]];\n`;
+    }
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    if (util.isArrayType(propTypeRaw)) {
+      getter += `        [getterResult addObject:[[${getterType.substring(8/*!!!*/, getterType.length - 3)} alloc] initWithNative${underlyingArrayTypeRaw}:new (std::nothrow) psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}(std::move(arrayElement))]];\n`;
+    } else if (util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+      getter += `        [getterResult addObject:[[${getterType.substring(8/*!!!*/, getterType.length - 3)} alloc] initWithNative${underlyingArrayTypeRaw}:new (std::nothrow) psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}(arrayElement)]];\n`;
+    } else {
+      getter += `        if (arrayElement) {\n`;
+      getter += `            [getterResult addObject:[[${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.ObjC)} alloc] initWithManaged${underlyingArrayTypeRaw}:&arrayElement]];\n`;
+      getter += `        } else {\n`;
+      getter += `            [getterResult addObject:[NSNull null]];\n`;
+      getter += `        }\n`;
+    }
+  } else {
+    throw new Error(`Unhandled type: ${propTypeRaw}`);
+  }
+  getter += `    }\n`
+  getter += `    return getterResult;\n`
+  return getter;
+}
+
+function arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgName, nameCxx, nameManagedMember, propertyJson, propStatic) {
+  const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+  let setter = '';
+  if (!propStatic) {
+    setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
+  }
+  const isArrayOfNativeClasses = typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw));
+  if (underlyingArrayTypeRaw !== 'string' && !isArrayOfNativeClasses) {
+    setter += `    for (${setterType.substring(8/*!!!*/, setterType.length - 2)} arrayElement in ${setterArgName}) {\n`;
+    if (underlyingArrayTypeRaw === 'float') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(float)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'double') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(double)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'int8') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(char)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'int16') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(short)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'int32') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'int64') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(long long)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'uint8') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned char)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'uint16') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned short)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'uint32') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'uint64') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned long long)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (underlyingArrayTypeRaw === 'boolean') {
+      setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(BOOL)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+    } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+      if (enums[underlyingArrayTypeRaw].type === 'flag') {
+        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+      } else {
+        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+      }
+    } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+      if (util.isArrayPtrType(propTypeRaw) || util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+        setter += `        NSAssert([arrayElement isKindOfClass:[${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.ObjC)} class]] || [arrayElement isKindOfClass:[NSNull class]], @"${setterArgName} contains at least one invalid element type");\n`;
+      } else {
+        // Unreachable branch.
+      }
+    } else {
+      throw new Error(`Unhandled type: ${propTypeRaw}`);
+    }
+    setter += `    }\n`;
+  }
+  if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+    setter += `    std::vector<psm::${util.getLangEnumName(enums[underlyingArrayTypeRaw], util.CXX)}> temporaryVector;\n`;
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    if (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+      setter += `    std::vector<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}> temporaryVector;\n`;
+    } else {
+      setter += `    std::vector<std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>> temporaryVector;\n`;
+    }
+  } else {
+    setter += `    ${util.getPropertyType(enums, interfaces, propertyJson, util.CXX)} temporaryVector;\n`;
+  }
+  setter += `    temporaryVector.reserve([${setterArgName} count]);\n`;
+  setter += `    for (${setterType.substring(8/*!!!*/, setterType.length - 2)} arrayElement in ${setterArgName}) {\n`;
+  if (underlyingArrayTypeRaw === 'float') {
+    setter += `        temporaryVector.push_back([arrayElement floatValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'double') {
+    setter += `        temporaryVector.push_back([arrayElement doubleValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'int8') {
+    setter += `        temporaryVector.push_back([arrayElement charValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'int16') {
+    setter += `        temporaryVector.push_back([arrayElement shortValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'int32') {
+    setter += `        temporaryVector.push_back([arrayElement intValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'int64') {
+    setter += `        temporaryVector.push_back([arrayElement longLongValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'uint8') {
+    setter += `        temporaryVector.push_back([arrayElement unsignedCharValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'uint16') {
+    setter += `        temporaryVector.push_back([arrayElement unsignedShortValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'uint32') {
+    setter += `        temporaryVector.push_back([arrayElement unsignedIntValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'uint64') {
+    setter += `        temporaryVector.push_back([arrayElement unsignedLongLongValue]);\n`;
+  } else if (underlyingArrayTypeRaw === 'boolean') {
+    setter += `        temporaryVector.push_back(static_cast<bool>([arrayElement boolValue]));\n`;
+  } else if (underlyingArrayTypeRaw === 'string') {
+    setter += `        temporaryVector.emplace_back([arrayElement UTF8String]);\n`;
+  } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
+    if (enums[underlyingArrayTypeRaw].type === 'flag') {
+      setter += `        temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement unsignedIntValue]));\n`;
+    } else {
+      setter += `        temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement intValue]));\n`;
+    }
+  } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+    if (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+      setter += `        temporaryVector.emplace_back(*static_cast<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}*>([arrayElement native${underlyingArrayTypeRaw}]));\n`;
+    } else {
+      setter += `        temporaryVector.emplace_back([arrayElement isKindOfClass:[${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.ObjC)} class]] ? *static_cast<std::shared_ptr<psm::${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.CXX)}>*>([((${util.getLangClassName(interfaces[underlyingArrayTypeRaw], util.ObjC)}*)arrayElement) managed${underlyingArrayTypeRaw}]) : nullptr);\n`;
+    }
+  } else {
+    throw new Error(`Unhandled type: ${propTypeRaw}`);
+  }
+  setter += `    }\n`;
+  if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+    setter += `    ${propStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getPropertySetterName(propertyJson, util.CXX)}(std::move(temporaryVector));\n`;
+  } else {
+    setter += `    ${propStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getPropertySetterName(propertyJson, util.CXX)}(temporaryVector);\n`;
+  }
+  return setter;
+}
+
 function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   const name = util.getLangClassName(interfaceJson, util.ObjC);
   const nameSwift = util.getLangClassName(interfaceJson, util.Swift);
@@ -114,6 +288,11 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
         importsSecond.add(`#import "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
       } else if (util.isClassOfAnyType(propTypeRaw)) {
         importsSecond.add(`#import "${propTypeRaw.split(':').slice(1).join(':')}.h"`);
+      } else if (util.isArrayOfAnyType(propTypeRaw)) {
+        const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+        if (typeof enums[underlyingArrayTypeRaw] !== 'undefined' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+          importsSecond.add(`#import "${underlyingArrayTypeRaw}.h"`);
+        }
       }
     }
   }
@@ -476,6 +655,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           }
           getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
+        } else if (util.isArrayOfAnyType(propTypeRaw)) {
+          getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
         } else {
           getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -494,6 +675,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           }
           getter += `    std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> getterResult = ${movePfx}${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt}${moveExt};\n`;
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
+        } else if (util.isArrayOfAnyType(propTypeRaw)) {
+          getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
         } else {
           getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -520,6 +703,17 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         }
         if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           includesFirst.add('#include <memory>');
+        }
+        if (util.isArrayOfAnyType(propTypeRaw)) {
+          const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+          if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
+            if (util.isArrayType(propTypeRaw)) {
+              includesFirst.add('#include <new>');
+              includesFirst.add('#include <utility>');
+            } else if (util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
+              includesFirst.add('#include <new>');
+            }
+          }
         }
       }
     }
@@ -553,7 +747,9 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       }
       let setter = `${propStatic ? '+' : '-'} (void)${setterName}:(${setterType})${setterArgName}\n`;
       setter += `{\n`;
-      if (propStatic) {
+      if (util.isArrayOfAnyType(propTypeRaw)) {
+        setter += arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgName, nameCxx, nameManagedMember, propertyJson, propStatic);
+      } else if (propStatic) {
         setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
       } else {
         setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
@@ -575,6 +771,16 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         }
         if (util.isClassPtrType(propTypeRaw) || util.isClassPtrRefType(propTypeRaw) || util.isClassPtrMixType(propTypeRaw)) {
           includesFirst.add('#include <memory>');
+        }
+        if (util.isArrayOfAnyType(propTypeRaw)) {
+          const underlyingArrayTypeRaw = propTypeRaw.split(':').slice(1).join(':');
+          const isArrayOfNativeClasses = typeof interfaces[underlyingArrayTypeRaw] !== 'undefined' && (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw));
+          if (underlyingArrayTypeRaw !== 'string' && !isArrayOfNativeClasses) {
+            includesFirst.add('#include <cstring>');
+          }
+          if (util.isArrayType(propTypeRaw) || util.isArrayMixType(propTypeRaw) || util.isArrayPtrType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
+            includesFirst.add('#include <utility>');
+          }
         }
       }
     }
