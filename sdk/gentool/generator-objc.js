@@ -42,9 +42,9 @@ function arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, na
     getter += `        [getterResult addObject:[NSString stringWithUTF8String:arrayElement.c_str()]];\n`;
   } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
     if (enums[underlyingArrayTypeRaw].type === 'flag') {
-      getter += `        [getterResult addObject:[NSNumber numberWithUnsignedInt:static_cast<unsigned int>(arrayElement)]];\n`;
+      getter += `        [getterResult addObject:[NSNumber numberWithUnsignedInteger:static_cast<NSUInteger>(arrayElement)]];\n`;
     } else {
-      getter += `        [getterResult addObject:[NSNumber numberWithInt:static_cast<int>(arrayElement)]];\n`;
+      getter += `        [getterResult addObject:[NSNumber numberWithInteger:static_cast<NSInteger>(arrayElement)]];\n`;
     }
   } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
     if (util.isArrayType(propTypeRaw)) {
@@ -99,9 +99,9 @@ function arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgNa
       setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(BOOL)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
     } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
       if (enums[underlyingArrayTypeRaw].type === 'flag') {
-        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(unsigned int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(NSUInteger)) == 0 || std::strcmp([arrayElement objCType], @encode(unsigned int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
       } else {
-        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
+        setter += `        NSAssert(std::strcmp([arrayElement objCType], @encode(NSInteger)) == 0 || std::strcmp([arrayElement objCType], @encode(int)) == 0, @"${setterArgName} contains at least one invalid element type");\n`;
       }
     } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
       if (util.isArrayPtrType(propTypeRaw) || util.isArrayPtrRefType(propTypeRaw) || util.isArrayPtrMixType(propTypeRaw)) {
@@ -153,9 +153,17 @@ function arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgNa
     setter += `        temporaryVector.emplace_back([arrayElement UTF8String]);\n`;
   } else if (typeof enums[underlyingArrayTypeRaw] !== 'undefined') {
     if (enums[underlyingArrayTypeRaw].type === 'flag') {
-      setter += `        temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement unsignedIntValue]));\n`;
+      setter += `        if (std::strcmp([arrayElement objCType], @encode(NSUInteger)) == 0) {\n`;
+      setter += `            temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement unsignedIntegerValue]));\n`;
+      setter += `        } else {\n`;
+      setter += `            temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement unsignedIntValue]));\n`;
+      setter += `        }\n`;
     } else {
-      setter += `        temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement intValue]));\n`;
+      setter += `        if (std::strcmp([arrayElement objCType], @encode(NSInteger)) == 0) {\n`;
+      setter += `            temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement integerValue]));\n`;
+      setter += `        } else {\n`;
+      setter += `            temporaryVector.push_back(static_cast<decltype(temporaryVector)::value_type>([arrayElement intValue]));\n`;
+      setter += `        }\n`;
     }
   } else if (typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
     if (util.isArrayType(propTypeRaw) || util.isArrayRefType(propTypeRaw) || util.isArrayMixType(propTypeRaw)) {
