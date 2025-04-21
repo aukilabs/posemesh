@@ -8,6 +8,8 @@ message Metadata {
     required uint32 size = 3;
     optional string id = 4;
     map<string, string> properties = 5;
+    string link = 6;
+    string hash = 7;
 }
 
 message Query {

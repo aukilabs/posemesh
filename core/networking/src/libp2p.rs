@@ -1,5 +1,5 @@
-use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt};
-use libp2p::{core::{muxing::StreamMuxerBox, upgrade::Version}, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{thread_rng, rngs::OsRng};
@@ -23,12 +23,12 @@ use wasm_bindgen_futures::spawn_local as spawn;
 #[cfg(not(target_family="wasm"))]
 use tokio::time::sleep;
 
-use futures::executor::block_on;
-
 #[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use libp2p_websocket_websys as ws_websys;
+#[cfg(target_family="wasm")]
+use libp2p::core::transport::upgrade::Version;
 
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
@@ -98,6 +98,7 @@ pub struct NetworkingConfig {
     pub name: String,
     pub enable_websocket: bool,
     pub enable_webrtc: bool,
+    pub domain: Option<String>,
 }
 
 impl Default for NetworkingConfig {
@@ -114,6 +115,7 @@ impl Default for NetworkingConfig {
             name: "Placeholder".to_string(),
             enable_webrtc: false,
             enable_websocket: false, // placeholder
+            domain: None,
         }
     }
 }
@@ -122,20 +124,20 @@ impl Default for NetworkingConfig {
 pub struct Node {
     pub id: String,
     pub name: String,
-    pub capabilities: Vec<String>
+    pub capabilities: Vec<String>,
+    pub addresses: Vec<Multiaddr>,
 }
 
 const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
 
 struct Libp2p {
-    // nodes_map: HashMap<String, Node>,
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
     command_receiver: mpsc::Receiver<client::Command>,
     pub node: Node,
-    // node_regsiter_topic: IdentTopic,
     event_sender: mpsc::Sender<event::Event>,
     find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
+    cancel_sender: Option<oneshot::Sender<()>>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -328,13 +330,13 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
 fn build_listeners(port: u16) -> Vec<Multiaddr> {
     #[cfg(not(target_family="wasm"))]
     return vec![
-        Multiaddr::empty()
-            .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
+        Multiaddr::from(Ipv4Addr::UNSPECIFIED)
             .with(Protocol::Tcp(port)),
         Multiaddr::from(Ipv4Addr::UNSPECIFIED)
             .with(Protocol::Udp(port))
             .with(Protocol::QuicV1),
     ];
+
     #[cfg(target_family="wasm")]
     return vec![];
 }
@@ -359,7 +361,6 @@ impl Libp2p {
     pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
-        println!("Your Peer Id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
@@ -377,7 +378,7 @@ impl Libp2p {
                 Ok(_) => {},
                 Err(e) => {
                     #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
-                    eprintln!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
+                    tracing::warn!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
                     return Err(Box::new(e));
                 }
             }
@@ -387,21 +388,31 @@ impl Libp2p {
             id: key.public().to_peer_id().to_string(),
             name: cfg.name.clone(),
             capabilities: vec![],
+            addresses: vec![],
         };
+        let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
+        let mut cancel_receiver = cancel_receiver.fuse();
 
         let networking = Libp2p {
             cfg: cfg.clone(),
-            // nodes_map: nodes_map,
             swarm: swarm,
             command_receiver: command_receiver,
             node: node.clone(),
-            // node_regsiter_topic: topic,
             event_sender: event_sender,
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
+            cancel_sender: Some(cancel_sender),
         };
-
+        
         spawn(async move {
-            let _ = networking.run().await;
+            futures::select! {
+                _ = cancel_receiver => {
+                    tracing::info!("Cancelling networking");
+                    return;
+                }
+                _ = networking.run().fuse() => {
+                    tracing::info!("Networking complete");
+                }
+            }
         });
 
         Ok(node)
@@ -518,10 +529,8 @@ impl Libp2p {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                println!(
-                    "Local node is listening on {:?}",
-                    address.with(Protocol::P2p(local_peer_id))
-                );
+                println!("Local node is listening on {:?}", address.clone().with(Protocol::P2p(local_peer_id)));
+                self.node.addresses.push(address.clone().with(Protocol::P2p(local_peer_id)));
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
@@ -631,7 +640,7 @@ impl Libp2p {
                 }
                 
                 self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
-                    for addr in listen_addrs {
+                    for addr in listen_addrs.clone() {
                         dht.add_address(&peer_id, addr.clone());
                     }
                 });
@@ -639,7 +648,8 @@ impl Libp2p {
                 let node = Node {
                     id: peer_id.to_string(),
                     name: agent_version,
-                    capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") ).collect::<Vec<String>>(),
+                    capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") && !p.contains("/meshsub/1.0.0") ).collect::<Vec<String>>(),
+                    addresses: listen_addrs,
                 };
 
                 self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
@@ -678,14 +688,16 @@ impl Libp2p {
                 }
                 let _ = sender.send(Ok(()));
             }
+            client::Command::Cancel { sender } => {
+                let Some(cancel_sender) = self.cancel_sender.take() else {
+                    tracing::error!("No cancel sender found, it was already cancelled");
+                    return;
+                };
+                let _ = cancel_sender.send(());
+                let _ = sender.send(());
+            }
         }
     }
-
-    // fn register_node(self: &mut Self) -> Result<(), Box<dyn Error>> {
-    //     let serialized = serde_json::to_vec(&self.node.clone())?;
-    //     self.swarm.behaviour_mut().gossipsub.publish(self.node_regsiter_topic.clone(), serialized)?;
-    //     Ok(())
-    // }
 
     fn subscribe(&mut self, topic: String, sender: oneshot::Sender<Box<dyn Error + Send + Sync>>) {
         let t = IdentTopic::new(topic);
