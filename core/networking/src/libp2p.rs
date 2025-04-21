@@ -529,10 +529,8 @@ impl Libp2p {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                println!(
-                    "Local node is listening on {:?}",
-                    address.with(Protocol::P2p(local_peer_id))
-                );
+                println!("Local node is listening on {:?}", address.clone().with(Protocol::P2p(local_peer_id)));
+                self.node.addresses.push(address.clone().with(Protocol::P2p(local_peer_id)));
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
