@@ -1,4 +1,4 @@
-use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
+use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
 use libp2p::{core::muxing::StreamMuxerBox, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
 use utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
@@ -23,12 +23,12 @@ use wasm_bindgen_futures::spawn_local as spawn;
 #[cfg(not(target_family="wasm"))]
 use tokio::time::sleep;
 
-use futures::executor::block_on;
-
 #[cfg(target_family="wasm")]
 use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use libp2p_websocket_websys as ws_websys;
+#[cfg(target_family="wasm")]
+use libp2p::core::transport::upgrade::Version;
 
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
