@@ -138,7 +138,6 @@ struct Libp2p {
     event_sender: mpsc::Sender<event::Event>,
     find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
     cancel_sender: Option<oneshot::Sender<()>>,
-    swarm_ready_sender: Option<oneshot::Sender<()>>,
 }
 
 #[cfg(not(target_family="wasm"))]
@@ -328,11 +327,10 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     behavior
 }
 
-fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
+fn build_listeners(port: u16) -> Vec<Multiaddr> {
     #[cfg(not(target_family="wasm"))]
-    let listeners = vec![
-        Multiaddr::empty()
-            .with(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
+    return vec![
+        Multiaddr::from(Ipv4Addr::UNSPECIFIED)
             .with(Protocol::Tcp(port)),
         Multiaddr::from(Ipv4Addr::UNSPECIFIED)
             .with(Protocol::Udp(port))
@@ -340,9 +338,7 @@ fn build_listeners(port: u16, domain: Option<String>) -> Vec<Multiaddr> {
     ];
 
     #[cfg(target_family="wasm")]
-    let listeners = vec![];
-
-    return listeners;
+    return vec![];
 }
 
 fn enable_websocket(port: u16) -> Multiaddr {
@@ -365,13 +361,12 @@ impl Libp2p {
     pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
-        println!("Your Peer Id: {:?}", key.public().to_peer_id());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
         let mut swarm = build_swarm(key.clone(), behaviour).await?;
 
-        let mut listeners = build_listeners(cfg.port, cfg.domain.clone());
+        let mut listeners = build_listeners(cfg.port);
         if cfg.enable_websocket {
             listeners.push(enable_websocket(cfg.port));
         }
@@ -383,7 +378,7 @@ impl Libp2p {
                 Ok(_) => {},
                 Err(e) => {
                     #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
-                    eprintln!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
+                    tracing::warn!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
                     return Err(Box::new(e));
                 }
             }
@@ -397,7 +392,6 @@ impl Libp2p {
         };
         let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
         let mut cancel_receiver = cancel_receiver.fuse();
-        let (swarm_ready_sender, swarm_ready_receiver) = oneshot::channel::<()>();
 
         let networking = Libp2p {
             cfg: cfg.clone(),
@@ -407,7 +401,6 @@ impl Libp2p {
             event_sender: event_sender,
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
             cancel_sender: Some(cancel_sender),
-            swarm_ready_sender: Some(swarm_ready_sender),
         };
         
         spawn(async move {
@@ -421,8 +414,6 @@ impl Libp2p {
                 }
             }
         });
-
-        let _ = swarm_ready_receiver.await;
 
         Ok(node)
     }
@@ -532,11 +523,6 @@ impl Libp2p {
                 },
             )) => {
                 tracing::info!("Bootstrap succeeded");
-
-                let sender = self.swarm_ready_sender.take();
-                if let Some(sender) = sender {
-                    let _ = sender.send(());
-                }
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Kdht(_)) => {
                 tracing::info!("KDHT event => {event:?}");
@@ -547,11 +533,6 @@ impl Libp2p {
                     "Local node is listening on {:?}",
                     address.with(Protocol::P2p(local_peer_id))
                 );
-
-                let sender = self.swarm_ready_sender.take();
-                if let Some(sender) = sender {
-                    let _ = sender.send(());
-                }
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
