@@ -98,7 +98,7 @@ pub struct NetworkingConfig {
     pub name: String,
     pub enable_websocket: bool,
     pub enable_webrtc: bool,
-    pub domain: Option<String>,
+    pub namespace: Option<String>,
 }
 
 impl Default for NetworkingConfig {
@@ -115,7 +115,7 @@ impl Default for NetworkingConfig {
             name: "Placeholder".to_string(),
             enable_webrtc: false,
             enable_websocket: false, // placeholder
-            domain: None,
+            namespace: None,
         }
     }
 }
@@ -128,7 +128,13 @@ pub struct Node {
     pub addresses: Vec<Multiaddr>,
 }
 
-const POSEMESH_PROTO_NAME: StreamProtocol = StreamProtocol::new("/posemesh/kad/1.0.0");
+fn protocol(namespace: Option<String>, protocol: &str) -> StreamProtocol {
+    if let Some(ns) = namespace {
+        StreamProtocol::try_from_owned(format!("/posemesh/cluster/{}/{}", ns, protocol)).unwrap()
+    } else {
+        StreamProtocol::try_from_owned(format!("/posemesh/{}", protocol)).unwrap()
+    }
+}
 
 struct Libp2p {
     swarm: Swarm<PosemeshBehaviour>,
@@ -259,7 +265,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
 
     let streams = stream::Behaviour::new();
     let identify = libp2p::identify::Behaviour::new(
-        libp2p::identify::Config::new("/posemesh/id/1.0.0".to_string(), key.public())
+        libp2p::identify::Config::new(protocol(cfg.namespace.clone(), "id/1.0.0").to_string(), key.public())
         .with_agent_version(cfg.name.clone())
         .with_push_listen_addr_updates(true),
     );
@@ -300,7 +306,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     }
 
     if cfg.enable_kdht {
-        let mut kad_cfg = libp2p::kad::Config::new(POSEMESH_PROTO_NAME);
+        let mut kad_cfg = libp2p::kad::Config::new(protocol(cfg.namespace.clone(), "kad/1.0.0"));
         kad_cfg.set_query_timeout(Duration::from_secs(5));
         let store = libp2p::kad::store::MemoryStore::new(key.public().to_peer_id());
         let mut kdht = libp2p::kad::Behaviour::with_config(key.public().to_peer_id(), store, kad_cfg);

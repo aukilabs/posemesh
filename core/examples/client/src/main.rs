@@ -13,17 +13,19 @@ const MAX_MESSAGE_SIZE_BYTES: usize = 1024 * 1024 * 10;
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 4 {
-        println!("Usage: {} <port> <name> <bootstraps>", args[0]);
+    if args.len() < 6 {
+        println!("Usage: {} <port> <name> <domain_manager> <relay> <domain_id>", args[0]);
         return Ok(());
     }
     let port = args[1].parse::<u16>().unwrap();
     let name = args[2].clone();
     let domain_manager = args[3].clone();
+    let relay = args[4].clone();
+    let domain_id = args[5].clone();
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path));
+    let domain_cluster = DomainCluster::new(domain_id.clone(), domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), vec![relay]);
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
