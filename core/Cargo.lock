@@ -3378,6 +3378,8 @@ dependencies = [
  "futures",
  "networking",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
