@@ -12,7 +12,8 @@ bool solvePnP(const std::vector<std::shared_ptr<Vector3>>& objectPoints,
     const std::vector<std::shared_ptr<Vector2>>& imagePoints,
     const Matrix3x3& cameraMatrix,
     Matrix3x3& outR,
-    Vector3& outT)
+    Vector3& outT,
+    int method)
 {
     if (objectPoints.size() != 4) {
         std::cerr << "Posemesh.solvePnP(): objectPoints array length is not 4" << std::endl;
@@ -33,12 +34,12 @@ bool solvePnP(const std::vector<std::shared_ptr<Vector3>>& objectPoints,
         imagePointsRaw[i] = *(imagePoints[i]);
     }
 
-    return PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrix, outR, outT);
+    return PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrix, outR, outT, (psm::SolvePnpMethod)method);
 }
 }
 
 EMSCRIPTEN_BINDINGS(PoseEstimation)
 {
     class_<PoseEstimation>("PoseEstimation")
-        .class_function("__solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT)", &solvePnP);
+        .class_function("__solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT, method)", &solvePnP);
 }
