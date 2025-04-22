@@ -1,4 +1,6 @@
 #include <Posemesh/PoseEstimation.hpp>
+#include <Posemesh/PoseFactory.hpp>
+#include <Posemesh/PoseTools.hpp>
 #include <iostream>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/opencv.hpp>
@@ -99,5 +101,50 @@ bool PoseEstimation::solvePnP(
     outT.setZ(tvec.at<float>(2));
 
     return true;
+}
+
+bool PoseEstimation::solvePnP(
+    const std::vector<Landmark>& landmarks,
+    const std::vector<LandmarkObservation>& landmarkObservations,
+    const Matrix3x3& cameraMatrix,
+    Pose& outPose,
+    SolvePnpMethod method)
+{
+    if (landmarks.size() <= 0) {
+        throw std::invalid_argument("landmarks");
+    }
+    if (landmarkObservations.size() <= 0) {
+        throw std::invalid_argument("landmarkObservations");
+    }
+
+    Vector3 objectPoints[landmarks.size()];
+    for (int i = 0; i < landmarks.size(); ++i) {
+        auto landmarkPosition = landmarks[i].getPosition();
+        Vector3 objectPoint;
+        objectPoint.setX(landmarkPosition.getX());
+        objectPoint.setY(landmarkPosition.getY());
+        objectPoint.setZ(landmarkPosition.getZ());
+        objectPoints[i] = objectPoint;
+    }
+
+    Vector2 imagePoints[landmarkObservations.size()];
+    for (int i = 0; i < landmarkObservations.size(); ++i) {
+        auto landmarkObservationPosition = landmarkObservations[i].getPosition();
+        Vector2 imagePoint;
+        imagePoint.setX(landmarkObservationPosition.getX());
+        imagePoint.setY(landmarkObservationPosition.getY());
+        imagePoints[i] = imagePoint;
+    }
+
+    Matrix3x3 rotationMatrix;
+    Vector3 translationVector;
+    bool success = solvePnP(objectPoints, imagePoints, cameraMatrix, rotationMatrix, translationVector, method);
+
+    Pose pose = PoseFactory::create(translationVector, rotationMatrix);
+    Pose poseInOpenGL = PoseTools::fromOpenCVToOpenGL(pose);
+    outPose.setPosition(poseInOpenGL.getPosition());
+    outPose.setRotation(poseInOpenGL.getRotation());
+
+    return success;
 }
 }
