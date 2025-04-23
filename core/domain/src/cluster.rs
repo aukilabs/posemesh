@@ -203,7 +203,7 @@ impl DomainCluster {
             port,
             enable_websocket,
             enable_webrtc,
-            namespace: Some(domain_id),
+            namespace: None,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
 

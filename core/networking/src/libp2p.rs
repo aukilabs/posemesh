@@ -1,8 +1,8 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
-use libp2p::{core::muxing::StreamMuxerBox, dcutr, yamux, noise, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, PeerId, Stream, StreamProtocol, Swarm, Transport};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
 use utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
-use rand::{thread_rng, rngs::OsRng};
+use rand::{rngs::OsRng, thread_rng};
 use serde::{Deserialize, Serialize};
 use libp2p_stream::{self as stream, IncomingStreams};
 use crate::{client::{self, Client}, event};
@@ -29,6 +29,16 @@ use libp2p_webrtc_websys as webrtc_websys;
 use libp2p_websocket_websys as ws_websys;
 #[cfg(target_family="wasm")]
 use libp2p::core::transport::upgrade::Version;
+
+#[derive(Debug, thiserror::Error)]
+pub enum NetworkError {
+    #[error("Address in use")]
+    AddressInUse,
+    #[error("Transport error: {0}")]
+    TransportError(TransportError<std::io::Error>),
+    #[error("Swarm initialization failed: {0}")]
+    SwarmInitializationFailed(Box<dyn Error + Send + Sync>),
+}
 
 fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
@@ -364,13 +374,13 @@ fn enable_webrtc(port: u16) -> Multiaddr {
 }
 
 impl Libp2p {
-    pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, Box<dyn Error + Send + Sync>> {
+    pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, NetworkError> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
 
         let behaviour = build_behavior(key.clone(), cfg);
 
-        let mut swarm = build_swarm(key.clone(), behaviour).await?;
+        let mut swarm = build_swarm(key.clone(), behaviour).await.map_err(|e| NetworkError::SwarmInitializationFailed(e))?;
 
         let mut listeners = build_listeners(cfg.port);
         if cfg.enable_websocket {
@@ -383,9 +393,21 @@ impl Libp2p {
             match swarm.listen_on(addr.clone()) {
                 Ok(_) => {},
                 Err(e) => {
-                    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
-                    tracing::warn!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
-                    return Err(Box::new(e));
+                    match e {
+                        TransportError::MultiaddrNotSupported(_) => {
+                            return Err(NetworkError::TransportError(e));
+                        }
+                        TransportError::Other(ie) => {
+                            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos"))]
+                            tracing::warn!("Failed to initialize networking: Apple platforms require 'com.apple.security.network.server' entitlement set to YES.");
+                        
+                            if ie.kind() == std::io::ErrorKind::AddrInUse {
+                                return Err(NetworkError::AddressInUse);
+                            } else {
+                                return Err(NetworkError::TransportError(TransportError::Other(ie)));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -817,7 +839,7 @@ impl Debug for Networking {
     }
 }
 
-async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, Box<dyn Error + Send + Sync>> {
+async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, NetworkError> {
     let res = Libp2p::new(cfg, receiver, event_sender).await;
     match res {
         Ok(node) => Ok(node.id),
@@ -826,7 +848,7 @@ async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<clie
 }
 
 impl Networking {
-    pub fn new(cfg: &NetworkingConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn new(cfg: &NetworkingConfig) -> Result<Self, NetworkError> {
         let (sender, receiver) = channel::<client::Command>(8);
         let (event_sender, event_receiver) = channel::<event::Event>(8);
         let cfg = cfg.clone();
