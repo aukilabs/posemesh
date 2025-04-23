@@ -14,6 +14,8 @@ pub type Writer<T> = Sender<Result<T, DomainError>>;
 pub type DataWriter = Writer<Data>;
 pub type DataReader = Reader<Data>;
 
+pub const CHUNK_SIZE: usize = 5 * 1024; // wasm allows 8192 = 8KB the most
+
 // Define a custom error type
 #[derive(Debug)]
 pub enum DomainError {

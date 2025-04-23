@@ -89,10 +89,10 @@ impl DomainData for FsDomainData {
             .create(true)
             .open(self.temp_path.clone()).await.map_err(|e| DomainError::IoError(e))?;
         f.write_all(chunk).await.map_err(|e| DomainError::IoError(e))?;
-        f.flush().await.map_err(|e| DomainError::IoError(e))?;
         if more {
             Ok(hex::encode(hash))
         } else {
+            f.shutdown().await.map_err(|e| DomainError::IoError(e))?;
             let size = f.metadata().await.map_err(|e| DomainError::IoError(e))?.len();
             if size != self.metadata.size as u64 {
                 return Err(DomainError::Cancelled(format!("Unexpected {}.{} size, expected {}, got {}", self.metadata.name, self.metadata.data_type, self.metadata.size, size)));

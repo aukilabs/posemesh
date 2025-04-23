@@ -11,7 +11,7 @@ use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use super::common::{data_id_generator, hash_chunk, DomainData, Reader, ReliableDataProducer, Writer};
+use super::common::{data_id_generator, hash_chunk, DomainData, Reader, ReliableDataProducer, Writer, CHUNK_SIZE};
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
 
@@ -72,10 +72,8 @@ impl RemoteDomainData {
 impl DomainData for RemoteDomainData {
     async fn push_chunk(&mut self, datum: &[u8], more: bool) -> Result<String, DomainError> {
         if datum.len() != 0 {
-            let chunk_size = 5 * 1024; // wasm allows 8192 = 8KB the most
-
             let mut writer = self.writer.lock().await;
-            let chunks = datum.chunks(chunk_size);
+            let chunks = datum.chunks(CHUNK_SIZE);
             for chunk in chunks {
                 let hash = hash_chunk(chunk);
                 self.merkle_tree.insert(hash);
