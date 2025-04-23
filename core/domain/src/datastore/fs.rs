@@ -89,6 +89,7 @@ impl DomainData for FsDomainData {
             .create(true)
             .open(self.temp_path.clone()).await.map_err(|e| DomainError::IoError(e))?;
         f.write_all(chunk).await.map_err(|e| DomainError::IoError(e))?;
+        f.flush().await.map_err(|e| DomainError::IoError(e))?;
         if more {
             Ok(hex::encode(hash))
         } else {

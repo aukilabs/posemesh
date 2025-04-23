@@ -59,11 +59,12 @@ pub(crate) struct RemoteDomainData {
     expected_size: usize,
     sent_size: Arc<Mutex<usize>>,
     merkle_tree: MerkleTree<Sha256>,
+    sender: Option<oneshot::Sender<String>>,
 }
 
 impl RemoteDomainData {
-    pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>) -> Self {
-        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new() }
+    pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>, sender: oneshot::Sender<String>) -> Self {
+        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new(), sender: Some(sender) }
     }
 }
 
@@ -96,7 +97,11 @@ impl DomainData for RemoteDomainData {
             if hash.is_none() {
                 return Err(DomainError::InternalError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to calculate merkle tree root"))));
             }
-            Ok(hex::encode(hash.unwrap()))
+            let hash = hex::encode(hash.unwrap());
+            if let Some(sender) = self.sender.take() {
+                sender.send(hash.clone()).unwrap();
+            }
+            Ok(hash)
         } else {
             Ok(String::new())
         }
@@ -139,9 +144,9 @@ impl RemoteReliableDataProducer {
                 reader.read_exact(&mut buffer).await.expect("Failed to read buffer");
         
                 let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer).expect("Failed to deserialize metadata");
-                let id = metadata.id.unwrap_or("why no id".to_string());
+                let hash = metadata.hash.unwrap_or("why no hash".to_string());
                 let mut pendings = pending_clone.lock().await;
-                pendings.remove(&id);
+                pendings.remove(&hash);
             }
         });
     }
@@ -159,7 +164,21 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         writer.write_all(&prefix_size_message(&data)).await.expect("Failed to write metadata");
         writer.flush().await.expect("Failed to flush");
         drop(writer);
-        Ok(Box::new(RemoteDomainData::new(data.size as usize, stream)))
+        let mut pendings = self.pendings.lock().await;
+        let temp_id = data_id_generator();
+        pendings.insert(temp_id.clone());
+        drop(pendings);
+        let (sender, receiver) = oneshot::channel::<String>();
+
+        let pendings_clone = self.pendings.clone();
+        spawn(async move {
+            if let Ok(hash) = receiver.await {
+                let mut pendings = pendings_clone.lock().await;
+                pendings.insert(hash);
+                pendings.remove(&temp_id);
+            }
+        });
+        Ok(Box::new(RemoteDomainData::new(data.size as usize, stream, sender)))
     }
 
     async fn is_completed(&self) -> bool {
