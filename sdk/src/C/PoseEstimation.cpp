@@ -1,39 +1,10 @@
 #include <Posemesh/C/PoseEstimation.h>
 #include <Posemesh/PoseEstimation.hpp>
 
-uint8_t psm_pose_estimation_solve_pnp(
-    const psm_vector3_t* object_points[],
-    const int object_points_count,
-    const psm_vector2_t* image_points[],
-    const int image_points_count,
-    const psm_matrix3x3_t* camera_matrix,
-    psm_matrix3x3_t* out_r,
-    psm_vector3_t* out_t,
-    psm_solve_pnp_method_e method)
-{
-    psm::Vector3 o_points[object_points_count];
-    for (int i = 0; i < object_points_count; i++) {
-        o_points[i] = *(object_points[i]);
-    }
-
-    psm::Vector2 i_points[image_points_count];
-    for (int i = 0; i < image_points_count; i++) {
-        i_points[i] = *(image_points[i]);
-    }
-
-    return static_cast<uint8_t>(psm::PoseEstimation::solvePnP(
-        o_points,
-        i_points,
-        *camera_matrix,
-        *out_r,
-        *out_t,
-        static_cast<psm::SolvePnpMethod>(method)));
-}
-
-uint8_t psm_pose_estimation_solve_pnp_landmarks(
-    const psm_landmark_t* landmarks[],
+enum psm_pose_estimation_solve_pnp_result psm_pose_estimation_solve_pnp(
+    const psm_landmark_t** landmarks,
     const int landmarks_count,
-    const psm_landmark_observation_t* landmark_observations[],
+    const psm_landmark_observation_t** landmark_observations,
     const int landmark_observations_count,
     const psm_matrix3x3_t* camera_matrix,
     psm_pose_t* out_pose,
@@ -49,10 +20,25 @@ uint8_t psm_pose_estimation_solve_pnp_landmarks(
         lo[i] = *(landmark_observations[i]);
     }
 
-    return static_cast<uint8_t>(psm::PoseEstimation::solvePnP(
-        l,
-        lo,
-        *camera_matrix,
-        *out_pose,
-        static_cast<psm::SolvePnpMethod>(method)));
+    try {
+        psm::Pose pose = psm::PoseEstimation::solvePnP(l, lo, *camera_matrix, static_cast<psm::SolvePnpMethod>(method));
+
+        psm::Vector3 p = pose.getPosition();
+        psm_vector3_t* position = psm_vector3_create();
+        psm_vector3_set_x(position, p.getX());
+        psm_vector3_set_y(position, p.getY());
+        psm_vector3_set_z(position, p.getZ());
+        psm_pose_set_position(out_pose, position);
+
+        psm::Quaternion r = pose.getRotation();
+        psm_quaternion_t* rotation = psm_quaternion_create();
+        psm_quaternion_set_x(rotation, r.getX());
+        psm_quaternion_set_y(rotation, r.getY());
+        psm_quaternion_set_z(rotation, r.getZ());
+        psm_quaternion_set_w(rotation, r.getW());
+        psm_pose_set_rotation(out_pose, rotation);
+    } catch (const std::exception& e) {
+        return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+    }
+    return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_SUCCESS;
 }

@@ -8,38 +8,27 @@ using namespace emscripten;
 using namespace psm;
 
 namespace {
-bool solvePnP(const std::vector<std::shared_ptr<Vector3>>& objectPoints,
-    const std::vector<std::shared_ptr<Vector2>>& imagePoints,
+Pose solvePnP(const std::vector<std::shared_ptr<Landmark>>& landmarks,
+    const std::vector<std::shared_ptr<LandmarkObservation>>& landmarkObservations,
     const Matrix3x3& cameraMatrix,
-    Matrix3x3& outR,
-    Vector3& outT,
     int method)
 {
-    if (objectPoints.size() != 4) {
-        std::cerr << "Posemesh.solvePnP(): objectPoints array length is not 4" << std::endl;
-        return false;
-    }
-    if (imagePoints.size() != 4) {
-        std::cerr << "Posemesh.solvePnP(): imagePoints array length is not 4" << std::endl;
-        return false;
+    std::vector<Landmark> landmarksRaw;
+    for (int i = 0; i < landmarks.size(); ++i) {
+        landmarksRaw.push_back(*landmarks[i]);
     }
 
-    Vector3 objectPointsRaw[4];
-    for (int i = 0; i < 4; ++i) {
-        objectPointsRaw[i] = *(objectPoints[i]);
+    std::vector<LandmarkObservation> landmarkObservationsRaw;
+    for (int i = 0; i < landmarkObservations.size(); ++i) {
+        landmarkObservationsRaw.push_back(*landmarkObservations[i]);
     }
 
-    Vector2 imagePointsRaw[4];
-    for (int i = 0; i < 4; ++i) {
-        imagePointsRaw[i] = *(imagePoints[i]);
-    }
-
-    return PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrix, outR, outT, (psm::SolvePnpMethod)method);
+    return PoseEstimation::solvePnP(landmarksRaw, landmarkObservationsRaw, cameraMatrix, (psm::SolvePnpMethod)method);
 }
 }
 
 EMSCRIPTEN_BINDINGS(PoseEstimation)
 {
     class_<PoseEstimation>("PoseEstimation")
-        .class_function("__solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT, method)", &solvePnP);
+        .class_function("__solvePnP(landmarks, landmarkObservations, cameraMatrix, method)", &solvePnP);
 }

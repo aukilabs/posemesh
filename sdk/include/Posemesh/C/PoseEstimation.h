@@ -25,20 +25,15 @@ typedef struct psm_pose_estimation psm_pose_estimation_t;
 extern "C" {
 #endif
 
-uint8_t PSM_API psm_pose_estimation_solve_pnp(
-    const psm_vector3_t* object_points[],
-    const int object_points_count,
-    const psm_vector2_t* image_points[],
-    const int image_points_count,
-    const psm_matrix3x3_t* camera_matrix,
-    psm_matrix3x3_t* out_r,
-    psm_vector3_t* out_t,
-    psm_solve_pnp_method_e method);
+enum psm_pose_estimation_solve_pnp_result {
+    PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_SUCCESS = 0,
+    PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED = 1,
+};
 
-uint8_t PSM_API psm_pose_estimation_solve_pnp_landmarks(
-    const psm_landmark_t* landmarks[],
+enum psm_pose_estimation_solve_pnp_result PSM_API psm_pose_estimation_solve_pnp(
+    const psm_landmark_t** landmarks,
     const int landmarks_count,
-    const psm_landmark_observation_t* landmark_observations[],
+    const psm_landmark_observation_t** landmark_observations,
     const int landmark_observations_count,
     const psm_matrix3x3_t* camera_matrix,
     psm_pose_t* out_pose,

@@ -31,7 +31,7 @@ Pose PoseFactory::create(const Vector3& position, const Matrix3x3& rotation)
     return create(position, q);
 }
 
-Pose PoseFactory::createRodrigues(const Vector3& position, const Vector3& rodriguesRotation)
+Pose PoseFactory::createOpenCV(const Vector3& position, const Vector3& rodriguesRotation)
 {
     cv::Mat rv = cv::Mat::zeros(3, 1, CV_32F);
     rv.at<float>(0) = rodriguesRotation.getX();
@@ -41,15 +41,15 @@ Pose PoseFactory::createRodrigues(const Vector3& position, const Vector3& rodrig
     cv::Rodrigues(rv, rm);
 
     Matrix3x3 r;
-    r.setM00(rm.at<float>(0));
-    r.setM01(rm.at<float>(1));
-    r.setM02(rm.at<float>(2));
-    r.setM10(rm.at<float>(3));
-    r.setM11(rm.at<float>(4));
-    r.setM12(rm.at<float>(5));
-    r.setM20(rm.at<float>(6));
-    r.setM21(rm.at<float>(7));
-    r.setM22(rm.at<float>(8));
+    r.setM00(rm.at<float>(0, 0));
+    r.setM01(rm.at<float>(0, 1));
+    r.setM02(rm.at<float>(0, 2));
+    r.setM10(rm.at<float>(1, 0));
+    r.setM11(rm.at<float>(1, 1));
+    r.setM12(rm.at<float>(1, 2));
+    r.setM20(rm.at<float>(2, 0));
+    r.setM21(rm.at<float>(2, 1));
+    r.setM22(rm.at<float>(2, 2));
 
     return create(position, r);
 }

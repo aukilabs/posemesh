@@ -15,19 +15,10 @@ namespace psm {
 
 class PoseEstimation final {
 public:
-    static bool PSM_API solvePnP(
-        const Vector3 objectPoints[],
-        const Vector2 imagePoints[],
-        const Matrix3x3& cameraMatrix,
-        Matrix3x3& outR,
-        Vector3& outT,
-        SolvePnpMethod method);
-
-    static bool PSM_API solvePnP(
+    static Pose PSM_API solvePnP(
         const std::vector<Landmark>& landmarks,
         const std::vector<LandmarkObservation>& landmarkObservations,
         const Matrix3x3& cameraMatrix,
-        Pose& outPose,
         SolvePnpMethod method);
 
 private:
