@@ -9,14 +9,6 @@ const path = require('path');
 const shared = require('./shared');
 const util = require('./util');
 
-const manualUmbrellaAndBridgingHeaderNames = new Set([
-  'Config',
-  'PoseEstimation',
-  'Posemesh',
-  'QRDetection',
-  'ArucoDetection'
-]);
-
 const args = process.argv.slice(2);
 
 if (args.length > 1) {
@@ -181,7 +173,7 @@ function generate() {
   let generatedWebJSSources = new Set([]);
   let umbrellaHeaders = new Set([]);
   let bridgingHeaders = new Set([]);
-  for (const headerName of manualUmbrellaAndBridgingHeaderNames) {
+  for (const headerName of shared.manualUmbrellaAndBridgingHeaderNames) {
     umbrellaHeaders.add(`#import "${headerName}.h"`);
     bridgingHeaders.add(`#import <Posemesh/${headerName}.h>`);
   }
