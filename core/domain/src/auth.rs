@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
 use std::time::{SystemTime, Duration, UNIX_EPOCH};
 
+#[derive(thiserror::Error, Debug)]
+pub enum AuthError {
+    #[error("JWT error: {0}")]
+    JWTError(#[from] jsonwebtoken::errors::Error),
+    #[error("Protobuf error: {0}")]
+    ProtobufError(#[from] quick_protobuf::Error),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskTokenClaim {
     pub domain_id: String,
@@ -17,14 +25,14 @@ pub struct TaskTokenClaim {
     pub sub: String,
 }
 
-pub fn decode_jwt(token: &str) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let token_data = decode::<TaskTokenClaim>(token, &DecodingKey::from_secret("secret".as_ref()), &Validation::new(Algorithm::HS256))?;
+pub fn decode_jwt(token: &str, secret: &Vec<u8>) -> Result<TaskTokenClaim, AuthError> {
+    let token_data = decode::<TaskTokenClaim>(token, &DecodingKey::from_secret(secret), &Validation::new(Algorithm::HS256)).map_err(|e| AuthError::JWTError(e))?;
     Ok(token_data.claims)
 }
 
-pub async fn handshake<S: AsyncStream>(stream: &mut S) -> Result<TaskTokenClaim, Box<dyn std::error::Error + Send + Sync>> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
-    decode_jwt(header.access_token.as_str())
+pub async fn handshake<S: AsyncStream>(stream: &mut S, secret: &Vec<u8>) -> Result<TaskTokenClaim, AuthError> {
+    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await.map_err(|e| AuthError::ProtobufError(e))?;
+    decode_jwt(header.access_token.as_str(), secret)
 }
 
 pub fn encode_jwt(domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {

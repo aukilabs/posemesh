@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define CHUNK_SIZE (5 * 1024)
+
 typedef struct DatastoreWrapper_RemoteDatastore DatastoreWrapper_RemoteDatastore;
 
 typedef struct DomainCluster DomainCluster;
@@ -47,7 +49,10 @@ void free_domain_data_query(struct Query *query);
  */
 void free_domain_data(struct DomainData *data);
 
-struct DomainCluster *init_domain_cluster(const char *domain_manager_addr, const char *name);
+struct DomainCluster *init_domain_cluster(const char *domain_manager_addr,
+                                          const char *name,
+                                          const char *const *static_relay_nodes,
+                                          uintptr_t static_relay_nodes_len);
 
 void free_domain_cluster(struct DomainCluster *cluster);
 

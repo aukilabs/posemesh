@@ -183,9 +183,8 @@ export class UploadManager {
     async downloadFiles() {
         if (this.datastore != null) {
             const query = new Query([], [], [], null, null);
-            console.log("Query created");
 
-            const downloader = await this.datastore.consume("", query);
+            const downloader = await this.datastore.consume(query);
             console.log("Downloader initialized");
             return downloader;
         } else {
