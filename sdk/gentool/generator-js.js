@@ -1,4 +1,5 @@
 const path = require('path');
+const shared = require('./shared');
 const util = require('./util');
 
 function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
@@ -162,11 +163,90 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
             }
           }
           unnamedNamespace += `}\n`;
+        } else if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          if (util.isArrayType(propertyJson.type) || util.isArrayRefType(propertyJson.type) || util.isArrayMixType(propertyJson.type)) {
+            if (propTypeRawWithoutPfx === 'boolean') {
+              funcName = getterNameCxx;
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.getterConst) {
+                  selfArg = `const ${nameCxx}& self`;
+                } else {
+                  selfArg = `${nameCxx}& self`;
+                }
+              }
+              unnamedNamespace += `std::vector<std::uint8_t> ${funcName}(${selfArg})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    const auto temporaryResult = ${propStatic ? `${nameCxx}::` : 'self.'}${getterNameCxx}();\n`;
+              unnamedNamespace += `    std::vector<std::uint8_t> result;\n`;
+              unnamedNamespace += `    result.reserve(temporaryResult.size());\n`;
+              unnamedNamespace += `    for (auto value : temporaryResult) {\n`;
+              unnamedNamespace += `        result.push_back(static_cast<std::uint8_t>(value));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    return result;\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <cstdint>');
+            } else if (typeof enums[propTypeRawWithoutPfx] !== 'undefined') {
+              funcName = getterNameCxx;
+              const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.getterConst) {
+                  selfArg = `const ${nameCxx}& self`;
+                } else {
+                  selfArg = `${nameCxx}& self`;
+                }
+              }
+              const isFlagType = propTypeEnumJson.type === 'flag';
+              unnamedNamespace += `std::vector<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}> ${funcName}(${selfArg})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    const auto temporaryResult = ${propStatic ? `${nameCxx}::` : 'self.'}${getterNameCxx}();\n`;
+              unnamedNamespace += `    std::vector<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}> result;\n`;
+              unnamedNamespace += `    result.reserve(temporaryResult.size());\n`;
+              unnamedNamespace += `    for (auto value : temporaryResult) {\n`;
+              unnamedNamespace += `        result.push_back(static_cast<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>(value));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    return result;\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <cstdint>');
+            } else if (typeof interfaces[propTypeRawWithoutPfx] !== 'undefined') {
+              shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
+              funcName = getterNameCxx;
+              const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.getterConst) {
+                  selfArg = `const ${nameCxx}& self`;
+                } else {
+                  selfArg = `${nameCxx}& self`;
+                }
+              }
+              unnamedNamespace += `std::vector<std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>> ${funcName}(${selfArg})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    auto temporaryResult = ${propStatic ? `${nameCxx}::` : 'self.'}${getterNameCxx}();\n`;
+              unnamedNamespace += `    std::vector<std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>> result;\n`;
+              unnamedNamespace += `    result.reserve(temporaryResult.size());\n`;
+              unnamedNamespace += `    for (auto& value : temporaryResult) {\n`;
+              unnamedNamespace += `        result.emplace_back(new (std::nothrow) psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}(std::move(value)));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    return result;\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <memory>');
+              includesFirst.add('#include <new>');
+            }
+          } else {
+            shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
+          }
+        }
+        let retValExt = '';
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          retValExt = ', nonnull<ret_val>()';
         }
         if (propStatic) {
-          code += `\n        .class_function("__${getterName}()", &${funcName})`;
+          code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
         } else {
-          code += `\n        .function("__${getterName}()", &${funcName})`;
+          code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
         }
       }
     }
@@ -236,11 +316,105 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           }
           unnamedNamespace += `}\n`;
           includesFirst.add('#include <cassert>');
+        } else if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          if (util.isArrayType(propertyJson.type) || util.isArrayRefType(propertyJson.type) || util.isArrayMixType(propertyJson.type)) {
+            if (propTypeRawWithoutPfx === 'boolean') {
+              funcName = setterNameCxx;
+              if (unnamedNamespace.length > 0) {
+                unnamedNamespace += '\n';
+              }
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.setterConst) {
+                  selfArg = `const ${nameCxx}& self, `;
+                } else {
+                  selfArg = `${nameCxx}& self, `;
+                }
+              }
+              unnamedNamespace += `void ${setterNameCxx}(${selfArg}const std::vector<std::uint8_t>& ${setterArgName})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    std::vector<bool> temporaryVector;\n`;
+              unnamedNamespace += `    temporaryVector.reserve(${setterArgName}.size());\n`;
+              unnamedNamespace += `    for (auto value : ${setterArgName}) {\n`;
+              unnamedNamespace += `        temporaryVector.push_back(static_cast<bool>(value));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    ${propStatic ? `psm::${nameCxx}::` : 'self.'}${setterNameCxx}(std::move(temporaryVector));\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <cstdint>');
+              includesFirst.add('#include <utility>');
+            } else if (typeof enums[propTypeRawWithoutPfx] !== 'undefined') {
+              funcName = setterNameCxx;
+              const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+              if (unnamedNamespace.length > 0) {
+                unnamedNamespace += '\n';
+              }
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.setterConst) {
+                  selfArg = `const ${nameCxx}& self, `;
+                } else {
+                  selfArg = `${nameCxx}& self, `;
+                }
+              }
+              const isFlagType = propTypeEnumJson.type === 'flag';
+              unnamedNamespace += `void ${setterNameCxx}(${selfArg}const std::vector<${isFlagType ? 'std::uint32_t' : 'std::int32_t'}>& ${setterArgName})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    std::vector<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}> temporaryVector;\n`;
+              unnamedNamespace += `    temporaryVector.reserve(${setterArgName}.size());\n`;
+              unnamedNamespace += `    for (auto value : ${setterArgName}) {\n`;
+              unnamedNamespace += `        temporaryVector.push_back(static_cast<psm::${util.getLangEnumName(propTypeEnumJson, util.CXX)}>(value));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    ${propStatic ? `psm::${nameCxx}::` : 'self.'}${setterNameCxx}(std::move(temporaryVector));\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <cstdint>');
+              includesFirst.add('#include <utility>');
+            } else if (typeof interfaces[propTypeRawWithoutPfx] !== 'undefined') {
+              shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
+              funcName = setterNameCxx;
+              const propTypeInterfaceJson = interfaces[propTypeRawWithoutPfx];
+              if (unnamedNamespace.length > 0) {
+                unnamedNamespace += '\n';
+              }
+              let selfArg = '';
+              if (!propStatic) {
+                if (propertyJson.setterConst) {
+                  selfArg = `const ${nameCxx}& self, `;
+                } else {
+                  selfArg = `${nameCxx}& self, `;
+                }
+              }
+              unnamedNamespace += `void ${setterNameCxx}(${selfArg}const std::vector<std::shared_ptr<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}>>& ${setterArgName})\n`;
+              unnamedNamespace += `{\n`;
+              unnamedNamespace += `    for (const auto& value : ${setterArgName}) {\n`;
+              unnamedNamespace += `        if (!value) {\n`;
+              unnamedNamespace += `            assert(!"${nameCxx}::${setterNameCxx}(): ${setterArgName} contains at least one null element");\n`;
+              unnamedNamespace += `            return;\n`;
+              unnamedNamespace += `        }\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    std::vector<psm::${util.getLangClassName(propTypeInterfaceJson, util.CXX)}> temporaryVector;\n`;
+              unnamedNamespace += `    temporaryVector.reserve(${setterArgName}.size());\n`;
+              unnamedNamespace += `    for (const auto& value : ${setterArgName}) {\n`;
+              unnamedNamespace += `        temporaryVector.emplace_back(std::move(*value));\n`;
+              unnamedNamespace += `    }\n`;
+              unnamedNamespace += `    ${propStatic ? `psm::${nameCxx}::` : 'self.'}${setterNameCxx}(std::move(temporaryVector));\n`;
+              unnamedNamespace += `}\n`;
+              includesFirst.add('#include <cassert>');
+              includesFirst.add('#include <memory>');
+              includesFirst.add('#include <utility>');
+            }
+          } else {
+            shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
+          }
+        }
+        let retValExt = '';
+        if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
+          retValExt = ', nonnull<ret_val>()';
         }
         if (propStatic) {
-          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName})`;
+          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
         } else {
-          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName})`;
+          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
         }
       }
     }
@@ -297,15 +471,62 @@ function generateJsSource(enums, interfaces, interfaceName, interfaceJson) {
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       if (getterVisibility === util.Visibility.public) {
         addPropDef = true;
-        propDef += `        get: ${propRootObj}.__${getterName},\n`;
+        if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          let converterName = undefined;
+          let converterExt = '';
+          if (typeof enums[propTypeRawWithoutPfx] !== 'undefined') {
+            const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+            const isFlagType = propTypeEnumJson.type === 'flag';
+            converterName = isFlagType ? 'Uint32' : 'Int32';
+          } else {
+            converterName = propTypeRawWithoutPfx[0].toUpperCase() + propTypeRawWithoutPfx.substring(1);
+          }
+          if (typeof interfaces[propTypeRawWithoutPfx] !== 'undefined') {
+            if (util.isArrayType(propertyJson.type) || util.isArrayRefType(propertyJson.type) || util.isArrayMixType(propertyJson.type)) {
+              converterExt = ', false';
+            } else {
+              converterExt = ', true';
+            }
+          }
+          propDef += `        get: function() {\n`;
+          propDef += `            return __internalPosemeshAPI.fromVector${converterName}(${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${getterName}()${converterExt})\n`;
+          propDef += `        },\n`;
+        } else {
+          propDef += `        get: ${propRootObj}.__${getterName},\n`;
+        }
       }
     }
     if (propertyJson.hasSetter) {
       const setterName = util.getPropertySetterName(propertyJson, util.JS);
+      const setterArgName = util.getPropertySetterArgName(propertyJson, util.JS);
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
         addPropDef = true;
-        propDef += `        set: ${propRootObj}.__${setterName},\n`;
+        if (util.isArrayOfAnyType(propertyJson.type)) {
+          const propTypeRawWithoutPfx = propertyJson.type.split(':').slice(1).join(':');
+          let converterName = undefined;
+          let converterExt = '';
+          if (typeof enums[propTypeRawWithoutPfx] !== 'undefined') {
+            const propTypeEnumJson = enums[propTypeRawWithoutPfx];
+            const isFlagType = propTypeEnumJson.type === 'flag';
+            converterName = isFlagType ? 'Uint32' : 'Int32';
+          } else {
+            converterName = propTypeRawWithoutPfx[0].toUpperCase() + propTypeRawWithoutPfx.substring(1);
+          }
+          if (typeof interfaces[propTypeRawWithoutPfx] !== 'undefined') {
+            if (util.isArrayType(propertyJson.type) || util.isArrayRefType(propertyJson.type) || util.isArrayMixType(propertyJson.type)) {
+              converterExt = ', false';
+            } else {
+              converterExt = ', true';
+            }
+          }
+          propDef += `        set: function(${setterArgName}) {\n`;
+          propDef += `            ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${setterName}(__internalPosemeshAPI.toVector${converterName}(${setterArgName}${converterExt}));\n`;
+          propDef += `        },\n`;
+        } else {
+          propDef += `        set: ${propRootObj}.__${setterName},\n`;
+        }
       }
     }
     propDef += `        enumerable: true,\n`;

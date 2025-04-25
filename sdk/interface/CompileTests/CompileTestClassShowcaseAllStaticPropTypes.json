@@ -1,0 +1,263 @@
+{
+  "name": "Compile_Test_Class_Showcase_All_Static_Prop_Types",
+  "static": true,
+  "aliases": [
+    {
+      "name": "Compile_Test_Class_Showcase_All_Static_Prop_Types_Alias"
+    }
+  ],
+  "properties": [
+    {
+      "name": "Int8_Prop",
+      "type": "int8"
+    },
+    {
+      "name": "Int16_Prop",
+      "type": "int16"
+    },
+    {
+      "name": "Int32_Prop",
+      "type": "int32"
+    },
+    {
+      "name": "Int64_Prop",
+      "type": "int64"
+    },
+    {
+      "name": "Unsigned_Int8_Prop",
+      "type": "uint8"
+    },
+    {
+      "name": "Unsigned_Int16_Prop",
+      "type": "uint16"
+    },
+    {
+      "name": "Unsigned_Int32_Prop",
+      "type": "uint32"
+    },
+    {
+      "name": "Unsigned_Int64_Prop",
+      "type": "uint64"
+    },
+    {
+      "name": "Float_Prop",
+      "type": "float"
+    },
+    {
+      "name": "Double_Prop",
+      "type": "double"
+    },
+    {
+      "name": "Bool_Prop",
+      "type": "boolean"
+    },
+    {
+      "name": "String_Prop",
+      "type": "string"
+    },
+    {
+      "name": "String_Ref_Prop",
+      "type": "string_ref"
+    },
+    {
+      "name": "String_Mix_Prop",
+      "type": "string_mix"
+    },
+    {
+      "name": "Enum_Prop",
+      "type": "ENUM:CompileTestExampleEnum"
+    },
+    {
+      "name": "Class_Prop",
+      "type": "CLASS:CompileTestDummyClass"
+    },
+    {
+      "name": "Class_Ref_Prop",
+      "type": "CLASS_REF:CompileTestDummyClass"
+    },
+    {
+      "name": "Class_Mix_Prop",
+      "type": "CLASS_MIX:CompileTestDummyClass"
+    },
+    {
+      "name": "Class_Ptr_Prop",
+      "type": "CLASS_PTR:CompileTestDummyClass"
+    },
+    {
+      "name": "Class_Ptr_Ref_Prop",
+      "type": "CLASS_PTR_REF:CompileTestDummyClass"
+    },
+    {
+      "name": "Class_Ptr_Mix_Prop",
+      "type": "CLASS_PTR_MIX:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Int8_Prop",
+      "type": "ARRAY:int8"
+    },
+    {
+      "name": "Array_Int16_Prop",
+      "type": "ARRAY:int16"
+    },
+    {
+      "name": "Array_Int32_Prop",
+      "type": "ARRAY:int32"
+    },
+    {
+      "name": "Array_Int64_Prop",
+      "type": "ARRAY:int64"
+    },
+    {
+      "name": "Array_Unsigned_Int8_Prop",
+      "type": "ARRAY:uint8"
+    },
+    {
+      "name": "Array_Unsigned_Int16_Prop",
+      "type": "ARRAY:uint16"
+    },
+    {
+      "name": "Array_Unsigned_Int32_Prop",
+      "type": "ARRAY:uint32"
+    },
+    {
+      "name": "Array_Unsigned_Int64_Prop",
+      "type": "ARRAY:uint64"
+    },
+    {
+      "name": "Array_Float_Prop",
+      "type": "ARRAY:float"
+    },
+    {
+      "name": "Array_Double_Prop",
+      "type": "ARRAY:double"
+    },
+    {
+      "name": "Array_String_Prop",
+      "type": "ARRAY:string"
+    },
+    {
+      "name": "Array_Enum_Prop",
+      "type": "ARRAY:CompileTestExampleEnum"
+    },
+    {
+      "name": "Array_Class_Prop",
+      "type": "ARRAY:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Ref_Int8_Prop",
+      "type": "ARRAY_REF:int8"
+    },
+    {
+      "name": "Array_Ref_Int16_Prop",
+      "type": "ARRAY_REF:int16"
+    },
+    {
+      "name": "Array_Ref_Int32_Prop",
+      "type": "ARRAY_REF:int32"
+    },
+    {
+      "name": "Array_Ref_Int64_Prop",
+      "type": "ARRAY_REF:int64"
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int8_Prop",
+      "type": "ARRAY_REF:uint8"
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int16_Prop",
+      "type": "ARRAY_REF:uint16"
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int32_Prop",
+      "type": "ARRAY_REF:uint32"
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int64_Prop",
+      "type": "ARRAY_REF:uint64"
+    },
+    {
+      "name": "Array_Ref_Float_Prop",
+      "type": "ARRAY_REF:float"
+    },
+    {
+      "name": "Array_Ref_Double_Prop",
+      "type": "ARRAY_REF:double"
+    },
+    {
+      "name": "Array_Ref_String_Prop",
+      "type": "ARRAY_REF:string"
+    },
+    {
+      "name": "Array_Ref_Enum_Prop",
+      "type": "ARRAY_REF:CompileTestExampleEnum"
+    },
+    {
+      "name": "Array_Ref_Class_Prop",
+      "type": "ARRAY_REF:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Mix_Int8_Prop",
+      "type": "ARRAY_MIX:int8"
+    },
+    {
+      "name": "Array_Mix_Int16_Prop",
+      "type": "ARRAY_MIX:int16"
+    },
+    {
+      "name": "Array_Mix_Int32_Prop",
+      "type": "ARRAY_MIX:int32"
+    },
+    {
+      "name": "Array_Mix_Int64_Prop",
+      "type": "ARRAY_MIX:int64"
+    },
+    {
+      "name": "Array_Mix_Unsigned_Int8_Prop",
+      "type": "ARRAY_MIX:uint8"
+    },
+    {
+      "name": "Array_Mix_Unsigned_Int16_Prop",
+      "type": "ARRAY_MIX:uint16"
+    },
+    {
+      "name": "Array_Mix_Unsigned_Int32_Prop",
+      "type": "ARRAY_MIX:uint32"
+    },
+    {
+      "name": "Array_Mix_Unsigned_Int64_Prop",
+      "type": "ARRAY_MIX:uint64"
+    },
+    {
+      "name": "Array_Mix_Float_Prop",
+      "type": "ARRAY_MIX:float"
+    },
+    {
+      "name": "Array_Mix_Double_Prop",
+      "type": "ARRAY_MIX:double"
+    },
+    {
+      "name": "Array_Mix_String_Prop",
+      "type": "ARRAY_MIX:string"
+    },
+    {
+      "name": "Array_Mix_Enum_Prop",
+      "type": "ARRAY_MIX:CompileTestExampleEnum"
+    },
+    {
+      "name": "Array_Mix_Class_Prop",
+      "type": "ARRAY_MIX:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Ptr_Class_Prop",
+      "type": "ARRAY_PTR:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Ptr_Ref_Class_Prop",
+      "type": "ARRAY_PTR_REF:CompileTestDummyClass"
+    },
+    {
+      "name": "Array_Ptr_Mix_Class_Prop",
+      "type": "ARRAY_PTR_MIX:CompileTestDummyClass"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "Compile_Test_Example_Enum",
+  "aliases": [
+    {
+      "name": "Compile_Test_Example_Enum_Alias"
+    }
+  ],
+  "constants": [
+    {
+      "name": "First_Constant"
+    },
+    {
+      "name": "Second_Constant"
+    },
+    {
+      "name": "Third_Constant",
+      "value": 25
+    },
+    {
+      "name": "Fourth_Constant",
+      "value": 40
+    },
+    {
+      "name": "Fifth_Constant"
+    }
+  ]
+}
