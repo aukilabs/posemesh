@@ -34,7 +34,6 @@ impl Query {
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct DomainData {
-    pub domain_id: String,
     pub metadata: Metadata,
     pub content: js_sys::Uint8Array,
 }
@@ -42,9 +41,8 @@ pub struct DomainData {
 #[wasm_bindgen]
 impl DomainData {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_id: String, metadata: Metadata, content: js_sys::Uint8Array) -> Self {
+    pub fn new(metadata: Metadata, content: js_sys::Uint8Array) -> Self {
         Self {
-            domain_id,
             metadata,
             content,
         }
@@ -59,18 +57,20 @@ pub struct Metadata {
     pub size: usize,
     pub properties: JsValue,
     pub id: Option<String>,
+    pub hash: Option<String>,
 }
 
 #[wasm_bindgen]
 impl Metadata {
     #[wasm_bindgen(constructor)]
-    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: Option<String>) -> Self {
+    pub fn new(name: String, data_type: String, size: usize, properties: JsValue) -> Self {
         Self {
             name,
             data_type,
             size,
             properties,
-            id,
+            id: None,
+            hash: None,
         }
     }
 }
@@ -82,6 +82,7 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
         size: r_metadata.size as usize,
         properties: to_value(&r_metadata.properties).unwrap(),
         id: r_metadata.id.clone(),
+        hash: r_metadata.hash.clone(),
     }
 }
 
@@ -93,28 +94,15 @@ fn to_r_metadata(metadata: &Metadata) -> domain_data::Metadata {
         id: metadata.id.clone(),
         size: metadata.size as u32,
         link: None,
-        hash: None,
+        hash: metadata.hash.clone(),
     }
 }
 
 fn from_r_data(r_data: &domain_data::Data) -> DomainData {
     let content = r_data.content.as_slice();
     DomainData {
-        domain_id: r_data.domain_id.clone(),
         metadata: from_r_metadata(&r_data.metadata),
         content: js_sys::Uint8Array::from(content),
-    }
-}
-
-fn to_r_data(data: &DomainData) -> domain_data::Data {
-    let metadata = to_r_metadata(&data.metadata);
-
-    let content = data.content.to_vec();
-    
-    domain_data::Data {
-        domain_id: data.domain_id.clone(),
-        metadata,
-        content,
     }
 }
 
@@ -161,8 +149,8 @@ pub struct DomainCluster {
 #[wasm_bindgen]
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, false, private_key, private_key_path))) }   
+    pub fn new(domain_id: String, domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_id, domain_manager_addr, name, false, 0, false, false, private_key, private_key_path, vec![]))) }   
     }
 
     #[wasm_bindgen]
@@ -188,16 +176,19 @@ struct ReliableDataProducer {
 impl ReliableDataProducer {
     #[wasm_bindgen]
     pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
-        let data = to_r_data(&data);
+        let metadata = to_r_metadata(&data.metadata);
+        let content = data.content.to_vec();
         let writer = self.inner.clone();
         let future = async move {
             let mut writer = writer.lock().unwrap();
-            let res = writer.push(&data.metadata).await;
+            let res = writer.push(&metadata).await;
             drop(writer);
             match res {
                 Ok(mut data_push) => {
-                    match data_push.push_chunk(&data.content, false).await {
-                        Ok(hash) => Ok(JsValue::from_str(&hash)),
+                    match data_push.push_chunk(&content, false).await {
+                        Ok(hash) => {
+                            Ok(JsValue::from(hash))
+                        },
                         Err(e) => Err(JsValue::from_str(&format!("{}", e))),
                     }
                 },
@@ -230,6 +221,7 @@ impl ReliableDataProducer {
 #[wasm_bindgen]
 pub struct RemoteDatastore {
     inner: r_RemoteDatastore,
+    domain_id: String,
 }
 
 #[wasm_bindgen]
@@ -238,18 +230,16 @@ impl RemoteDatastore {
     pub fn new(cluster: &DomainCluster) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
-
-        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))) }
+        let domain_id = r_domain_cluster.domain_id.clone();
+        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))), domain_id }
     }
 
     #[wasm_bindgen]
     pub fn consume(
         &mut self,
-        domain_id: String,
-        query: Query,
+        query: Query
     ) -> js_sys::Promise {
-        let domain_id = domain_id.clone();
-        // TODO: Convert query to Rust struct
+        let domain_id = self.domain_id.clone();
         let query = query.clone();
         let mut inner = self.inner.clone();
 
@@ -263,14 +253,12 @@ impl RemoteDatastore {
 
     #[wasm_bindgen]
     pub fn produce(
-        &mut self,
-        domain_id: String,
+        &mut self
     ) -> js_sys::Promise {
-        let domain_id = domain_id.clone();
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let r = inner.upsert(domain_id).await;
+            let r = inner.upsert("".to_string()).await;
             Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r))}))
         })
     }

@@ -9,10 +9,11 @@ use futures::{AsyncReadExt, StreamExt};
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
     let relay_cfg = &NetworkingConfig{
-        port: 8080,
+        port: 18803,
         bootstrap_nodes: vec![],
-        enable_relay_server: false,
+        enable_relay_server: true,
         enable_kdht: true,
         enable_mdns: false,
         relay_nodes: vec![],
@@ -21,13 +22,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         name: "relay-example/relay".to_string(),
         enable_websocket: true,
         enable_webrtc: true,
-        domain: None,
+        namespace: None,
     };
     let mut relay = Networking::new(relay_cfg)?;
     let protocol = "/chat".to_string();
     let mut chat_handler = relay.client.set_stream_handler(protocol).await.unwrap();
-
-    let _bootstrap_addr = format!("/ip4/192.168.31.39/udp/8080/quic-v1/p2p/{}", relay.id.clone());
 
     loop {
         let relay_events = relay.event_receiver.clone();

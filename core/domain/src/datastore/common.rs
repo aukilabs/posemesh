@@ -5,7 +5,7 @@ use crate::protobuf::domain_data::{self, Data};
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use futures::{channel::mpsc::{self, Receiver, Sender}, lock::Mutex, SinkExt, StreamExt};
+use futures::channel::mpsc::{Receiver, Sender};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -13,6 +13,8 @@ pub type Writer<T> = Sender<Result<T, DomainError>>;
 
 pub type DataWriter = Writer<Data>;
 pub type DataReader = Reader<Data>;
+
+pub const CHUNK_SIZE: usize = 5 * 1024; // wasm allows 8192 = 8KB the most
 
 // Define a custom error type
 #[derive(Debug)]
