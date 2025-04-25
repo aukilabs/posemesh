@@ -1,0 +1,19 @@
+{
+  "name": "Compile_Test_Dummy_Class",
+  "aliases": [
+    {
+      "name": "Compile_Test_Dummy_Class_Alias"
+    }
+  ],
+  "properties": [
+    {
+      "name": "Dummy_Member_Property",
+      "type": "int32"
+    },
+    {
+      "name": "Dummy_Static_Property",
+      "type": "boolean",
+      "static": true
+    }
+  ]
+}

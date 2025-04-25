@@ -1,0 +1,31 @@
+{
+  "name": "Compile_Test_Example_Flags2",
+  "type": "flag",
+  "aliases": [
+    {
+      "name": "Compile_Test_Example_Flags2_Alias"
+    }
+  ],
+  "constants": [
+    {
+      "name": "First_Flag",
+      "value": 8
+    },
+    {
+      "name": "Second_Flag",
+      "value": 12
+    },
+    {
+      "name": "Third_Flag",
+      "value": 99
+    },
+    {
+      "name": "Fourth_Flag",
+      "value": 135
+    },
+    {
+      "name": "Fifth_Flag",
+      "value": 8888
+    }
+  ]
+}

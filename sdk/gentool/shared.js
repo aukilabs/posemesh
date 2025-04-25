@@ -1,3 +1,6 @@
+// Ignore all enums and interfaces in 'CompileTests' subdirectory:
+const ignoreCompileTests = false;
+
 // Put your manually written Objective-C header names that need to be added to umbrella and bridging headers here:
 const manualUmbrellaAndBridgingHeaderNames = new Set([
   'Config',
@@ -14,6 +17,7 @@ const requiredVectorsOfClasses = new Set([
 ]);
 
 module.exports = {
+  ignoreCompileTests,
   manualUmbrellaAndBridgingHeaderNames,
   requiredVectorsOfClasses
 };

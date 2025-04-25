@@ -1,0 +1,26 @@
+{
+  "name": "Compile_Test_Example_Flags",
+  "type": "flag",
+  "aliases": [
+    {
+      "name": "Compile_Test_Example_Flags_Alias"
+    }
+  ],
+  "constants": [
+    {
+      "name": "First_Flag"
+    },
+    {
+      "name": "Second_Flag"
+    },
+    {
+      "name": "Third_Flag"
+    },
+    {
+      "name": "Fourth_Flag"
+    },
+    {
+      "name": "Fifth_Flag"
+    }
+  ]
+}
