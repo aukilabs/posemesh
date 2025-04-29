@@ -11,6 +11,8 @@ pub enum AuthError {
     JWTError(#[from] jsonwebtoken::errors::Error),
     #[error("Protobuf error: {0}")]
     ProtobufError(#[from] quick_protobuf::Error),
+    #[error("Stream error: {0}")]
+    StreamError(#[from] std::io::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query}, spatial::reconstruction::reconstruction_job};
+use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         data_type_regexp: None,
     };
 
-    let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await;
+    let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await?;
 
     let mut name_to_id = HashMap::new();
     loop {
@@ -49,12 +49,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             break;
         }
         let data = data.unwrap().unwrap();
-        name_to_id.insert(data.metadata.name, data.metadata.id.unwrap());
+        name_to_id.insert(data.metadata.name, data.metadata.id);
     }
 
     println!("downloaded {} files", name_to_id.len());
 
-    let mut producer = remote_datastore.upsert(domain_id.clone()).await;
+    let mut producer = remote_datastore.upsert(domain_id.clone()).await?;
 
     for entry in dir {
         let entry = entry.unwrap();
@@ -77,21 +77,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let name = format!("{}_{}", parts[..parts.len()-1].join("."), scan);
 
                 let id = name_to_id.get(&name).map(|id| id.clone());
-                let metadata = Metadata {
-                    id,
+                let metadata = UpsertMetadata {
+                    id: id.clone(),
                     name,
                     data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,
                     properties: HashMap::new(),
-                    link: None,
-                    hash: None,
+                    is_new: id.is_none(),
                 };
 
                 let mut content = vec![0u8; metadata.size as usize];
                 f.read_exact(&mut content).expect("cant read file");
 
                 let mut writer = producer.push(&metadata).await.expect("cant push data");
-                writer.push_chunk(&content, false).await.expect("cant push chunk");
+                writer.next_chunk(&content, false).await.expect("cant push chunk");
             }
             Err(e) => {
                 println!("Error reading file: {:?}", e);

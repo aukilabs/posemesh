@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
 use networking::{event, libp2p::{Networking, NetworkingConfig}};
-use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
+use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
@@ -13,7 +13,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 #[derive(Debug)]
 pub enum TaskUpdateResult {
     Ok(task::Task),
-    Err(Box<dyn std::error::Error + Send + Sync>),
+    Err(DomainError),
 }
 
 #[derive(Debug)]

@@ -1,11 +1,10 @@
 
-use std::error::Error;
-
 use crate::protobuf::domain_data::{self, Data};
 use async_trait::async_trait;
+use networking::libp2p::NetworkError;
 use uuid::Uuid;
 
-use futures::channel::mpsc::{Receiver, Sender};
+use futures::channel::{mpsc::{Receiver, Sender}, oneshot::Canceled};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -14,43 +13,39 @@ pub type Writer<T> = Sender<Result<T, DomainError>>;
 pub type DataWriter = Writer<Data>;
 pub type DataReader = Reader<Data>;
 
-pub const CHUNK_SIZE: usize = 5 * 1024; // wasm allows 8192 = 8KB the most
+pub const CHUNK_SIZE: usize = 8 * 1024; // webrtc allows 8192 = 8KB the most
 
 // Define a custom error type
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DomainError {
-    NotFound,
-    Interrupted,
-    Cancelled(String),
-    IoError(std::io::Error),
+    #[error("Not found")]
+    NotFound(String),
+    #[error("{0} Cancelled: {1}")]
+    Cancelled(String, Canceled),
+    #[error("IO error: {0}")]
+    Io(#[from]std::io::Error),
     #[cfg(all(feature="fs", not(target_family="wasm")))]
-    PostgresError(tokio_postgres::Error),
-    InternalError(Box<dyn Error + Send + Sync>),
-}
-
-impl Error for DomainError {}
-impl std::fmt::Display for DomainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            DomainError::NotFound => write!(f, "Not found"),
-            DomainError::Interrupted => write!(f, "Interrupted"),
-            DomainError::Cancelled(s) => write!(f, "Cancelled: {}", s),
-            DomainError::IoError(e) => write!(f, "IO error: {}", e),
-            #[cfg(all(feature="fs", not(target_family="wasm")))]
-            DomainError::PostgresError(e) => write!(f, "Postgres error: {}", e),
-            DomainError::InternalError(e) => write!(f, "Internal error: {}", e),
-        }
-    }
+    #[error("Postgres error: {0}")]
+    #[cfg(all(feature="fs", not(target_family="wasm")))]
+    PostgresError(#[from] tokio_postgres::Error),
+    #[error("Internal error: {0}")]
+    InternalError(Box<dyn std::error::Error + Send + Sync>),
+    #[error("Invalid: {0} {1} {2}")]
+    Invalid(String, String, String),
+    #[error("Size mismatch: expected {0}, got {1}")]
+    SizeMismatch(usize, usize),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
 }
 
 #[async_trait]
 pub trait DomainData: Send + Sync {
-    async fn push_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError>;
+    async fn next_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError>;
 }
 
 #[async_trait]
 pub trait ReliableDataProducer: Send + Sync {
-    async fn push(&mut self, metadata: &domain_data::Metadata) -> Result<Box<dyn DomainData>, DomainError>;
+    async fn push(&mut self, metadata: &domain_data::UpsertMetadata) -> Result<Box<dyn DomainData>, DomainError>;
     async fn is_completed(&self) -> bool;
     async fn close(&mut self) -> ();
 }
@@ -58,8 +53,8 @@ pub trait ReliableDataProducer: Send + Sync {
 
 #[async_trait]
 pub trait Datastore: Send + Sync + Clone {
-    async fn load(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> DataReader;
-    async fn upsert(self: &mut Self, domain_id: String) -> Box<dyn ReliableDataProducer>;
+    async fn load(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> Result<DataReader, DomainError>;
+    async fn upsert(self: &mut Self, domain_id: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>;
 }
 
 pub fn data_id_generator() -> String {

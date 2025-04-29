@@ -1,11 +1,9 @@
-use std::error::Error;
-
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
 use networking::client::Client;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, MessageRead, MessageWrite};
 
-use crate::protobuf::task;
+use crate::{datastore::common::DomainError, protobuf::task};
 
 pub fn prefix_size_message<M: MessageWrite>(message: &M) -> Vec<u8>
 {
@@ -27,7 +25,7 @@ pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>>(mut stream: im
     deserialize_from_slice(&message_buffer)
 }
 
-pub async fn handshake_then_prefixed_content<M: MessageWrite>(peer: Client, access_token: &str, receiver: &str, endpoint: &str, content: &M, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+pub async fn handshake_then_prefixed_content<M: MessageWrite>(peer: Client, access_token: &str, receiver: &str, endpoint: &str, content: &M, timeout: u32) -> Result<Stream, DomainError> {
     let mut upload_stream = handshake(peer, access_token, receiver, endpoint, timeout).await?;
 
     let content_buffer = prefix_size_message(content);
@@ -36,7 +34,7 @@ pub async fn handshake_then_prefixed_content<M: MessageWrite>(peer: Client, acce
     Ok(upload_stream)
 }
 
-pub async fn handshake_then_content<M: MessageWrite>(peer: Client, access_token: &str, receiver: &str, endpoint: &str, content: &M, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+pub async fn handshake_then_content<M: MessageWrite>(peer: Client, access_token: &str, receiver: &str, endpoint: &str, content: &M, timeout: u32) -> Result<Stream, DomainError> {
     let mut upload_stream = handshake(peer, access_token, receiver, endpoint, timeout).await?;
 
     upload_stream.write_all(&serialize_into_vec(content).unwrap()).await?;
@@ -44,7 +42,7 @@ pub async fn handshake_then_content<M: MessageWrite>(peer: Client, access_token:
     Ok(upload_stream)
 }
 
-pub async fn handshake_then_vec(peer: Client, access_token: &str, receiver: &str, endpoint: &str, vec: Vec<u8>, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+pub async fn handshake_then_vec(peer: Client, access_token: &str, receiver: &str, endpoint: &str, vec: Vec<u8>, timeout: u32) -> Result<Stream, DomainError> {
     let mut upload_stream = handshake(peer, access_token, receiver, endpoint, timeout).await?;
     tracing::debug!("Sending vec");
     upload_stream.write_all(&vec).await?;
@@ -53,7 +51,7 @@ pub async fn handshake_then_vec(peer: Client, access_token: &str, receiver: &str
     Ok(upload_stream)
 }
 
-pub async fn handshake(mut peer: Client, access_token: &str, receiver: &str, endpoint: &str, timeout: u32) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+pub async fn handshake(mut peer: Client, access_token: &str, receiver: &str, endpoint: &str, timeout: u32) -> Result<Stream, DomainError> {
     tracing::debug!("Sending handshake");
     let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
         access_token: access_token.to_string(),

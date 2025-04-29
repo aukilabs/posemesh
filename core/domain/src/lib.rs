@@ -13,3 +13,6 @@ mod c;
 
 #[cfg(target_family = "wasm")]
 mod wasm;
+
+#[cfg(feature="capability")]
+pub mod capabilities;

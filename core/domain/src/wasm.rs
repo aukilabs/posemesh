@@ -185,7 +185,7 @@ impl ReliableDataProducer {
             drop(writer);
             match res {
                 Ok(mut data_push) => {
-                    match data_push.push_chunk(&content, false).await {
+                    match data_push.next_chunk(&content, false).await {
                         Ok(hash) => {
                             Ok(JsValue::from(hash))
                         },

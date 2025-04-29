@@ -21,10 +21,9 @@ pub struct Metadata {
     pub name: String,
     pub data_type: String,
     pub size: u32,
-    pub id: Option<String>,
-    pub properties: KVMap<String, String>,
-    pub link: Option<String>,
+    pub id: String,
     pub hash: Option<String>,
+    pub properties: KVMap<String, String>,
 }
 
 impl<'a> MessageRead<'a> for Metadata {
@@ -35,13 +34,12 @@ impl<'a> MessageRead<'a> for Metadata {
                 Ok(10) => msg.name = r.read_string(bytes)?.to_owned(),
                 Ok(18) => msg.data_type = r.read_string(bytes)?.to_owned(),
                 Ok(24) => msg.size = r.read_uint32(bytes)?,
-                Ok(34) => msg.id = Some(r.read_string(bytes)?.to_owned()),
-                Ok(42) => {
+                Ok(34) => msg.id = r.read_string(bytes)?.to_owned(),
+                Ok(42) => msg.hash = Some(r.read_string(bytes)?.to_owned()),
+                Ok(50) => {
                     let (key, value) = r.read_map(bytes, |r, bytes| Ok(r.read_string(bytes)?.to_owned()), |r, bytes| Ok(r.read_string(bytes)?.to_owned()))?;
                     msg.properties.insert(key, value);
                 }
-                Ok(50) => msg.link = Some(r.read_string(bytes)?.to_owned()),
-                Ok(58) => msg.hash = Some(r.read_string(bytes)?.to_owned()),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -56,20 +54,18 @@ impl MessageWrite for Metadata {
         + 1 + sizeof_len((&self.name).len())
         + 1 + sizeof_len((&self.data_type).len())
         + 1 + sizeof_varint(*(&self.size) as u64)
-        + self.id.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
-        + self.properties.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_len((v).len()))).sum::<usize>()
-        + self.link.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
+        + 1 + sizeof_len((&self.id).len())
         + self.hash.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
+        + self.properties.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_len((v).len()))).sum::<usize>()
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
         w.write_with_tag(10, |w| w.write_string(&**&self.name))?;
         w.write_with_tag(18, |w| w.write_string(&**&self.data_type))?;
         w.write_with_tag(24, |w| w.write_uint32(*&self.size))?;
-        if let Some(ref s) = self.id { w.write_with_tag(34, |w| w.write_string(&**s))?; }
-        for (k, v) in self.properties.iter() { w.write_with_tag(42, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_len((v).len()), 10, |w| w.write_string(&**k), 18, |w| w.write_string(&**v)))?; }
-        if let Some(ref s) = self.link { w.write_with_tag(50, |w| w.write_string(&**s))?; }
-        if let Some(ref s) = self.hash { w.write_with_tag(58, |w| w.write_string(&**s))?; }
+        w.write_with_tag(34, |w| w.write_string(&**&self.id))?;
+        if let Some(ref s) = self.hash { w.write_with_tag(42, |w| w.write_string(&**s))?; }
+        for (k, v) in self.properties.iter() { w.write_with_tag(50, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_len((v).len()), 10, |w| w.write_string(&**k), 18, |w| w.write_string(&**v)))?; }
         Ok(())
     }
 }
@@ -158,6 +154,61 @@ impl MessageWrite for Data {
         w.write_with_tag(10, |w| w.write_string(&**&self.domain_id))?;
         w.write_with_tag(18, |w| w.write_message(&self.metadata))?;
         w.write_with_tag(26, |w| w.write_bytes(&**&self.content))?;
+        Ok(())
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct UpsertMetadata {
+    pub name: String,
+    pub data_type: String,
+    pub size: u32,
+    pub is_new: bool,
+    pub id: Option<String>,
+    pub properties: KVMap<String, String>,
+}
+
+impl<'a> MessageRead<'a> for UpsertMetadata {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Self::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes) {
+                Ok(10) => msg.name = r.read_string(bytes)?.to_owned(),
+                Ok(18) => msg.data_type = r.read_string(bytes)?.to_owned(),
+                Ok(24) => msg.size = r.read_uint32(bytes)?,
+                Ok(32) => msg.is_new = r.read_bool(bytes)?,
+                Ok(42) => msg.id = Some(r.read_string(bytes)?.to_owned()),
+                Ok(50) => {
+                    let (key, value) = r.read_map(bytes, |r, bytes| Ok(r.read_string(bytes)?.to_owned()), |r, bytes| Ok(r.read_string(bytes)?.to_owned()))?;
+                    msg.properties.insert(key, value);
+                }
+                Ok(t) => { r.read_unknown(bytes, t)?; }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(msg)
+    }
+}
+
+impl MessageWrite for UpsertMetadata {
+    fn get_size(&self) -> usize {
+        0
+        + 1 + sizeof_len((&self.name).len())
+        + 1 + sizeof_len((&self.data_type).len())
+        + 1 + sizeof_varint(*(&self.size) as u64)
+        + 1 + sizeof_varint(*(&self.is_new) as u64)
+        + self.id.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
+        + self.properties.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_len((v).len()))).sum::<usize>()
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        w.write_with_tag(10, |w| w.write_string(&**&self.name))?;
+        w.write_with_tag(18, |w| w.write_string(&**&self.data_type))?;
+        w.write_with_tag(24, |w| w.write_uint32(*&self.size))?;
+        w.write_with_tag(32, |w| w.write_bool(*&self.is_new))?;
+        if let Some(ref s) = self.id { w.write_with_tag(42, |w| w.write_string(&**s))?; }
+        for (k, v) in self.properties.iter() { w.write_with_tag(50, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_len((v).len()), 10, |w| w.write_string(&**k), 18, |w| w.write_string(&**v)))?; }
         Ok(())
     }
 }
