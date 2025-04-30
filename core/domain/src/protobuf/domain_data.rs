@@ -165,7 +165,7 @@ pub struct UpsertMetadata {
     pub data_type: String,
     pub size: u32,
     pub is_new: bool,
-    pub id: Option<String>,
+    pub id: String,
     pub properties: KVMap<String, String>,
 }
 
@@ -178,7 +178,7 @@ impl<'a> MessageRead<'a> for UpsertMetadata {
                 Ok(18) => msg.data_type = r.read_string(bytes)?.to_owned(),
                 Ok(24) => msg.size = r.read_uint32(bytes)?,
                 Ok(32) => msg.is_new = r.read_bool(bytes)?,
-                Ok(42) => msg.id = Some(r.read_string(bytes)?.to_owned()),
+                Ok(42) => msg.id = r.read_string(bytes)?.to_owned(),
                 Ok(50) => {
                     let (key, value) = r.read_map(bytes, |r, bytes| Ok(r.read_string(bytes)?.to_owned()), |r, bytes| Ok(r.read_string(bytes)?.to_owned()))?;
                     msg.properties.insert(key, value);
@@ -198,7 +198,7 @@ impl MessageWrite for UpsertMetadata {
         + 1 + sizeof_len((&self.data_type).len())
         + 1 + sizeof_varint(*(&self.size) as u64)
         + 1 + sizeof_varint(*(&self.is_new) as u64)
-        + self.id.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
+        + 1 + sizeof_len((&self.id).len())
         + self.properties.iter().map(|(k, v)| 1 + sizeof_len(2 + sizeof_len((k).len()) + sizeof_len((v).len()))).sum::<usize>()
     }
 
@@ -207,7 +207,7 @@ impl MessageWrite for UpsertMetadata {
         w.write_with_tag(18, |w| w.write_string(&**&self.data_type))?;
         w.write_with_tag(24, |w| w.write_uint32(*&self.size))?;
         w.write_with_tag(32, |w| w.write_bool(*&self.is_new))?;
-        if let Some(ref s) = self.id { w.write_with_tag(42, |w| w.write_string(&**s))?; }
+        w.write_with_tag(42, |w| w.write_string(&**&self.id))?;
         for (k, v) in self.properties.iter() { w.write_with_tag(50, |w| w.write_map(2 + sizeof_len((k).len()) + sizeof_len((v).len()), 10, |w| w.write_string(&**k), 18, |w| w.write_string(&**v)))?; }
         Ok(())
     }

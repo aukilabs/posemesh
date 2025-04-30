@@ -15,6 +15,8 @@ typedef struct Query Query;
 
 typedef struct ReliableDataProducer ReliableDataProducer;
 
+typedef struct ReliableDataProducer ReliableDataProducer;
+
 typedef struct DomainData {
   const char *domain_id;
   const char *id;

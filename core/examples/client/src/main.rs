@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
                 let id = name_to_id.get(&name).map(|id| id.clone());
                 let metadata = UpsertMetadata {
-                    id: id.clone(),
+                    id: id.clone().unwrap_or_else(|| data_id_generator()),
                     name,
                     data_type: data_type.to_string(),
                     size: f.metadata()?.len() as u32,

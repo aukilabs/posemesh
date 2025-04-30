@@ -5,7 +5,7 @@ use futures::stream::StreamExt;
 use runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::common::{self, Datastore, ReliableDataProducer as r_ReliableDataProducer};
+use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer};
 use crate::binding_helper::init_r_remote_storage;
 use crate::datastore::remote::RemoteDatastore;
 use crate::protobuf::domain_data::UpsertMetadata;
@@ -76,7 +76,7 @@ fn to_rust(c_domain_data: *const DomainData) -> (UpsertMetadata, Vec<u8>) {
         data_type,
         size: content_size as u32,
         is_new: id.is_none(),
-        id,
+        id: id.clone().unwrap_or_else(|| data_id_generator()),
         properties: serde_json::from_str(&properties).unwrap(),
     }, content)
 }

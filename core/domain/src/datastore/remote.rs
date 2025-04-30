@@ -111,7 +111,6 @@ impl DomainData for RemoteDomainData {
 pub struct RemoteReliableDataProducer {
     pendings: Arc<Mutex<HashSet<String>>>,
     stream: Option<Arc<Mutex<WriteHalf<Stream>>>>,
-    uploaded: Arc<Mutex<Vec<Metadata>>>,
 }
 
 impl RemoteReliableDataProducer {
@@ -121,7 +120,6 @@ impl RemoteReliableDataProducer {
         Self {
             stream: None,
             pendings,
-            uploaded: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -129,7 +127,6 @@ impl RemoteReliableDataProducer {
         let (mut reader, writehalf) = stream.split();
         self.stream = Some(Arc::new(Mutex::new(writehalf)));
         let pending_clone = self.pendings.clone();
-        let uploaded_clone = self.uploaded.clone();
 
         spawn(async move {
             loop {
@@ -150,9 +147,6 @@ impl RemoteReliableDataProducer {
                 let mut pendings = pending_clone.lock().await;
                 tracing::debug!("received: {}", hash);
                 pendings.remove(&hash);
-                drop(pendings);
-                let mut uploaded = uploaded_clone.lock().await;
-                uploaded.push(metadata);
             }
         });
     }
@@ -170,9 +164,9 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         writer.write_all(&prefix_size_message(&data)).await.expect("Failed to write metadata");
         writer.flush().await.expect("Failed to flush");
         drop(writer);
+        let id = data.id.clone();
         let mut pendings = self.pendings.lock().await;
-        let temp_id = data_id_generator();
-        pendings.insert(temp_id.clone());
+        pendings.insert(id.clone());
         drop(pendings);
         let (sender, receiver) = oneshot::channel::<String>();
 
@@ -182,7 +176,7 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
                 let mut pendings = pendings_clone.lock().await;
                 tracing::debug!("sent: {}", hash);
                 pendings.insert(hash);
-                pendings.remove(&temp_id);
+                pendings.remove(&id.clone());
             }
         });
         Ok(Box::new(RemoteDomainData::new(data.size as usize, stream, sender, data)))

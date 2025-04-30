@@ -89,7 +89,7 @@ fn to_r_metadata(metadata: &Metadata) -> domain_data::UpsertMetadata {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
         properties: from_value(metadata.properties.clone()).unwrap(),
-        id: metadata.id.clone(),
+        id: metadata.id.clone().unwrap_or_else(|| data_id_generator()),
         size: metadata.size as u32,
         is_new: metadata.id.is_none(),
     }
