@@ -98,13 +98,13 @@ Pose PoseEstimation::solvePnP(
     // To address this we need to transpose the matrix (swap rows and columns).
     Matrix3x3 r;
     r.setM00(rm.at<float>(0, 0));
-    r.setM01(rm.at<float>(1, 0));
-    r.setM02(rm.at<float>(2, 0));
     r.setM10(rm.at<float>(0, 1));
-    r.setM11(rm.at<float>(1, 1));
-    r.setM12(rm.at<float>(2, 1));
     r.setM20(rm.at<float>(0, 2));
+    r.setM01(rm.at<float>(1, 0));
+    r.setM11(rm.at<float>(1, 1));
     r.setM21(rm.at<float>(1, 2));
+    r.setM02(rm.at<float>(2, 0));
+    r.setM12(rm.at<float>(2, 1));
     r.setM22(rm.at<float>(2, 2));
 
     return PoseTools::fromOpenCVToOpenGL(PoseFactory::create(p, r));
