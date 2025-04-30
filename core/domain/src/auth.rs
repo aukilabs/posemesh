@@ -7,7 +7,7 @@ use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
 use std::{sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
-use futures::{channel::oneshot, lock::Mutex, AsyncWriteExt, FutureExt, select, StreamExt};
+use futures::{channel::oneshot, lock::Mutex, select, AsyncWriteExt, FutureExt, StreamExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -54,14 +54,17 @@ pub trait TokenClaim: Serialize + DeserializeOwned {
     fn add_ttl(&mut self, ttl: Duration);
 }
 
-pub fn decode_jwt(token: &str, secret: &Vec<u8>) -> Result<TaskTokenClaim, AuthError> {
-    let token_data = decode::<TaskTokenClaim>(token, &DecodingKey::from_ed_der(secret), &Validation::new(Algorithm::HS256)).map_err(|e| AuthError::JWTError(e))?;
-    Ok(token_data.claims)
+pub async fn handshake<S: AsyncStream>(public_key: &[u8], stream: &mut S) -> Result<TaskTokenClaim, AuthError> {
+    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await.map_err(|e| AuthError::ProtobufError(e))?;
+    verify_token::<TaskTokenClaim>(&header.access_token, public_key)
 }
 
-pub async fn handshake<S: AsyncStream>(stream: &mut S, secret: &Vec<u8>) -> Result<TaskTokenClaim, AuthError> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await.map_err(|e| AuthError::ProtobufError(e))?;
-    decode_jwt(header.access_token.as_str(), secret)
+pub fn verify_token<C: TokenClaim>(token: &str, public_key: &[u8]) -> Result<C, AuthError> {
+    let mut validator = Validation::new(Algorithm::EdDSA);
+    validator.leeway = 5;
+    validator.validate_exp = true;
+    let token_data = decode::<C>(token, &DecodingKey::from_ed_der(public_key), &validator)?;
+    Ok(token_data.claims)
 }
 
 pub fn encode_job_jwt(authorizer: &AuthServer, domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str) -> Result<String, AuthError> {
@@ -133,7 +136,7 @@ impl AuthServer {
 
 pub struct AuthClient {
     public_key: Arc<Mutex<Vec<u8>>>,
-    tx: Option<oneshot::Sender<()>>
+    tx: Option<oneshot::Sender<()>>,
 }
 
 impl AuthClient {
@@ -141,13 +144,13 @@ impl AuthClient {
         let public_key = request_response_raw(c.clone(), public_key_peer, PUBLIC_KEY_ENDPOINT, &vec![], Duration::from_secs(2).as_millis() as u32).await?;
 
         let c_clone = c.clone();
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel::<()>();
         let public_key = Arc::new(Mutex::new(public_key));
 
         let mut interval = Interval::platform_new(cache_ttl);
         let public_key_clone = public_key.clone();
-        let mut rx = rx.fuse();
         let public_key_peer_clone = public_key_peer.to_string();
+        let mut rx = rx.fuse();
         spawn(async move {
             loop {
                 select! {
@@ -165,13 +168,18 @@ impl AuthClient {
         Ok(Self { public_key, tx: Some(tx) })
     }
 
+    pub async fn initialize_with_known_public_key(public_key: Vec<u8>) -> Self {
+        Self { public_key: Arc::new(Mutex::new(public_key)), tx: None }
+    }
+
     pub async fn verify_token<C: TokenClaim>(&self, token: &str) -> Result<C, AuthError> {
         let public_key = self.public_key.lock().await;
-        let mut validator = Validation::new(Algorithm::EdDSA);
-        validator.leeway = 5;
-        validator.validate_exp = true;
-        let token_data = decode::<C>(token, &DecodingKey::from_ed_der(public_key.as_ref()), &validator)?;
-        Ok(token_data.claims)
+        verify_token::<C>(token, public_key.as_ref())
+    }
+
+    pub async fn public_key(&self) -> Vec<u8> {
+        let public_key = self.public_key.lock().await;
+        public_key.clone()
     }
 }
 
@@ -185,12 +193,10 @@ impl Drop for AuthClient {
 
 #[cfg(not(target_family = "wasm"))]
 mod tests {
-    use base64::Engine;
+    use super::*;
     use networking::libp2p::{Networking, NetworkingConfig};
     use std::fs::{create_dir_all, remove_dir_all};
     use tokio::{self, select, spawn, time::sleep};
-
-    use super::*;
 
     struct TestContext {
         base_dir: String,

@@ -37,7 +37,7 @@ pub enum DomainError {
     #[error("Network error: {0}")]
     NetworkError(#[from] NetworkError),
     #[error("Protobuf error: {0}")]
-    ProtobufError(#[from] quick_protobuf::Error),
+    ProtobufError(#[from] quick_protobuf::Error)
 }
 
 #[async_trait]

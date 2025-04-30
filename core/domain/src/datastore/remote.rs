@@ -11,7 +11,7 @@ use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
 use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
-use super::common::{data_id_generator, hash_chunk, DomainData, Reader, ReliableDataProducer, Writer, CHUNK_SIZE};
+use super::common::{hash_chunk, DomainData, ReliableDataProducer, CHUNK_SIZE};
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
 
@@ -59,13 +59,12 @@ pub(crate) struct RemoteDomainData {
     expected_size: usize,
     sent_size: Arc<Mutex<usize>>,
     merkle_tree: MerkleTree<Sha256>,
-    sender: Option<oneshot::Sender<String>>,
-    metadata: UpsertMetadata,
+    left_buffer: Vec<u8>
 }
 
 impl RemoteDomainData {
-    pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>, sender: oneshot::Sender<String>, metadata: UpsertMetadata) -> Self {
-        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new(), sender: Some(sender), metadata }
+    pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>) -> Self {
+        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new(), left_buffer: vec![] }
     }
 }
 
@@ -74,11 +73,16 @@ impl DomainData for RemoteDomainData {
     async fn next_chunk(&mut self, datum: &[u8], more: bool) -> Result<String, DomainError> {
         if datum.len() != 0 {
             let mut writer = self.writer.lock().await;
-            let chunks = datum.chunks(CHUNK_SIZE);
-            for chunk in chunks {
-                let hash = hash_chunk(chunk);
+            self.left_buffer.extend_from_slice(datum);
+            while self.left_buffer.len() >= CHUNK_SIZE || !more {
+                let mut length = CHUNK_SIZE;
+                if !more {
+                    length = self.left_buffer.len();
+                }
+                let chunk = self.left_buffer.drain(..length).collect::<Vec<u8>>();
+                let hash = hash_chunk(&chunk);
                 self.merkle_tree.insert(hash);
-                writer.write_all(chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
+                writer.write_all(&chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
                 writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
                 let mut sent_size = self.sent_size.lock().await;
                 *sent_size += chunk.len();
@@ -97,9 +101,6 @@ impl DomainData for RemoteDomainData {
                 return Err(DomainError::InternalError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to calculate merkle tree root"))));
             }
             let hash = hex::encode(hash.unwrap());
-            if let Some(sender) = self.sender.take() {
-                sender.send(hash.clone()).unwrap();
-            }
             Ok(hash)
         } else {
             Ok("".to_string())
@@ -143,10 +144,10 @@ impl RemoteReliableDataProducer {
                 reader.read_exact(&mut buffer).await.expect("Failed to read buffer");
         
                 let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer).expect("Failed to deserialize metadata");
-                let hash = metadata.clone().hash.unwrap_or("why no hash".to_string());
+                let id = metadata.clone().id;
                 let mut pendings = pending_clone.lock().await;
-                tracing::debug!("received: {}", hash);
-                pendings.remove(&hash);
+                tracing::debug!("received: {}", metadata.hash.unwrap());
+                pendings.remove(&id);
             }
         });
     }
@@ -168,18 +169,7 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         let mut pendings = self.pendings.lock().await;
         pendings.insert(id.clone());
         drop(pendings);
-        let (sender, receiver) = oneshot::channel::<String>();
-
-        let pendings_clone = self.pendings.clone();
-        spawn(async move {
-            if let Ok(hash) = receiver.await {
-                let mut pendings = pendings_clone.lock().await;
-                tracing::debug!("sent: {}", hash);
-                pendings.insert(hash);
-                pendings.remove(&id.clone());
-            }
-        });
-        Ok(Box::new(RemoteDomainData::new(data.size as usize, stream, sender, data)))
+        Ok(Box::new(RemoteDomainData::new(data.size as usize, stream)))
     }
 
     async fn is_completed(&self) -> bool {

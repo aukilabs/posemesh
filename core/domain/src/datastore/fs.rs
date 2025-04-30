@@ -1,6 +1,6 @@
 use crate::protobuf::domain_data::{Data, Metadata, Query, UpsertMetadata as ProtoUpsertMetadata};
-use tokio::{fs::{self, OpenOptions}, io::AsyncWriteExt, spawn};
-use super::{common::{data_id_generator, hash_chunk, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer}, metadata::{MetadataStore, UpsertMetadata}};
+use tokio::{fs::{self, OpenOptions}, io::{AsyncReadExt, AsyncWriteExt}, spawn};
+use super::{common::{data_id_generator, hash_chunk, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer, CHUNK_SIZE}, metadata::{MetadataStore, UpsertMetadata}};
 use async_trait::async_trait;
 use futures::{channel::mpsc::channel, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
@@ -75,8 +75,6 @@ impl FsDomainData {
 #[async_trait]
 impl DomainData for FsDomainData {
     async fn next_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError> {
-        let hash = hash_chunk(chunk);
-        self.merkle_tree.insert(hash);
         let mut f = OpenOptions::new()
             .append(true)
             .create(true)
@@ -85,10 +83,19 @@ impl DomainData for FsDomainData {
         if more {
             Ok("".to_string())
         } else {
-            f.shutdown().await?;
+            f.flush().await?;
             let size = f.metadata().await?.len();
             if size != self.metadata.size as u64 {
                 return Err(DomainError::SizeMismatch(self.metadata.size as usize, size as usize));
+            }
+
+            let mut buffer = vec![0; CHUNK_SIZE];
+            while let Ok(n) = f.read(&mut buffer).await {
+                if n == 0 {
+                    break;
+                }
+                let hash = hash_chunk(&buffer[..n]);
+                self.merkle_tree.insert(hash);
             }
 
             let hash = self.root()?;
