@@ -5,10 +5,11 @@ use futures::stream::StreamExt;
 use runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::common::Datastore;
+use crate::datastore::common::{self, Datastore, ReliableDataProducer as r_ReliableDataProducer};
 use crate::binding_helper::init_r_remote_storage;
 use crate::datastore::remote::RemoteDatastore;
-use crate::protobuf::{self, domain_data::{self, Data, Metadata, Query}};
+use crate::protobuf::domain_data::UpsertMetadata;
+use crate::protobuf::domain_data::{self, Data};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -22,10 +23,31 @@ pub struct DomainData {
     pub content_size: usize,
 }
 
-fn to_rust(c_domain_data: *const DomainData) -> Data {
+#[no_mangle]
+pub extern "C" fn free_domain_data(data: *mut DomainData) {
+    if data.is_null() {
+        return;
+    }
+    
+    unsafe {
+        let data = &mut *data;
+        free_c_string(data.domain_id);
+        free_c_string(data.id);
+        free_c_string(data.name);
+        free_c_string(data.data_type);
+        free_c_string(data.properties);
+
+        if !data.content.is_null() {
+            drop(Vec::from_raw_parts(data.content as *mut u8, data.content_size, data.content_size));
+        }
+
+        let _ = Box::from_raw(data);
+    }
+}
+
+fn to_rust(c_domain_data: *const DomainData) -> (UpsertMetadata, Vec<u8>) {
     let c_domain_data_ref = unsafe { &*c_domain_data };
 
-    let domain_id = unsafe { CStr::from_ptr(c_domain_data_ref.domain_id).to_string_lossy().into_owned() };
     let id = unsafe {
         if c_domain_data_ref.id.is_null() {
             None
@@ -49,26 +71,18 @@ fn to_rust(c_domain_data: *const DomainData) -> Data {
     };
     let content_size = content.len();
 
-    Data {
-        domain_id,
-        metadata: Metadata {
-            name,
-            data_type,
-            properties: serde_json::from_str(&properties).unwrap(),
-            size: content_size as u32,
-            id,
-            link: None,
-            hash: None,
-        },
-        content,
-    }
+    (UpsertMetadata {
+        name,
+        data_type,
+        size: content_size as u32,
+        is_new: id.is_none(),
+        id,
+        properties: serde_json::from_str(&properties).unwrap(),
+    }, content)
 }
 
 fn from_rust(r_domain_data: &Data) -> DomainData {
-    let id = match &r_domain_data.metadata.id {
-        Some(id) => CString::new(id.clone()).unwrap().into_raw(),
-        None => ptr::null_mut(),
-    };
+    let id = CString::new(r_domain_data.metadata.id.clone()).unwrap().into_raw();
     let metadata = &r_domain_data.metadata;
     let domain_id = CString::new(r_domain_data.domain_id.clone()).unwrap().into_raw();
     let name = CString::new(metadata.name.clone()).unwrap().into_raw();
@@ -168,6 +182,22 @@ pub struct DomainError {
     pub message: *const c_char, // Error message
 }
 
+#[no_mangle]
+pub extern "C" fn free_domain_error(error: *mut DomainError) {
+    if error.is_null() {
+        return;
+    }
+
+    unsafe {
+        let error = &mut *error;
+        if !error.message.is_null() {
+            free_c_string(error.message);
+        }
+
+        let _ = Box::from_raw(error);
+    }
+}
+
 type FindCallback = extern "C" fn(*mut c_void, *const DomainData, *const DomainError);
 
 /// Free a C string if it's not null
@@ -175,29 +205,6 @@ unsafe fn free_c_string(ptr: *const c_char) {
     if !ptr.is_null() {
         drop(CString::from_raw(ptr as *mut c_char));
     }
-}
-
-/// Free a DomainData struct
-#[no_mangle]
-pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
-    if data.is_null() {
-        return;
-    }
-
-    let data = &mut *data;
-
-    free_c_string(data.domain_id);
-    free_c_string(data.id);
-    free_c_string(data.name);
-    free_c_string(data.data_type);
-    free_c_string(data.properties);
-
-    if !data.content.is_null() {
-        drop(Vec::from_raw_parts(data.content as *mut u8, data.content_size, data.content_size));
-    }
-
-    // Finally, free the struct itself
-    drop(Box::from_raw(data));
 }
 
 #[no_mangle]
@@ -224,6 +231,9 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
         return;
     }
 
+    let cluster = unsafe { &mut *cluster };
+    let _ = get_runtime().block_on(cluster.peer.client.cancel());
+
     unsafe {
         let _ = Box::from_raw(cluster);
     }
@@ -231,7 +241,7 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 
 #[no_mangle]
 pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper<RemoteDatastore> {
-    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)))))
+    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)), "domain_id".to_string())))
 }
 
 #[no_mangle]
@@ -247,11 +257,12 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper<RemoteDatastore>) 
 
 pub struct DatastoreWrapper<D: Datastore> {
     pub inner: Box<D>,
+    pub domain_id: String,
 }
 
 impl<D: Datastore> DatastoreWrapper<D> {
-    fn new(store: Box<D>) -> Self {
-        DatastoreWrapper { inner: store }
+    fn new(store: Box<D>, domain_id: String) -> Self {
+        DatastoreWrapper { inner: store, domain_id }
     }
 }
 
@@ -283,7 +294,7 @@ pub extern "C" fn find_domain_data(
 
     // Spawn a Tokio task to process the receiver
     get_runtime().spawn(async move {
-        let stream = store_wrapper.inner.load(domain_id, query_clone, keep_alive).await;
+        let stream = store_wrapper.inner.load(domain_id, query_clone, keep_alive).await.expect("Failed to load domain data");
         let mut stream = Box::pin(stream);
 
         while let Some(result) = stream.next().await {
@@ -302,4 +313,93 @@ pub extern "C" fn find_domain_data(
             }
         }
     });
+}
+
+pub struct ReliableDataProducer {
+    pub inner: Box<dyn r_ReliableDataProducer>,
+}
+
+#[no_mangle]
+pub extern "C" fn free_reliable_data_producer(producer: *mut ReliableDataProducer) {
+    if producer.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(producer);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn initialize_reliable_data_producer(
+    store: *mut DatastoreWrapper<RemoteDatastore>,
+) -> *mut ReliableDataProducer {
+    let store_wrapper = unsafe {
+        assert!(!store.is_null());
+        &mut *store
+    };
+
+    let res = get_runtime().block_on(async move {
+        store_wrapper.inner.upsert(store_wrapper.domain_id.clone()).await
+    });
+
+    if res.is_err() {
+        return ptr::null_mut();
+    }
+
+    let uploader = res.unwrap();
+    let producer = ReliableDataProducer { inner: uploader };
+
+    Box::into_raw(Box::new(producer))
+}
+
+#[repr(C)]
+pub struct UploadResult {
+    pub id: *const c_char,
+    pub error: *mut DomainError,
+}
+
+#[no_mangle]
+pub extern "C" fn free_upload_result(result: *mut UploadResult) {
+    if result.is_null() {
+        return;
+    }
+
+    unsafe {
+        let result = &mut *result;
+        if !result.id.is_null() {
+            free_c_string(result.id);
+        }
+
+        if !result.error.is_null() {
+            free_domain_error(result.error);
+        }
+
+        let _ = Box::from_raw(result);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn upload_domain_data(
+    producer: *mut ReliableDataProducer,
+    data: *const DomainData,
+) -> *const UploadResult {
+    let producer = unsafe {
+        assert!(!producer.is_null());
+        &mut *producer
+    };
+
+    let (metadata, content) = to_rust(data);
+
+    let res: Result<String, common::DomainError> = get_runtime().block_on(async move {
+        let mut chunker = producer.inner.push(&metadata).await?;
+        chunker.next_chunk(&content, false).await
+    });
+
+    if res.is_err() {
+        return &UploadResult { id: ptr::null(), error: &mut DomainError { message: CString::new(res.err().unwrap().to_string()).unwrap().into_raw() } };
+    }
+
+    let id = res.unwrap();
+    &mut UploadResult { id: CString::new(id).unwrap().into_raw(), error: ptr::null_mut() }
 }

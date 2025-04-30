@@ -13,6 +13,8 @@ typedef struct DomainCluster DomainCluster;
 
 typedef struct Query Query;
 
+typedef struct ReliableDataProducer ReliableDataProducer;
+
 typedef struct DomainData {
   const char *domain_id;
   const char *id;
@@ -29,9 +31,16 @@ typedef struct DomainError {
 
 typedef void (*FindCallback)(void*, const struct DomainData*, const struct DomainError*);
 
+typedef struct UploadResult {
+  const char *id;
+  struct DomainError *error;
+} UploadResult;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+void free_domain_data(struct DomainData *data);
 
 struct Query *create_domain_data_query(const char *const *ids_ptr,
                                        int len,
@@ -44,10 +53,7 @@ struct Query *create_domain_data_query(const char *const *ids_ptr,
 
 void free_domain_data_query(struct Query *query);
 
-/**
- * Free a DomainData struct
- */
-void free_domain_data(struct DomainData *data);
+void free_domain_error(struct DomainError *error);
 
 struct DomainCluster *init_domain_cluster(const char *domain_manager_addr,
                                           const char *name,
@@ -66,6 +72,15 @@ void find_domain_data(struct DatastoreWrapper_RemoteDatastore *store,
                       bool keep_alive,
                       FindCallback callback,
                       void *user_data);
+
+void free_reliable_data_producer(struct ReliableDataProducer *producer);
+
+struct ReliableDataProducer *initialize_reliable_data_producer(struct DatastoreWrapper_RemoteDatastore *store);
+
+void free_upload_result(struct UploadResult *result);
+
+const struct UploadResult *upload_domain_data(struct ReliableDataProducer *producer,
+                                              const struct DomainData *data);
 
 #ifdef __cplusplus
 }  // extern "C"

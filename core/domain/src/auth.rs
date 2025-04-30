@@ -183,7 +183,7 @@ impl Drop for AuthClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(target_family = "wasm"))]
 mod tests {
     use base64::Engine;
     use networking::libp2p::{Networking, NetworkingConfig};

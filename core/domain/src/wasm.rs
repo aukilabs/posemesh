@@ -1,8 +1,6 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 use futures::{executor::block_on, SinkExt, StreamExt};
-use networking::libp2p::Networking;
 use quick_protobuf::serialize_into_vec;
-use serde::de;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
@@ -63,13 +61,13 @@ pub struct Metadata {
 #[wasm_bindgen]
 impl Metadata {
     #[wasm_bindgen(constructor)]
-    pub fn new(name: String, data_type: String, size: usize, properties: JsValue) -> Self {
+    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: Option<String>) -> Self {
         Self {
             name,
             data_type,
             size,
             properties,
-            id: None,
+            id,
             hash: None,
         }
     }
@@ -81,20 +79,19 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
         data_type: r_metadata.data_type.clone(),
         size: r_metadata.size as usize,
         properties: to_value(&r_metadata.properties).unwrap(),
-        id: r_metadata.id.clone(),
+        id: Some(r_metadata.id.clone()),
         hash: r_metadata.hash.clone(),
     }
 }
 
-fn to_r_metadata(metadata: &Metadata) -> domain_data::Metadata {
-    domain_data::Metadata {
+fn to_r_metadata(metadata: &Metadata) -> domain_data::UpsertMetadata {
+    domain_data::UpsertMetadata {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
         properties: from_value(metadata.properties.clone()).unwrap(),
         id: metadata.id.clone(),
         size: metadata.size as u32,
-        link: None,
-        hash: metadata.hash.clone(),
+        is_new: metadata.id.is_none(),
     }
 }
 
@@ -244,8 +241,11 @@ impl RemoteDatastore {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.load(domain_id, query.inner, false).await;
-            let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
+            let res = inner.load(domain_id, query.inner, false).await;
+            if let Err(e) = res {
+                return Err(JsValue::from_str(&format!("{}", e)));
+            }
+            let stream = DataReader { inner: Arc::new(Mutex::new(res.unwrap())) };
             
             Ok(JsValue::from(stream))
         })
@@ -259,7 +259,10 @@ impl RemoteDatastore {
 
         future_to_promise(async move {
             let r = inner.upsert("".to_string()).await;
-            Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r))}))
+            if let Err(e) = r {
+                return Err(JsValue::from_str(&format!("{}", e)));
+            }
+            Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r.unwrap()))}))
         })
     }
 }
