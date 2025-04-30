@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
 use networking::client::Client;
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, MessageRead, MessageWrite};
 
-use crate::{datastore::common::DomainError, protobuf::task};
+use crate::{datastore::common::{DomainError, CHUNK_SIZE}, protobuf::task};
 
 pub fn prefix_size_message<M: MessageWrite>(message: &M) -> Vec<u8>
 {
@@ -20,8 +22,13 @@ pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>>(mut stream: im
     let mut size_buffer = [0u8; 4];
     stream.read_exact(&mut size_buffer).await?;
     let size = u32::from_be_bytes(size_buffer);
+    let mut read: usize = 0;
     let mut message_buffer = vec![0u8; size as usize];
-    stream.read_exact(&mut message_buffer).await?;
+    while read < size as usize {
+        stream.read_exact(&mut message_buffer[read..read + CHUNK_SIZE]).await?;
+        read += CHUNK_SIZE;
+    }
+    
     deserialize_from_slice(&message_buffer)
 }
 
@@ -58,4 +65,28 @@ pub async fn handshake(mut peer: Client, access_token: &str, receiver: &str, end
     }), receiver.to_string(), endpoint.to_string(), timeout).await?;
     tracing::debug!("Handshake sent");
     Ok(upload_stream)
+}
+
+pub async fn request_response_with_handshake<Request: MessageWrite, Response: for<'a> MessageRead<'a>>(peer: Client, access_token: &str, receiver: &str, endpoint: &str, request: &Request, timeout: u32) -> Result<Response, DomainError> {
+    let mut upload_stream = handshake(peer, access_token, receiver, endpoint, timeout).await?;
+    let content_buffer = prefix_size_message(request);
+    for chunk in content_buffer.chunks(CHUNK_SIZE) {
+        upload_stream.write_all(chunk).await?;
+    }
+    upload_stream.flush().await?;
+    let response = read_prefix_size_message::<Response>(&mut upload_stream).await?;
+    Ok(response)
+}
+
+pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a>>(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
+    let mut upload_stream = peer.send(prefix_size_message(request), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
+    let response = read_prefix_size_message::<Response>(&mut upload_stream).await?;
+    Ok(response)
+}
+
+pub async fn request_response_raw(mut peer:Client, receiver: &str, endpoint: &str, request: &[u8], timeout_millis: u32) -> Result<Vec<u8>, DomainError> {
+    let mut upload_stream = peer.send(request.to_vec(), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
+    let mut response = Vec::new();
+    upload_stream.read_to_end(&mut response).await?;
+    Ok(response)
 }

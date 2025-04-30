@@ -11,13 +11,13 @@ use utils::sleep;
 
 use crate::libp2p::NetworkError;
 
-async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>, peer_id: PeerId, protocol: StreamProtocol, timeout: u32, last: bool) -> Result<Stream, NetworkError> {
+async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>, peer_id: PeerId, protocol: StreamProtocol, timeout_millis: u32, last: bool) -> Result<Stream, NetworkError> {
     let (sender, receiver) = oneshot::channel::<Result<Stream, NetworkError>>();
     command_sender
         .send(Command::Send { message: message.clone(), peer_id: peer_id.clone(), protocol: protocol.clone(), response: sender })
         .await?;
 
-    let result = utils::timeout(Duration::from_millis(timeout as u64), async move {
+    let result = utils::timeout(Duration::from_millis(timeout_millis as u64), async move {
         match receiver.await {
             Ok(Ok(result)) => Ok(result),
             Ok(Err(e)) => Err(e),
@@ -33,7 +33,7 @@ async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>,
                     if !last {
                         tracing::warn!("find address the last time: {:?}", e);
                         sleep(Duration::from_millis(500)).await;
-                        return Box::pin(retry_send(command_sender, message, peer_id, protocol, timeout, true)).await;
+                        return Box::pin(retry_send(command_sender, message, peer_id, protocol, timeout_millis, true)).await;
                     }
                     Err(NetworkError::DialError(e))
                 }
