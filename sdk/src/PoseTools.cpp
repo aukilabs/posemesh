@@ -7,21 +7,29 @@ namespace psm {
 
 Pose PoseTools::fromOpenCVToOpenGL(const Pose& pose)
 {
-    // Y and Z are flipped for the position.
-    Vector3 p = pose.getPosition();
-    p.setY(-p.getY());
-    p.setZ(-p.getZ());
+    // To convert from OpenCV to OpenGL we need to flip the Y and Z axes.
+    glm::mat3 cvToGl = glm::mat3(
+        1, 0, 0,
+        0, -1, 0,
+        0, 0, -1);
 
-    // Rotate 180 degrees around X to convert the rotation.
-    auto pr = pose.getRotation();
-    glm::quat coordinateSystemChange = glm::angleAxis(glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    glm::quat rq = coordinateSystemChange * glm::quat(pr.getX(), pr.getY(), pr.getZ(), pr.getW());
+    Vector3 cvPos = pose.getPosition();
+    glm::vec3 cvPosition = glm::vec3(cvPos.getX(), cvPos.getY(), cvPos.getZ());
+    glm::vec3 glPosition = cvToGl * cvPosition;
+    Vector3 p;
+    p.setX(glPosition.x);
+    p.setY(glPosition.y);
+    p.setZ(glPosition.z);
 
+    Quaternion cvRot = pose.getRotation();
+    glm::mat3 cvRotationMatrix = glm::mat3_cast(glm::quat(cvRot.getW(), cvRot.getX(), cvRot.getY(), cvRot.getZ()));
+    glm::mat3 glRotationMatrix = cvToGl * cvRotationMatrix;
+    glm::quat glRotationQuaternion = glm::quat_cast(glRotationMatrix);
     Quaternion q;
-    q.setX(rq.x);
-    q.setY(rq.y);
-    q.setZ(rq.z);
-    q.setW(rq.w);
+    q.setX(glRotationQuaternion.x);
+    q.setY(glRotationQuaternion.y);
+    q.setZ(glRotationQuaternion.z);
+    q.setW(glRotationQuaternion.w);
 
     return PoseFactory::create(p, q);
 }

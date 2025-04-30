@@ -14,7 +14,6 @@ class PoseFactory final {
 public:
     static Pose PSM_API create(const Vector3& position, const Quaternion& rotation);
     static Pose PSM_API create(const Vector3& position, const Matrix3x3& rotation);
-    static Pose PSM_API createOpenCV(const Vector3& position, const Vector3& rodriguesRotation);
     static Pose PSM_API createEuler(const Vector3& position, const Vector3& eulerRotation);
 
 private:

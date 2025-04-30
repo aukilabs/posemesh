@@ -43,7 +43,11 @@ Pose PoseEstimation::solvePnP(
     std::vector<cv::Point3f> cvObjectPoints(landmarks.size());
     for (int i = 0; i < landmarks.size(); ++i) {
         auto landmarkPosition = landmarks[i].getPosition();
-        cvObjectPoints[i] = cv::Point3f(landmarkPosition.getX(), landmarkPosition.getY(), landmarkPosition.getZ());
+        // flip Y and Z (OpenGL -> OpenCV coordinate system conversion)
+        cvObjectPoints[i] = cv::Point3f(
+            landmarkPosition.getX(),
+            -landmarkPosition.getY(),
+            -landmarkPosition.getZ());
     }
 
     std::vector<cv::Point2f> cvImagePoints(landmarkObservations.size());
@@ -52,15 +56,17 @@ Pose PoseEstimation::solvePnP(
         cvImagePoints[i] = cv::Point2f(landmarkObservationPosition.getX(), landmarkObservationPosition.getY());
     }
 
+    // OpenCV uses row major order, OpenGL uses column major order.
+    // To address this we need to transpose the matrix (swap rows and columns).
     cv::Mat cvCameraMatrix = cv::Mat::zeros(3, 3, CV_32F);
     cvCameraMatrix.at<float>(0, 0) = cameraMatrix.getM00();
-    cvCameraMatrix.at<float>(0, 1) = cameraMatrix.getM01();
-    cvCameraMatrix.at<float>(0, 2) = cameraMatrix.getM02();
-    cvCameraMatrix.at<float>(1, 0) = cameraMatrix.getM10();
+    cvCameraMatrix.at<float>(0, 1) = cameraMatrix.getM10();
+    cvCameraMatrix.at<float>(0, 2) = cameraMatrix.getM20();
+    cvCameraMatrix.at<float>(1, 0) = cameraMatrix.getM01();
     cvCameraMatrix.at<float>(1, 1) = cameraMatrix.getM11();
-    cvCameraMatrix.at<float>(1, 2) = cameraMatrix.getM12();
-    cvCameraMatrix.at<float>(2, 0) = cameraMatrix.getM20();
-    cvCameraMatrix.at<float>(2, 1) = cameraMatrix.getM21();
+    cvCameraMatrix.at<float>(1, 2) = cameraMatrix.getM21();
+    cvCameraMatrix.at<float>(2, 0) = cameraMatrix.getM02();
+    cvCameraMatrix.at<float>(2, 1) = cameraMatrix.getM12();
     cvCameraMatrix.at<float>(2, 2) = cameraMatrix.getM22();
 
     cv::Mat distCoeffs = cv::Mat::zeros(4, 1, CV_32F);
@@ -81,17 +87,27 @@ Pose PoseEstimation::solvePnP(
         return Pose();
     }
 
-    Vector3 outT;
-    outT.setX(tvec.at<float>(0));
-    outT.setY(tvec.at<float>(1));
-    outT.setZ(tvec.at<float>(2));
+    Vector3 p;
+    p.setX(tvec.at<float>(0));
+    p.setY(tvec.at<float>(1));
+    p.setZ(tvec.at<float>(2));
 
+    cv::Mat rm = cv::Mat::zeros(3, 3, CV_32F);
+    cv::Rodrigues(rvec, rm);
+    // OpenCV uses row major order, OpenGL uses column major order.
+    // To address this we need to transpose the matrix (swap rows and columns).
+    Matrix3x3 r;
+    r.setM00(rm.at<float>(0, 0));
+    r.setM01(rm.at<float>(1, 0));
+    r.setM02(rm.at<float>(2, 0));
+    r.setM10(rm.at<float>(0, 1));
+    r.setM11(rm.at<float>(1, 1));
+    r.setM12(rm.at<float>(2, 1));
+    r.setM20(rm.at<float>(0, 2));
+    r.setM21(rm.at<float>(1, 2));
+    r.setM22(rm.at<float>(2, 2));
 
-    Vector3 rotation;
-    rotation.setX(rvec.at<float>(0));
-    rotation.setY(rvec.at<float>(1));
-    rotation.setZ(rvec.at<float>(2));
-
-    return PoseTools::fromOpenCVToOpenGL(PoseFactory::createOpenCV(outT, rotation));
+    return PoseTools::fromOpenCVToOpenGL(PoseFactory::create(p, r));
 }
+
 }
