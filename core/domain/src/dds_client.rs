@@ -11,7 +11,7 @@
 //! - `thiserror` + `serde` for errors & (de)serialization.
 
 use std::{
-    sync::{Arc, RwLock},
+    sync::{Arc},
     time::{Duration, Instant},
 };
 
@@ -26,6 +26,7 @@ use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::time::sleep;
+use tokio::sync::RwLock;
 
 // -------------------------------------
 // 1) Errors
@@ -132,24 +133,29 @@ impl DdsClient {
 
     /// Returns `true` once successfully registered.
     pub fn is_registered(&self) -> bool {
-        *self.status.read().unwrap() == Status::Registered
+        match self.status.try_read() {
+            Ok(guard) => *guard == Status::Registered,
+            Err(_) => false,
+        }
     }
 
     /// Human-readable status.
     pub fn status(&self) -> String {
-        format!("{:?}", *self.status.read().unwrap())
+        match self.status.try_read() {
+            Ok(guard) => format!("{:?}", *guard),
+            Err(_) => "Unknown".to_string(),
+        }
     }
 
     /// If registered, returns `{ id, secret }`.
     pub fn credentials(&self) -> Option<DomainServerCredentials> {
-        self.domain_server_secret
-            .read()
-            .unwrap()
-            .as_ref()
-            .map(|secret| DomainServerCredentials {
+        match self.domain_server_secret.try_read() {
+            Ok(guard_opt) => guard_opt.as_ref().map(|secret| DomainServerCredentials {
                 id: self.domain_server_id.clone(),
                 secret: secret.clone(),
-            })
+            }),
+            Err(_) => None,
+        }
     }
 
     /// Register (with exponential backoff) and then do health-checks forever.
@@ -165,7 +171,7 @@ impl DdsClient {
 
         loop {
             // mark registering
-            *self.status.write().unwrap() = Status::Registering;
+            *self.status.write().await = Status::Registering;
 
             // build & sign payload
             let ts = Utc::now().timestamp() as u64;
@@ -195,9 +201,9 @@ impl DdsClient {
 
             if resp.status().is_success() {
                 let body: RegisterResp = resp.json().await?;
-                *self.domain_server_secret.write().unwrap() = Some(body.secret);
-                *self.status.write().unwrap() = Status::Registered;
-                *self.last_healthcheck.write().unwrap() = Instant::now();
+                *self.domain_server_secret.write().await = Some(body.secret);
+                *self.status.write().await = Status::Registered;
+                *self.last_healthcheck.write().await = Instant::now();
 
                 // sleep until next health-check
                 sleep(healthcheck_ttl).await;
@@ -334,8 +340,8 @@ mod tests {
             .await;
 
         let client = DdsClient::new(&server.uri(), "id:secret", "ver");
-        *client.status.write().unwrap() = Status::Registered;
-        *client.domain_server_secret.write().unwrap() = Some("secret".to_string());
+        *client.status.write().await = Status::Registered;
+        *client.domain_server_secret.write().await = Some("secret".to_string());
 
         assert!(client.shutdown().await.is_ok());
     }
@@ -350,8 +356,8 @@ mod tests {
             .await;
 
         let client = DdsClient::new(&server.uri(), "id:secret", "ver");
-        *client.status.write().unwrap() = Status::Registered;
-        *client.domain_server_secret.write().unwrap() = Some("secret".to_string());
+        *client.status.write().await = Status::Registered;
+        *client.domain_server_secret.write().await = Some("secret".to_string());
 
         let err = client.shutdown().await.unwrap_err();
         match err {
