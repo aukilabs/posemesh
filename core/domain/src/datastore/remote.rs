@@ -10,13 +10,10 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use libp2p::Stream;
-use crate::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
+use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
 use super::common::{hash_chunk, DomainData, ReliableDataProducer, CHUNK_SIZE};
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
-
-pub const CONSUME_DATA_PROTOCOL_V1: &str = "/load/v1";
-pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/store/v1";
 
 // TODO: error handling
 async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mut dest: DataWriter) {
@@ -57,43 +54,42 @@ async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mu
 pub(crate) struct RemoteDomainData {
     writer: Arc<Mutex<WriteHalf<Stream>>>,
     expected_size: usize,
-    sent_size: Arc<Mutex<usize>>,
+    sent_size: usize,
     merkle_tree: MerkleTree<Sha256>,
     left_buffer: Vec<u8>
 }
 
 impl RemoteDomainData {
     pub fn new(expected_size: usize, writer: Arc<Mutex<WriteHalf<Stream>>>) -> Self {
-        Self { writer, expected_size, sent_size: Arc::new(Mutex::new(0)), merkle_tree: MerkleTree::<Sha256>::new(), left_buffer: vec![] }
+        Self { writer, expected_size, sent_size: 0, merkle_tree: MerkleTree::<Sha256>::new(), left_buffer: vec![] }
     }
 }
 
 #[async_trait]
 impl DomainData for RemoteDomainData {
     async fn next_chunk(&mut self, datum: &[u8], more: bool) -> Result<String, DomainError> {
-        if datum.len() != 0 {
+        if datum.len() != 0 || self.left_buffer.len() != 0 {
             let mut writer = self.writer.lock().await;
             self.left_buffer.extend_from_slice(datum);
-            while self.left_buffer.len() >= CHUNK_SIZE || !more {
+            while self.sent_size < self.expected_size {
                 let mut length = CHUNK_SIZE;
-                if !more {
+                if self.left_buffer.len() < CHUNK_SIZE {
                     length = self.left_buffer.len();
                 }
                 let chunk = self.left_buffer.drain(..length).collect::<Vec<u8>>();
+                tracing::debug!("length: {}, chunk size: {}", chunk.len(), length);
                 let hash = hash_chunk(&chunk);
                 self.merkle_tree.insert(hash);
                 writer.write_all(&chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
                 writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
-                let mut sent_size = self.sent_size.lock().await;
-                *sent_size += chunk.len();
-                drop(sent_size);
+                self.sent_size += chunk.len();
+                tracing::debug!("uploaded {}/{} bytes", self.sent_size, self.expected_size);
             }
         }
 
         if !more {
-            let sent_size = self.sent_size.lock().await;
-            if *sent_size != self.expected_size {
-                return Err(DomainError::SizeMismatch(self.expected_size, *sent_size));
+            if self.sent_size != self.expected_size {
+                return Err(DomainError::SizeMismatch(self.expected_size, self.sent_size));
             }
             self.merkle_tree.commit();
             let hash = self.merkle_tree.root();
@@ -270,7 +266,7 @@ impl Datastore for RemoteDatastore {
                     timeout: "100m".to_string(),
                     max_budget: Some(1000),
                     capability_filters: task::CapabilityFilters {
-                        endpoint: "/consume/v1".to_string(),
+                        endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
                         min_gpu: None,
                         min_cpu: None,
                     },
@@ -365,7 +361,7 @@ impl Datastore for RemoteDatastore {
                     timeout: "100m".to_string(),
                     max_budget: Some(1000),
                     capability_filters: task::CapabilityFilters {
-                        endpoint: "/produce/v1".to_string(),
+                        endpoint: PRODUCE_DATA_PROTOCOL_V1.to_string(),
                         min_gpu: Some(0),
                         min_cpu: Some(0),
                     },

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
 use networking::client::Client;
@@ -25,8 +23,9 @@ pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>>(mut stream: im
     let mut read: usize = 0;
     let mut message_buffer = vec![0u8; size as usize];
     while read < size as usize {
-        stream.read_exact(&mut message_buffer[read..read + CHUNK_SIZE]).await?;
-        read += CHUNK_SIZE;
+        let chunk_size = std::cmp::min(CHUNK_SIZE, size as usize - read);
+        stream.read_exact(&mut message_buffer[read..read + chunk_size]).await?;
+        read += chunk_size;
     }
     
     deserialize_from_slice(&message_buffer)

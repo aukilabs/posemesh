@@ -78,6 +78,7 @@ impl DomainData for FsDomainData {
         let mut f = OpenOptions::new()
             .append(true)
             .create(true)
+            .read(!more)
             .open(self.temp_path.clone()).await?;
         f.write_all(chunk).await?;
         if more {
@@ -90,12 +91,11 @@ impl DomainData for FsDomainData {
             }
 
             let mut buffer = vec![0; CHUNK_SIZE];
-            while let Ok(n) = f.read(&mut buffer).await {
-                if n == 0 {
-                    break;
-                }
-                let hash = hash_chunk(&buffer[..n]);
+            let mut read_size = f.read(&mut buffer).await?;
+            while read_size > 0 {
+                let hash = hash_chunk(&buffer[..read_size]);
                 self.merkle_tree.insert(hash);
+                read_size = f.read(&mut buffer).await?;
             }
 
             let hash = self.root()?;
@@ -106,7 +106,7 @@ impl DomainData for FsDomainData {
                 name: self.metadata.name.clone(),
                 data_type: self.metadata.data_type.clone(),
                 size: self.metadata.size,
-                id: self.metadata.id.clone().unwrap_or_else(|| data_id_generator()),
+                id: self.metadata.id.clone(),
                 properties: self.metadata.properties.clone(),
                 is_new: self.metadata.is_new,
                 link: path.clone(),

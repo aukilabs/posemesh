@@ -1,13 +1,12 @@
-use crate::{datastore::common::DomainError, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
+use crate::{capabilities::public_key::PUBLIC_KEY_PROTOCOL_V1, datastore::common::DomainError, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
 use async_timer::Interval;
 use base64::Engine;
-use libp2p::StreamProtocol;
 use networking::{client::Client, AsyncStream};
 use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
 use std::{sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
-use futures::{channel::oneshot, lock::Mutex, select, AsyncWriteExt, FutureExt, StreamExt};
+use futures::{channel::oneshot, lock::Mutex, select, FutureExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -28,6 +27,8 @@ pub enum AuthError {
     DomainError(#[from] DomainError),
     #[error("Base64 error: {0}")]
     Base64Error(#[from] base64::DecodeError),
+    #[error("Private key is required")]
+    PrivateKeyRequired,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -67,7 +68,16 @@ pub fn verify_token<C: TokenClaim>(token: &str, public_key: &[u8]) -> Result<C, 
     Ok(token_data.claims)
 }
 
-pub fn encode_job_jwt(authorizer: &AuthServer, domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str) -> Result<String, AuthError> {
+pub fn encode_jwt<C: TokenClaim>(claim: &mut C, private_key: &EncodingKey, ttl: Duration) -> Result<String, AuthError> {
+    claim.add_ttl(ttl);
+    encode(
+        &Header::new(Algorithm::EdDSA),
+        claim,
+        private_key,
+    ).map_err(|e| AuthError::JWTError(e))
+}
+
+pub fn encode_job_jwt(private_key: &EncodingKey, domain_id: &str, job_id: &str, task_name: &str, sender: &str, receiver: &str) -> Result<String, AuthError> {
     let mut claims = TaskTokenClaim {
         domain_id: domain_id.to_string(),   
         task_name: task_name.to_string(),
@@ -80,27 +90,28 @@ pub fn encode_job_jwt(authorizer: &AuthServer, domain_id: &str, job_id: &str, ta
         scope: "".to_string(),
     };
 
-    authorizer.generate_token(&mut claims, None)
+    encode_jwt(&mut claims, &private_key, Duration::from_secs(3600))
 }
 
-pub const PUBLIC_KEY_ENDPOINT: &str = "/public-key";
-pub const PUBLIC_KEY_PROTOCOL: StreamProtocol = StreamProtocol::new(PUBLIC_KEY_ENDPOINT);
-
 pub struct AuthServer {
-    default_token_ttl: Duration,
+    pub default_token_ttl: Duration,
     private_key: EncodingKey,
     public_key: Vec<u8>,
 }
 
 impl AuthServer {
-    pub fn new(private_key_pem: &str, private_key_pem_path: Option<String>, default_token_ttl: Duration) -> Result<Self, AuthError> {
-        let private_key_bytes = if let Some(private_key_path) = private_key_pem_path {
-            let private_key = std::fs::read(private_key_path)?;
+    pub fn new(private_key_pem: Option<String>, private_key_pem_path: Option<String>, default_token_ttl: Duration) -> Result<Self, AuthError> {
+        let private_key_pem = if let Some(private_key_path) = private_key_pem_path {
+            let private_key = std::fs::read_to_string(private_key_path)?;
             private_key
         } else {
-            private_key_pem.as_bytes().to_vec()
+            if let Some(private_key_pem) = private_key_pem {
+                private_key_pem
+            } else {
+                return Err(AuthError::PrivateKeyRequired);
+            }
         };
-        let key = EncodingKey::from_ed_pem(&private_key_bytes)?;
+        let key = EncodingKey::from_ed_pem(private_key_pem.as_bytes())?;
         
         // Remove the PEM headers and footers
         let pem_stripped = private_key_pem
@@ -111,26 +122,21 @@ impl AuthServer {
 
         // Decode the base64 content
         let der_bytes = base64::engine::general_purpose::STANDARD.decode(pem_stripped)?; 
-        let keypair = Ed25519KeyPair::from_pkcs8(&der_bytes)?;
+        let keypair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der_bytes)?;
         let public_key = keypair.public_key().as_ref().to_vec();
         Ok(Self { default_token_ttl, private_key: key, public_key })
     }
 
     pub fn generate_token<C: TokenClaim>(&self, claim: &mut C, ttl: Option<Duration>) -> Result<String, AuthError> {
-        claim.add_ttl(ttl.unwrap_or(self.default_token_ttl));
-        encode(
-            &Header::new(Algorithm::EdDSA),
-            claim,
-            &self.private_key,
-        )
-        .map_err(|e| AuthError::JWTError(e))
+        encode_jwt(claim, &self.private_key, ttl.unwrap_or(self.default_token_ttl))
     }
 
-    pub async fn serve_public_key<S: AsyncStream>(&self, stream: &mut S) -> Result<(), AuthError> {
-        let public_key = self.public_key.clone();
-        stream.write_all(&public_key).await?;
-        stream.close().await?;
-        Ok(())
+    pub fn public_key(&self) -> &[u8] {
+        &self.public_key
+    }
+
+    pub fn private_key(&self) -> &EncodingKey {
+        &self.private_key
     }
 }
 
@@ -141,7 +147,7 @@ pub struct AuthClient {
 
 impl AuthClient {
     pub async fn initialize(c: Client, public_key_peer: &str, cache_ttl: Duration) -> Result<Self, AuthError> {
-        let public_key = request_response_raw(c.clone(), public_key_peer, PUBLIC_KEY_ENDPOINT, &vec![], Duration::from_secs(2).as_millis() as u32).await?;
+        let public_key = request_response_raw(c.clone(), public_key_peer, PUBLIC_KEY_PROTOCOL_V1, &vec![], Duration::from_secs(2).as_millis() as u32).await?;
 
         let c_clone = c.clone();
         let (tx, rx) = oneshot::channel::<()>();
@@ -155,7 +161,7 @@ impl AuthClient {
             loop {
                 select! {
                     _ = interval.as_mut().fuse() => {
-                        let public_key = request_response_raw(c_clone.clone(), &public_key_peer_clone, PUBLIC_KEY_ENDPOINT, &vec![], Duration::from_secs(2).as_millis() as u32).await.expect("Failed to get public key");
+                        let public_key = request_response_raw(c_clone.clone(), &public_key_peer_clone, PUBLIC_KEY_PROTOCOL_V1, &vec![], Duration::from_secs(2).as_millis() as u32).await.expect("Failed to get public key");
                         *public_key_clone.lock().await = public_key;
                     }
                     _ = rx => {
@@ -193,10 +199,13 @@ impl Drop for AuthClient {
 
 #[cfg(not(target_family = "wasm"))]
 mod tests {
+    use crate::capabilities::public_key::serve_public_key_v1;
+
     use super::*;
     use networking::libp2p::{Networking, NetworkingConfig};
     use std::fs::{create_dir_all, remove_dir_all};
     use tokio::{self, select, spawn, time::sleep};
+    use futures::{StreamExt, AsyncWriteExt};
 
     struct TestContext {
         base_dir: String,
@@ -270,15 +279,15 @@ mod tests {
         };
 
         let ttl = Duration::from_secs(3);
-        let auth_server      = AuthServer::new(&pem, None, ttl).expect("failed to initialize auth server");
-        let mut public_key_proto = ctx.server.client.set_stream_handler("/public-key".to_string()).await.expect("failed to add /public-key");
+        let auth_server      = AuthServer::new(Some(pem), None, ttl).expect("failed to initialize auth server");
+        let mut public_key_proto = ctx.server.client.set_stream_handler(PUBLIC_KEY_PROTOCOL_V1.to_string()).await.expect("failed to add /public-key");
+        
         let public_key = auth_server.public_key.clone();
         spawn(async move {
             loop {
                 select! {
-                    Some((_, mut stream)) = public_key_proto.next() => {
-                        stream.write_all(&public_key).await.expect("failed to write public key");
-                        stream.close().await.expect("failed to close stream");
+                    Some((_, stream)) = public_key_proto.next() => {
+                        
                     }
                     else => break
                 }
@@ -301,7 +310,6 @@ mod tests {
 
         sleep(ttl + Duration::from_secs(8)).await;
 
-        println!("token: {}", token);
         let result = auth_client.verify_token::<TaskTokenClaim>(&token).await;
         assert_eq!(result.err().unwrap().to_string(), "JWT error: ExpiredSignature");
     }

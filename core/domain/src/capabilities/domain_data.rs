@@ -1,10 +1,7 @@
-use crate::{ auth::{handshake, AuthError}, datastore::{common::{Datastore, CHUNK_SIZE}, remote::CONSUME_DATA_PROTOCOL_V1}, message::prefix_size_message, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task}}};
+use crate::{auth::{handshake, AuthError}, datastore::common::{Datastore, DomainError, CHUNK_SIZE}, message::prefix_size_message, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task}}};
 use networking::{libp2p::{NetworkError, Networking}, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use tokio::{self, select};
-use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-
-use super::common::DomainError;
+use futures::{select, AsyncReadExt, AsyncWriteExt, StreamExt};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CapabilityError {
@@ -20,8 +17,11 @@ pub enum CapabilityError {
     NetworkError(#[from] NetworkError),
 }
 
-pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, secret: &Vec<u8>) -> Result<(), CapabilityError> {
-    let claim = handshake(&mut stream, secret).await?;
+pub const CONSUME_DATA_PROTOCOL_V1: &str = "/load/v1";
+pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/store/v1";
+
+pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, public_key: Vec<u8>) -> Result<(), CapabilityError> {
+    let claim = handshake(&public_key, &mut stream).await?;
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await?;
     let domain_id = claim.domain_id.clone();
@@ -50,12 +50,13 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
         let mut read_size: usize = 0;
         let data_size = metadata.size as usize;
         let mut data_writer = producer.push(&metadata).await?;
+        let default_chunk_size = 10 * 1024 * 1024; // 10MB
         loop {
             // TODO: add timeout so stream wont be idle for too long
-            let chunk_size = if data_size - read_size > CHUNK_SIZE { CHUNK_SIZE } else { data_size - read_size };
-            
+            let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
+            tracing::debug!("chunk_size: {}", chunk_size);
             let mut buffer = vec![0u8; chunk_size];
-            stream.read_exact(&mut buffer).await?;
+            stream.read_exact(&mut buffer).await.expect("Failed to read chunk");
 
             read_size+=chunk_size;
 
@@ -65,6 +66,14 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
                 if metadata.size as usize != read_size {
                     return Err(CapabilityError::DomainError(DomainError::SizeMismatch(metadata.size as usize, read_size)));
                 }
+                let metadata = Metadata {
+                    hash: Some(hash),
+                    name: metadata.name,
+                    data_type: metadata.data_type,
+                    size: metadata.size,
+                    id: metadata.id,
+                    properties: metadata.properties,
+                };
                 stream.write_all(&prefix_size_message(&metadata)).await?;
                 stream.flush().await?;
                 break;
@@ -76,8 +85,8 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
     }
 }
 
-pub async fn serve_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, secret: &Vec<u8>) -> Result<(), CapabilityError> {
-    let header = handshake(&mut stream, secret).await?;
+pub async fn serve_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, public_key: Vec<u8>) -> Result<(), CapabilityError> {
+    let header = handshake(&public_key, &mut stream).await?;
     c.client.subscribe(header.job_id.clone()).await?;
     
     let mut buf = Vec::<u8>::new();
