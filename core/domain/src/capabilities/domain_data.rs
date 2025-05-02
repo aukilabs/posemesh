@@ -56,7 +56,7 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
             let chunk_size = if data_size - read_size > default_chunk_size { default_chunk_size } else { data_size - read_size };
             tracing::debug!("chunk_size: {}", chunk_size);
             let mut buffer = vec![0u8; chunk_size];
-            stream.read_exact(&mut buffer).await.expect("Failed to read chunk");
+            stream.read_exact(&mut buffer).await?;
 
             read_size+=chunk_size;
 

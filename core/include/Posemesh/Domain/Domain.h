@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define CHUNK_SIZE (8 * 1024)
+#define CHUNK_SIZE (7 * 1024)
 
 typedef struct DatastoreWrapper_RemoteDatastore DatastoreWrapper_RemoteDatastore;
 

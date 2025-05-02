@@ -1,5 +1,7 @@
+use std::io::SeekFrom;
+
 use crate::protobuf::domain_data::{Data, Metadata, Query, UpsertMetadata as ProtoUpsertMetadata};
-use tokio::{fs::{self, OpenOptions}, io::{AsyncReadExt, AsyncWriteExt}, spawn};
+use tokio::{fs::{self, File, OpenOptions}, io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt}, spawn};
 use super::{common::{data_id_generator, hash_chunk, DataReader, Datastore, DomainData, DomainError, ReliableDataProducer, CHUNK_SIZE}, metadata::{MetadataStore, UpsertMetadata}};
 use async_trait::async_trait;
 use futures::{channel::mpsc::channel, SinkExt, StreamExt};
@@ -33,7 +35,7 @@ pub(crate) struct FsDomainData {
     metadata_store: MetadataStore,
     base_path: String,
     temp_path: String,
-    domain_id: String,
+    domain_id: String
 }
 
 fn data_path_v2(name: &String, data_type: &String, hash: &String, base_path: &String) -> String {
@@ -59,7 +61,7 @@ impl FsDomainData {
             metadata_store,
             base_path,
             temp_path,
-            domain_id,
+            domain_id
         }
     }
     pub fn root(&mut self) -> Result<String, DomainError> {
@@ -70,16 +72,20 @@ impl FsDomainData {
         }
         Ok(hex::encode(res.unwrap()))
     }
+    async fn create_file(&mut self) -> Result<File, DomainError> {
+        let f = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .read(true)
+            .open(self.temp_path.clone()).await?;
+        Ok(f)
+    }
 }
 
 #[async_trait]
 impl DomainData for FsDomainData {
     async fn next_chunk(&mut self, chunk: &[u8], more: bool) -> Result<String, DomainError> {
-        let mut f = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .read(!more)
-            .open(self.temp_path.clone()).await?;
+        let mut f = self.create_file().await?;
         f.write_all(chunk).await?;
         if more {
             Ok("".to_string())
@@ -90,11 +96,16 @@ impl DomainData for FsDomainData {
                 return Err(DomainError::SizeMismatch(self.metadata.size as usize, size as usize));
             }
 
+            f.seek(SeekFrom::Start(0)).await?;
             let mut buffer = vec![0; CHUNK_SIZE];
             let mut read_size = f.read(&mut buffer).await?;
             while read_size > 0 {
                 let hash = hash_chunk(&buffer[..read_size]);
                 self.merkle_tree.insert(hash);
+                if read_size < CHUNK_SIZE {
+                    f.shutdown().await?;
+                    break;
+                }
                 read_size = f.read(&mut buffer).await?;
             }
 
@@ -116,7 +127,6 @@ impl DomainData for FsDomainData {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct FsDatastore {
