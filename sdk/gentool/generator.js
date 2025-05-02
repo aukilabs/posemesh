@@ -9,14 +9,6 @@ const path = require('path');
 const shared = require('./shared');
 const util = require('./util');
 
-const manualUmbrellaAndBridgingHeaderNames = new Set([
-  'Config',
-  'PoseEstimation',
-  'Posemesh',
-  'QRDetection',
-  'ArucoDetection'
-]);
-
 const args = process.argv.slice(2);
 
 if (args.length > 1) {
@@ -91,12 +83,18 @@ function generateInterface(enums, interfaces, interfaceName, interfaceJson) {
 function generate() {
   const enumDirPath = path.resolve(__dirname, '..', 'enum');
   const enumFileNames = fs.readdirSync(enumDirPath, 'utf8');
+  if (!shared.ignoreCompileTests && fs.existsSync(path.resolve(enumDirPath, 'CompileTests'))) {
+    let compileTestEnumFileNames = fs.readdirSync(path.resolve(enumDirPath, 'CompileTests'), 'utf8');
+    for (const compileTestEnumFileName of compileTestEnumFileNames) {
+      enumFileNames.push(path.join('CompileTests', compileTestEnumFileName));
+    }
+  }
   let enums = {};
   for (const enumFileName of enumFileNames) {
     if (!enumFileName.toLowerCase().endsWith('.json')) {
       continue;
     }
-    const enumName = enumFileName.substring(0, enumFileName.length - 5);
+    const enumName = path.basename(enumFileName.substring(0, enumFileName.length - 5));
     const enumFilePath = path.resolve(enumDirPath, enumFileName);
     const enumFileContent = fs.readFileSync(enumFilePath, 'utf8');
     try {
@@ -115,12 +113,18 @@ function generate() {
 
   const interfaceDirPath = path.resolve(__dirname, '..', 'interface');
   const interfaceFileNames = fs.readdirSync(interfaceDirPath, 'utf8');
+  if (!shared.ignoreCompileTests && fs.existsSync(path.resolve(interfaceDirPath, 'CompileTests'))) {
+    let compileTestInterfaceFileNames = fs.readdirSync(path.resolve(interfaceDirPath, 'CompileTests'), 'utf8');
+    for (const compileTestInterfaceFileName of compileTestInterfaceFileNames) {
+      interfaceFileNames.push(path.join('CompileTests', compileTestInterfaceFileName));
+    }
+  }
   let interfaces = {};
   for (const interfaceFileName of interfaceFileNames) {
     if (!interfaceFileName.toLowerCase().endsWith('.json')) {
       continue;
     }
-    const interfaceName = interfaceFileName.substring(0, interfaceFileName.length - 5);
+    const interfaceName = path.basename(interfaceFileName.substring(0, interfaceFileName.length - 5));
     if (typeof enums[interfaceName] !== 'undefined') {
       throw new Error(`Both enum and interface '${interfaceName}' cannot exist at the same time.`);
     }
@@ -181,7 +185,7 @@ function generate() {
   let generatedWebJSSources = new Set([]);
   let umbrellaHeaders = new Set([]);
   let bridgingHeaders = new Set([]);
-  for (const headerName of manualUmbrellaAndBridgingHeaderNames) {
+  for (const headerName of shared.manualUmbrellaAndBridgingHeaderNames) {
     umbrellaHeaders.add(`#import "${headerName}.h"`);
     bridgingHeaders.add(`#import <Posemesh/${headerName}.h>`);
   }

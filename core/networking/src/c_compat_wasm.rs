@@ -44,7 +44,7 @@ pub fn posemeshNetworkingContextCreate(config: Config) -> *mut Networking {
         port: 0,
         enable_websocket: true,
         enable_webrtc: true,
-        domain: None,
+        namespace: None,
     };
     let networking = Networking::new(&config).expect("posemeshNetworkingContextCreate(): failed to create networking context");
     Box::into_raw(Box::new(networking))

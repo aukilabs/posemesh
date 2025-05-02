@@ -64,7 +64,7 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         name: name.to_string(),
         enable_websocket: false,
         enable_webrtc: false,
-        domain: None,
+        namespace: None,
     }
 }
 

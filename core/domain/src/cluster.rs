@@ -176,13 +176,25 @@ pub struct DomainCluster {
     sender: Sender<Command>,
     pub peer: Networking,
     pub manager_id: String,
+    pub domain_id: String,
 }
 
 impl DomainCluster {
-    pub fn new(manager_addr: String, node_name: String, join_as_relay: bool, port: u16, enable_websocket: bool, enable_webrtc: bool, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+    pub fn new(
+        domain_id: String,
+        manager_addr: String,
+        node_name: String,
+        join_as_relay: bool,
+        port: u16,
+        enable_websocket: bool,
+        enable_webrtc: bool,
+        private_key: Option<Vec<u8>>,
+        private_key_path: Option<String>,
+        relays: Vec<String>,
+    ) -> Self {
         let networking = Networking::new(&NetworkingConfig {
             bootstrap_nodes: vec![manager_addr.clone()],
-            relay_nodes: vec![manager_addr.clone()],
+            relay_nodes: relays,
             private_key,
             private_key_path,
             enable_mdns: false,
@@ -192,7 +204,7 @@ impl DomainCluster {
             port,
             enable_websocket,
             enable_webrtc,
-            domain: None,
+            namespace: None,
         }).unwrap();
         let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
 
@@ -209,6 +221,7 @@ impl DomainCluster {
             sender: tx,
             peer: networking.clone(),
             manager_id: domain_manager_id.clone(),
+            domain_id: domain_id.clone(),
         }
     }
 

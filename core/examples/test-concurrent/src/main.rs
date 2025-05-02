@@ -19,7 +19,7 @@ async fn main() {
         name: "test-concurrent/bootstrap".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
-        domain: None,
+        namespace: None,
     };
 
     let protocol = "/chat/v1".to_string();
@@ -61,7 +61,7 @@ async fn main() {
         name: "test-concurrent/peer-a".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
-        domain: None,
+        namespace: None,
     };
     let mut peer_a = Networking::new(&peer_a_cfg).unwrap();
     let _peer_clone = peer_a.clone();
@@ -78,7 +78,7 @@ async fn main() {
         name: "test-concurrent/peer-b".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
-        domain: None,
+        namespace: None,
     };
     let mut peer_b = Networking::new(&peer_b_cfg).unwrap();
 
@@ -94,7 +94,7 @@ async fn main() {
         name: "test-concurrent/peer-c".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
-        domain: None,
+        namespace: None,
     };
     let mut peer_c = Networking::new(&peer_c_cfg).unwrap();
 

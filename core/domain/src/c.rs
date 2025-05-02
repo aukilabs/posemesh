@@ -201,10 +201,20 @@ pub unsafe extern "C" fn free_domain_data(data: *mut DomainData) {
 }
 
 #[no_mangle]
-pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: *const c_char) -> *mut DomainCluster {
+pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: *const c_char, static_relay_nodes: *const *const c_char, static_relay_nodes_len: usize) -> *mut DomainCluster {
     let name = unsafe { CStr::from_ptr(name).to_string_lossy().into_owned() };
     let domain_manager_addr = unsafe { CStr::from_ptr(domain_manager_addr).to_string_lossy().into_owned() };
-    let cluster = DomainCluster::new(domain_manager_addr, name, false, 0, false, false, None, None);
+    let nodes = unsafe {
+        if static_relay_nodes.is_null() {
+            Vec::new()
+        } else {  
+            std::slice::from_raw_parts(static_relay_nodes, static_relay_nodes_len)
+                .iter()
+                .map(|&node| CStr::from_ptr(node).to_string_lossy().into_owned())
+                .collect::<Vec<String>>()
+        }
+    };
+    let cluster = DomainCluster::new("".to_string(), domain_manager_addr, name, false, 0, false, false, None, None, nodes);
     Box::into_raw(Box::new(cluster))
 }
 

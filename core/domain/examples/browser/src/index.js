@@ -57,7 +57,7 @@ export class UploadManager {
         try {
             console.log("initializing domain cluster");
             await init();
-            const domainCluster = new DomainCluster("/ip4/127.0.0.1/udp/18801/webrtc-direct/certhash/uEiA2J2rDp90OcHCmtUn6PdGKWwxqkFpNeDx5ZT5Lla6AWA/p2p/12D3KooWDHaDQeuYeLM8b5zhNjqS7Pkh7KefqzCpDGpdwj5iE8pq", "domain-browser-example", null, null);
+            const domainCluster = new DomainCluster("", import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
             this.datastore = new RemoteDatastore(domainCluster);
@@ -119,11 +119,19 @@ export class UploadManager {
         for (const file of this.files) {
             try {
                 let data_type = getDataType(file.name);
-                const metadata = new Metadata(data_type+"_"+scan_name, data_type, file.size, {}, "");
+                let name = file.name;
+                if (data_type != "") {
+                    name = data_type+"_"+scan_name;
+                } else {
+                    const parts = file.name.split(".");
+                    data_type = parts[parts.length-1];
+                    name = parts[0]+"_"+scan_name;
+                }
+                const metadata = new Metadata(name, data_type, file.size, {});
                 const arrayBuffer = await file.arrayBuffer();
                 const uint8Array = new Uint8Array(arrayBuffer);
 
-                const data = new DomainData("", metadata, uint8Array);
+                const data = new DomainData(metadata, uint8Array);
                 const id = await this.uploader.push(data);
                 console.log(`Pushed ${file.name}: ${file.size} bytes -> ${id}`);
             } catch (error) {

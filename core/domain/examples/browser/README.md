@@ -8,10 +8,12 @@ This is a browser example for the domain package. It demonstrates how to use the
 - npm (v6 or later)
 - Rust (latest stable)
 - wasm-pack (latest)
-- protoc (Protocol Buffers Compiler)
-- protoc-gen-ts (Protocol Buffers TypeScript Plugin)
 
 ### Installing Protocol Buffers Tools
+
+install 
+- protoc (Protocol Buffers Compiler)
+- protoc-gen-ts (Protocol Buffers TypeScript Plugin)
 
 ```bash
 # macOS (using Homebrew)
@@ -35,6 +37,13 @@ cd core
 wasm-pack build --target web --out-dir ./examples/browser/pkg --out-name posemesh-domain --release domain
 ```
 
+For macos, if you are running into `"No available targets are compatible with triple "wasm32-unknown-unknown"`, you need to use another clang compiler
+
+```
+brew install llvm
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+```
+
 2. Install dependencies:
 ```bash
 cd domain/examples/browser
@@ -42,6 +51,7 @@ npm install
 ```
 
 3. Start the development server:
+Update .env, you should copy webrtc address of domain manager and any string as app id
 ```bash
 npm run dev
 ```
