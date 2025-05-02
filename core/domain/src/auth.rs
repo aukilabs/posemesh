@@ -146,8 +146,8 @@ pub struct AuthClient {
 }
 
 impl AuthClient {
-    pub async fn initialize(c: Client, public_key_peer: &str, cache_ttl: Duration) -> Result<Self, AuthError> {
-        let public_key = request_response_raw(c.clone(), public_key_peer, PUBLIC_KEY_PROTOCOL_V1, &vec![], Duration::from_secs(2).as_millis() as u32).await?;
+    pub async fn initialize(c: Client, public_key_peer: &str, cache_ttl: Duration, endpoint: Option<&str>) -> Result<Self, AuthError> {
+        let public_key = request_response_raw(c.clone(), public_key_peer, endpoint.unwrap_or(PUBLIC_KEY_PROTOCOL_V1), &vec![], Duration::from_secs(2).as_millis() as u32).await?;
 
         let c_clone = c.clone();
         let (tx, rx) = oneshot::channel::<()>();
@@ -287,7 +287,7 @@ mod tests {
             loop {
                 select! {
                     Some((_, stream)) = public_key_proto.next() => {
-                        
+                        spawn(serve_public_key_v1(stream, public_key.clone()));
                     }
                     else => break
                 }
@@ -295,7 +295,7 @@ mod tests {
         });
         let token = auth_server.generate_token::<TaskTokenClaim>(&mut claim, None).expect("failed to generate token");
         
-        let auth_client = AuthClient::initialize(ctx.client.client.clone(), ctx.server.id.as_str(), ttl).await.unwrap();
+        let auth_client = AuthClient::initialize(ctx.client.client.clone(), ctx.server.id.as_str(), ttl, None).await.unwrap();
         let parsed_claim = auth_client.verify_token::<TaskTokenClaim>(&token).await.expect("failed to verify token");
 
         assert_eq!(parsed_claim.domain_id, claim.domain_id);
