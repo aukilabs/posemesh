@@ -60,7 +60,7 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
 
             read_size+=chunk_size;
 
-            if chunk_size < CHUNK_SIZE {
+            if chunk_size < default_chunk_size {
                 let hash = data_writer.next_chunk(&buffer, false).await?;
                 tracing::info!("Stored data: {}, size: {}, hash: {:?}", metadata.name, metadata.size, hash);
                 if metadata.size as usize != read_size {

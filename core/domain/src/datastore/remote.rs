@@ -68,24 +68,23 @@ impl RemoteDomainData {
 #[async_trait]
 impl DomainData for RemoteDomainData {
     async fn next_chunk(&mut self, datum: &[u8], more: bool) -> Result<String, DomainError> {
-        if datum.len() != 0 || self.left_buffer.len() != 0 {
-            let mut writer = self.writer.lock().await;
-            self.left_buffer.extend_from_slice(datum);
-            while self.sent_size < self.expected_size {
-                let mut length = CHUNK_SIZE;
-                if self.left_buffer.len() < CHUNK_SIZE {
-                    length = self.left_buffer.len();
-                }
-                let chunk = self.left_buffer.drain(..length).collect::<Vec<u8>>();
-                tracing::debug!("length: {}, chunk size: {}", chunk.len(), length);
-                let hash = hash_chunk(&chunk);
-                self.merkle_tree.insert(hash);
-                writer.write_all(&chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
-                writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
-                self.sent_size += chunk.len();
-                tracing::debug!("uploaded {}/{} bytes", self.sent_size, self.expected_size);
+        let mut writer = self.writer.lock().await;
+        self.left_buffer.extend_from_slice(datum);
+        while self.left_buffer.len() > 0 && (self.left_buffer.len() >= CHUNK_SIZE || !more) {
+            let mut length = CHUNK_SIZE;
+            if self.left_buffer.len() < CHUNK_SIZE {
+                length = self.left_buffer.len();
             }
+            let chunk = self.left_buffer.drain(..length).collect::<Vec<u8>>();
+            tracing::debug!("length: {}, chunk size: {}", chunk.len(), length);
+            let hash = hash_chunk(&chunk);
+            self.merkle_tree.insert(hash);
+            writer.write_all(&chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
+            writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
+            self.sent_size += chunk.len();
+            tracing::debug!("uploaded {}/{} bytes", self.sent_size, self.expected_size);
         }
+        drop(writer);
 
         if !more {
             if self.sent_size != self.expected_size {
@@ -142,7 +141,7 @@ impl RemoteReliableDataProducer {
                 let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer).expect("Failed to deserialize metadata");
                 let id = metadata.clone().id;
                 let mut pendings = pending_clone.lock().await;
-                tracing::debug!("received: {}", metadata.hash.unwrap());
+                tracing::debug!("received: hash: {}, id: {}", metadata.hash.unwrap(), id);
                 pendings.remove(&id);
             }
         });
@@ -164,13 +163,14 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         let id = data.id.clone();
         let mut pendings = self.pendings.lock().await;
         pendings.insert(id.clone());
+        tracing::info!("Pushed: {}", id);
         drop(pendings);
         Ok(Box::new(RemoteDomainData::new(data.size as usize, stream)))
     }
 
     async fn is_completed(&self) -> bool {
-        let pendings = self.pendings.lock();
-        pendings.await.is_empty()
+        let pendings = self.pendings.lock().await;
+        pendings.is_empty()
     }
 
     async fn close(&mut self) {

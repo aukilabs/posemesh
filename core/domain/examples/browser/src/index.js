@@ -132,8 +132,8 @@ export class UploadManager {
                 const uint8Array = new Uint8Array(arrayBuffer);
 
                 const data = new DomainData(metadata, uint8Array);
-                const id = await this.uploader.push(data);
-                console.log(`Pushed ${file.name}: ${file.size} bytes -> ${id}`);
+                const hash = await this.uploader.push(data);
+                console.log(`Pushed ${file.name}: ${file.size} bytes -> ${hash}`);
             } catch (error) {
                 console.error(`Failed to upload ${file.name}`, error);
                 this.activeUploads.set(scan_name, 'failed');
