@@ -822,7 +822,7 @@ async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamPro
     if let Some(receiver) = find_peer_receiver {
         match receiver.await {
             Ok(Ok(_)) => {
-                tracing::info!("Peer found");
+                tracing::debug!("Peer found");
             }
             Ok(Err(e)) => {
                 if let Err(e) = send_response.send(Err(e)) {

@@ -114,7 +114,7 @@ pub async fn serve_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
                         tracing::info!("Served data: {}, size: {}", data.metadata.name, data.metadata.size);
                     }
                     Some(Err(e)) => {
-                        tracing::info!("Error: {:?}", e);
+                        tracing::error!("Error: {:?}", e);
                         return Err(CapabilityError::DomainError(e));
                     }
                     None => break

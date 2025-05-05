@@ -163,7 +163,6 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
         let id = data.id.clone();
         let mut pendings = self.pendings.lock().await;
         pendings.insert(id.clone());
-        tracing::info!("Pushed: {}", id);
         drop(pendings);
         Ok(Box::new(RemoteDomainData::new(data.size as usize, stream)))
     }
@@ -324,13 +323,13 @@ impl Datastore for RemoteDatastore {
                         result: TaskUpdateResult::Err(e),
                         ..
                     }) => {
-                        eprintln!("Task update failure: {:?}", e);
+                        tracing::debug!("Task update failure: {:?}", e);
                         tx.send(Err(e)).expect("Failed to send completion signal");
                         download_task.cancel();
                         return;
                     }
                     None => {
-                        println!("task update channel is closed");
+                        tracing::debug!("task update channel is closed");
                         tx.send(Err(DomainError::Cancelled("Task update channel is closed".to_string(), Canceled))).expect("Failed to send completion signal");
                         download_task.cancel();
                         return;
@@ -408,7 +407,7 @@ impl Datastore for RemoteDatastore {
                             break;
                         },
                         _ => {
-                            println!("Task status: {:?}", task.status);
+                            tracing::debug!("Task status: {:?}", task.status);
                         }
                     }
                     None => {
@@ -419,7 +418,7 @@ impl Datastore for RemoteDatastore {
                         result: TaskUpdateResult::Err(e),
                         ..
                     }) => {
-                        eprintln!("Task update failure: {:?}", e);
+                        tracing::error!("Task update failure: {:?}", e);
                         break;
                     }
                 }

@@ -39,7 +39,7 @@ impl MetadataStore {
         // Spawn a task to manage the connection
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                eprintln!("Database connection error: {}", e);
+                tracing::error!("Database connection error: {}", e);
             }
         });
 

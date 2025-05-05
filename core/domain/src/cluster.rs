@@ -107,7 +107,7 @@ impl InnerDomainCluster {
                             from: from,
                             result: TaskUpdateResult::Ok(task.clone()),
                         }).await {
-                            eprintln!("Error sending failed task update: {:?}", e);
+                            tracing::error!("Error sending failed task update: {:?}", e);
                             if SendError::is_disconnected(&e) {
                                 self.jobs.remove(&topic);
                                 return;
