@@ -298,6 +298,8 @@ mod tests {
         let auth_client = AuthClient::initialize(ctx.client.client.clone(), ctx.server.id.as_str(), ttl, None).await.unwrap();
         let parsed_claim = auth_client.verify_token::<TaskTokenClaim>(&token).await.expect("failed to verify token");
 
+        assert_ne!(auth_server.public_key().len(), 0);
+        assert_eq!(auth_server.public_key(), auth_client.public_key().await);
         assert_eq!(parsed_claim.domain_id, claim.domain_id);
         assert_eq!(parsed_claim.task_name, claim.task_name);
         assert_eq!(parsed_claim.job_id, claim.job_id);
