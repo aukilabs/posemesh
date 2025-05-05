@@ -142,6 +142,7 @@ pub struct JobRequest {
     pub name: String,
     pub tasks: Vec<task::TaskRequest>,
     pub nonce: String,
+    pub domain_id: String,
 }
 
 impl<'a> MessageRead<'a> for JobRequest {
@@ -152,6 +153,7 @@ impl<'a> MessageRead<'a> for JobRequest {
                 Ok(10) => msg.name = r.read_string(bytes)?.to_owned(),
                 Ok(18) => msg.tasks.push(r.read_message::<task::TaskRequest>(bytes)?),
                 Ok(26) => msg.nonce = r.read_string(bytes)?.to_owned(),
+                Ok(34) => msg.domain_id = r.read_string(bytes)?.to_owned(),
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -166,12 +168,14 @@ impl MessageWrite for JobRequest {
         + 1 + sizeof_len((&self.name).len())
         + self.tasks.iter().map(|s| 1 + sizeof_len((s).get_size())).sum::<usize>()
         + 1 + sizeof_len((&self.nonce).len())
+        + 1 + sizeof_len((&self.domain_id).len())
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
         w.write_with_tag(10, |w| w.write_string(&**&self.name))?;
         for s in &self.tasks { w.write_with_tag(18, |w| w.write_message(s))?; }
         w.write_with_tag(26, |w| w.write_string(&**&self.nonce))?;
+        w.write_with_tag(34, |w| w.write_string(&**&self.domain_id))?;
         Ok(())
     }
 }

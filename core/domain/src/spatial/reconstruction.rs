@@ -3,7 +3,7 @@ use quick_protobuf::serialize_into_vec;
 
 use crate::{cluster::{DomainCluster, TaskUpdateEvent}, protobuf::{domain_data::Query, task}};
 
-pub async fn reconstruction_job(mut domain_cluster: DomainCluster, scans: Vec<String>) -> Receiver<TaskUpdateEvent> {
+pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &str, scans: Vec<String>) -> Receiver<TaskUpdateEvent> {
     let mut uploaded = Vec::<task::TaskRequest>::new();
     for scan in scans {
         let input = task::LocalRefinementInputV1 {
@@ -63,6 +63,7 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, scans: Vec<St
     });
 
     let job = task::JobRequest {
+        domain_id: domain_id.to_string(),
         name: "refinement job".to_string(),
         tasks: uploaded,
         nonce: "".to_string(),

@@ -254,6 +254,7 @@ impl Datastore for RemoteDatastore {
         };
         let job = &task::JobRequest {
             name: "stream download domain data".to_string(),
+            domain_id: domain_id.clone(),
             tasks: vec![
                 task::TaskRequest {
                     needs: vec![],
@@ -345,9 +346,10 @@ impl Datastore for RemoteDatastore {
         }
     }
 
-    async fn upsert(&mut self, _: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>{
+    async fn upsert(&mut self, domain_id: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>{
         let mut upload_job_recv = self.cluster.submit_job(&task::JobRequest {
             nonce: Uuid::new_v4().to_string(),
+            domain_id,
             name: "stream uploading recordings".to_string(),
             tasks: vec![
                 task::TaskRequest {

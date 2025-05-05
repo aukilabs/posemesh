@@ -57,7 +57,7 @@ export class UploadManager {
         try {
             console.log("initializing domain cluster");
             await init();
-            const domainCluster = new DomainCluster("", import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
+            const domainCluster = new DomainCluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
             this.datastore = new RemoteDatastore(domainCluster);
@@ -101,7 +101,7 @@ export class UploadManager {
         }
 
         if (this.uploader == null) {
-            this.uploader = await this.datastore.produce("");
+            this.uploader = await this.datastore.produce(import.meta.env.VITE_DOMAIN_ID);
         }
         console.log("uploader initialized");
 

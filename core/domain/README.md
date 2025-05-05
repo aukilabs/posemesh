@@ -15,6 +15,8 @@ The `datastore` module provides mechanisms for both remote and in-house data sto
 - **Remote Storage (`remote.rs`)**: This module handles data storage in remote locations, allowing for distributed data management across the domain cluster.
 - **Local Storage (`fs.rs`, `metadata.rs`)**: These modules manage local data storage, ensuring that data is persisted efficiently and securely within the local environment.
 
+Uploading data supports streaming by default. Each piece of domain data is chunked into 7KB segments and organized into a Merkle tree. Both the sender and receiver construct the tree to serve as proof of data transfer.
+
 ## Capability
 
 The `capabilities` modules define the functionalities that a node within the domain cluster can perform.
@@ -73,9 +75,9 @@ Using libp2p's security features, such as secure channels and peer authenticatio
 
 ### Task Tokens
 
-A task token is a JWT issued by the domain manager, ensuring that only authorized peers can execute tasks within the cluster. This mechanism maintains the integrity and security of the domain. Each domain cluster is equipped with its own key pairs to facilitate secure operations.
+A task token is a JWT issued by the domain manager, ensuring that only authorized peers can execute tasks within the cluster. This mechanism maintains the integrity and security of the domain.
 
-By leveraging these security measures, the domain package ensures that data exchange within the cluster is both secure and efficient.
+There is a consideration regarding key pair management: whether each domain cluster should have its own key pairs or if a single pair should be used per domain manager. The former approach offers enhanced security but requires additional effort from the domain owner, who must issue a pair of keys, delegate them to the domain manager, and manage these keys on their behalf. We are building towards the approach where each domain cluster will have its own key pairs.
 
 ## Challenges
 

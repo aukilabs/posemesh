@@ -13,6 +13,7 @@ message JobRequest {
     required string name = 1;
     repeated TaskRequest tasks = 2;
     required string nonce = 3;
+    required string domain_id = 4;
 }
 
 message Job {

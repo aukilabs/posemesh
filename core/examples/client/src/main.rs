@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_cluster = DomainCluster::new(domain_id.clone(), domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), vec![relay]);
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), vec![relay]);
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     println!("producer closed");
 
-    let mut recv = reconstruction_job(domain_cluster, vec![scan]).await; 
+    let mut recv = reconstruction_job(domain_cluster, &domain_id, vec![scan]).await; 
 
     loop {
         tokio::select! {

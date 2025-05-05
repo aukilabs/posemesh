@@ -171,12 +171,10 @@ pub struct DomainCluster {
     sender: Sender<Command>,
     pub peer: Networking,
     pub manager_id: String,
-    pub domain_id: String,
 }
 
 impl DomainCluster {
     pub fn new(
-        domain_id: String,
         manager_addr: String,
         node_name: String,
         join_as_relay: bool,
@@ -216,7 +214,6 @@ impl DomainCluster {
             sender: tx,
             peer: networking.clone(),
             manager_id: domain_manager_id.clone(),
-            domain_id: domain_id.clone(),
         }
     }
 

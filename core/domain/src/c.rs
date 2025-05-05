@@ -221,7 +221,7 @@ pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: 
                 .collect::<Vec<String>>()
         }
     };
-    let cluster = DomainCluster::new("".to_string(), domain_manager_addr, name, false, 0, false, false, None, None, nodes);
+    let cluster = DomainCluster::new(domain_manager_addr, name, false, 0, false, false, None, None, nodes);
     Box::into_raw(Box::new(cluster))
 }
 
@@ -241,7 +241,7 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 
 #[no_mangle]
 pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper<RemoteDatastore> {
-    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)), "domain_id".to_string())))
+    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)))))
 }
 
 #[no_mangle]
@@ -257,12 +257,11 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper<RemoteDatastore>) 
 
 pub struct DatastoreWrapper<D: Datastore> {
     pub inner: Box<D>,
-    pub domain_id: String,
 }
 
 impl<D: Datastore> DatastoreWrapper<D> {
-    fn new(store: Box<D>, domain_id: String) -> Self {
-        DatastoreWrapper { inner: store, domain_id }
+    fn new(store: Box<D>) -> Self {
+        DatastoreWrapper { inner: store }
     }
 }
 
@@ -333,14 +332,21 @@ pub extern "C" fn free_reliable_data_producer(producer: *mut ReliableDataProduce
 #[no_mangle]
 pub extern "C" fn initialize_reliable_data_producer(
     store: *mut DatastoreWrapper<RemoteDatastore>,
+    domain_id: *const c_char,
 ) -> *mut ReliableDataProducer {
+    // Convert domain_id to Rust string
+    let domain_id = unsafe {
+        assert!(!domain_id.is_null());
+        std::ffi::CStr::from_ptr(domain_id).to_string_lossy().into_owned()
+    };
+
     let store_wrapper = unsafe {
         assert!(!store.is_null());
         &mut *store
     };
 
     let res = get_runtime().block_on(async move {
-        store_wrapper.inner.upsert(store_wrapper.domain_id.clone()).await
+        store_wrapper.inner.upsert(domain_id).await
     });
 
     if res.is_err() {

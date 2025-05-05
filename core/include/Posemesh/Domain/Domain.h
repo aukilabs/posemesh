@@ -77,7 +77,8 @@ void find_domain_data(struct DatastoreWrapper_RemoteDatastore *store,
 
 void free_reliable_data_producer(struct ReliableDataProducer *producer);
 
-struct ReliableDataProducer *initialize_reliable_data_producer(struct DatastoreWrapper_RemoteDatastore *store);
+struct ReliableDataProducer *initialize_reliable_data_producer(struct DatastoreWrapper_RemoteDatastore *store,
+                                                               const char *domain_id);
 
 void free_upload_result(struct UploadResult *result);
 
