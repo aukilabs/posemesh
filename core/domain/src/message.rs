@@ -85,6 +85,7 @@ pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRe
 
 pub async fn request_response_raw(mut peer:Client, receiver: &str, endpoint: &str, request: &[u8], timeout_millis: u32) -> Result<Vec<u8>, DomainError> {
     let mut upload_stream = peer.send(request.to_vec(), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
+    upload_stream.close().await?;
     let mut response = Vec::new();
     upload_stream.read_to_end(&mut response).await?;
     Ok(response)

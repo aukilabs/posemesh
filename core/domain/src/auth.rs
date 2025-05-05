@@ -146,8 +146,8 @@ pub struct AuthClient {
 }
 
 impl AuthClient {
-    pub async fn initialize(c: Client, public_key_peer: &str, cache_ttl: Duration, endpoint: Option<&str>) -> Result<Self, AuthError> {
-        let public_key = request_response_raw(c.clone(), public_key_peer, endpoint.unwrap_or(PUBLIC_KEY_PROTOCOL_V1), &vec![], Duration::from_secs(2).as_millis() as u32).await?;
+    pub async fn initialize(c: Client, public_key_peer: &str, cache_ttl: Duration, domain_id: &str) -> Result<Self, AuthError> {
+        let public_key = request_response_raw(c.clone(), public_key_peer, PUBLIC_KEY_PROTOCOL_V1, &domain_id.as_bytes(), Duration::from_secs(2).as_millis() as u32).await?;
 
         let c_clone = c.clone();
         let (tx, rx) = oneshot::channel::<()>();
@@ -199,9 +199,10 @@ impl Drop for AuthClient {
 
 #[cfg(not(target_family = "wasm"))]
 mod tests {
-    use crate::capabilities::public_key::serve_public_key_v1;
+    use crate::capabilities::public_key::{self, serve_public_key_v1, PublicKeyStorage};
 
     use super::*;
+    use async_trait::async_trait;
     use networking::libp2p::{Networking, NetworkingConfig};
     use std::fs::{create_dir_all, remove_dir_all};
     use tokio::{self, select, spawn, time::sleep};
@@ -283,11 +284,23 @@ mod tests {
         let mut public_key_proto = ctx.server.client.set_stream_handler(PUBLIC_KEY_PROTOCOL_V1.to_string()).await.expect("failed to add /public-key");
         
         let public_key = auth_server.public_key.clone();
+        #[derive(Clone)]
+        struct TestPublicKeyStorage {
+            public_key: Vec<u8>,
+        }
+        #[async_trait]
+        impl PublicKeyStorage for TestPublicKeyStorage {
+            async fn get_by_domain_id(&self, _: String) -> Result<Vec<u8>, AuthError> {
+                Ok(self.public_key.clone())
+            }
+        }
+        let pubkey_storage = TestPublicKeyStorage {public_key: public_key.clone()};
         spawn(async move {
             loop {
                 select! {
                     Some((_, stream)) = public_key_proto.next() => {
-                        spawn(serve_public_key_v1(stream, public_key.clone()));
+                        let pubkey_storage = pubkey_storage.clone();
+                        spawn(serve_public_key_v1(stream, pubkey_storage));
                     }
                     else => break
                 }
@@ -295,7 +308,7 @@ mod tests {
         });
         let token = auth_server.generate_token::<TaskTokenClaim>(&mut claim, None).expect("failed to generate token");
         
-        let auth_client = AuthClient::initialize(ctx.client.client.clone(), ctx.server.id.as_str(), ttl, None).await.unwrap();
+        let auth_client = AuthClient::initialize(ctx.client.client.clone(), ctx.server.id.as_str(), ttl, "domain_id").await.unwrap();
         let parsed_claim = auth_client.verify_token::<TaskTokenClaim>(&token).await.expect("failed to verify token");
 
         assert_ne!(auth_server.public_key().len(), 0);

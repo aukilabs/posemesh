@@ -86,7 +86,7 @@ export class UploadManager {
         this.uploader = null;
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
-        await reconstruction_job(this.domainCluster, scans_array, (taskBytes) => {
+        await reconstruction_job(this.domainCluster, import.meta.env.VITE_DOMAIN_ID, scans_array, (taskBytes) => {
             const task = proto.task.Task.deserializeBinary(taskBytes); 
             console.log("reconstruction job", task.toObject());
         });
