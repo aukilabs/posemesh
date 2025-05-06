@@ -1,5 +1,5 @@
 
-use crate::protobuf::domain_data::{self, Data};
+use crate::{auth::AuthError, protobuf::domain_data::{self, Data}};
 use async_trait::async_trait;
 use networking::libp2p::NetworkError;
 use uuid::Uuid;
@@ -37,7 +37,9 @@ pub enum DomainError {
     #[error("Network error: {0}")]
     NetworkError(#[from] NetworkError),
     #[error("Protobuf error: {0}")]
-    ProtobufError(#[from] quick_protobuf::Error)
+    ProtobufError(#[from] quick_protobuf::Error),
+    #[error("Auth error: {0}")]
+    AuthError(#[from] AuthError),
 }
 
 #[async_trait]

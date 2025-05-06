@@ -295,7 +295,7 @@ impl Datastore for RemoteDatastore {
                             let domain_id_clone = domain_id.clone();
                             peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
                             
-                            let res = handshake_then_content(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), &data, 5000).await;
+                            let res = handshake_then_content(peer.clone(), &domain_id_clone, &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), &data, 5000).await;
                             if let Err(e) = res {
                                 tracing::error!("Failed to send handshake: {:?}", e);
                                 tx.send(Err(e)).expect("Failed to send completion signal");
@@ -349,7 +349,7 @@ impl Datastore for RemoteDatastore {
     async fn upsert(&mut self, domain_id: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>{
         let mut upload_job_recv = self.cluster.submit_job(&task::JobRequest {
             nonce: Uuid::new_v4().to_string(),
-            domain_id,
+            domain_id: domain_id.clone(),
             name: "stream uploading recordings".to_string(),
             tasks: vec![
                 task::TaskRequest {
@@ -375,6 +375,7 @@ impl Datastore for RemoteDatastore {
 
         let mut peer = self.cluster.peer.client.clone();
         let (tx, rx) = oneshot::channel::<Option<RemoteReliableDataProducer>>();
+        let domain_id = domain_id.clone();
         spawn(async move{
             loop {
                 let update = upload_job_recv.next().await;
@@ -391,7 +392,7 @@ impl Datastore for RemoteDatastore {
                             }
 
                             let task = task.clone();
-                            let upload_stream = handshake(peer.clone(), &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), 5000).await;
+                            let upload_stream = handshake(peer.clone(), &domain_id, &task.access_token.clone().unwrap(), &task.receiver.clone().unwrap(), &task.endpoint.clone(), 5000).await;
                             if let Err(e) = upload_stream {
                                 tracing::error!("Failed to send handshake: {:?}", e);
                                 tx.send(None).expect("Failed to send completion signal");

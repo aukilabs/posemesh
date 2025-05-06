@@ -1,7 +1,7 @@
-use crate::{capabilities::public_key::PUBLIC_KEY_PROTOCOL_V1, datastore::common::DomainError, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
+use crate::{capabilities::public_key::{PublicKeyStorage, PUBLIC_KEY_PROTOCOL_V1}, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
 use async_timer::Interval;
 use base64::Engine;
-use networking::{client::Client, AsyncStream};
+use networking::{client::Client, libp2p::NetworkError, AsyncStream};
 use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
@@ -13,22 +13,93 @@ use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
+#[derive(Clone)]
+pub struct DomainKeys {
+    pub private_key: EncodingKey,
+    pub public_key: Vec<u8>,
+}
+
+
+fn decode_pem(private_key_pem: &str) -> Result<DomainKeys, AuthError> {
+    let key = EncodingKey::from_ed_pem(private_key_pem.as_bytes())?;
+    
+    // Remove the PEM headers and footers
+    let pem_stripped = private_key_pem 
+        .lines()
+        .filter(|line| !line.starts_with("-----"))
+        .collect::<Vec<&str>>()
+        .join("");
+
+    // Decode the base64 content
+    let der_bytes = base64::engine::general_purpose::STANDARD.decode(pem_stripped)?; 
+    let keypair = Ed25519KeyPair::from_pkcs8(&der_bytes)?;
+    let public_key = keypair.public_key().as_ref().to_vec();
+    Ok(DomainKeys { private_key: key, public_key })
+}
+
+impl DomainKeys {
+    pub fn new(private_key_path: Option<String>) -> Result<Self, AuthError> {
+        let rng = ring::rand::SystemRandom::new();
+        let keypair = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+
+        let der_bytes = keypair.as_ref();
+        let base64_encoded = base64::engine::general_purpose::STANDARD.encode(der_bytes);
+        let pem = format!(
+            "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----",
+            base64_encoded
+                .as_bytes()
+                .chunks(64)
+                .map(std::str::from_utf8)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+                .join("\n")
+        ); 
+
+        let private_key = EncodingKey::from_ed_pem(pem.as_bytes())?;
+        let public_key = Ed25519KeyPair::from_pkcs8(der_bytes).unwrap().public_key().as_ref().to_vec();
+
+        if let Some(private_key_path) = private_key_path {
+            std::fs::write(private_key_path, pem)?;
+        }
+        Ok(Self { private_key, public_key })
+    }
+
+    pub fn from_file(private_key_path: &str) -> Result<Self, AuthError> {
+        if let Ok(private_key) = std::fs::read_to_string(private_key_path) {
+            decode_pem(&private_key)
+        } else {
+            Self::new(Some(private_key_path.to_string()))
+        }
+    }
+
+    pub fn from_pem(private_key_pem: &str) -> Result<Self, AuthError> {
+        decode_pem(private_key_pem)
+    }
+    
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
     #[error("JWT error: {0}")]
     JWTError(#[from] jsonwebtoken::errors::Error),
-    #[error("Protobuf error: {0}")]
-    ProtobufError(#[from] quick_protobuf::Error),
-    #[error("Io error: {0}")]
-    IO(#[from] std::io::Error),
     #[error("Key pair error: {0}")]
     KeyPairError(#[from] error::KeyRejected),
-    #[error("Domain error: {0}")]
-    DomainError(#[from] DomainError),
     #[error("Base64 error: {0}")]
     Base64Error(#[from] base64::DecodeError),
     #[error("Private key is required")]
     PrivateKeyRequired,
+    #[error("Domain ID mismatch in token")]
+    DomainIdMismatch,
+    #[error("IO error: {0}")]
+    IO(#[from] std::io::Error),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
+    #[error("Public key for domain {0} not found")]
+    PublicKeyNotFound(String),
+    #[error("Public key for domain {0} already exists")]
+    PublicKeyAlreadyExists(String),
+    #[error("Protobuf error: {0}")]
+    ProtobufError(#[from] quick_protobuf::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,9 +126,14 @@ pub trait TokenClaim: Serialize + DeserializeOwned {
     fn add_ttl(&mut self, ttl: Duration);
 }
 
-pub async fn handshake<S: AsyncStream>(public_key: &[u8], stream: &mut S) -> Result<TaskTokenClaim, AuthError> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await.map_err(|e| AuthError::ProtobufError(e))?;
-    verify_token::<TaskTokenClaim>(&header.access_token, public_key)
+pub async fn handshake<S: AsyncStream, P: PublicKeyStorage>(stream: &mut S, key_loader: P) -> Result<TaskTokenClaim, AuthError> {
+    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
+    let public_key = key_loader.get_by_domain_id(header.domain_id.clone()).await?;
+    let claim = verify_token::<TaskTokenClaim>(&header.access_token, &public_key)?;
+    if claim.domain_id != header.domain_id {
+        return Err(AuthError::DomainIdMismatch);
+    }
+    Ok(claim)
 }
 
 pub fn verify_token<C: TokenClaim>(token: &str, public_key: &[u8]) -> Result<C, AuthError> {
@@ -95,48 +171,31 @@ pub fn encode_job_jwt(private_key: &EncodingKey, domain_id: &str, job_id: &str, 
 
 pub struct AuthServer {
     pub default_token_ttl: Duration,
-    private_key: EncodingKey,
-    public_key: Vec<u8>,
+    pub keys: DomainKeys,
 }
 
 impl AuthServer {
     pub fn new(private_key_pem: Option<String>, private_key_pem_path: Option<String>, default_token_ttl: Duration) -> Result<Self, AuthError> {
-        let private_key_pem = if let Some(private_key_path) = private_key_pem_path {
-            let private_key = std::fs::read_to_string(private_key_path)?;
-            private_key
+        let keys = if let Some(private_key_pem_path) = private_key_pem_path {
+            DomainKeys::from_file(private_key_pem_path.as_str())?
+        } else if let Some(private_key_pem) = private_key_pem {
+            DomainKeys::from_pem(private_key_pem.as_str())?
         } else {
-            if let Some(private_key_pem) = private_key_pem {
-                private_key_pem
-            } else {
-                return Err(AuthError::PrivateKeyRequired);
-            }
+            return Err(AuthError::PrivateKeyRequired);
         };
-        let key = EncodingKey::from_ed_pem(private_key_pem.as_bytes())?;
-        
-        // Remove the PEM headers and footers
-        let pem_stripped = private_key_pem
-            .lines()
-            .filter(|line| !line.starts_with("-----"))
-            .collect::<Vec<&str>>()
-            .join("");
-
-        // Decode the base64 content
-        let der_bytes = base64::engine::general_purpose::STANDARD.decode(pem_stripped)?; 
-        let keypair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der_bytes)?;
-        let public_key = keypair.public_key().as_ref().to_vec();
-        Ok(Self { default_token_ttl, private_key: key, public_key })
+        Ok(Self { default_token_ttl, keys })
     }
 
     pub fn generate_token<C: TokenClaim>(&self, claim: &mut C, ttl: Option<Duration>) -> Result<String, AuthError> {
-        encode_jwt(claim, &self.private_key, ttl.unwrap_or(self.default_token_ttl))
+        encode_jwt(claim, &self.private_key(), ttl.unwrap_or(self.default_token_ttl))
     }
 
     pub fn public_key(&self) -> &[u8] {
-        &self.public_key
+        &self.keys.public_key
     }
 
     pub fn private_key(&self) -> &EncodingKey {
-        &self.private_key
+        &self.keys.private_key
     }
 }
 
@@ -251,22 +310,6 @@ mod tests {
     #[tokio::test]
     async fn test_auth_client() {
         let mut ctx = TestContext::new().await;
-
-        let rng = ring::rand::SystemRandom::new();
-        let keypair = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-
-        let der_bytes = keypair.as_ref();
-        let base64_encoded = base64::engine::general_purpose::STANDARD.encode(der_bytes);
-        let pem = format!(
-            "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----",
-            base64_encoded
-                .as_bytes()
-                .chunks(64)
-                .map(std::str::from_utf8)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
-                .join("\n")
-        );
         let mut claim = TaskTokenClaim {
             domain_id: "domain_id".to_string(),
             task_name: "task_name".to_string(),
@@ -280,10 +323,10 @@ mod tests {
         };
 
         let ttl = Duration::from_secs(3);
-        let auth_server      = AuthServer::new(Some(pem), None, ttl).expect("failed to initialize auth server");
+        let auth_server      = AuthServer::new(None, Some("volume/domain.pkey".to_string()), ttl).expect("failed to initialize auth server");
         let mut public_key_proto = ctx.server.client.set_stream_handler(PUBLIC_KEY_PROTOCOL_V1.to_string()).await.expect("failed to add /public-key");
         
-        let public_key = auth_server.public_key.clone();
+        let public_key = auth_server.public_key().clone();
         #[derive(Clone)]
         struct TestPublicKeyStorage {
             public_key: Vec<u8>,
@@ -294,7 +337,7 @@ mod tests {
                 Ok(self.public_key.clone())
             }
         }
-        let pubkey_storage = TestPublicKeyStorage {public_key: public_key.clone()};
+        let pubkey_storage = TestPublicKeyStorage {public_key: public_key.to_vec()};
         spawn(async move {
             loop {
                 select! {

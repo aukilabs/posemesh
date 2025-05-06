@@ -112,6 +112,7 @@ message LocalRefinementInputV1 {
 
 message DomainClusterHandshake {
   required string access_token = 1;
+  required string domain_id = 2;
 }
 
 message GlobalRefinementInputV1 {

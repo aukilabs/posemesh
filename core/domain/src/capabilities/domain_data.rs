@@ -3,6 +3,8 @@ use networking::{libp2p::{NetworkError, Networking}, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use futures::{select, AsyncReadExt, AsyncWriteExt, StreamExt};
 
+use super::public_key::PublicKeyStorage;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CapabilityError {
     #[error("Handshake failed: {0}")]
@@ -20,8 +22,8 @@ pub enum CapabilityError {
 pub const CONSUME_DATA_PROTOCOL_V1: &str = "/load/v1";
 pub const PRODUCE_DATA_PROTOCOL_V1: &str = "/store/v1";
 
-pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, public_key: Vec<u8>) -> Result<(), CapabilityError> {
-    let claim = handshake(&public_key, &mut stream).await?;
+pub async fn store_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mut stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {
+    let claim = handshake(&mut stream, key_loader).await?;
     let job_id = claim.job_id.clone();
     c.client.subscribe(job_id.clone()).await?;
     let domain_id = claim.domain_id.clone();
@@ -85,8 +87,8 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: N
     }
 }
 
-pub async fn serve_data_v1<S: AsyncStream, D: Datastore>(mut stream: S, mut c: Networking, mut datastore: D, public_key: Vec<u8>) -> Result<(), CapabilityError> {
-    let header = handshake(&public_key, &mut stream).await?;
+pub async fn serve_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mut stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {
+    let header = handshake(&mut stream, key_loader).await?;
     c.client.subscribe(header.job_id.clone()).await?;
     
     let mut buf = Vec::<u8>::new();

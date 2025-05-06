@@ -184,7 +184,7 @@ export class UploadManager {
         if (this.datastore != null) {
             const query = new Query([], [], [], null, null);
 
-            const downloader = await this.datastore.consume(query);
+            const downloader = await this.datastore.consume(import.meta.env.VITE_DOMAIN_ID, query);
             console.log("Downloader initialized");
             return downloader;
         } else {
