@@ -39,13 +39,21 @@ export class UploadManager {
         this.producer = null;
         this.domainCluster = null;
         this.activeUploads = new Map();  // Track uploads: scan_name -> status
+        this.domainId = "";
     }
 
     async init(onFileSelect, onProgressUpdate, onUploadComplete) {
         this.onFileSelect = onFileSelect;
         this.onProgressUpdate = onProgressUpdate;
         this.onUploadComplete = onUploadComplete;
-        
+
+        // Set domainId from input box
+        const domainIdInput = document.getElementById('domainIdInput');
+        domainIdInput.addEventListener('input', (event) => {
+            this.domainId = event.target.value;
+            this.uploader = null;
+        });
+
         try {
             await this.initializeLibp2p(); // Initialize libp2p on startup
         } catch (error) {
@@ -86,7 +94,11 @@ export class UploadManager {
         this.uploader = null;
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
-        await reconstruction_job(this.domainCluster, import.meta.env.VITE_DOMAIN_ID, scans_array, (taskBytes) => {
+        await reconstruction_job(this.domainCluster, this.domainId, scans_array, (taskBytes, err) => {
+            if (err) {
+                console.error("Error in reconstruction job", err);
+                return;
+            }
             const task = proto.task.Task.deserializeBinary(taskBytes); 
             console.log("reconstruction job", task.toObject());
         });
@@ -100,11 +112,6 @@ export class UploadManager {
             return;
         }
 
-        if (this.uploader == null) {
-            this.uploader = await this.datastore.produce(import.meta.env.VITE_DOMAIN_ID);
-        }
-        console.log("uploader initialized");
-
         const date = getCurrentTimeFormatted();
         const scan_name = prompt("Please enter a scan name:", date);
         if (!scan_name) {
@@ -112,9 +119,19 @@ export class UploadManager {
             return;
         }
 
+        if (!this.domainId) {
+            console.error("Upload cancelled - no domain id provided");
+            return; 
+        }
+
         // Add scan to tracking with 'uploading' status
         this.activeUploads.set(scan_name, 'uploading');
         this.updateUploadsList();
+
+        if (this.uploader == null) {
+            this.uploader = await this.datastore.produce(this.domainId);
+        }
+        console.log("uploader initialized");
 
         for (const file of this.files) {
             try {
@@ -184,7 +201,7 @@ export class UploadManager {
         if (this.datastore != null) {
             const query = new Query([], [], [], null, null);
 
-            const downloader = await this.datastore.consume(import.meta.env.VITE_DOMAIN_ID, query);
+            const downloader = await this.datastore.consume(this.domainId, query);
             console.log("Downloader initialized");
             return downloader;
         } else {
