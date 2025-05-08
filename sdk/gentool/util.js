@@ -2957,7 +2957,84 @@ function fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructo
   }
 }
 
-function fillConstructorOrMethod(constructorOrMethodJson, isConstructor) {
+function fillMethodStatic(interfaceJson, methodJson) {
+  const nameKey = 'static';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof methodJson[nameKey] === 'undefined') {
+    const parentNameKey = 'static';
+    methodJson[nameKey] = typeof interfaceJson[parentNameKey] === 'boolean' ? interfaceJson[parentNameKey] : false;
+    methodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof methodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  methodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'mode';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = MethodMode.regular;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(MethodMode)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'visibility';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = Visibility.public;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(Visibility)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'noexcept';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = false;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructor) {
   if (typeof constructorOrMethodJson !== 'object' || typeof isConstructor !== 'boolean') {
     throw new Error('Invalid usage of fillConstructorOrMethod() method.');
   }
@@ -2966,6 +3043,12 @@ function fillConstructorOrMethod(constructorOrMethodJson, isConstructor) {
     fillMethodReturnType(constructorOrMethodJson);
   }
   fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructor);
+  if (!isConstructor) {
+    fillMethodStatic(interfaceJson, constructorOrMethodJson);
+  }
+  fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor);
 }
 
 function fillConstructorsOrMethods(interfaceJson, isConstructors) {
@@ -2989,7 +3072,7 @@ function fillConstructorsOrMethods(interfaceJson, isConstructors) {
   }
   interfaceJson[nameKeyGen] = false;
   for (const constructorOrMethodJson of interfaceJson[nameKey]) {
-    fillConstructorOrMethod(constructorOrMethodJson, isConstructors);
+    fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructors);
   }
 }
 
@@ -3202,6 +3285,10 @@ module.exports = {
   fillConstructorOrMethodParameterSwiftNamePrefix,
   fillConstructorOrMethodParameter,
   fillConstructorOrMethodParameters,
+  fillMethodStatic,
+  fillConstructorOrMethodMode,
+  fillConstructorOrMethodVisibility,
+  fillConstructorOrMethodNoexcept,
   fillConstructorOrMethod,
   fillConstructorsOrMethods,
   fillConstructors,
