@@ -111,8 +111,8 @@ pub async fn serve_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
                         stream.write_all(&prefix_size_message(&data.metadata)).await?;
                         for chunk in data.content.chunks(CHUNK_SIZE) {
                             stream.write_all(chunk).await?;
+                            stream.flush().await?;
                         }
-                        stream.flush().await?;
                         tracing::info!("Served data: {}, size: {}", data.metadata.name, data.metadata.size);
                     }
                     Some(Err(e)) => {

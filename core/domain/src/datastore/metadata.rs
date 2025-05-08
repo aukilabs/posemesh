@@ -55,7 +55,7 @@ impl Query {
         let mut param_index = 2;
 
         if !self.ids.is_empty() {
-            sql.push_str(&format!(" AND id = ANY({})", param_index));
+            sql.push_str(&format!(" AND id = ANY(${})", param_index));
             params.push(Box::new(self.ids.clone().iter().map(|id| Uuid::parse_str(id).unwrap()).collect::<Vec<Uuid>>()));
             param_index += 1;
         }
@@ -73,13 +73,13 @@ impl Query {
         }
 
         if !self.names.is_empty() {
-            sql.push_str(&format!(" AND name = ANY({})", param_index));
+            sql.push_str(&format!(" AND name = ANY(${})", param_index));
             params.push(Box::new(self.names.clone()));
             param_index += 1;
         }
 
         if !self.data_types.is_empty() {
-            sql.push_str(&format!(" AND data_type = ANY({})", param_index));
+            sql.push_str(&format!(" AND data_type = ANY(${})", param_index));
             params.push(Box::new(self.data_types.clone()));
         }
 
