@@ -155,7 +155,6 @@ pub struct Node {
     pub id: String,
     pub name: String,
     pub capabilities: Vec<String>,
-    pub addresses: Vec<Multiaddr>,
 }
 
 fn protocol(namespace: Option<String>, protocol: &str) -> StreamProtocol {
@@ -409,6 +408,12 @@ impl Libp2p {
         if cfg.enable_webrtc {
             listeners.push(enable_webrtc(cfg.port));
         }
+        
+        let node = Node {
+            id: key.public().to_peer_id().to_string(),
+            name: cfg.name.clone(),
+            capabilities: vec![],
+        };
         for addr in listeners.iter() {
             match swarm.listen_on(addr.clone()) {
                 Ok(_) => {},
@@ -431,13 +436,6 @@ impl Libp2p {
                 }
             }
         }
-        
-        let node = Node {
-            id: key.public().to_peer_id().to_string(),
-            name: cfg.name.clone(),
-            capabilities: vec![],
-            addresses: vec![],
-        };
         let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
         let mut cancel_receiver = cancel_receiver.fuse();
 
@@ -577,8 +575,9 @@ impl Libp2p {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                println!("Local node is listening on {:?}", address.clone().with(Protocol::P2p(local_peer_id)));
-                self.node.addresses.push(address.clone().with(Protocol::P2p(local_peer_id)));
+                let address = address.clone().with(Protocol::P2p(local_peer_id));
+                self.event_sender.send(event::Event::NewAddress { address: address.clone() }).await.expect("failed to send new address");
+                println!("Local node is listening on {:?}", address);
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
@@ -697,7 +696,6 @@ impl Libp2p {
                     id: peer_id.to_string(),
                     name: agent_version,
                     capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") && !p.contains("/meshsub/1.0.0") ).collect::<Vec<String>>(),
-                    addresses: listen_addrs,
                 };
 
                 self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
@@ -876,7 +874,7 @@ async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<clie
 impl Networking {
     pub fn new(cfg: &NetworkingConfig) -> Result<Self, NetworkError> {
         let (sender, receiver) = channel::<client::Command>(8);
-        let (event_sender, event_receiver) = channel::<event::Event>(8);
+        let (event_sender, event_receiver) = channel::<event::Event>(1072);
         let cfg = cfg.clone();
         let client = Client::new(sender);
         
