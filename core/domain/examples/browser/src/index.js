@@ -90,8 +90,10 @@ export class UploadManager {
             return;
         }
      
-        this.uploader.close();
-        this.uploader = null;
+        if (this.uploader != null) {
+            this.uploader.close();
+            this.uploader = null;
+        }
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
         await reconstruction_job(this.domainCluster, this.domainId, scans_array, (taskBytes, err) => {
@@ -224,7 +226,6 @@ async function initializeApp() {
     const progressLabel = document.getElementById("progressLabel");
     const downloadBtn = document.getElementById("downloadBtn");
     const fileMetadata = document.getElementById("fileMetadata");
-
     // Set up drag and drop events
     dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
@@ -284,16 +285,48 @@ async function initializeApp() {
     // Set up download functionality
     downloadBtn.addEventListener("click", async () => {
         const downloading = await uploadManager.downloadFiles();
+        
+        const scanNames = new Set();
         while(true) {
             const file = await downloading.next();
             if (!file) break;
             const metadata = file.metadata;
-        
-            const p = document.createElement("p");
-            p.textContent = `${metadata.name} ${metadata.size} bytes`;
-            console.log("file", metadata);
             
-            fileMetadata.appendChild(p);
+            const namePattern = /.*_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/;
+            const match = metadata.name.match(namePattern);
+            let scanName = metadata.name;
+            if (match) {
+                scanName = match[1];
+                if (!scanNames.has(scanName)) {
+                    scanNames.add(scanName);
+                    const scanContainer = document.createElement("div");
+                    scanContainer.classList.add("flex", "items-center", "mb-2");
+
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.id = scanName;
+                    checkbox.classList.add("mr-2"); // Add margin to the right for spacing
+                    checkbox.addEventListener('change', (event) => {
+                        if (event.target.checked) {
+                            finishBtn.disabled = false;
+                            uploadManager.activeUploads.set(scanName, 'completed');
+                        } else {
+                            uploadManager.activeUploads.delete(scanName);
+                        }
+                        if (uploadManager.activeUploads.size == 0) {
+                            finishBtn.disabled = true;
+                        }
+                    });
+
+                    const label = document.createElement("label");
+                    label.htmlFor = scanName;
+                    label.appendChild(document.createTextNode(scanName));
+
+                    scanContainer.appendChild(checkbox);
+                    scanContainer.appendChild(label);
+                    fileMetadata.appendChild(scanContainer);
+                }
+            }
         }
     });
 

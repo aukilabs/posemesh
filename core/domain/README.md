@@ -2,9 +2,10 @@
 
 The `domain` package is a core component of the Posemesh system, designed to facilitate secure and private data exchange within domain clusters.
 
-## Examples
+## Getting Started
 
-**Prerequisites**: Create a domain manager (steps will be added later).
+To get started, you can either set up your own domain manager or use the ones provided by Auki. Please be aware that the Auki server is currently under active development, which may lead to occasional downtime and potential data loss. Server addresses are available here: [Auki Domain Manager Addresses](https://ap-northeast-1.domains.dev.aukiverse.com/multiaddrs).
+
 - **examples/client**: A Rust client for downloading and uploading domain data.
 - **domain/examples/browser**: A web application using this module to download and upload domain data.
 
@@ -12,12 +13,12 @@ The `domain` package is a core component of the Posemesh system, designed to fac
 
 The `datastore` module provides mechanisms for both remote and in-house data storage solutions.
 
-- **Remote Storage (`remote.rs`)**: This module handles data storage in remote locations, allowing for distributed data management across the domain cluster.
+- **Remote Storage (`remote.rs`)**: This module handles data storage in remote locations, allowing for distributed data management across the domain cluster, ensuring rapid access and scalability.
 - **Local Storage (`fs.rs`, `metadata.rs`)**: These modules manage local data storage, ensuring that data is persisted efficiently and securely within the local environment.
 
-Uploading data supports streaming by default. Each piece of domain data is chunked into 7KB segments and organized into a Merkle tree. Both the sender and receiver construct the tree to serve as proof of data transfer.
+Uploading data supports streaming by default, enabling fast and efficient data transfer. Each piece of domain data is chunked into 7KB segments and organized into a Merkle tree. Both the sender and receiver construct the tree to serve as proof of data transfer, ensuring integrity and speed in distributed environments.
 
-## Capability
+## Capabilities
 
 The `capabilities` modules define the functionalities that a node within the domain cluster can perform.
 - **/load/v1**: Provides an endpoint to serve domain data.
@@ -32,17 +33,7 @@ The `protobuf` modules contain all the protocol buffers used in peer communicati
 
 The `cluster` module serves as the cluster client, enabling peers to communicate with the domain manager.
 
-The domain cluster is a secure, private peer network that allows participants to collaborate and exchange data while maintaining privacy. It is built on a distributed hash table that lists participants and their capabilities, enabling seamless peer awareness and collaboration without a central authority.
-
-### Authentication
-
-Initially, the design involved the domain manager sending a preshared key to each peer upon joining the cluster, creating a private libp2p network for each domain cluster. However, this approach presented several challenges:
-
-- **Frequent Peer Changes**: With peers frequently joining and leaving the cluster, managing preshared keys became cumbersome. Rotating the preshared key every time a peer leaves would require all peers to reboot, disrupting ongoing connections and affecting network stability.
-
-- **Network Stability**: The need for frequent key rotations could lead to significant disruptions, making it difficult to maintain stable and continuous network operations.
-
-Due to these challenges, we are exploring more dynamic and flexible authentication mechanisms, such as JWT tokens, which can accommodate frequent peer changes without compromising network stability.
+The domain cluster is designed to be a secure, private peer network that allows participants to collaborate and exchange data while maintaining privacy. It is built on a distributed hash table that lists participants and their capabilities, enabling seamless peer awareness and collaboration without a central authority. While our current implementation is not fully decentralized, we are actively working towards achieving this goal.
 
 ### Job vs Task
 
@@ -56,11 +47,28 @@ A **node**, on the other hand, is a peer that possesses specific capabilities. N
 
 ### Domain Manager
 
-The domain manager is a special node within the domain cluster, responsible for managing tasks, accepting data uploads, and serving public keys. It needs to be publicly accessible and online 24/7, allowing other nodes in the domain cluster to use it as a bootstrap node to access the Kademlia DHT. When a peer submits a job to the domain manager, it issues a time-limited, scope-limited task token. This token enables peers in the cluster to communicate directly and complete tasks securely.
+The domain manager is a special node within the domain cluster, responsible for managing tasks, accepting data uploads, and serving domain public keys. It needs to be publicly accessible and online 24/7, allowing other nodes in the domain cluster to use it as a bootstrap node to access the Kademlia DHT. The domain manager also stores one key pair for each domain. Peers who want to collaborate in the domain need to submit jobs to the domain manager, which issues a time-limited and scope-limited JWT token signed by the domain's private key.
 
 Currently, the domain manager also functions as a relay due to its public accessibility. However, this capability will be transitioned to the standalone Relay service once it is integrated with the Posemesh SDK. The Relay service, as described in the [AUKI Posemesh Whitepaper](https://auki.gitbook.io/whitepaper/technical-overview/the-relay-service), is designed to handle real-time, low-latency communication, leveraging decentralized infrastructure to enhance performance and scalability.
 
-## Cluster Security
+### Trustless Domain Cluster
+The domain manager is a critical component of the domain cluster, yet it presents several challenges that must be addressed to ensure robust and secure operations:
+
+- **Local Key Storage**: Storing key pairs locally poses significant security risks. Unauthorized access could lead to a complete compromise of the domain.
+
+- **Single Point of Failure**: As the central authority, the domain manager represents a single point of failure. Any downtime can render all managed domains inoperative.
+
+- **Trust Dependency**: Domain owners are required to place significant trust in the domain manager's ability to operate securely and reliably. Any negligence or malicious behavior could jeopardize domain security.
+
+To mitigate these risks, we are exploring several alternatives:
+
+- **Decentralized Key Management**: Utilize smart contracts specifically for the management of domain keys, reducing reliance on centralized entities and enhancing cryptographic security.
+
+- **Distributed Network Architecture**: Implementing a distributed network of domain managers will ensure high availability and fault tolerance, reducing the risk of downtime.
+
+- **Trustless Systems and Reputation Mechanisms**: Establish a framework where domain managers actively witness and validate each other's actions. This mutual validation process ensures system integrity and security. Additionally, domain owners can select domain managers based on their reliability and performance history, fostering a more secure and trustworthy environment.
+
+### Cluster Security
 
 Data security within the domain cluster is ensured through several mechanisms:
 
@@ -73,11 +81,17 @@ Using libp2p's security features, such as secure channels and peer authenticatio
 
 - **WebRTC**: For browser-to-peer communication, we use WebRTC, which allows secure, real-time communication between browsers and public peers. WebRTC is designed to work seamlessly with NAT traversal and provides encrypted data channels. More information can be found in the [WebRTC documentation](https://docs.libp2p.io/concepts/transports/webrtc/).
 
+Initially, the design involved the domain manager sending a [PSK](https://github.com/libp2p/specs/blob/master/pnet/Private-Networks-PSK-V1.md) to each peer upon joining the cluster, creating a private libp2p network for each domain cluster. However, this approach presented several challenges:
+
+- **Frequent Peer Changes**: With peers frequently joining and leaving the cluster, managing preshared keys became cumbersome. Rotating the preshared key every time a peer leaves would require all peers to reboot, disrupting ongoing connections and affecting network stability.
+
+- **Network Stability**: The need for frequent key rotations could lead to significant disruptions, making it difficult to maintain stable and continuous network operations.
+
+Due to these challenges, we are exploring more dynamic and flexible authentication mechanisms, such as [Task Tokens](#task-tokens), which can accommodate frequent peer changes without compromising network stability.
+
 ### Task Tokens
 
 A task token is a JWT issued by the domain manager, ensuring that only authorized peers can execute tasks within the cluster. This mechanism maintains the integrity and security of the domain.
-
-There is a consideration regarding key pair management: whether each domain cluster should have its own key pairs or if a single pair should be used per domain manager. The former approach offers enhanced security but requires additional effort from the domain owner, who must issue a pair of keys, delegate them to the domain manager, and manage these keys on their behalf. We are building towards the approach where each domain cluster will have its own key pairs.
 
 ## Challenges
 
