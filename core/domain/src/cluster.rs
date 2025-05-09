@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
 use networking::{event, libp2p::{Networking, NetworkingConfig}};
-use crate::{message::{prefix_size_message, read_prefix_size_message}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
+use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message, request_response}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 
@@ -13,7 +13,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 #[derive(Debug)]
 pub enum TaskUpdateResult {
     Ok(task::Task),
-    Err(Box<dyn std::error::Error + Send + Sync>),
+    Err(DomainError),
 }
 
 #[derive(Debug)]
@@ -107,7 +107,7 @@ impl InnerDomainCluster {
                             from: from,
                             result: TaskUpdateResult::Ok(task.clone()),
                         }).await {
-                            eprintln!("Error sending failed task update: {:?}", e);
+                            tracing::error!("Error sending failed task update: {:?}", e);
                             if SendError::is_disconnected(&e) {
                                 self.jobs.remove(&topic);
                                 return;
@@ -126,22 +126,17 @@ impl InnerDomainCluster {
     }
 
     async fn submit_job(&mut self, job: &JobRequest, mut tx: Sender<TaskUpdateEvent>) {
-        let res = self.peer.client.send(prefix_size_message(job), self.manager.clone(), "/jobs/v1".to_string(), 0).await;
-        if let Err(e) = res {
-            // TODO: handle error
-            tracing::error!("Error sending task request {} to {}: {:?}", job.name, self.manager.clone(), e);
-            tx.close_channel();
-            return;
+        let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, "/jobs/v1", job, 0).await;
+        match response {
+            Ok(response) => {
+                self.peer.client.subscribe(response.job_id.clone()).await.unwrap();
+                self.jobs.insert(TopicHash::from_raw(response.job_id.clone()), tx);
+            }
+            Err(e) => {
+                tracing::error!("Error submitting job: {:?}", e);
+                tx.close_channel();
+            }
         }
-        let s = res.unwrap();
-        let job = read_prefix_size_message::<SubmitJobResponse>(s).await.expect("can't read from stream");
-
-        self.subscribe_to_job(job.job_id, tx).await
-    }
-
-    async fn subscribe_to_job(&mut self, job_id: String, tx: Sender<TaskUpdateEvent>) {
-        self.peer.client.subscribe(job_id.clone()).await.unwrap();
-        self.jobs.insert(TopicHash::from_raw(job_id.clone()), tx);
     }
 
     async fn monitor_jobs(&mut self) -> Receiver<Job> {
@@ -176,12 +171,10 @@ pub struct DomainCluster {
     sender: Sender<Command>,
     pub peer: Networking,
     pub manager_id: String,
-    pub domain_id: String,
 }
 
 impl DomainCluster {
     pub fn new(
-        domain_id: String,
         manager_addr: String,
         node_name: String,
         join_as_relay: bool,
@@ -221,7 +214,6 @@ impl DomainCluster {
             sender: tx,
             peer: networking.clone(),
             manager_id: domain_manager_id.clone(),
-            domain_id: domain_id.clone(),
         }
     }
 

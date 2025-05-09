@@ -39,13 +39,21 @@ export class UploadManager {
         this.producer = null;
         this.domainCluster = null;
         this.activeUploads = new Map();  // Track uploads: scan_name -> status
+        this.domainId = "";
     }
 
     async init(onFileSelect, onProgressUpdate, onUploadComplete) {
         this.onFileSelect = onFileSelect;
         this.onProgressUpdate = onProgressUpdate;
         this.onUploadComplete = onUploadComplete;
-        
+
+        // Set domainId from input box
+        const domainIdInput = document.getElementById('domainIdInput');
+        domainIdInput.addEventListener('input', (event) => {
+            this.domainId = event.target.value;
+            this.uploader = null;
+        });
+
         try {
             await this.initializeLibp2p(); // Initialize libp2p on startup
         } catch (error) {
@@ -57,7 +65,7 @@ export class UploadManager {
         try {
             console.log("initializing domain cluster");
             await init();
-            const domainCluster = new DomainCluster("", import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
+            const domainCluster = new DomainCluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
             this.datastore = new RemoteDatastore(domainCluster);
@@ -82,11 +90,17 @@ export class UploadManager {
             return;
         }
      
-        this.uploader.close();
-        this.uploader = null;
+        if (this.uploader != null) {
+            this.uploader.close();
+            this.uploader = null;
+        }
         let scans = this.activeUploads.keys();
         let scans_array = Array.from(scans);
-        await reconstruction_job(this.domainCluster, scans_array, (taskBytes) => {
+        await reconstruction_job(this.domainCluster, this.domainId, scans_array, (taskBytes, err) => {
+            if (err) {
+                console.error("Error in reconstruction job", err);
+                return;
+            }
             const task = proto.task.Task.deserializeBinary(taskBytes); 
             console.log("reconstruction job", task.toObject());
         });
@@ -100,11 +114,6 @@ export class UploadManager {
             return;
         }
 
-        if (this.uploader == null) {
-            this.uploader = await this.datastore.produce("");
-        }
-        console.log("uploader initialized");
-
         const date = getCurrentTimeFormatted();
         const scan_name = prompt("Please enter a scan name:", date);
         if (!scan_name) {
@@ -112,9 +121,19 @@ export class UploadManager {
             return;
         }
 
+        if (!this.domainId) {
+            console.error("Upload cancelled - no domain id provided");
+            return; 
+        }
+
         // Add scan to tracking with 'uploading' status
         this.activeUploads.set(scan_name, 'uploading');
         this.updateUploadsList();
+
+        if (this.uploader == null) {
+            this.uploader = await this.datastore.produce(this.domainId);
+        }
+        console.log("uploader initialized");
 
         for (const file of this.files) {
             try {
@@ -132,8 +151,8 @@ export class UploadManager {
                 const uint8Array = new Uint8Array(arrayBuffer);
 
                 const data = new DomainData(metadata, uint8Array);
-                const id = await this.uploader.push(data);
-                console.log(`Pushed ${file.name}: ${file.size} bytes -> ${id}`);
+                const hash = await this.uploader.push(data);
+                console.log(`Pushed ${file.name}: ${file.size} bytes -> ${hash}`);
             } catch (error) {
                 console.error(`Failed to upload ${file.name}`, error);
                 this.activeUploads.set(scan_name, 'failed');
@@ -183,9 +202,8 @@ export class UploadManager {
     async downloadFiles() {
         if (this.datastore != null) {
             const query = new Query([], [], [], null, null);
-            console.log("Query created");
 
-            const downloader = await this.datastore.consume("", query);
+            const downloader = await this.datastore.consume(this.domainId, query);
             console.log("Downloader initialized");
             return downloader;
         } else {
@@ -208,7 +226,6 @@ async function initializeApp() {
     const progressLabel = document.getElementById("progressLabel");
     const downloadBtn = document.getElementById("downloadBtn");
     const fileMetadata = document.getElementById("fileMetadata");
-
     // Set up drag and drop events
     dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
@@ -268,16 +285,48 @@ async function initializeApp() {
     // Set up download functionality
     downloadBtn.addEventListener("click", async () => {
         const downloading = await uploadManager.downloadFiles();
+        
+        const scanNames = new Set();
         while(true) {
             const file = await downloading.next();
             if (!file) break;
             const metadata = file.metadata;
-        
-            const p = document.createElement("p");
-            p.textContent = `${metadata.name} ${metadata.size} bytes`;
-            console.log("file", metadata);
             
-            fileMetadata.appendChild(p);
+            const namePattern = /.*_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/;
+            const match = metadata.name.match(namePattern);
+            let scanName = metadata.name;
+            if (match) {
+                scanName = match[1];
+                if (!scanNames.has(scanName)) {
+                    scanNames.add(scanName);
+                    const scanContainer = document.createElement("div");
+                    scanContainer.classList.add("flex", "items-center", "mb-2");
+
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.id = scanName;
+                    checkbox.classList.add("mr-2"); // Add margin to the right for spacing
+                    checkbox.addEventListener('change', (event) => {
+                        if (event.target.checked) {
+                            finishBtn.disabled = false;
+                            uploadManager.activeUploads.set(scanName, 'completed');
+                        } else {
+                            uploadManager.activeUploads.delete(scanName);
+                        }
+                        if (uploadManager.activeUploads.size == 0) {
+                            finishBtn.disabled = true;
+                        }
+                    });
+
+                    const label = document.createElement("label");
+                    label.htmlFor = scanName;
+                    label.appendChild(document.createTextNode(scanName));
+
+                    scanContainer.appendChild(checkbox);
+                    scanContainer.appendChild(label);
+                    fileMetadata.appendChild(scanContainer);
+                }
+            }
         }
     });
 

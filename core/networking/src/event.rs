@@ -1,4 +1,4 @@
-use libp2p::{gossipsub::TopicHash, PeerId};
+use libp2p::{gossipsub::TopicHash, Multiaddr, PeerId};
 use std::error::Error;
 
 #[derive(Debug)]
@@ -10,6 +10,9 @@ pub enum Event {
         topic: TopicHash,
         message: Vec<u8>,
         from: Option<PeerId>,
+    },
+    NewAddress {
+        address: Multiaddr,
     },
 }
 
