@@ -191,23 +191,23 @@ sequenceDiagram
 - Connect to eligible Nodes via Discovery Service.
 - Read/Write Domain Data.
 - Publish/Subscribe Pose Data streams.
-- Scan QR and calibrate in a 3D coordinate system in a Domain.
+- Scan QR codes (Portals) and calibrate in a 3D coordinate system in a Domain.
 - See https://conjurekit.dev/
 
 ### Posemesh Web Console (Developers)
 
-- Manage apps, Domains, Portals, assets, and wallets.
+- Manage apps, domains, portals, assets, and wallets.
 - Burn AUKI → Credits.
 - View usage, credit balance, and reward history.
-- Mint & stake Domain NFTs;
+- Mint & stake Domain NFTs.
 - Stake for Data Nodes.
-- Claim Rewards.
+- Claim rewards.
 
 ### Operator Web Dashboard (Node Providers)
 
 - Real‑time map of network nodes.
 - Stake AUKI for Relay Nodes.
-- Claim Rewards.
+- Claim rewards.
 
 ## References
 
