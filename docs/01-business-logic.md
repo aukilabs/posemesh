@@ -29,8 +29,8 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 - Create a Domain.
 - Stake $AUKI to become a Provider(s).
-- Grant {Storage | Network | Computing} Provider permissions inside a Domain.
-- Grant Participants’ {Storage,Network,Computing} permissions in a Domain.
+- Grant {Storage|Network|Computing} Provider permissions inside a Domain.
+- Grant Participants’ {Storage|Network|Computing} permissions in a Domain.
 - Request to operate as a Provider in a Domain Cluster.
 - Request to join a Domain Cluster via Network Providers.
 - In a Domain Cluster, request to write, read, or compute over Spatial Data.
@@ -56,7 +56,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 ### Rules
 
 - Unit of measurement for the computational effort required to interact with Providers (gas).
-- Minted when $AUKI is burned, 1 Credit ≈ 1 USD at the burn‑time.
+- Minted when $AUKI is burned, 1 Credit ≈ 1 USD at the burn‑time.
 - Locked when a Participant submits a request.
 - Debited when that request is fulfilled.
 - Non‑transferable; bound to the originating Participant.
@@ -82,8 +82,8 @@ It is not an architectural or SDK specification; instead it describes the actors
 **Processes/Functions**
 
 - Transfer history.
-- Encrypted M : N data/stream exchange inside the Domain Cluster.
-- Encrypted 1 : 1 messaging inside the Domain Cluster.
+- Encrypted M:N data/stream exchange inside the Domain Cluster.
+- Encrypted 1:1 messaging inside the Domain Cluster.
 
 ## 5. Spatial Data
 
