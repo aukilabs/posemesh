@@ -135,7 +135,7 @@ All contracts follow the **UUPS proxy upgrade pattern**, are written in **Foundr
 
 ---
 
-## Backend Services (temporary off‑chain)
+## Backend Services (temporarily off‑chain)
 
 > **Goal: migrate as much logic on‑chain as feasible in future releases.**
 >
