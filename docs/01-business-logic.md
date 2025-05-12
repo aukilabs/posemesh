@@ -1,7 +1,7 @@
 # Posemesh Protocol · Business-Logic Specification
 
 >**Purpose**  
->The primitives, rules and processes that govern how the posemesh protocol operate.
+>The primitives, rules and processes that govern how the posemesh protocol operates.
 
 ## Background
 
@@ -27,7 +27,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 ### Processes
 
-- Create Domain.
+- Create a Domain.
 - Stake $AUKI to become a Provider(s).
 - Grant {Storage | Network | Computing} Provider permissions inside a Domain.
 - Grant Participants’ {Storage,Network,Computing} permissions in a Domain.
@@ -84,7 +84,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Transfer history.
 - Encrypted M : N data/stream exchange inside the Domain Cluster.
 - Encrypted 1 : 1 messaging inside the Domain Cluster.
-- 
+
 ## 5. Spatial Data
 
 ### Rules
