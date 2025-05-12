@@ -10,7 +10,7 @@ Now we’re turning it into an open, web‑3 protocol, to help it grow and start
 
 ## Motivation
 
-This overview summarize where the posemesh is today, what already runs on‑chain, what is still off‑chain, so new contributors can quickly understand the starting point.
+This overview summarizes where the posemesh is today, what already runs on‑chain and what is still off‑chain, so that new contributors can quickly understand the starting point.
 
 Use it to spot gaps, suggest solutions, and help us push more of the system into Web 3.
 
@@ -26,9 +26,9 @@ Use it to spot gaps, suggest solutions, and help us push more of the system into
 | **Staking** | Locking tokens in a contract as a financial commitment and to become eligible. |
 | **Burning** | Permanently removing tokens from circulation by sending them to an address with no private key. |
 | **Credits** | Accounting units (1 credit ≈ 1 USD) issued when developers burn AUKI; consumed when clients access/consume network resources. |
-| **Participation Rewards** | A finite amount of AUKI tokens in the Reward Pool use to reward early adopters helping bootstrapping the network; coming from the treasury foundation. |
-| **Performance Rewards** | The *infinite* amount of AUKI token minted to the Reward Pool when AUKI token are burned; use to reward Operator according to monitored performances.  |
-| **Domain Data** | files (maps, meshes, anchors, assets) that describe a physical domain; stored on Storage Nodes. |
+| **Participation Rewards** | A finite amount of AUKI tokens in the Reward Pool used to reward early adopters helping bootstrapping the network; coming from the treasury foundation. |
+| **Performance Rewards** | The *infinite* amount of AUKI token minted to the Reward Pool when AUKI tokens are burned; used to reward Operators according to monitored performances.  |
+| **Domain Data** | Files (maps, meshes, anchors, assets) that describe a physical domain; stored on Storage Nodes. |
 | **Pose Data** | Low‑latency streams of poses, transforms, and entity updates exchanged via Relay Nodes. |
 
 ---
