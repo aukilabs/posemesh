@@ -161,6 +161,7 @@ pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c
         data_type_regexp: Some(data_type_regexp),
         names,
         data_types,
+        metadata_only: true,
     };
 
     Box::into_raw(Box::new(query))

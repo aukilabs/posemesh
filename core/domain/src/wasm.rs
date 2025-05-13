@@ -16,7 +16,7 @@ pub struct Query {
 #[wasm_bindgen]
 impl Query {
     #[wasm_bindgen(constructor)]
-    pub fn new(ids: Vec<String>, names: Vec<String>, data_types: Vec<String>, name_regexp: Option<String>, data_type_regexp: Option<String>) -> Self {
+    pub fn new(ids: Vec<String>, names: Vec<String>, data_types: Vec<String>, name_regexp: Option<String>, data_type_regexp: Option<String>, metadata_only: bool) -> Self {
         Self {
             inner: domain_data::Query {
                 ids,
@@ -24,6 +24,7 @@ impl Query {
                 data_types,
                 name_regexp,
                 data_type_regexp,
+                metadata_only,
             }
         }
     }

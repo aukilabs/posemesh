@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         data_types: vec![],
         name_regexp: None,
         data_type_regexp: None,
+        metadata_only: true,
     };
 
     let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await?;

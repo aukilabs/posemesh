@@ -201,7 +201,7 @@ export class UploadManager {
 
     async downloadFiles() {
         if (this.datastore != null) {
-            const query = new Query([], [], [], null, null);
+            const query = new Query([], [], [], null, null, true);
 
             const downloader = await this.datastore.consume(this.domainId, query);
             console.log("Downloader initialized");
@@ -284,6 +284,8 @@ async function initializeApp() {
 
     // Set up download functionality
     downloadBtn.addEventListener("click", async () => {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = "Downloading...";
         const downloading = await uploadManager.downloadFiles();
         
         const scanNames = new Set();
@@ -300,8 +302,27 @@ async function initializeApp() {
                 if (!scanNames.has(scanName)) {
                     scanNames.add(scanName);
                     const scanContainer = document.createElement("div");
-                    scanContainer.classList.add("flex", "items-center", "mb-2");
+                    scanContainer.classList.add("flex", "items-center", "mb-2", "flex-row");
 
+                    const dropdownButton = document.createElement("button");
+                    dropdownButton.textContent = "▼";
+                    dropdownButton.classList.add("mr-2");
+                    dropdownButton.id = "dropdown"+scanName;
+
+                    const fileList = document.createElement("div");
+                    fileList.style.display = "block";
+                    fileList.style.flexDirection = "column";
+                    fileList.style.marginTop = "5px";
+                    fileList.id = "fileList"+scanName;
+                    // Toggle file list visibility on button click
+                    dropdownButton.addEventListener("click", () => {
+                        fileList.style.display = fileList.style.display === "none" ? "block" : "none";
+                        if (fileList.style.display === "block") {
+                            dropdownButton.textContent = "▲";
+                        } else {
+                            dropdownButton.textContent = "▼";
+                        }
+                    });
                     const checkbox = document.createElement("input");
                     checkbox.type = "checkbox";
                     checkbox.id = scanName;
@@ -322,12 +343,21 @@ async function initializeApp() {
                     label.htmlFor = scanName;
                     label.appendChild(document.createTextNode(scanName));
 
+                    scanContainer.appendChild(dropdownButton);
                     scanContainer.appendChild(checkbox);
                     scanContainer.appendChild(label);
+
                     fileMetadata.appendChild(scanContainer);
+                    fileMetadata.appendChild(fileList);
                 }
+                const fileList = document.getElementById("fileList"+scanName);
+                const p = document.createElement("p");
+                p.textContent = metadata.name;
+                fileList.appendChild(p);
             }
         }
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = "Download Scans";
     });
 
     // // Set up job monitoring

@@ -2710,6 +2710,7 @@ dependencies = [
 name = "networking"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "cbindgen",
  "console_error_panic_hook",
  "futures",

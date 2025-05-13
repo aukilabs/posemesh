@@ -7,16 +7,17 @@ use uuid::Uuid;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-use std::{collections::HashSet, future::Future, sync::Arc};
+use std::{collections::HashSet, future::Future, sync::Arc, time::SystemTime};
 use async_trait::async_trait;
+use networking::client::TClient;
 use libp2p::Stream;
-use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, ConsumeDataInputV1, Status, Task}}};
+use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, Any, ConsumeDataInputV1, Status, Task}}};
 use super::common::{hash_chunk, DomainData, ReliableDataProducer, CHUNK_SIZE};
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
 
 // TODO: error handling
-async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mut dest: DataWriter) {
+async fn read_from_stream(domain_id: String, metadata_only: bool, mut src: impl AsyncRead + Unpin, mut dest: DataWriter) {
     loop {
         tracing::debug!("Reading data");
         let mut length_buf = [0u8; 4];
@@ -35,15 +36,19 @@ async fn read_from_stream(domain_id: String, mut src: impl AsyncRead + Unpin, mu
         tracing::debug!("Reading data buffer");
         let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer).expect("Failed to deserialize metadata");
 
-        let mut buffer = vec![0u8; metadata.size as usize];
-        src.read_exact(&mut buffer).await.expect("Failed to read buffer");
+        let mut content = vec![];
+        if !metadata_only {
+            content = vec![0u8; metadata.size as usize];
+            src.read_exact(&mut content).await.expect("Failed to read buffer");
 
-        tracing::debug!("Read data: {}, {}/{}", metadata.name, metadata.size, buffer.len());
+            tracing::debug!("Read data: {}, {}/{}", metadata.name, metadata.size, content.len());
+        }
         let data = Data {
             metadata,
             domain_id: domain_id.clone(),
-            content: buffer,
+            content,
         };
+        tracing::debug!("Sending data: {}, {}/{}", data.metadata.name, data.metadata.size, data.content.len());
         if let Err(e) = dest.send(Ok(data)).await {
             tracing::error!("{}", e);
             break;
@@ -247,9 +252,9 @@ impl Datastore for RemoteDatastore {
         let peer_id = self.cluster.peer.id.clone();
         let mut peer = self.cluster.peer.client.clone();
         let domain_id = domain_id.clone();
-        let query = query.clone();
+        let metadata_only = query.metadata_only;
         let data = ConsumeDataInputV1 {
-            query,
+            query: query.clone(),
             keep_alive,
         };
         let job = &task::JobRequest {
@@ -270,7 +275,10 @@ impl Datastore for RemoteDatastore {
                         min_gpu: None,
                         min_cpu: None,
                     },
-                    data: None,
+                    data: Some(Any {
+                        type_url: "ConsumeDataInputV1".to_string(),
+                        value: serialize_into_vec(&data).expect("Failed to serialize message"),
+                    }),
                     sender: peer_id.clone(),
                     receiver: None,
                 }
@@ -307,7 +315,7 @@ impl Datastore for RemoteDatastore {
 
                             let (reader, _) = upload_stream.split();
                             download_task.execute(async move {
-                                read_from_stream(domain_id_clone, reader, data_sender).await;
+                                read_from_stream(domain_id_clone, metadata_only, reader, data_sender).await;
                             });
                             tx.send(Ok(())).expect("Failed to send completion signal");
                             return;

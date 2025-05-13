@@ -78,6 +78,7 @@ pub struct Query {
     pub data_type_regexp: Option<String>,
     pub names: Vec<String>,
     pub data_types: Vec<String>,
+    pub metadata_only: bool,
 }
 
 impl<'a> MessageRead<'a> for Query {
@@ -90,6 +91,7 @@ impl<'a> MessageRead<'a> for Query {
                 Ok(26) => msg.data_type_regexp = Some(r.read_string(bytes)?.to_owned()),
                 Ok(34) => msg.names.push(r.read_string(bytes)?.to_owned()),
                 Ok(42) => msg.data_types.push(r.read_string(bytes)?.to_owned()),
+                Ok(48) => msg.metadata_only = r.read_bool(bytes)?,
                 Ok(t) => { r.read_unknown(bytes, t)?; }
                 Err(e) => return Err(e),
             }
@@ -106,6 +108,7 @@ impl MessageWrite for Query {
         + self.data_type_regexp.as_ref().map_or(0, |m| 1 + sizeof_len((m).len()))
         + self.names.iter().map(|s| 1 + sizeof_len((s).len())).sum::<usize>()
         + self.data_types.iter().map(|s| 1 + sizeof_len((s).len())).sum::<usize>()
+        + 1 + sizeof_varint(*(&self.metadata_only) as u64)
     }
 
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
@@ -114,6 +117,7 @@ impl MessageWrite for Query {
         if let Some(ref s) = self.data_type_regexp { w.write_with_tag(26, |w| w.write_string(&**s))?; }
         for s in &self.names { w.write_with_tag(34, |w| w.write_string(&**s))?; }
         for s in &self.data_types { w.write_with_tag(42, |w| w.write_string(&**s))?; }
+        w.write_with_tag(48, |w| w.write_bool(*&self.metadata_only))?;
         Ok(())
     }
 }
