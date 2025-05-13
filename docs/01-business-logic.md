@@ -46,7 +46,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 ### Processes
 
-- Transfer between Participants (with  history).
+- Transfer between Participants (with history).
 - Burn to create a Domain.
 - Burn to mint Credits.
 - Stake and, when necessary, slash.
@@ -75,11 +75,11 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Created for a fixed $AUKI burn price.
 - Uniquely identifies a collection of Spatial Data plus its access rules.
 - Ownership is transferable between Participants.
-- Requires at least one Portal to define the coordinate‑system origin.
+- Requires at least one landmark to define the coordinate system origin.
 - **Domain Cluster** - Dynamic swarm of Participants & Providers serving a single Domain.
 
 
-**Processes/Functions**
+### Processes/Functions
 
 - Transfer history.
 - Encrypted M:N data/stream exchange inside the Domain Cluster.
@@ -91,7 +91,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 Spatial Data is organised into four layers:
 
-1. **Raw layer** – RGB frames, IMU streams, point‑clouds (raw or intermediary data).
+1. **Raw layer** – RGB frames, IMU streams, point clouds (raw or intermediary data).
 2. **Semantic layer** – calibration landmark/data mapping a Participant into 3‑D space.
 3. **Topography layer** – physical occupancy data such as navmeshes.
 4. **Rendering layer** – How surfaces look like in a Domain.
