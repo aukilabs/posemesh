@@ -17,7 +17,24 @@ This document isolates the business logic of Posemesh.
 
 It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that drive the protocol.
 
-## 1. Participants
+## 1. Domain
+
+### Rules
+
+- Created for a fixed $AUKI burn price.
+- Uniquely identifies a collection of Spatial Data plus its access rules.
+- Ownership is transferable between Participants.
+- Requires at least one landmark to define the coordinate system origin.
+- **Domain Cluster** - Dynamic swarm of Participants & Providers serving a single Domain.
+
+
+### Processes/Functions
+
+- Transfer history.
+- Encrypted M:N data/stream exchange inside the Domain Cluster.
+- Encrypted 1:1 messaging inside the Domain Cluster.
+
+## 2. Participants
 
 ### Rules
 
@@ -35,7 +52,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Request to join a Domain Cluster via Network Providers.
 - In a Domain Cluster, request to write, read, or compute over Spatial Data.
 
-## 2. $AUKI Token
+## 3. $AUKI Token
 
 ### Rules
 
@@ -51,7 +68,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Burn to mint Credits.
 - Stake and, when necessary, slash.
 
-## 3. Credits
+## 4. Credits
 
 ### Rules
 
@@ -68,23 +85,6 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Lock history.
 - Debit history.
 
-## 4. Domain
-
-### Rules
-
-- Created for a fixed $AUKI burn price.
-- Uniquely identifies a collection of Spatial Data plus its access rules.
-- Ownership is transferable between Participants.
-- Requires at least one landmark to define the coordinate system origin.
-- **Domain Cluster** - Dynamic swarm of Participants & Providers serving a single Domain.
-
-
-### Processes/Functions
-
-- Transfer history.
-- Encrypted M:N data/stream exchange inside the Domain Cluster.
-- Encrypted 1:1 messaging inside the Domain Cluster.
-
 ## 5. Spatial Data
 
 ### Rules
@@ -100,49 +100,7 @@ Spatial Data is organised into four layers:
 
 - Define which Spatial Data types are exchanged in a Domain and its Domain Cluster.
 
-## 6. Providers
-
-## 6.1 Storage Provider
-
-### Rules
-
-- Operates only inside a Domain Cluster.
-- Must stake $AUKI; stake is slashed on invalid/missing proofs.
-
-### Processes
-
-- Persist and serve Spatial Data for a specified retention period.
-- Generate storage‑integrity and data‑transfer proofs.
-
-## 6.2 Network Provider
-
-### Rules
-
-- May operate within and outside Domain Clusters.
-- Must stake $AUKI; stake is slashed on invalid/missing proofs.
-
-### Processes
-
-- Discover Participants/Providers and Domain Clusters.
-- Recruit missing Providers in Domain Clusters.
-- Provide real‑time networking inside a Domain Cluster.
-- Generate proofs of delivered network access.
-
-## 6.3 Computing Provider
-
-### Rules
-
-- Operates only inside Domain Clusters.
-- Must stake $AUKI; stake is slashed on invalid/missing proofs.
-- May require read/write access to the Domain’s Storage Providers.
-
-### Processes
-
-- Accept Spatial Tasks from Participants.
-- Read Spatial Data, perform computation, write results back to Storage or stream to Participants.
-- Generate proofs of correct execution.
-
-## 7. Spatial Task
+## 6. Spatial Task
 
 ### Rules
 
@@ -156,6 +114,48 @@ Spatial Data is organised into four layers:
 - Domain mapping.
 - Domain reconstruction.
 - Other spatial algorithms (e.g. SLAM, pathfinding, etc.).
+
+## 7. Providers
+
+## 7.1 Storage Provider
+
+### Rules
+
+- Operates only inside a Domain Cluster.
+- Must stake $AUKI; stake is slashed on invalid/missing proofs.
+
+### Processes
+
+- Persist and serve Spatial Data for a specified retention period.
+- Generate storage‑integrity and data‑transfer proofs.
+
+## 7.2 Network Provider
+
+### Rules
+
+- May operate within and outside Domain Clusters.
+- Must stake $AUKI; stake is slashed on invalid/missing proofs.
+
+### Processes
+
+- Discover Participants/Providers and Domain Clusters.
+- Recruit missing Providers in Domain Clusters.
+- Provide real‑time networking inside a Domain Cluster.
+- Generate proofs of delivered network access.
+
+## 7.3 Computing Provider
+
+### Rules
+
+- Operates only inside Domain Clusters.
+- Must stake $AUKI; stake is slashed on invalid/missing proofs.
+- May require read/write access to the Domain’s Storage Providers.
+
+### Processes
+
+- Accept Spatial Tasks from Participants.
+- Read Spatial Data, perform computation, write results back to Storage or stream to Participants.
+- Generate proofs of correct execution.
 
 ## 8. Reward Pool
 
