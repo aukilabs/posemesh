@@ -141,7 +141,7 @@ Spatial Data is organised into four layers:
 
 ### Rules
 
-- Operates only inside a Domain Cluster.
+- Read and write to storage inside a Domain Cluster only.
 - Must stake $AUKI; stake is slashed on invalid/missing proofs.
 
 ### Processes
