@@ -61,7 +61,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Debited when that request is fulfilled.
 - Non‑transferable; bound to the originating Participant.
 
-**Processes:**
+### Processes:
 
 - Support sponsored Participants (Prefund another Participant).
 - Mint history.
