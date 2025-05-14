@@ -126,7 +126,7 @@ Spatial Data is organised into four layers:
 - Must conform to the Domain’s declared Spatial Data types.
 - Has a **requester** (Participant) and a **runner** (Computing Provider).
 
-### Processes
+### Types
 
 - Participant calibration.
 - Domain mapping.
