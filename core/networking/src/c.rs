@@ -3,7 +3,7 @@ use crate::binding_helper::{posemesh_networking_get_commit_id, posemesh_networki
 use std::os::raw::{c_char, c_uchar, c_void, c_uint};
 use std::ffi::CStr;
 use std::slice;
-use runtime::get_runtime;
+use posemesh_runtime::get_runtime;
 
 #[repr(C)]
 pub struct Config {

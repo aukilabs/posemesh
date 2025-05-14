@@ -10,13 +10,16 @@
     "generate-proto": "protoc --ts_out=./src/protobuf -I=../../../protobuf ../../../protobuf/*.proto"
   },
   "dependencies": {
-    "google-protobuf": "^3.21.4"
+    "google-protobuf": "^3.21.4",
+    "posemesh-domain": "^0.1.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.17",
     "@types/google-protobuf": "^3.15.12",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.0.17",
     "vite": "^6.0.0",
-    "@tailwindcss/vite": "^4.0.17"
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1"
   }
 }

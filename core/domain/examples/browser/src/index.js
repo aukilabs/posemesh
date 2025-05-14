@@ -1,4 +1,4 @@
-import init, { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "posemesh-domain";
+import { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "posemesh-domain";
 import * as proto from "./protobuf/task";
 function getDataType(fileName) {
     const fileNameMap = {
@@ -64,7 +64,6 @@ export class UploadManager {
     async initializeLibp2p() {
         try {
             console.log("initializing domain cluster");
-            await init();
             const domainCluster = new DomainCluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
@@ -412,5 +411,12 @@ function createTaskTable(tasks) {
     return taskTable;
 }
 
-// Initialize the application when the DOM is loaded
-document.addEventListener('DOMContentLoaded', initializeApp);
+if (document.readyState !== 'loading') {
+    console.log('document is already ready, just execute code here');
+    initializeApp();
+} else {
+    // Initialize the application when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeApp();
+    });
+}

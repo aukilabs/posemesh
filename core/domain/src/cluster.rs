@@ -1,10 +1,10 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
-use networking::{event, libp2p::{Networking, NetworkingConfig}};
+use posemesh_networking::{event, libp2p::{Networking, NetworkingConfig}};
 use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message, request_response}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use networking::client::TClient;
+use posemesh_networking::client::TClient;
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::spawn;

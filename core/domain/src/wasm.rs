@@ -304,7 +304,7 @@ pub fn start() -> Result<(), JsValue> {
     // Add this line:
     tracing_wasm::set_as_global_default();
 
-    tracing::info!("Starting domain-core");
+    tracing::info!("Starting log for domain");
 
     Ok(())
 }

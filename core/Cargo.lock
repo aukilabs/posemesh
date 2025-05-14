@@ -346,8 +346,8 @@ dependencies = [
 name = "base"
 version = "0.1.0"
 dependencies = [
- "domain",
- "networking",
+ "posemesh-domain",
+ "posemesh-networking",
 ]
 
 [[package]]
@@ -600,9 +600,9 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 name = "client-example"
 version = "0.1.0"
 dependencies = [
- "domain",
  "futures",
- "networking",
+ "posemesh-domain",
+ "posemesh-networking",
  "quick-protobuf",
  "tokio",
  "tracing",
@@ -855,42 +855,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.100",
-]
-
-[[package]]
-name = "domain"
-version = "0.1.0"
-dependencies = [
- "async-timer",
- "async-trait",
- "base64 0.22.1",
- "cbindgen",
- "console_error_panic_hook",
- "futures",
- "hex",
- "jsonwebtoken",
- "libp2p",
- "networking",
- "pb-rs",
- "quick-protobuf",
- "quick-protobuf-codec 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ring 0.17.14",
- "rs_merkle",
- "runtime",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "sha2",
- "thiserror 2.0.12",
- "tokio",
- "tokio-postgres",
- "tracing",
- "tracing-subscriber",
- "tracing-wasm",
- "utils",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -2707,36 +2671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "networking"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "cbindgen",
- "console_error_panic_hook",
- "futures",
- "gloo-timers 0.3.0",
- "libp2p",
- "libp2p-stream",
- "libp2p-webrtc",
- "libp2p-webrtc-websys",
- "libp2p-websocket",
- "libp2p-websocket-websys",
- "rand 0.8.5",
- "runtime",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tracing-wasm",
- "utils",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
 name = "nix"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3063,6 +2997,80 @@ name = "portable-atomic"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
+
+[[package]]
+name = "posemesh-domain"
+version = "0.1.0"
+dependencies = [
+ "async-timer",
+ "async-trait",
+ "base64 0.22.1",
+ "cbindgen",
+ "console_error_panic_hook",
+ "futures",
+ "hex",
+ "jsonwebtoken",
+ "libp2p",
+ "pb-rs",
+ "posemesh-networking",
+ "posemesh-runtime",
+ "quick-protobuf",
+ "quick-protobuf-codec 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.17.14",
+ "rs_merkle",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-wasm",
+ "utils",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "posemesh-networking"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cbindgen",
+ "console_error_panic_hook",
+ "futures",
+ "gloo-timers 0.3.0",
+ "libp2p",
+ "libp2p-stream",
+ "libp2p-webrtc",
+ "libp2p-webrtc-websys",
+ "libp2p-websocket",
+ "libp2p-websocket-websys",
+ "posemesh-runtime",
+ "rand 0.8.5",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-wasm",
+ "utils",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "posemesh-runtime"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "tokio",
+]
 
 [[package]]
 name = "postgres-protocol"
@@ -3392,7 +3400,7 @@ name = "relay"
 version = "0.1.0"
 dependencies = [
  "futures",
- "networking",
+ "posemesh-networking",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3508,14 +3516,6 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "webrtc-util 0.8.1",
-]
-
-[[package]]
-name = "runtime"
-version = "0.1.0"
-dependencies = [
- "once_cell",
- "tokio",
 ]
 
 [[package]]
@@ -4103,11 +4103,11 @@ dependencies = [
 name = "test-concurrent"
 version = "0.1.0"
 dependencies = [
- "domain",
  "futures",
  "jsonwebtoken",
  "libp2p",
- "networking",
+ "posemesh-domain",
+ "posemesh-networking",
  "quick-protobuf",
  "serde",
  "tokio",

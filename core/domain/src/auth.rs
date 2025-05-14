@@ -1,7 +1,7 @@
 use crate::{capabilities::public_key::{PublicKeyStorage, PUBLIC_KEY_PROTOCOL_V1}, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
 use async_timer::Interval;
 use base64::Engine;
-use networking::{client::Client, libp2p::NetworkError, AsyncStream};
+use posemesh_networking::{client::Client, libp2p::NetworkError, AsyncStream};
 use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
@@ -262,7 +262,7 @@ mod tests {
 
     use super::*;
     use async_trait::async_trait;
-    use networking::libp2p::{Networking, NetworkingConfig};
+    use posemesh_networking::libp2p::{Networking, NetworkingConfig};
     use std::fs::{create_dir_all, remove_dir_all};
     use tokio::{self, select, spawn, time::sleep};
     use futures::{StreamExt, AsyncWriteExt};

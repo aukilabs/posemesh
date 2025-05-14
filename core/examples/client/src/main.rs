@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use std::{collections::HashMap, fs, io::Read, vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
+use posemesh_domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
 
 /*
     * This is a client that wants to do reconstruction in domain cluster

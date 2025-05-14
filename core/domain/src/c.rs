@@ -2,7 +2,7 @@ use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
 use futures::stream::StreamExt;
-use runtime::get_runtime;
+use posemesh_runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
 use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer};

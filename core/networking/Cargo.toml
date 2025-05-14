@@ -1,5 +1,5 @@
 [package]
-name = "networking"
+name = "posemesh-networking"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,7 +20,7 @@ libp2p = { workspace = true, features = [ "dcutr", "tokio", "gossipsub", "mdns",
 tokio = { workspace = true, features = ["full"] }
 libp2p-webrtc = { workspace = true, features = ["tokio"] }
 libp2p-websocket = { workspace = true }
-runtime = { workspace = true }
+posemesh-runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay", "noise", "yamux", "dcutr" ] }

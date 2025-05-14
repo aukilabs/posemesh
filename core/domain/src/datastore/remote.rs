@@ -9,7 +9,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 
 use std::{collections::HashSet, future::Future, sync::Arc, time::SystemTime};
 use async_trait::async_trait;
-use networking::client::TClient;
+use posemesh_networking::client::TClient;
 use libp2p::Stream;
 use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{DataReader, DataWriter, Datastore, DomainError}, message::{handshake, handshake_then_content, prefix_size_message}, protobuf::{domain_data::{self, Data, Metadata, UpsertMetadata},task::{self, mod_ResourceRecruitment as ResourceRecruitment, Any, ConsumeDataInputV1, Status, Task}}};
 use super::common::{hash_chunk, DomainData, ReliableDataProducer, CHUNK_SIZE};
