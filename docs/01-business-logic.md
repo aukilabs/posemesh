@@ -28,7 +28,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - **Domain Cluster** - Dynamic swarm of Participants & Providers serving a single Domain.
 
 
-### Processes/Functions
+### Processes
 
 - Transfer history.
 - Encrypted M:N data/stream exchange inside the Domain Cluster.
@@ -78,7 +78,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Debited when that request is fulfilled.
 - Non‑transferable; bound to the originating Participant.
 
-### Processes:
+### Processes
 
 - Support sponsored Participants (Prefund another Participant).
 - Mint history.
