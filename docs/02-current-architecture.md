@@ -4,13 +4,15 @@
 
 ## Background
 
-The posemesh began as a web‑2 solution to solve real businesses' problem. It proved the tech works, but it still relies on Aukilabs’ own infrastructure.
+The posemesh began as a web‑2 solution to solve real businesses' problem. It proved the tech works, but it still relies
+on Aukilabs’ own infrastructure.
 
 Now we’re turning it into an open, web‑3 protocol, to help it grow and start building in public.
 
 ## Motivation
 
-This overview summarizes where the posemesh is today, what already runs on‑chain and what is still off‑chain, so that new contributors can quickly understand the starting point.
+This overview summarizes where the posemesh is today, what already runs on‑chain and what is still off‑chain, so that
+new contributors can quickly understand the starting point.
 
 Use it to spot gaps, suggest solutions, and help us push more of the system into Web 3.
 
@@ -28,8 +30,7 @@ Use it to spot gaps, suggest solutions, and help us push more of the system into
 | **Credits**                | Accounting units (1 credit ≈ 1 USD) issued when developers burn AUKI; consumed when clients access/consume network resources.                               |
 | **Participation Rewards**  | A finite amount of AUKI tokens in the Reward Pool used to reward early adopters helping bootstrapping the network; coming from the treasury foundation.     |
 | **Performance Rewards**    | The *infinite* amount of AUKI token minted to the Reward Pool when AUKI tokens are burned; used to reward Operators according to monitored performances.    |
-| **Domain Data**            | Files (maps, meshes, anchors, assets) that describe a physical domain; stored on Data Nodes.                                                               |
-| **Pose Data**              | Low‑latency streams of poses, transforms, and entity updates exchanged via Relay Nodes.                                                                     |
+| **Domain Data**            | Files (maps, meshes, anchors, assets, poses) that describe a physical domain; stored on Data Nodes.                                                         |
 
 ---
 
@@ -76,7 +77,7 @@ flowchart TD
 
   %% SDK ↔ Discovery & Nodes
   SDK -->|discover nodes| DS
-  SDK <-->|pose data ⟷| H
+  SDK <-->|data ⟷| H
   SDK <-->|data ⟷| R
   SDK <-->|domain data ⟷| S
 
@@ -131,7 +132,8 @@ An **ERC‑1155** token representing ownership of a Domain. Holders can:
 | **Reward Pool**           | Holds reward emissions; disburses when `claim()` is called by the owner.                                  |
 | **Domain NFT** (ERC‑1155) | Non‑fungible (or semi‑fungible) tokens representing Domains.                                              |
 
-All contracts follow the **UUPS proxy upgrade pattern**, are written in **Foundry** with **OpenZeppelin** libraries, and have passed a security audit.
+All contracts follow the **UUPS proxy upgrade pattern**, are written in **Foundry** with **OpenZeppelin** libraries, and
+have passed a security audit.
 
 ---
 
@@ -140,22 +142,22 @@ All contracts follow the **UUPS proxy upgrade pattern**, are written in **Foundr
 > **Goal: migrate as much logic on‑chain as feasible in future releases.**
 >
 
-| Service                    | Responsibilities                                                                                                                                     |
-|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Network Credit Service** | Mints Credits after on‑chain burns; debits Credits per access; calculates periodic reward allocations.                                               |
-| **Discovery Service**      | Registers nodes and Domains; tracks health (uptime, latency, geolocation); exposes discovery API to SDK; listens to staking events for eligibility.  |
-| **Auth**                   | (Web2 for MVP) Organisation/user/app auth and wallet binding.                                                                                        |
-| **BEL**                    | Bridges on‑chain events to backend.                                                                                                                  |
+| Service                    | Responsibilities                                                                                                                                    |
+|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Network Credit Service** | Mints Credits after on‑chain burns; debits Credits per access; calculates periodic reward allocations.                                              |
+| **Discovery Service**      | Registers nodes and Domains; tracks health (uptime, latency, geolocation); exposes discovery API to SDK; listens to staking events for eligibility. |
+| **Auth**                   | (Web2 for MVP) Organisation/user/app auth and wallet binding.                                                                                       |
+| **BEL**                    | Bridges on‑chain events to backend.                                                                                                                 |
 
 ---
 
 ## Node Types
 
-| Node                   | Description                                                  | Reward Basis    |
-|------------------------|--------------------------------------------------------------|-----------------|
-| **Relay Node**         | Hosts real‑time sessions, routing Pose Data between clients. | Uptime × Stake  |
-| **Data Node**          | Stores and serves Domain Data.                               | Uptime × Stake  |
-| **Reconstruction Node** | Compute reconstruction of scene                              | Not implemented |
+| Node                    | Description                                                    | Reward Basis    |
+|-------------------------|----------------------------------------------------------------|-----------------|
+| **Relay Node**          | Hosts real‑time sessions, routing domain data between clients. | Uptime × Stake  |
+| **Data Node**           | Stores and serves Domain Data.                                 | Uptime × Stake  |
+| **Reconstruction Node** | Compute reconstruction of scene                                | Not implemented |
 
 ---
 
@@ -190,8 +192,8 @@ sequenceDiagram
 
 - Connect to eligible Nodes via Discovery Service.
 - Read/Write Domain Data.
-- Publish/Subscribe Pose Data streams.
-- Scan QR codes (Portals) and calibrate in a 3D coordinate system in a Domain.
+- Publish/Subscribe Data streams.
+- Scan QR and calibrate in a 3D coordinate system in a Domain.
 - See https://conjurekit.dev/
 
 ### Posemesh Web Console (Developers)
