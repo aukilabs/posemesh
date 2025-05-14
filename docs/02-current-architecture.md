@@ -4,24 +4,24 @@
 
 ## Background
 
-The posemesh began as a web‑2 solution to solve real businesses' problem. It proved the tech works, but it still relies
-on Aukilabs’ own infrastructure.
+The posemesh began as a web2 solution to solve real business problems. It proved the tech works, but it still relies
+on Auki's own infrastructure.
 
-Now we’re turning it into an open, web‑3 protocol, to help it grow and start building in public.
+Now we're turning it into an open, web3 protocol, to help it grow and start building in public.
 
 ## Motivation
 
 This overview summarizes where the posemesh is today, what already runs on‑chain and what is still off‑chain, so that
 new contributors can quickly understand the starting point.
 
-Use it to spot gaps, suggest solutions, and help us push more of the system into Web 3.
+Use it to spot gaps, suggest solutions, and help us push more of the system into web3.
 
 ## Glossary
 
 | Term                       | Definition                                                                                                                                                  |
 |----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Decentralized Protocol** | A set of open, permissionless smart contracts and services that can be run, audited, or extended by anyone without a central authority.                     |
-| **Spatial Computing**      | Processing of 3‑D position, orientation, and environment data to anchor digital content in physical space.                                                  |
+| **Spatial Computing**      | Processing of 3D position, orientation, and environment data to anchor digital content in physical space.                                                  |
 | **Domain**                 | A physical space represented on Posemesh, identified by an ID (and optionally a Domain NFT) and associated with spatial data (maps, meshes, anchors, etc.). |
 | **Portal**                 | A physical or virtual spatial QR/AQR code used for positioning and building a shared coordinate systems within a Domain; m:n relationships to domains.      |
 | **ERC‑20 Token**           | The fungible‑token standard on Ethereum‑compatible chains; balances are interchangeable and divisible.                                                      |
