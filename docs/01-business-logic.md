@@ -7,7 +7,7 @@ If you plan to:
 * use the posemesh in an app,
 * run a Storage, Network, or Computing node,
 * analyze the token-economic incentives, or
-* extend the posemesh implementation,
+* extend the posemesh implementation
 
 ---
 
