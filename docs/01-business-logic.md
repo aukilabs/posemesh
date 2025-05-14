@@ -1,32 +1,38 @@
-# Posemesh Protocol · Business-Logic Specification
+# Posemesh Protocol - Business-Logic Specification
 
->**Purpose**  
->The primitives, rules and processes that govern how the posemesh protocol operates.
+## Why read this?
 
-## Background
+If you plan to:
 
-Posemesh began as a closed Web‑2 solution addressing real‑world alignment problems for enterprise AR. 
+* use the posemesh in an app,
+* run a Storage, Network, or Computing node,
+* analyze the token-economic incentives, or
+* extend the posemesh implementation,
 
-The technology proved itself in production, yet still depends on Aukilabs’ centralized infrastructure. 
+---
 
-We are now migrating Posemesh into an open, Web‑3 protocol so that the ecosystem can grow in public.
+## Background & Motivation
 
-## Motivation
+Posemesh began as a closed Web‑2 solution addressing real‑world alignment problems for enterprise AR. The technology proved itself in production, yet still depends on Aukilabs’ centralized infrastructure. 
 
-This document isolates the business logic of Posemesh. 
+We are now migrating Posemesh into an open, Web‑3 protocol so that the ecosystem can grow in public. This document isolates the business logic of Posemesh. 
 
 It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that drive the protocol.
 
+---
+
 ## 1. Domain
+
+**A unique namespace that groups spatial data plus its access rules.**
 
 ### Rules
 
 - Created for a fixed $AUKI burn price.
-- Uniquely identifies a collection of Spatial Data plus its access rules.
+- Uniquely identifies.
 - Ownership is transferable between Participants.
-- Requires at least one landmark to define the coordinate system origin.
-- **Domain Cluster** - Dynamic swarm of Participants & Providers serving a single Domain.
-
+- Requires at least 3 landmarks to define the coordinate system origin.
+- A list of Spatial Data types supported
+- **Domain Cluster**, the dynamic swarm of Participants & Providers serving a single Domain.
 
 ### Processes
 
@@ -34,11 +40,14 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Encrypted M:N data/stream exchange inside the Domain Cluster.
 - Encrypted 1:1 messaging inside the Domain Cluster.
 
+---
+
 ## 2. Participants
+
+**Any application, node operator, or end‑user possessing a Posemesh identifier.**
 
 ### Rules
 
-- Any application, node operator, or end‑user possessing a Posemesh identifier is a Participant.
 - Participants may own Domains, $AUKI tokens, and Credits.
 - A single $AUKI stake qualifies a Participant for one Provider role.
 
@@ -51,6 +60,8 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Request to operate as a Provider in a Domain Cluster.
 - Request to join a Domain Cluster via Network Providers.
 - In a Domain Cluster, request to write, read, or compute over Spatial Data.
+
+---
 
 ## 3. $AUKI Token
 
@@ -67,6 +78,8 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Burn to create a Domain.
 - Burn to mint Credits.
 - Stake and, when necessary, slash.
+
+---
 
 ## 4. Credits
 
@@ -85,6 +98,8 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Lock history.
 - Debit history.
 
+---
+
 ## 5. Spatial Data
 
 ### Rules
@@ -100,11 +115,14 @@ Spatial Data is organised into four layers:
 
 - Define which Spatial Data types are exchanged in a Domain and its Domain Cluster.
 
+---
+
 ## 6. Spatial Task
+
+**A function that consumes and produces Spatial Data.**
 
 ### Rules
 
-- A function that consumes and produces Spatial Data.
 - Must conform to the Domain’s declared Spatial Data types.
 - Has a **requester** (Participant) and a **runner** (Computing Provider).
 
@@ -114,6 +132,8 @@ Spatial Data is organised into four layers:
 - Domain mapping.
 - Domain reconstruction.
 - Other spatial algorithms (e.g. SLAM, pathfinding, etc.).
+
+---
 
 ## 7. Providers
 
@@ -157,6 +177,8 @@ Spatial Data is organised into four layers:
 - Read Spatial Data, perform computation, write results back to Storage or stream to Participants.
 - Generate proofs of correct execution.
 
+---
+
 ## 8. Reward Pool
 
 ### Rules
@@ -172,15 +194,17 @@ Spatial Data is organised into four layers:
 - Emit rewards proportional to Credits debited.
 - Slash Provider stakes on invalid/missing proofs.
 
+---
+
 ## 9. Portals
 
 ### Rules
 
-- A uniquely identified feature point. (AKA landmark).
+- A uniquely identified QR code.
 - Mapped to one or more Domains.
 - *Owned and transferable by a Participant*.
 - Represents a physical or virtual anchor to the *real-world*.
-- Can define a coordinate inside a Domain.
+- Define 4 landmarks inside a Domain.
 
 ### Processes
 
@@ -188,3 +212,9 @@ Spatial Data is organised into four layers:
 - Reference Portal during calibration (Semantic layer).
 - *Transfer ownership independently of its Domain*.
 - Allow Participants to scan / reference a Portal.
+
+---
+
+##  Further Reading
+- [Posemesh Current Architecture](./02-current-architecture.md)
+- [Posemesh Web3 Architecture](./03-web3-architecture.md)
