@@ -142,12 +142,12 @@ have passed a security audit.
 > **Goal: migrate as much logic on‑chain as feasible in future releases.**
 >
 
-| Service                    | Responsibilities                                                                                                                                    |
-|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Network Credit Service** | Mints Credits after on‑chain burns; debits Credits per access; calculates periodic reward allocations.                                              |
-| **Discovery Service**      | Registers nodes and Domains; tracks health (uptime, latency, geolocation); exposes discovery API to SDK; listens to staking events for eligibility. |
-| **Auth Service**           | (Web2 for MVP) Organisation/user/app auth and wallet binding.                                                                                       |
-| **BEL**                    | Bridges on‑chain events to backend.                                                                                                                 |
+| Service                | Responsibilities                                                                                                                                    |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Network Credit API** | Mints Credits after on‑chain burns; debits Credits per access; calculates periodic reward allocations.                                              |
+| **Discovery API**      | Registers nodes and Domains; tracks health (uptime, latency, geolocation); exposes discovery API to SDK; listens to staking events for eligibility. |
+| **Auth API**           | (Web2 for MVP) Organisation/user/app auth and wallet binding.                                                                                       |
+| **BEL**                | Bridges on‑chain events to backend.                                                                                                                 |
 
 ---
 
