@@ -1,11 +1,11 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
-use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::ParseError, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
 use utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, thread_rng};
 use serde::{Deserialize, Serialize};
-use libp2p_stream::{self as stream, IncomingStreams};
-use crate::{client::{self, Client}, event};
+use libp2p_stream::{self as stream, AlreadyRegistered, IncomingStreams, OpenStreamError};
+use crate::{client::{self, Client}, event, AsyncStream};
 use std::net::{Ipv4Addr, IpAddr};
 
 #[cfg(not(target_family="wasm"))]
@@ -35,9 +35,29 @@ pub enum NetworkError {
     #[error("Address in use")]
     AddressInUse,
     #[error("Transport error: {0}")]
-    TransportError(TransportError<std::io::Error>),
+    TransportError(#[from] TransportError<std::io::Error>),
     #[error("Swarm initialization failed: {0}")]
     SwarmInitializationFailed(Box<dyn Error + Send + Sync>),
+    #[error("Dial error: {0}")]
+    DialError(#[from] DialError),
+    #[error("Stream error: {0}")]
+    StreamError(#[from] io::Error),
+    #[error("Open stream error: {0}")]
+    OpenStreamError(#[from] OpenStreamError),
+    #[error("Already registered")]
+    AlreadyRegistered(#[from] AlreadyRegistered),
+    #[error("Event sender error")]
+    EventSenderError(#[from] mpsc::TrySendError<event::Event>),
+    #[error("Gossipsub error: {0}")]
+    GossipsubError(#[from] gossipsub::SubscriptionError),
+    #[error("Channel error: {0}")]
+    ChannelSendError(#[from] mpsc::SendError),
+    #[error("Channel receiver error: {0}")]
+    ChannelReceiverError(#[from] oneshot::Canceled),
+    #[error("Invalid protocol: {0}")]
+    InvalidProtocol(#[from] InvalidProtocol),
+    #[error("Parse error: {0}")]
+    ParseError(#[from] ParseError),
 }
 
 fn is_public_ip(ip: IpAddr) -> bool {
@@ -135,7 +155,6 @@ pub struct Node {
     pub id: String,
     pub name: String,
     pub capabilities: Vec<String>,
-    pub addresses: Vec<Multiaddr>,
 }
 
 fn protocol(namespace: Option<String>, protocol: &str) -> StreamProtocol {
@@ -152,7 +171,7 @@ struct Libp2p {
     command_receiver: mpsc::Receiver<client::Command>,
     pub node: Node,
     event_sender: mpsc::Sender<event::Event>,
-    find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), Box<dyn Error + Send + Sync>>>>>>,
+    find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), NetworkError>>>>>,
     cancel_sender: Option<oneshot::Sender<()>>,
 }
 
@@ -389,6 +408,12 @@ impl Libp2p {
         if cfg.enable_webrtc {
             listeners.push(enable_webrtc(cfg.port));
         }
+        
+        let node = Node {
+            id: key.public().to_peer_id().to_string(),
+            name: cfg.name.clone(),
+            capabilities: vec![],
+        };
         for addr in listeners.iter() {
             match swarm.listen_on(addr.clone()) {
                 Ok(_) => {},
@@ -411,13 +436,6 @@ impl Libp2p {
                 }
             }
         }
-        
-        let node = Node {
-            id: key.public().to_peer_id().to_string(),
-            name: cfg.name.clone(),
-            capabilities: vec![],
-            addresses: vec![],
-        };
         let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
         let mut cancel_receiver = cancel_receiver.fuse();
 
@@ -521,7 +539,7 @@ impl Libp2p {
                     if found_address {
                         let _ = sender.unwrap().send(Ok(()));
                     } else {
-                        let _ = sender.unwrap().send(Err(Box::new(DialError::NoAddresses)));
+                        let _ = sender.unwrap().send(Err(NetworkError::DialError(DialError::NoAddresses)));
                     }
                 } else if last {
                     tracing::warn!("No request found for peer: {peer_id}");
@@ -557,8 +575,9 @@ impl Libp2p {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                println!("Local node is listening on {:?}", address.clone().with(Protocol::P2p(local_peer_id)));
-                self.node.addresses.push(address.clone().with(Protocol::P2p(local_peer_id)));
+                let address = address.clone().with(Protocol::P2p(local_peer_id));
+                self.event_sender.send(event::Event::NewAddress { address: address.clone() }).await.expect("failed to send new address");
+                println!("Local node is listening on {:?}", address);
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
@@ -677,7 +696,6 @@ impl Libp2p {
                     id: peer_id.to_string(),
                     name: agent_version,
                     capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") && !p.contains("/meshsub/1.0.0") ).collect::<Vec<String>>(),
-                    addresses: listen_addrs,
                 };
 
                 self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
@@ -702,16 +720,29 @@ impl Libp2p {
                 tokio::spawn(open_stream(ctrl, peer_id, protocol, message, response, receiver));
             },
             client::Command::SetStreamHandler { protocol, sender } => {
-                self.add_stream_protocol(protocol, sender);
-            }
+                match self.add_stream_protocol(protocol) {
+                    Ok(stream) => {
+                        let _ = sender.send(Ok(stream));
+                    }
+                    Err(e) => {
+                        let _ = sender.send(Err(e));
+                    }
+                }
+            },
             client::Command::Subscribe { topic, resp } => {
-                self.subscribe(topic, resp);
+                match self.subscribe(topic) {
+                    Ok(_) => {
+                        let _ = resp.send(Ok(()));
+                    }
+                    Err(e) => {
+                        let _ = resp.send(Err(e));
+                    }
+                }
             }
             client::Command::Publish { topic, message, sender } => {
                 let t = IdentTopic::new(topic);
-                let res = self.swarm.behaviour_mut().gossipsub.publish(t, message);
-                if res.is_err() {
-                    let _ = sender.send(Err(Box::new(res.err().unwrap())));
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(t, message) {
+                    let _ = sender.send(Err(NetworkError::GossipsubError(SubscriptionError::PublishError(e))));
                     return;
                 }
                 let _ = sender.send(Ok(()));
@@ -727,38 +758,31 @@ impl Libp2p {
         }
     }
 
-    fn subscribe(&mut self, topic: String, sender: oneshot::Sender<Box<dyn Error + Send + Sync>>) {
+    fn subscribe(&mut self, topic: String) -> Result<(), NetworkError> {
         let t = IdentTopic::new(topic);
         
         match self.swarm.behaviour_mut().gossipsub.subscribe(&t) {
-            Ok(_) => {},
-            Err(e) => {
-                let _ = sender.send(Box::new(e));
-            }
-        } 
+            Ok(_) => Ok(()),
+            Err(e) => Err(NetworkError::GossipsubError(e)),
+        }
     }
 
-    fn add_stream_protocol(&mut self, protocol: StreamProtocol, sender: oneshot::Sender<Result<IncomingStreams, Box<dyn Error + Send + Sync>>>) {
+    fn add_stream_protocol(&mut self, protocol: StreamProtocol) -> Result<IncomingStreams, NetworkError> {
         let proto = protocol.clone();
-        let protocol_ctrl = self.swarm.behaviour_mut().streams.new_control().accept(protocol);
-        if protocol_ctrl.is_err() {
-            let _ = sender.send(Err(Box::new(protocol_ctrl.err().unwrap())));
-            return;
-        }
-        let incoming_stream = protocol_ctrl.unwrap();
+        let incoming_stream = self.swarm.behaviour_mut().streams.new_control().accept(protocol)?;
 
         let mut node = self.node.clone();
 
         node.capabilities.push(proto.to_string());
 
         self.node = node;
-        self.event_sender.try_send(event::Event::NewNodeRegistered { node: self.node.clone() }).unwrap();
+        self.event_sender.try_send(event::Event::NewNodeRegistered { node: self.node.clone() })?;
 
-        let _ = sender.send(Ok(incoming_stream));
+        Ok(incoming_stream)
     }
 
-    async fn find_peer(&mut self, peer_id: PeerId) -> oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>> {
-        let (sender, receiver) = oneshot::channel::<Result<(), Box<dyn Error + Send + Sync>>>();
+    async fn find_peer(&mut self, peer_id: PeerId) -> oneshot::Receiver<Result<(), NetworkError>> {
+        let (sender, receiver) = oneshot::channel::<Result<(), NetworkError>>();
         let mut find_peer_requests_lock = self.find_peer_requests.lock().await;
 
         if let Some(kdht) = self.swarm.behaviour_mut().kdht.as_mut() {
@@ -770,21 +794,21 @@ impl Libp2p {
     }
 }
 
-async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>) -> Result<Stream, Box<dyn Error + Send + Sync>> {
+async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>) -> Result<Stream, NetworkError> {
     let mut s = ctrl.open_stream(peer_id, protocol).await?;
 
     if !message.is_empty() {
         match s.write(&message[..1]).await {
             Ok(0) => {
                 tracing::warn!("Failed to send message: check warnings");
-                return Err(Box::new(io::Error::new(io::ErrorKind::ConnectionReset, "Connection reset")));
+                return Err(NetworkError::StreamError(io::Error::new(io::ErrorKind::ConnectionReset, "Connection reset")));
             }
             Ok(_) => {
                 s.write_all(&message[1..]).await?;
             }
             Err(e) => {
                 tracing::warn!("Failed to send message: {:?}", e);
-                return Err(Box::new(e));
+                return Err(NetworkError::StreamError(e));
             }
         }
         s.flush().await?;
@@ -792,11 +816,11 @@ async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Stre
     Ok(s)
 }
 
-async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, Box<dyn Error + Send + Sync>>>, find_peer_receiver: Option<oneshot::Receiver<Result<(), Box<dyn Error + Send + Sync>>>>) {
+async fn open_stream(ctrl: stream::Control, peer_id: PeerId, protocol: StreamProtocol, message: Vec<u8>, send_response: oneshot::Sender<Result<Stream, NetworkError>>, find_peer_receiver: Option<oneshot::Receiver<Result<(), NetworkError>>>) {
     if let Some(receiver) = find_peer_receiver {
         match receiver.await {
             Ok(Ok(_)) => {
-                tracing::info!("Peer found");
+                tracing::debug!("Peer found");
             }
             Ok(Err(e)) => {
                 if let Err(e) = send_response.send(Err(e)) {
@@ -850,7 +874,7 @@ async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<clie
 impl Networking {
     pub fn new(cfg: &NetworkingConfig) -> Result<Self, NetworkError> {
         let (sender, receiver) = channel::<client::Command>(8);
-        let (event_sender, event_receiver) = channel::<event::Event>(8);
+        let (event_sender, event_receiver) = channel::<event::Event>(1072);
         let cfg = cfg.clone();
         let client = Client::new(sender);
         

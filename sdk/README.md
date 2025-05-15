@@ -57,6 +57,9 @@ Communications between nodes always use peer-to-peer connections when possible, 
 Posemesh SDK also supports using a relay server as a fallback when direct connections
 are not possible. The relay server is only used as a last resort.
 
+### Domain
+For more detailed information, please refer to the [Domain Package Overview](../core/domain/README.md). Note that the Domain module is currently not integrated into the Posemesh SDK and operates as a standalone component.
+
 ## How to build
 
 ### Prerequisites

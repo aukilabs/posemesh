@@ -3,7 +3,7 @@ on:
   pull_request:
     paths-ignore:
       - '**/examples/**'
-      - '*.md'
+      - '**/*.md'
       - '.vscode/**'
       - '.github/**'
   push:
@@ -11,7 +11,7 @@ on:
       - main
     paths-ignore:
       - '**/examples/**'
-      - '*.md'
+      - '**/*.md'
       - '.vscode/**'
       - '.github/**'
 

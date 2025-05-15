@@ -1,8 +1,6 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 use futures::{executor::block_on, SinkExt, StreamExt};
-use networking::libp2p::Networking;
 use quick_protobuf::serialize_into_vec;
-use serde::de;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
@@ -63,13 +61,13 @@ pub struct Metadata {
 #[wasm_bindgen]
 impl Metadata {
     #[wasm_bindgen(constructor)]
-    pub fn new(name: String, data_type: String, size: usize, properties: JsValue) -> Self {
+    pub fn new(name: String, data_type: String, size: usize, properties: JsValue, id: Option<String>) -> Self {
         Self {
             name,
             data_type,
             size,
             properties,
-            id: None,
+            id,
             hash: None,
         }
     }
@@ -81,20 +79,19 @@ fn from_r_metadata(r_metadata: &domain_data::Metadata) -> Metadata {
         data_type: r_metadata.data_type.clone(),
         size: r_metadata.size as usize,
         properties: to_value(&r_metadata.properties).unwrap(),
-        id: r_metadata.id.clone(),
+        id: Some(r_metadata.id.clone()),
         hash: r_metadata.hash.clone(),
     }
 }
 
-fn to_r_metadata(metadata: &Metadata) -> domain_data::Metadata {
-    domain_data::Metadata {
+fn to_r_metadata(metadata: &Metadata) -> domain_data::UpsertMetadata {
+    domain_data::UpsertMetadata {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
         properties: from_value(metadata.properties.clone()).unwrap(),
-        id: metadata.id.clone(),
+        id: metadata.id.clone().unwrap_or_else(|| data_id_generator()),
         size: metadata.size as u32,
-        link: None,
-        hash: metadata.hash.clone(),
+        is_new: metadata.id.is_none(),
     }
 }
 
@@ -149,8 +146,8 @@ pub struct DomainCluster {
 #[wasm_bindgen]
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
-    pub fn new(domain_id: String, domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_id, domain_manager_addr, name, false, 0, false, false, private_key, private_key_path, vec![]))) }   
+    pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
+        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, false, private_key, private_key_path, vec![]))) }   
     }
 
     #[wasm_bindgen]
@@ -185,7 +182,7 @@ impl ReliableDataProducer {
             drop(writer);
             match res {
                 Ok(mut data_push) => {
-                    match data_push.push_chunk(&content, false).await {
+                    match data_push.next_chunk(&content, false).await {
                         Ok(hash) => {
                             Ok(JsValue::from(hash))
                         },
@@ -221,7 +218,6 @@ impl ReliableDataProducer {
 #[wasm_bindgen]
 pub struct RemoteDatastore {
     inner: r_RemoteDatastore,
-    domain_id: String,
 }
 
 #[wasm_bindgen]
@@ -230,22 +226,24 @@ impl RemoteDatastore {
     pub fn new(cluster: &DomainCluster) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
-        let domain_id = r_domain_cluster.domain_id.clone();
-        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))), domain_id }
+        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))) }
     }
 
     #[wasm_bindgen]
     pub fn consume(
         &mut self,
+        domain_id: String,
         query: Query
     ) -> js_sys::Promise {
-        let domain_id = self.domain_id.clone();
         let query = query.clone();
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let stream = inner.load(domain_id, query.inner, false).await;
-            let stream = DataReader { inner: Arc::new(Mutex::new(stream)) };
+            let res = inner.load(domain_id, query.inner, false).await;
+            if let Err(e) = res {
+                return Err(JsValue::from_str(&format!("{}", e)));
+            }
+            let stream = DataReader { inner: Arc::new(Mutex::new(res.unwrap())) };
             
             Ok(JsValue::from(stream))
         })
@@ -253,25 +251,29 @@ impl RemoteDatastore {
 
     #[wasm_bindgen]
     pub fn produce(
-        &mut self
+        &mut self,
+        domain_id: String,
     ) -> js_sys::Promise {
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let r = inner.upsert("".to_string()).await;
-            Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r))}))
+            let r = inner.upsert(domain_id).await;
+            if let Err(e) = r {
+                return Err(JsValue::from_str(&format!("{}", e)));
+            }
+            Ok(JsValue::from(ReliableDataProducer {inner: Arc::new(Mutex::new(r.unwrap()))}))
         })
     }
 }
 
 #[wasm_bindgen]
-pub fn reconstruction_job(cluster: &DomainCluster, scans: Vec<String>, callback: Function) -> js_sys::Promise {
+pub fn reconstruction_job(cluster: &DomainCluster, domain_id: String, scans: Vec<String>, callback: Function) -> js_sys::Promise {
     let cluster = cluster.inner.lock().unwrap();
     let cluster_clone = cluster.clone();
     drop(cluster);
 
     future_to_promise(async move {
-        let mut r = r_reconstruction_job(cluster_clone, scans).await;
+        let mut r = r_reconstruction_job(cluster_clone, &domain_id, scans).await;
         spawn_local(async move {
             while let Some(task_update) = r.next().await {
                 match task_update.result {

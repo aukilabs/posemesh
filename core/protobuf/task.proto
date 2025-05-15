@@ -13,6 +13,7 @@ message JobRequest {
     required string name = 1;
     repeated TaskRequest tasks = 2;
     required string nonce = 3;
+    required string domain_id = 4;
 }
 
 message Job {
@@ -111,6 +112,7 @@ message LocalRefinementInputV1 {
 
 message DomainClusterHandshake {
   required string access_token = 1;
+  required string domain_id = 2;
 }
 
 message GlobalRefinementInputV1 {

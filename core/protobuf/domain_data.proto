@@ -6,10 +6,9 @@ message Metadata {
     required string name = 1;
     required string data_type = 2;
     required uint32 size = 3;
-    optional string id = 4;
-    map<string, string> properties = 5;
-    string link = 6;
-    string hash = 7;
+    required string id = 4;
+    string hash = 5; // This is optional to be compatible with the existing domain data
+    map<string, string> properties = 6;
 }
 
 message Query {
@@ -24,4 +23,13 @@ message Data {
     required string domain_id = 1;
     required Metadata metadata = 2;
     required bytes content = 3;
+}
+
+message UpsertMetadata {
+    required string name = 1;
+    required string data_type = 2;
+    required uint32 size = 3;
+    required bool is_new = 4; // This is needed as we can't use hash as identifier now
+    required string id = 5;
+    map<string, string> properties = 6;
 }

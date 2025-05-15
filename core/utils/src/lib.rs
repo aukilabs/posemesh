@@ -28,17 +28,19 @@ pub async fn sleep(duration: Duration) {
     JsFuture::from(promise).await.expect("failed to wait");
 }
 
+pub const INFINITE_RETRIES: u32 = 0;
+
 /// Retries an async operation with a delay between attempts.
 /// 
 /// # Arguments
 /// * `f` - The async function to retry
-/// * `max_retries` - Maximum number of retry attempts
+/// * `max_attempts` - Maximum number of attempts, 0 means infinite retries, 1 means only one attempt
 /// * `delay` - Duration to wait between retries
 /// 
 /// # Returns
 /// * `Ok(T)` - The successful result
-/// * `Err(E)` - The error from the last attempt if all retries failed
-pub async fn retry_with_delay<F, T, E>(mut f: F, max_retries: u32, delay: Duration) -> Result<T, E>
+/// * `Err(E)` - The error from the last attempt if all attempts failed
+pub async fn retry_with_delay<F, T, E>(mut f: F, max_attempts: u32, delay: Duration) -> Result<T, E>
 where
     F: FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, E>> + Send>>,
     E: std::fmt::Debug,
@@ -48,12 +50,12 @@ where
         match f().await {
             Ok(result) => return Ok(result),
             Err(e) => {
-                if retries >= max_retries {
+                retries += 1;
+                if max_attempts != INFINITE_RETRIES && retries >= max_attempts {
                     return Err(e);
                 }
-                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries + 1, max_retries, delay, e);
+                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries, max_attempts, delay, e);
                 sleep(delay).await;
-                retries += 1;
             }
         }
     }
@@ -70,13 +72,13 @@ where
         match f().await {
             Ok(result) => return Ok(result),
             Err(e) => {
+                retries += 1;
                 if retries >= max_retries {
                     return Err(e);
                 }
-                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries + 1, max_retries, delay, e);
+                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries, max_retries, delay, e);
                 sleep(delay).await;
                 delay *= 2;
-                retries += 1;
             }
         }
     }
