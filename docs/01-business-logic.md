@@ -13,9 +13,10 @@ If you plan to:
 
 ## Background & Motivation
 
-Posemesh began as a closed Web‑2 solution addressing real‑world alignment problems for enterprise AR. The technology proved itself in production, yet still depends on Aukilabs’ centralized infrastructure. 
+Posemesh got started as a closed-source web2 network using AR technology to solve real‑world problems. The technology proved itself in production, yet still depends on Auki's centralized infrastructure. 
+For more background, see the [Current Architecture](02-current-architecture.md) document.
 
-We are now migrating Posemesh into an open, Web‑3 protocol so that the ecosystem can grow in public. This document isolates the business logic of Posemesh. 
+We are now transitioning Posemesh to be an open-sourced web3 protocol so that the ecosystem can grow in public. This document isolates the business logic of Posemesh. 
 
 It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that drive the protocol.
 
@@ -28,7 +29,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 ### Rules
 
 - Created for a fixed $AUKI burn price.
-- Uniquely identifies.
+- Uniquely identified.
 - Ownership is transferable between Participants.
 - Requires at least 3 landmarks to define the coordinate system origin.
 - A list of Spatial Data types supported
@@ -86,17 +87,17 @@ It is not an architectural or SDK specification; instead it describes the actors
 ### Rules
 
 - Unit of measurement for the computational effort required to interact with Providers (gas).
-- Minted when $AUKI is burned, 1 Credit ≈ 1 USD at the burn‑time.
+- Minted when $AUKI is burned, 1 Credit ≈ 1 USD at the time of burn.
 - Locked when a Participant submits a request.
 - Debited when that request is fulfilled.
 - Non‑transferable; bound to the originating Participant.
 
 ### Processes
 
-- Support sponsored Participants (Prefund another Participant).
+- Support sponsored Participants (prefund another Participant).
 - Mint history.
 - Lock history.
-- Debit history.
+- Credit transaction history.
 
 ---
 
@@ -107,9 +108,9 @@ It is not an architectural or SDK specification; instead it describes the actors
 Spatial Data is organised into four layers:
 
 1. **Raw layer** – RGB frames, IMU streams, point clouds (raw or intermediary data).
-2. **Semantic layer** – calibration landmark/data mapping a Participant into 3‑D space.
+2. **Semantic layer** – calibration landmark/data mapping a Participant into 3D space.
 3. **Topography layer** – physical occupancy data such as navmeshes.
-4. **Rendering layer** – How surfaces look like in a Domain.
+4. **Rendering layer** – What surfaces look like in a Domain (textures).
 
 ### Processes
 
@@ -119,7 +120,7 @@ Spatial Data is organised into four layers:
 
 ## 6. Spatial Task
 
-**A function that consumes and produces Spatial Data.**
+**A function that consumes and produces Spatial Data (input and output).**
 
 ### Rules
 
@@ -131,7 +132,7 @@ Spatial Data is organised into four layers:
 - Participant calibration.
 - Domain mapping.
 - Domain reconstruction.
-- Other spatial algorithms (e.g. SLAM, pathfinding, etc.).
+- Other spatial algorithms (e.g. SLAM, pathfinding, raycasting, inference, etc.).
 
 ---
 
@@ -141,7 +142,7 @@ Spatial Data is organised into four layers:
 
 ### Rules
 
-- Read and write to storage inside a Domain Cluster only.
+- Read and write to storage, only inside Domain Clusters.
 - Must stake $AUKI; stake is slashed on invalid/missing proofs.
 
 ### Processes
@@ -159,7 +160,7 @@ Spatial Data is organised into four layers:
 ### Processes
 
 - Discover Participants/Providers and Domain Clusters.
-- Recruit missing Providers in Domain Clusters.
+- Recruit Providers into Domain Clusters when they are needed.
 - Provide real‑time networking inside a Domain Cluster.
 - Generate proofs of delivered network access.
 
@@ -204,7 +205,7 @@ Spatial Data is organised into four layers:
 - Mapped to one or more Domains.
 - *Owned and transferable by a Participant*.
 - Represents a physical or virtual anchor to the *real-world*.
-- Define 4 landmarks inside a Domain.
+- Defines four landmarks (its own four corners) inside a Domain.
 
 ### Processes
 
