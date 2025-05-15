@@ -28,7 +28,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 ### Rules
 
-- Created for a fixed $AUKI burn price.
+- Minted for a fixed $AUKI burn price.
 - Uniquely identified.
 - Ownership is transferable between Participants.
 - Requires at least 3 landmarks to define the coordinate system origin.
