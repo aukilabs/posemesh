@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "google-protobuf": "^3.21.4",
-    "posemesh-domain": "^0.1.0"
+    "@aukilabs/posemesh-domain": "^0.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.17",

@@ -10,8 +10,16 @@ This is a browser example for the domain package. It demonstrates how to use the
 1.a Install the WASM module:
 ```bash
 npx verdaccio-github-oauth-ui --registry https://npm.dev.aukiverse.com
-npm install posemesh-domain --registry https://npm.dev.aukiverse.com/
+npm install @aukilabs/posemesh-domain
 ```
+
+Ensure your .npmrc file is correctly configured to access the Auki dev registry. You can find this file in either the /core/examples/browser/.npmrc directory or your home directory as ~/.npmrc.
+Add the following lines to your .npmrc file:
+```
+//npm.dev.aukiverse.com/:_authToken="***"
+@aukilabs:registry=https://npm.dev.aukiverse.com/
+```
+By configuring your .npmrc file as shown, you'll be able to seamlessly access and install packages from the Auki dev registry.
 
 1.b Build the WASM module:
 - Install Rust
@@ -48,7 +56,7 @@ npm install -g protoc-gen-ts
 
 - Build rust
 ```bash
-wasm-pack build --target bundler --out-dir ./examples/browser/pkg --release domain
+make bundle-domain
 ```
 For macos, if you are running into `"No available targets are compatible with triple "wasm32-unknown-unknown"`, you need to use another clang compiler
 
@@ -60,11 +68,11 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 - Link module
 Link once
 ```bash
-cd core/domain/examples/browser/pkg
+cd core/domain/pkg
 npm link
 
 cd core/domain/examples/browser
-npm link posemesh-domain
+npm link @aukilabs/posemesh-domain
 ```
 
 2. Install dependencies:

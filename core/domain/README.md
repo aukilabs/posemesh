@@ -4,7 +4,7 @@ The `domain` package is a core component of the Posemesh system, designed to fac
 
 ## Getting Started
 
-To get started, you can either set up your own domain server or use the ones provided by Auki. Please be aware that the Auki server is currently under active development, which may lead to occasional downtime and potential data loss. Server addresses are available here: [Auki Domain Manager Addresses](https://ap-northeast-1.domains.dev.aukiverse.com/multiaddrs). Create your domain on domain server `https://ap-northeast-1.domains.dev.aukiverse.com` from [Auki Dev Console](https://console.dev.aukiverse.com).
+To get started, you can either set up your own domain server or use the ones provided by Auki. Please be aware that the Auki server is currently under active development, which may lead to occasional downtime and potential data loss. Server addresses are available here: [Auki Domain Manager Addresses](https://ap-northeast-1.domains.dev.aukiverse.com/multiaddrs).
 
 - **examples/client**: A Rust client for downloading and uploading domain data.
 - **domain/examples/browser**: A web application using this module to download and upload domain data.

@@ -1,4 +1,4 @@
-import { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "posemesh-domain";
+import { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "@aukilabs/posemesh-domain";
 import * as proto from "./protobuf/task";
 function getDataType(fileName) {
     const fileNameMap = {
