@@ -55,7 +55,7 @@ It is not an architectural or SDK specification; instead it describes the actors
 ### Processes
 
 - Create a Domain.
-- Stake $AUKI to become a Provider(s).
+- Stake $AUKI to become a Provider.
 - Grant {Storage|Network|Computing} Provider permissions inside a Domain.
 - Grant Participants’ {Storage|Network|Computing} permissions in a Domain.
 - Request to operate as a Provider in a Domain Cluster.
@@ -194,25 +194,6 @@ Spatial Data is organised into four layers:
 - Validate Provider proofs.
 - Emit rewards proportional to Credits debited.
 - Slash Provider stakes on invalid/missing proofs.
-
----
-
-## 9. Portals
-
-### Rules
-
-- A uniquely identified QR code.
-- Mapped to one or more Domains.
-- *Owned and transferable by a Participant*.
-- Represents a physical or virtual anchor to the *real-world*.
-- Defines four landmarks (its own four corners) inside a Domain.
-
-### Processes
-
-- Register Portal under a Domain.
-- Reference Portal during calibration (Semantic layer).
-- *Transfer ownership independently of its Domain*.
-- Allow Participants to scan / reference a Portal.
 
 ---
 
