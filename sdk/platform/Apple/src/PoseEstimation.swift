@@ -1,9 +1,8 @@
 extension PoseEstimation {
-    public static func solvePnP(forObjectPoints objectPoints: [Vector3], 
-                                imagePoints: [Vector2], 
+    public static func solvePnP(forLandmarks landmarks: [Landmark], 
+                                landmarkObservations: [LandmarkObservation], 
                                 cameraMatrix: Matrix3x3, 
-                                outR: inout Matrix3x3, 
-                                outT: inout Vector3) -> Bool  {
-        return __solvePnP(forObjectPoints:objectPoints, andImagePoints:imagePoints, andCameraMatrix:cameraMatrix, withOutR:outR, andOutT:outT);
+                                method: SolvePnpMethod) -> Pose {
+        return __solvePnP(for:landmarks, andLandmarkObservations:landmarkObservations, andCameraMatrix:cameraMatrix, with:method);
     }
 }
