@@ -2,7 +2,7 @@ use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
 use futures::stream::StreamExt;
-use runtime::get_runtime;
+use posemesh_runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
 use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer};
@@ -161,6 +161,7 @@ pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c
         data_type_regexp: Some(data_type_regexp),
         names,
         data_types,
+        metadata_only: true,
     };
 
     Box::into_raw(Box::new(query))

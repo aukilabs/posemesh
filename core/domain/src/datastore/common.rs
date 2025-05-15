@@ -1,7 +1,7 @@
 
 use crate::{auth::AuthError, protobuf::domain_data::{self, Data}};
 use async_trait::async_trait;
-use networking::libp2p::NetworkError;
+use posemesh_networking::libp2p::NetworkError;
 use uuid::Uuid;
 
 use futures::channel::{mpsc::{Receiver, Sender}, oneshot::Canceled};

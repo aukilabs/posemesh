@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use libp2p::{identity::ParseError, swarm::InvalidProtocol, PeerId, Stream, StreamProtocol};
 use libp2p_stream::IncomingStreams;
 use utils;
@@ -51,6 +52,41 @@ pub struct Client {
     sender: mpsc::Sender<Command>,
 }
 
+#[async_trait]
+pub trait TClient {
+    async fn publish(&mut self, topic: String, message: Vec<u8>) -> Result<(), NetworkError>;
+    async fn subscribe(&mut self, topic: String) -> Result<(), NetworkError>;
+}
+
+#[async_trait]
+impl TClient for Client {
+    async fn publish(&mut self, topic: String, message: Vec<u8>) -> Result<(), NetworkError> {
+        let (sender, receiver) = oneshot::channel::<Result<(), NetworkError>>();
+        self.sender
+            .send(Command::Publish { topic, message, sender })
+            .await?;
+
+        match receiver.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(NetworkError::ChannelReceiverError(e)),
+        }
+    }
+
+    async fn subscribe(&mut self, topic: String) -> Result<(), NetworkError> {
+        let (resp, req) = oneshot::channel::<Result<(), NetworkError>>();
+        self.sender
+            .send(Command::Subscribe { topic, resp })
+            .await?;
+
+        match req.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(NetworkError::ChannelReceiverError(e)),
+        }
+    }
+}
+
 impl Client {
     pub fn new(sender: mpsc::Sender<Command>) -> Self {
         Self { sender }
@@ -75,32 +111,6 @@ impl Client {
             Ok(Ok(result)) => Ok(result),
             Ok(Err(e)) => Err(e), 
             Err(e) => Err(NetworkError::ChannelReceiverError(e)), 
-        }
-    }
-
-    pub async fn subscribe(&mut self, topic: String) -> Result<(), NetworkError> {
-        let (resp, req) = oneshot::channel::<Result<(), NetworkError>>();
-        self.sender
-            .send(Command::Subscribe { topic, resp })
-            .await?;
-
-        match req.await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(NetworkError::ChannelReceiverError(e)),
-        }
-    }
-
-    pub async fn publish(&mut self, topic: String, message: Vec<u8>) -> Result<(), NetworkError> {
-        let (sender, receiver) = oneshot::channel::<Result<(), NetworkError>>();
-        self.sender
-            .send(Command::Publish { topic, message, sender })
-            .await?;
-
-        match receiver.await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(NetworkError::ChannelReceiverError(e)),
         }
     }
 

@@ -1,4 +1,4 @@
-import init, { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "posemesh-domain";
+import { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "@aukilabs/posemesh-domain";
 import * as proto from "./protobuf/task";
 function getDataType(fileName) {
     const fileNameMap = {
@@ -64,7 +64,6 @@ export class UploadManager {
     async initializeLibp2p() {
         try {
             console.log("initializing domain cluster");
-            await init();
             const domainCluster = new DomainCluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
@@ -201,7 +200,7 @@ export class UploadManager {
 
     async downloadFiles() {
         if (this.datastore != null) {
-            const query = new Query([], [], [], null, null);
+            const query = new Query([], [], [], null, null, true);
 
             const downloader = await this.datastore.consume(this.domainId, query);
             console.log("Downloader initialized");
@@ -284,6 +283,8 @@ async function initializeApp() {
 
     // Set up download functionality
     downloadBtn.addEventListener("click", async () => {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = "Downloading...";
         const downloading = await uploadManager.downloadFiles();
         
         const scanNames = new Set();
@@ -300,8 +301,27 @@ async function initializeApp() {
                 if (!scanNames.has(scanName)) {
                     scanNames.add(scanName);
                     const scanContainer = document.createElement("div");
-                    scanContainer.classList.add("flex", "items-center", "mb-2");
+                    scanContainer.classList.add("flex", "items-center", "mb-2", "flex-row");
 
+                    const dropdownButton = document.createElement("button");
+                    dropdownButton.textContent = "▼";
+                    dropdownButton.classList.add("mr-2");
+                    dropdownButton.id = "dropdown"+scanName;
+
+                    const fileList = document.createElement("div");
+                    fileList.style.display = "block";
+                    fileList.style.flexDirection = "column";
+                    fileList.style.marginTop = "5px";
+                    fileList.id = "fileList"+scanName;
+                    // Toggle file list visibility on button click
+                    dropdownButton.addEventListener("click", () => {
+                        fileList.style.display = fileList.style.display === "none" ? "block" : "none";
+                        if (fileList.style.display === "block") {
+                            dropdownButton.textContent = "▲";
+                        } else {
+                            dropdownButton.textContent = "▼";
+                        }
+                    });
                     const checkbox = document.createElement("input");
                     checkbox.type = "checkbox";
                     checkbox.id = scanName;
@@ -322,12 +342,21 @@ async function initializeApp() {
                     label.htmlFor = scanName;
                     label.appendChild(document.createTextNode(scanName));
 
+                    scanContainer.appendChild(dropdownButton);
                     scanContainer.appendChild(checkbox);
                     scanContainer.appendChild(label);
+
                     fileMetadata.appendChild(scanContainer);
+                    fileMetadata.appendChild(fileList);
                 }
+                const fileList = document.getElementById("fileList"+scanName);
+                const p = document.createElement("p");
+                p.textContent = metadata.name;
+                fileList.appendChild(p);
             }
         }
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = "Download Scans";
     });
 
     // // Set up job monitoring
@@ -382,5 +411,12 @@ function createTaskTable(tasks) {
     return taskTable;
 }
 
-// Initialize the application when the DOM is loaded
-document.addEventListener('DOMContentLoaded', initializeApp);
+if (document.readyState !== 'loading') {
+    console.log('document is already ready, just execute code here');
+    initializeApp();
+} else {
+    // Initialize the application when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeApp();
+    });
+}

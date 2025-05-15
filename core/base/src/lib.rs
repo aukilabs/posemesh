@@ -1,2 +1,2 @@
-pub use domain;
-pub use networking;
+pub use posemesh_domain;
+pub use posemesh_networking;
