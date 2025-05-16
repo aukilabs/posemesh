@@ -148,52 +148,56 @@ impl Datastore for FsDatastore {
         let meta_reader = self.metadata_store.load(domain_id.clone(), query, keep_alive).await?;
         let (mut writer, reader) = channel::<Result<Data, DomainError>>(240);
         let domain_id = domain_id.clone();
+        let mut metadata_store = self.metadata_store.clone();
         spawn(async move {
             let mut meta_reader = meta_reader;
-            while let Some(meta) = meta_reader.next().await {
+            while let Some(meta) = meta_reader.reader.next().await {
                 match meta {
-                    Ok(data) => {
-                        if metadata_only {
-                            let _ = writer.send(Ok(Data {
-                                domain_id: domain_id.clone(),
-                                metadata: Metadata {
-                                    id: data.id.clone(),
-                                    name: data.name.clone(),
-                                    data_type: data.data_type.clone(),
-                                    size: data.size,
-                                    properties: data.properties.clone(),
-                                    hash: Some(data.hash.clone()),
-                                },
-                                content: vec![],
-                            })).await;
-                            continue;
+                    Ok(metadata) => {
+                        let mut data = Data {
+                            domain_id: domain_id.clone(),
+                            metadata: Metadata {
+                                id: metadata.id.clone(),
+                                name: metadata.name.clone(),
+                                data_type: metadata.data_type.clone(),
+                                size: metadata.size,
+                                properties: metadata.properties.clone(),
+                                hash: Some(metadata.hash.clone()),
+                            },
+                            content: vec![],
+                        };
+                        if !metadata_only {
+                            let path = metadata.link.clone();
+                            match fs::read(path).await {
+                                Ok(content) => {
+                                    data.content = content;
+                                }
+                                Err(e) => {
+                                    if let Err(e) = writer.send(Err(DomainError::Io(e))).await {
+                                        tracing::error!("Failed to send error to reader: {}", e);
+                                        break;
+                                    }
+                                }
+                            }
                         }
-                        let path = data.link.clone();
-                        match fs::read(path).await {
-                            Ok(content) => {
-                                let data = Data {
-                                    domain_id: domain_id.clone(),
-                                    metadata: Metadata {
-                                        id: data.id.clone(),
-                                        name: data.name.clone(),
-                                        data_type: data.data_type.clone(),
-                                        size: data.size,
-                                        properties: data.properties.clone(),
-                                        hash: Some(data.hash.clone()),
-                                    },
-                                    content,
-                                };
-                                let _ = writer.send(Ok(data)).await;
-                            }
-                            Err(e) => {
-                                let _ = writer.send(Err(DomainError::Io(e))).await;
-                            }
+                        if let Err(e) = writer.send(Ok(data)).await {
+                            tracing::error!("Failed to send data to reader: {}", e);
+                            break;
                         }
                     }
                     Err(e) => {
-                        let _ = writer.send(Err(e)).await;
+                        if let Err(e) = writer.send(Err(e)).await {
+                            tracing::error!("Failed to send error to reader: {}", e);
+                            break;
+                        }
                     }
                 }
+            }
+            if let Err(e) = writer.close().await {
+                tracing::error!("Failed to close writer: {}", e);
+            }
+            if keep_alive {
+                let _ = metadata_store.remove_listener(domain_id.clone(), meta_reader.id.clone().unwrap()).await;
             }
         });
 

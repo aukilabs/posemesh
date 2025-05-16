@@ -84,8 +84,8 @@ impl DomainData for RemoteDomainData {
             tracing::debug!("length: {}, chunk size: {}", chunk.len(), length);
             let hash = hash_chunk(&chunk);
             self.merkle_tree.insert(hash);
-            writer.write_all(&chunk).await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
-            writer.flush().await.map_err(|e| DomainError::InternalError(Box::new(e)))?;
+            writer.write_all(&chunk).await?;
+            writer.flush().await?;
             self.sent_size += chunk.len();
             tracing::debug!("uploaded {}/{} bytes", self.sent_size, self.expected_size);
         }

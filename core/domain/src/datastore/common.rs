@@ -13,7 +13,7 @@ pub type Writer<T> = Sender<Result<T, DomainError>>;
 pub type DataWriter = Writer<Data>;
 pub type DataReader = Reader<Data>;
 
-pub const CHUNK_SIZE: usize = 7 * 1024; // webrtc allows 8192 = 8KB the most
+pub const CHUNK_SIZE: usize = 7 * 1024; // receiver over webRTC gets error Custom { kind: InvalidData, error: Error(Custom { kind: Other, error: "Short buffer (size: 8192) to be filled" }) } when the message is over 8KB
 
 // Define a custom error type
 #[derive(Debug, thiserror::Error)]

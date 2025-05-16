@@ -198,11 +198,11 @@ export class UploadManager {
         }
     }
 
-    async downloadFiles() {
+    async downloadFiles(callback) {
         if (this.datastore != null) {
             const query = new Query([], [], [], null, null, true);
 
-            const downloader = await this.datastore.consume(this.domainId, query);
+            const downloader = await this.datastore.consume(this.domainId, query, callback, true);
             console.log("Downloader initialized");
             return downloader;
         } else {
@@ -285,12 +285,21 @@ async function initializeApp() {
     downloadBtn.addEventListener("click", async () => {
         downloadBtn.disabled = true;
         downloadBtn.textContent = "Downloading...";
-        const downloading = await uploadManager.downloadFiles();
-        
         const scanNames = new Set();
-        while(true) {
-            const file = await downloading.next();
-            if (!file) break;
+        await uploadManager.downloadFiles((file, err) => {
+            console.log("downloadFiles", file, err);
+            if (err) {
+                console.error("Error in downloadFiles", err);
+
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = "Download Scans";
+                return;
+            }
+            if (!file) {
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = "Download Scans";
+                return;
+            }
             const metadata = file.metadata;
             
             const namePattern = /.*_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/;
@@ -354,9 +363,7 @@ async function initializeApp() {
                 p.textContent = metadata.name;
                 fileList.appendChild(p);
             }
-        }
-        downloadBtn.disabled = false;
-        downloadBtn.textContent = "Download Scans";
+        });
     });
 
     // // Set up job monitoring

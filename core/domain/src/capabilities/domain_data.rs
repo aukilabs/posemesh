@@ -81,7 +81,7 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
                 break;
             }
 
-            data_writer.next_chunk(&buffer, true).await.map_err(|e| CapabilityError::DomainError(e))?;
+            data_writer.next_chunk(&buffer, true).await?;
             tracing::debug!("Received chunk: {}/{}", read_size, metadata.size);
         }
     }
@@ -126,20 +126,16 @@ pub async fn serve_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
         }
     }
 
-    if !input.keep_alive {
-        let task = Task {
-            name: header.task_name.clone(),
-            receiver: Some(header.receiver.clone()),
-            sender: header.sender.clone(),
-            endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
-            status: Status::DONE,
-            access_token: None,
-            job_id: header.job_id.clone(),
-            output: None,
-        };
-        let buf = serialize_into_vec(&task)?;
-        c.client.publish(header.job_id.clone(), buf).await?;
-    }
-
-    Ok(())
+    let task = Task {
+        name: header.task_name.clone(),
+        receiver: Some(header.receiver.clone()),
+        sender: header.sender.clone(),
+        endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
+        status: Status::DONE,
+        access_token: None,
+        job_id: header.job_id.clone(),
+        output: None,
+    };
+    let buf = serialize_into_vec(&task)?;
+    c.client.publish(header.job_id.clone(), buf).await.map_err(|e| CapabilityError::NetworkError(e))
 }

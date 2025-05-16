@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
 use posemesh_networking::{client::Client, libp2p::NetworkError};
@@ -78,10 +80,15 @@ pub async fn request_response_with_handshake<Request: MessageWrite, Response: fo
     Ok(response)
 }
 
-pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a>>(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
+pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a> + Send + >(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
     let mut upload_stream = peer.send(prefix_size_message(request), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
-    let response = read_prefix_size_message::<Response>(&mut upload_stream).await?;
-    Ok(response)
+    tracing::debug!("created stream to {}, waiting for response", receiver);
+    
+    utils::timeout(Duration::from_millis(timeout_millis as u64), async move {
+        let response = read_prefix_size_message::<Response>(&mut upload_stream).await.expect("Failed to read response");
+        tracing::debug!("received response from {}, returning", receiver);
+        Ok(response)
+    }).await?
 }
 
 pub async fn request_response_raw(mut peer:Client, receiver: &str, endpoint: &str, request: &[u8], timeout_millis: u32) -> Result<Vec<u8>, NetworkError> {

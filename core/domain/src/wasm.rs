@@ -172,8 +172,7 @@ struct ReliableDataProducer {
 
 #[wasm_bindgen]
 impl ReliableDataProducer {
-    #[wasm_bindgen]
-    pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
+    pub fn push(&mut self, data: DomainData) -> Promise {
         let metadata = to_r_metadata(&data.metadata);
         let content = data.content.to_vec();
         let writer = self.inner.clone();
@@ -234,19 +233,35 @@ impl RemoteDatastore {
     pub fn consume(
         &mut self,
         domain_id: String,
-        query: Query
+        query: Query,
+        callback: Function,
+        keep_alive: bool
     ) -> js_sys::Promise {
         let query = query.clone();
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let res = inner.load(domain_id, query.inner, false).await;
+            let res = inner.load(domain_id, query.inner, keep_alive).await;
             if let Err(e) = res {
                 return Err(JsValue::from_str(&format!("{}", e)));
             }
-            let stream = DataReader { inner: Arc::new(Mutex::new(res.unwrap())) };
             
-            Ok(JsValue::from(stream))
+            let mut res = res.unwrap();
+            spawn_local(async move {
+                while let Some(data) = res.next().await {
+                    match data {
+                        Ok(data) => {
+                            let data = from_r_data(&data);
+                            callback.call2(&JsValue::NULL, &JsValue::from(data), &JsValue::NULL).unwrap();
+                        }
+                        Err(e) => {
+                            callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::from_str(&format!("{}", e))).unwrap();
+                        }
+                    }
+                }
+            });
+            
+            Ok(JsValue::NULL)
         })
     }
 
