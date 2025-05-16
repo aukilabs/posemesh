@@ -24,9 +24,7 @@ const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& poseInDoma
     glm::quat rotation = glm::inverse(rotationObserved) * rotationInDomain;
 
     if (onlyRotateAroundY) {
-        glm::vec3 rotationEuler = glm::eulerAngles(rotation);
-        float rotationAroundY = rotationEuler.y;
-        rotation = glm::angleAxis(rotationAroundY, glm::vec3(0, 1, 0));
+        rotation = glm::angleAxis(glm::eulerAngles(rotation).y, glm::vec3(0, 1, 0));
     }
 
     glm::mat3x3 rotationMatrix = glm::mat3x3(rotation);
