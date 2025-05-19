@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use networking::AsyncStream;
+use posemesh_networking::AsyncStream;
 use futures::AsyncWriteExt;
 use futures::AsyncReadExt;
 use crate::auth::AuthError;

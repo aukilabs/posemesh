@@ -144,6 +144,7 @@ impl FsDatastore {
 #[async_trait]
 impl Datastore for FsDatastore {
     async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> Result<DataReader, DomainError> {
+        let metadata_only = query.metadata_only;
         let meta_reader = self.metadata_store.load(domain_id.clone(), query, keep_alive).await?;
         let (mut writer, reader) = channel::<Result<Data, DomainError>>(240);
         let domain_id = domain_id.clone();
@@ -152,6 +153,21 @@ impl Datastore for FsDatastore {
             while let Some(meta) = meta_reader.next().await {
                 match meta {
                     Ok(data) => {
+                        if metadata_only {
+                            let _ = writer.send(Ok(Data {
+                                domain_id: domain_id.clone(),
+                                metadata: Metadata {
+                                    id: data.id.clone(),
+                                    name: data.name.clone(),
+                                    data_type: data.data_type.clone(),
+                                    size: data.size,
+                                    properties: data.properties.clone(),
+                                    hash: Some(data.hash.clone()),
+                                },
+                                content: vec![],
+                            })).await;
+                            continue;
+                        }
                         let path = data.link.clone();
                         match fs::read(path).await {
                             Ok(content) => {

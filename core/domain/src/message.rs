@@ -1,6 +1,6 @@
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
-use networking::{client::Client, libp2p::NetworkError};
+use posemesh_networking::{client::Client, libp2p::NetworkError};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, MessageRead, MessageWrite};
 
 use crate::{datastore::common::{DomainError, CHUNK_SIZE}, protobuf::task};

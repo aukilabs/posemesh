@@ -17,6 +17,7 @@ message Query {
     optional string data_type_regexp = 3;
     repeated string names = 4;
     repeated string data_types = 5;
+    required bool metadata_only = 6;
 }
 
 message Data {

@@ -1,8 +1,8 @@
 use crate::{auth::{handshake, AuthError}, datastore::common::{Datastore, DomainError, CHUNK_SIZE}, message::prefix_size_message, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task}}};
-use networking::{libp2p::{NetworkError, Networking}, AsyncStream};
+use posemesh_networking::{libp2p::{NetworkError, Networking}, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use futures::{select, AsyncReadExt, AsyncWriteExt, StreamExt};
-
+use posemesh_networking::client::TClient;
 use super::public_key::PublicKeyStorage;
 
 #[derive(Debug, thiserror::Error)]
@@ -109,6 +109,7 @@ pub async fn serve_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
                 match result {
                     Some(Ok(data)) => {
                         stream.write_all(&prefix_size_message(&data.metadata)).await?;
+                        stream.flush().await?;
                         for chunk in data.content.chunks(CHUNK_SIZE) {
                             stream.write_all(chunk).await?;
                             stream.flush().await?;
