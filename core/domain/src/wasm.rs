@@ -105,41 +105,6 @@ fn from_r_data(r_data: &domain_data::Data) -> DomainData {
 }
 
 #[wasm_bindgen]
-pub struct DataReader {
-    inner: Arc<Mutex<r_DataReader>>,
-}
-
-#[wasm_bindgen]
-impl DataReader {
-    #[wasm_bindgen]
-    pub fn next(&mut self) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let future = async move {
-            let mut inner = inner.lock().unwrap();
-            // Attempt to get the next item from the stream
-            match inner.next().await {
-                Some(Ok(data)) => {
-                    tracing::debug!("Got data: {:?}", data.metadata);
-                    // Convert the Rust struct into a JavaScript object
-                    let data = from_r_data(&data);
-                    Ok(JsValue::from(data))
-                }
-                Some(Err(e)) => Err(JsValue::from_str(&format!("{}", e))),
-                None => Ok(JsValue::NULL),
-            }
-        };
-        // Convert the Rust Future into a JavaScript Promise
-        future_to_promise(future)
-    }
-
-    #[wasm_bindgen]
-    pub fn close(&mut self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.close();
-    }
-}
-
-#[wasm_bindgen]
 pub struct DomainCluster {
     inner: Arc<Mutex<r_DomainCluster>>,
 }
@@ -252,13 +217,17 @@ impl RemoteDatastore {
                     match data {
                         Ok(data) => {
                             let data = from_r_data(&data);
-                            callback.call2(&JsValue::NULL, &JsValue::from(data), &JsValue::NULL).unwrap();
+                            tracing::debug!("Consumed data: {}", data.metadata.name);
+                            let js_data = JsValue::from(data);
+                            callback.call2(&JsValue::NULL, &js_data, &JsValue::NULL).expect("Failed to call callback");
                         }
                         Err(e) => {
                             callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::from_str(&format!("{}", e))).unwrap();
                         }
                     }
                 }
+                tracing::debug!("Consumed all data");
+                callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::NULL).unwrap();
             });
             
             Ok(JsValue::NULL)

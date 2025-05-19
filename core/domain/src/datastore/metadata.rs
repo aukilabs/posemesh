@@ -124,6 +124,7 @@ impl Query {
 impl MetadataStore {
     pub(crate) async fn remove_listener(&mut self, domain_id: String, id: String) {
         let mut listeners = self.listeners.lock().await;
+        tracing::info!("Removing listener for domain_id: {}", domain_id);
         listeners.entry(domain_id).and_modify(|listeners| {
             listeners.remove(&id);
         });

@@ -17,15 +17,31 @@
             <input type="file" id="fileInput" class="hidden" multiple>
             <p class="text-gray-600">Drag and drop files here or click to select files</p>
         </div>
-        <div id="fileList" class="mt-4"></div>
-        <div class="mt-4 space-x-4">
-            <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50" disabled>Upload Scans</button>
-            <button id="finishBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50" disabled>Refine</button>
-            <button id="downloadBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Download Files</button>
+        <div class="mt-4 space-x-4 flex justify-between">
+            <div>
+                <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50" disabled>Upload Scans</button>
+                <button id="finishBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50" disabled>Refine</button>
+            </div>
+            <div class="flex items-center">
+                <label for="nameRegexp" class="block text-sm font-medium text-gray-700 mr-2">name regexp:</label>
+                <input type="text" id="nameRegexp" class="mt-1 block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Enter regex">
+                <button id="downloadBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 ml-4">Download Files</button>
+                <input type="checkbox" id="keepAlive" name="keepAlive" class="ml-2">
+                <label for="keepAlive" class="text-sm font-medium text-gray-700 ml-1">keep alive</label>
+                <button id="endBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 ml-4 hidden">End</button>
+            </div>
         </div>
+
         <div id="progressLabel" class="mt-4 text-gray-600"></div>
-        <div id="uploads-list" class="mt-4"></div>
-        <div id="fileMetadata" class="mt-4"></div>
+        <div class="mt-4 flex">
+            <div id="upload-container" class="w-1/3 mt-4 border border-gray-300 rounded-lg">
+                <div id="uploads-list" class="mt-4"></div>
+            </div>
+            <div class="w-1/3 mt-4 border border-gray-300 rounded-lg" id="refine-container">
+            </div>
+            <div class="w-1/3 mt-4 border border-gray-300 rounded-lg" id="download-container">
+            </div>
+        </div>
     </div>
     <script type="module" src="/src/index.js"></script>
 </body>

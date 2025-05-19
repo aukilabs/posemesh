@@ -42,6 +42,23 @@ export class UploadManager {
         this.domainId = "";
     }
 
+    updateRefineContainer() {
+        const refineContainer = document.getElementById('refine-container');
+        refineContainer.innerHTML = '';
+
+        for (const [scan_name, status] of this.activeUploads) {
+            if (status == "completed") {
+                const uploadEntry = document.createElement('div');
+                uploadEntry.innerHTML = `
+                    <div class="flex items-center w-full">
+                        <span class="text-sm font-medium text-gray-700 flex-grow">${scan_name}</span>
+                    </div>
+                `;
+                refineContainer.appendChild(uploadEntry);
+            }
+        }
+    }
+
     async init(onFileSelect, onProgressUpdate, onUploadComplete) {
         this.onFileSelect = onFileSelect;
         this.onProgressUpdate = onProgressUpdate;
@@ -59,6 +76,8 @@ export class UploadManager {
         } catch (error) {
             console.error("Failed to initialize libp2p:", error);
         }
+
+        this.updateRefineContainer();
     }
 
     async initializeLibp2p() {
@@ -105,6 +124,7 @@ export class UploadManager {
         });
         this.activeUploads.clear();
         this.updateUploadsList();
+        this.updateRefineContainer();
     }
 
     async uploadFiles() {
@@ -167,6 +187,7 @@ export class UploadManager {
                 this.activeUploads.set(scan_name, 'completed');
                 this.updateUploadsList();
                 this.onUploadComplete();
+                this.updateRefineContainer();
                 clearInterval(intervalId);
             } else {
                 console.log("not done yet");
@@ -177,6 +198,9 @@ export class UploadManager {
     updateUploadsList() {
         const uploadsDiv = document.getElementById('uploads-list');
         uploadsDiv.innerHTML = '';
+
+        const refineContainer = document.getElementById('refine-container');
+        refineContainer.innerHTML = '';
 
         for (const [scan_name, status] of this.activeUploads) {
             const uploadEntry = document.createElement('div');
@@ -195,14 +219,31 @@ export class UploadManager {
                 </div>
             `;
             uploadsDiv.appendChild(uploadEntry);
+
+            if (status === 'completing') {
+                const completingEntry = document.createElement('div');
+                completingEntry.className = 'flex items-center bg-gray-50 rounded-lg p-3 shadow-sm mb-2';
+                completingEntry.innerHTML = `
+                    <div class="flex items-center w-full">
+                        <span class="text-sm font-medium text-gray-700 flex-grow">${scan_name}</span>
+                    </div>
+                `;
+                refineContainer.appendChild(completingEntry);
+            }
         }
     }
 
     async downloadFiles(callback) {
         if (this.datastore != null) {
-            const query = new Query([], [], [], null, null, true);
+            let nameRegexp = document.getElementById('nameRegexp').value;
+            if (nameRegexp == "") {
+                nameRegexp = null;
+            }
+            const keepAlive = document.getElementById('keepAlive').checked;
 
-            const downloader = await this.datastore.consume(this.domainId, query, callback, true);
+            const query = new Query([], [], [], nameRegexp, null, keepAlive);
+
+            const downloader = await this.datastore.consume(this.domainId, query, callback, keepAlive);
             console.log("Downloader initialized");
             return downloader;
         } else {
@@ -224,7 +265,10 @@ async function initializeApp() {
     const finishBtn = document.getElementById("finishBtn");
     const progressLabel = document.getElementById("progressLabel");
     const downloadBtn = document.getElementById("downloadBtn");
-    const fileMetadata = document.getElementById("fileMetadata");
+    const downloadContainer = document.getElementById("download-container");
+    const keepAliveCheckbox = document.getElementById('keepAlive');
+    const endBtn = document.getElementById('endBtn');
+
     // Set up drag and drop events
     dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
@@ -287,7 +331,6 @@ async function initializeApp() {
         downloadBtn.textContent = "Downloading...";
         const scanNames = new Set();
         await uploadManager.downloadFiles((file, err) => {
-            console.log("downloadFiles", file, err);
             if (err) {
                 console.error("Error in downloadFiles", err);
 
@@ -345,6 +388,7 @@ async function initializeApp() {
                         if (uploadManager.activeUploads.size == 0) {
                             finishBtn.disabled = true;
                         }
+                        uploadManager.updateRefineContainer();
                     });
 
                     const label = document.createElement("label");
@@ -355,8 +399,8 @@ async function initializeApp() {
                     scanContainer.appendChild(checkbox);
                     scanContainer.appendChild(label);
 
-                    fileMetadata.appendChild(scanContainer);
-                    fileMetadata.appendChild(fileList);
+                    downloadContainer.appendChild(scanContainer);
+                    downloadContainer.appendChild(fileList);
                 }
                 const fileList = document.getElementById("fileList"+scanName);
                 const p = document.createElement("p");
@@ -364,6 +408,15 @@ async function initializeApp() {
                 fileList.appendChild(p);
             }
         });
+    });
+
+    // Set up 'keep-alive' checkbox event listener
+    keepAliveCheckbox.addEventListener('change', (event) => {
+        if (event.target.checked) {
+            endBtn.classList.remove('hidden');
+        } else {
+            endBtn.classList.add('hidden');
+        }
     });
 
     // // Set up job monitoring
