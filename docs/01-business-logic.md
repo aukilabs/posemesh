@@ -144,7 +144,7 @@ Spatial Data is organised into four layers:
 
 ### Dynamic Staking
 
-Providers are Participants that stake a fixed amount of $AUKI, which increase or decrease baed on their performance.
+Providers are Participants that stake a fixed amount of $AUKI, which increase or decrease based on their performance.
 
 - Reward: each valid proof adds to the stake.
 - Partial Slash: each invalid proof subtracts from the stake.
