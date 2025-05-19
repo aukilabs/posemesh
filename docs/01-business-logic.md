@@ -36,7 +36,7 @@ drive the protocol.
 - Ownership is transferable between Participants.
 - Requires at least 3 landmarks to define the coordinate system origin.
 - A list of Spatial Data types supported in each Spatial Data layer.
-- Every Participant & Provider exchanging data in a single Domain is forming a **Domain Cluster**.
+- Participants & Providers exchanging data in a single Domain form a **Domain Cluster**.
 
 ### Processes
 
@@ -117,7 +117,7 @@ Spatial Data is organised into four layers:
 
 ### Processes
 
-- A global list of Spatial Data types is maintained by the Aukilabs.
+- Auki Labs maintains a global list of Spatial Data types.
 - Define which Spatial Data types are exchanged in a Domain and its Domain Cluster.
 
 ---
@@ -144,10 +144,10 @@ Spatial Data is organised into four layers:
 
 ### Dynamic Staking
 
-Providers are Participants that stake a fixed amount of $AUKI, which increase or decrease based on their performance.
+Providers are Participants that stake a fixed amount of $AUKI. The stake then increases or decreases based on their performance.
 
-- Reward: each valid proof adds to the stake.
-- Partial Slash: each invalid proof subtracts from the stake.
+- Reward: each valid proof increases the stake.
+- Partial Slash: each invalid proof decreases the stake.
 
 Example:
 
@@ -161,9 +161,9 @@ With those numbers, the stake stops growing when:
 invalid / valid  ≤  1 % / 10 %  =  0.10   (10 %)
 ```
 
-That means you can have at most one failed proof for every ten successful ones (10% of submission failed is acceptable)
+That means you can have at most one failed proof for every ten successful ones (10% of submission failed is acceptable).
 
-the general rule would be `r / p` failure ratio, where *r* is the reward and *p* is the penalty,
+Generally the failure ratio would be `r / p`, where *r* is the reward and *p* is the penalty.
 
 ## 7.1 Storage Provider
 
@@ -214,14 +214,14 @@ the general rule would be `r / p` failure ratio, where *r* is the reward and *p*
 
 - Holds $AUKI earmarked for Provider rewards.
 - Receives a share of every $AUKI burn.
-- Rewards are sent to the Provider stake.
+- Rewards increase the Provider stake.
 - Rewards are only claimable when Providers withdraw their stake.
 
 ### Processes
 
 - Validate Provider proofs.
 - Emit rewards proportional to Credits debited.
-- Slash Provider stakes on invalid/missing proofs.
+- Slash (decrease) Provider stakes on invalid/missing proofs.
 
 ---
 
