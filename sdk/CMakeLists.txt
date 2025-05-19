@@ -69,6 +69,8 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/QRDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/ArucoDetection.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseFactory.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseTools.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
@@ -89,6 +91,8 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector3.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector4.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/PoseFactory.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/PoseTools.cpp"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_SOURCES}"

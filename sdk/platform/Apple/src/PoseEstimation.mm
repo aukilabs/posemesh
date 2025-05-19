@@ -4,31 +4,42 @@
 
 @implementation PSMPoseEstimation
 
-+ (BOOL)solvePnPForObjectPoints:(NSArray<PSMVector3*>*)objectPoints andImagePoints:(NSArray<PSMVector2*>*)imagePoints andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withOutR:(PSMMatrix3x3*)outR andOutT:(PSMVector3*)outT;
++ (PSMPose*)solvePnPForLandmarks:(NSArray<PSMLandmark*>*)landmarks andLandmarkObservations:(NSArray<PSMLandmarkObservation*>*)landmarkObservations andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withMethod:(PSMSolvePnpMethod)method;
 {
-    NSAssert(objectPoints, @"objectPoints is null");
-    NSAssert([objectPoints count] == 4, @"objectPoints array count is not 4");
-    NSAssert(imagePoints, @"imagePoints is null");
-    NSAssert([imagePoints count] == 4, @"imagePoints array count is not 4");
-    NSAssert(cameraMatrix, @"cameraMatrix is null");
-    NSAssert(outR, @"outR is null");
-    NSAssert(outT, @"outT is null");
+    NSAssert(landmarks, @"landmarks is null");
+    NSAssert(landmarkObservations, @"landmarkObservations is null");
 
-    psm::Vector3 objectPointsRaw[4];
-    for (int i = 0; i < 4; ++i) {
-        objectPointsRaw[i] = *static_cast<const psm::Vector3*>([objectPoints[i] nativeVector3]);
+    std::vector<psm::Landmark> landmarksRaw;
+    for (int i = 0; i < landmarks.count; i++) {
+        landmarksRaw.push_back(*static_cast<const psm::Landmark*>([landmarks[i] nativeLandmark]));
     }
 
-    psm::Vector2 imagePointsRaw[4];
-    for (int i = 0; i < 4; ++i) {
-        imagePointsRaw[i] = *static_cast<const psm::Vector2*>([imagePoints[i] nativeVector2]);
+    std::vector<psm::LandmarkObservation> landmarkObservationsRaw;
+    for (int i = 0; i < landmarkObservations.count; i++) {
+        landmarkObservationsRaw.push_back(*static_cast<const psm::LandmarkObservation*>([landmarkObservations[i] nativeLandmarkObservation]));
     }
 
     const auto& cameraMatrixRaw = *static_cast<const psm::Matrix3x3*>([cameraMatrix nativeMatrix3x3]);
-    auto& outRRaw = *static_cast<psm::Matrix3x3*>([outR nativeMatrix3x3]);
-    auto& outTRaw = *static_cast<psm::Vector3*>([outT nativeVector3]);
+    psm::Pose poseRaw = psm::PoseEstimation::solvePnP(landmarksRaw, landmarkObservationsRaw, cameraMatrixRaw, (psm::SolvePnpMethod)method);
 
-    return psm::PoseEstimation::solvePnP(objectPointsRaw, imagePointsRaw, cameraMatrixRaw, outRRaw, outTRaw) ? YES : NO;
+    PSMPose* pose = [[PSMPose alloc] init];
+
+    psm::Vector3 positionRaw = poseRaw.getPosition();
+    PSMVector3* position = [[PSMVector3 alloc] init];
+    [position setX:positionRaw.getX()];
+    [position setY:positionRaw.getY()];
+    [position setZ:positionRaw.getZ()];
+    [pose setPosition:position];
+
+    psm::Quaternion rotationRaw = poseRaw.getRotation();
+    PSMQuaternion* rotation = [[PSMQuaternion alloc] init];
+    [rotation setX:rotationRaw.getX()];
+    [rotation setY:rotationRaw.getY()];
+    [rotation setZ:rotationRaw.getZ()];
+    [rotation setW:rotationRaw.getW()];
+    [pose setRotation:rotation];
+
+    return pose;
 }
 
 @end
