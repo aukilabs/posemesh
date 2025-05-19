@@ -32,7 +32,7 @@ drive the protocol.
 ### Rules
 
 - Minted for a fixed $AUKI burn price.
-- Uniquely identified.
+- Uniquely identified by asymmetric key.
 - Ownership is transferable between Participants.
 - Requires at least 3 landmarks to define the coordinate system origin.
 - A list of Spatial Data types supported in each Spatial Data layer.
