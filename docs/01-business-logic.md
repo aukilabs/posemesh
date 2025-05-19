@@ -13,12 +13,15 @@ If you plan to:
 
 ## Background & Motivation
 
-Posemesh got started as a closed-source web2 network using AR technology to solve real‑world problems. The technology proved itself in production, yet still depends on Auki's centralized infrastructure. 
+Posemesh got started as a closed-source web2 network using AR technology to solve real‑world problems. The technology
+proved itself in production, yet still depends on Auki's centralized infrastructure.
 For more background, see the [Current Architecture](02-current-architecture.md) document.
 
-We are now transitioning Posemesh to be an open-sourced web3 protocol so that the ecosystem can grow in public. This document isolates the business logic of Posemesh. 
+We are now transitioning Posemesh to be an open-sourced web3 protocol so that the ecosystem can grow in public. This
+document isolates the business logic of Posemesh.
 
-It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that drive the protocol.
+It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that
+drive the protocol.
 
 ---
 
@@ -32,14 +35,12 @@ It is not an architectural or SDK specification; instead it describes the actors
 - Uniquely identified.
 - Ownership is transferable between Participants.
 - Requires at least 3 landmarks to define the coordinate system origin.
-- A list of Spatial Data types supported
-- **Domain Cluster**, the dynamic swarm of Participants & Providers serving a single Domain.
+- A list of Spatial Data types supported in each Spatial Data layer.
+- Every Participant & Provider exchanging data in a single Domain is forming a **Domain Cluster**.
 
 ### Processes
 
-- Transfer history.
-- Encrypted M:N data/stream exchange inside the Domain Cluster.
-- Encrypted 1:1 messaging inside the Domain Cluster.
+- History of ownership transfers
 
 ---
 
@@ -84,9 +85,10 @@ It is not an architectural or SDK specification; instead it describes the actors
 
 ## 4. Credits
 
+**Unit of measurement for the computational effort required to interact with Providers (gas).**
+
 ### Rules
 
-- Unit of measurement for the computational effort required to interact with Providers (gas).
 - Minted when $AUKI is burned, 1 Credit ≈ 1 USD at the time of burn.
 - Locked when a Participant submits a request.
 - Debited when that request is fulfilled.
@@ -114,6 +116,7 @@ Spatial Data is organised into four layers:
 
 ### Processes
 
+- A global list of Spatial Data types is maintained by the Aukilabs.
 - Define which Spatial Data types are exchanged in a Domain and its Domain Cluster.
 
 ---
@@ -138,6 +141,29 @@ Spatial Data is organised into four layers:
 
 ## 7. Providers
 
+### Dynamic Staking
+
+Providers are Participants that stake a fixed amount of $AUKI, which increase or decrease baed on their performance.
+
+- Reward: each valid proof adds to the stake.
+- Partial Slash: each invalid proof subtracts from the stake.
+
+Example:
+
+- Reward per valid proof: +1 % of the original stake
+- Slash per invalid proof: –10 % of the original stake
+
+With those numbers, the stake stops growing when:
+
+```
+(valid proofs) × 1 %  ≥  (invalid proofs) × 10 %
+invalid / valid  ≤  1 % / 10 %  =  0.10   (10 %)
+```
+
+That means you can have at most one failed proof for every ten successful ones (10% of submission failed is acceptable)
+
+the general rule would be `r / p` failure ratio, where *r* is the reward and *p* is the penalty,
+
 ## 7.1 Storage Provider
 
 ### Rules
@@ -154,15 +180,16 @@ Spatial Data is organised into four layers:
 
 ### Rules
 
-- May operate within and outside Domain Clusters.
+- Operates both within and outside Domain Clusters.
 - Must stake $AUKI; stake is slashed on invalid/missing proofs.
 
 ### Processes
 
-- Discover Participants/Providers and Domain Clusters.
-- Recruit Providers into Domain Clusters when they are needed.
-- Provide real‑time networking inside a Domain Cluster.
-- Generate proofs of delivered network access.
+- Discovers Participants/Providers and Domain Clusters.
+- Recruits Providers into Domain Clusters when they are needed.
+- Encrypts M:N data/stream exchange between Participants in a Domain Cluster.
+- Encrypts 1:1 messaging between Participant in a Domain Cluster.
+- Generates proofs of delivered network access.
 
 ## 7.3 Computing Provider
 
@@ -197,6 +224,7 @@ Spatial Data is organised into four layers:
 
 ---
 
-##  Further Reading
+## Further Reading
+
 - [Posemesh Current Architecture](./02-current-architecture.md)
 - [Posemesh Web3 Architecture](./03-web3-architecture.md)
