@@ -83,6 +83,17 @@ bool PSM_API psm_qr_detection_detect_qr(
     return true;
 }
 
+void PSM_API psm_qr_detection_detect_qr_free(const char* const* contents, const psm_vector2_t* const* corners)
+{
+    delete[] const_cast<char*>(reinterpret_cast<const char*>(contents));
+    if (corners) {
+        for (const auto* const* corner = corners; *corner; ++corner) {
+            (*corner)->~Vector2();
+        }
+        delete[] const_cast<char*>(reinterpret_cast<const char*>(corners));
+    }
+}
+
 bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     const uint8_t* image_bytes,
     size_t image_bytes_size,
@@ -131,18 +142,7 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     return true;
 }
 
-void PSM_API psm_qr_detection_detect_qr_free(const char* const* contents, const psm_vector2_t* const* corners)
-{
-    delete[] const_cast<char*>(reinterpret_cast<const char*>(contents));
-    if (corners) {
-        for (const auto* const* corner = corners; *corner; ++corner) {
-            (*corner)->~Vector2();
-        }
-        delete[] const_cast<char*>(reinterpret_cast<const char*>(corners));
-    }
-}
-
-void PSM_API psm_qr_detection_detect_qr_free_landmark_observations(const psm_landmark_observation_t* const* observations)
+void PSM_API psm_qr_detection_detect_qr_landmark_observations(const psm_landmark_observation_t* const* observations)
 {
     if (observations) {
         for (const auto* const* observation = observations; *observation; ++observation) {
