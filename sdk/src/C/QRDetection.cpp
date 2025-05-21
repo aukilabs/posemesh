@@ -135,7 +135,7 @@ void PSM_API psm_qr_detection_detect_qr_free(const char* const* contents, const 
 {
     delete[] const_cast<char*>(reinterpret_cast<const char*>(contents));
     if (corners) {
-        for (const auto* const* corner = corners; corner; ++corner) {
+        for (const auto* const* corner = corners; *corner; ++corner) {
             (*corner)->~Vector2();
         }
         delete[] const_cast<char*>(reinterpret_cast<const char*>(corners));
