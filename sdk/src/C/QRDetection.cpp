@@ -103,7 +103,7 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     uint32_t* out_observations_count)
 {
     if (!out_observations) {
-        assert(!"psm_qr_detection_detect_qr(): out_observations is null");
+        assert(!"psm_qr_detection_detect_qr_landmark_observations(): out_observations is null");
         return false;
     }
     std::vector<std::string> contents;
@@ -115,7 +115,7 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     }
 
     if (observations.size() > std::numeric_limits<uint32_t>::max()) {
-        assert(!"psm_qr_detection_detect_qr(): observations count overflow");
+        assert(!"psm_qr_detection_detect_qr_landmark_observations(): observations count overflow");
         return false;
     }
 
@@ -142,7 +142,7 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     return true;
 }
 
-void PSM_API psm_qr_detection_detect_qr_landmark_observations(const psm_landmark_observation_t* const* observations)
+void PSM_API psm_qr_detection_detect_qr_landmark_observations_free(const psm_landmark_observation_t* const* observations)
 {
     if (observations) {
         for (const auto* const* observation = observations; *observation; ++observation) {

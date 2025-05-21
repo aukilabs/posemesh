@@ -11,7 +11,7 @@ bool PSM_API psm_aruco_detection_detect_aruco(
     size_t image_bytes_size,
     int width,
     int height,
-    psm_aruco_marker_format markerFormat,
+    psm_aruco_marker_format marker_format,
     const char* const** out_contents,
     uint32_t* out_contents_count,
     const psm_vector2_t* const** out_corners,
@@ -27,7 +27,7 @@ bool PSM_API psm_aruco_detection_detect_aruco(
     }
     std::vector<std::string> contents;
     std::vector<psm::Vector2> corners;
-    const bool result = psm::ArucoDetection::detectArucoFromLuminance(image_bytes, image_bytes_size, width, height, (psm::ArucoMarkerFormat)markerFormat, contents, corners);
+    const bool result = psm::ArucoDetection::detectArucoFromLuminance(image_bytes, image_bytes_size, width, height, (psm::ArucoMarkerFormat)marker_format, contents, corners);
     if (!result) {
         return false;
     }
@@ -92,5 +92,64 @@ void PSM_API psm_aruco_detection_detect_aruco_free(const char* const* contents, 
             (*corner)->~Vector2();
         }
         delete[] const_cast<char*>(reinterpret_cast<const char*>(corners));
+    }
+}
+
+bool PSM_API psm_aruco_detection_detect_aruco_landmark_observations(
+    const uint8_t* image_bytes,
+    size_t image_bytes_size,
+    int width,
+    int height,
+    enum psm_aruco_marker_format marker_format,
+    const psm_landmark_observation_t* const** out_observations,
+    uint32_t* out_observations_count)
+{
+    if (!out_observations) {
+        assert(!"psm_aruco_detection_detect_aruco_landmark_observations(): out_observations is null");
+        return false;
+    }
+    std::vector<std::string> contents;
+    std::vector<psm::Vector2> corners;
+    std::vector<uint8_t> image_bytes_vector(image_bytes, image_bytes + image_bytes_size);
+    const std::vector<psm::LandmarkObservation> observations = psm::ArucoDetection::detectArucoFromLuminance(image_bytes_vector, width, height, (psm::ArucoMarkerFormat)marker_format);
+    if (observations.size() == 0) {
+        return false;
+    }
+
+    if (observations.size() > std::numeric_limits<uint32_t>::max()) {
+        assert(!"psm_aruco_detection_detect_aruco_landmark_observations(): observations count overflow");
+        return false;
+    }
+
+    const auto landmark_observation_count = static_cast<uint32_t>(observations.size());
+    auto landmark_observation_buffer_size = (landmark_observation_count + 1) * sizeof(psm_landmark_observation_t*);
+    landmark_observation_buffer_size = ((landmark_observation_buffer_size + alignof(psm_landmark_observation_t) - 1) / alignof(psm_landmark_observation_t)) * alignof(psm_landmark_observation_t); // Ensure alignment
+    const auto landmark_observation_prefix_offset = landmark_observation_buffer_size;
+    landmark_observation_buffer_size += observations.size() * sizeof(psm_landmark_observation_t);
+    std::unique_ptr<psm_landmark_observation_t[]> landmark_observation_buffer(new (std::nothrow) psm_landmark_observation_t[landmark_observation_buffer_size]);
+    psm_landmark_observation_t** landmark_observation_prefix_ptr = reinterpret_cast<psm_landmark_observation_t**>(landmark_observation_buffer.get());
+    psm_landmark_observation_t* landmark_observation_content_ptr = reinterpret_cast<psm_landmark_observation_t*>(landmark_observation_buffer.get() + landmark_observation_prefix_offset);
+    for (auto& observation : observations) {
+        *landmark_observation_prefix_ptr = landmark_observation_content_ptr;
+        landmark_observation_prefix_ptr++;
+        new (landmark_observation_content_ptr) psm_landmark_observation_t(std::move(observation));
+        landmark_observation_content_ptr++;
+    }
+    *landmark_observation_prefix_ptr = nullptr;
+
+    *out_observations = reinterpret_cast<const psm_landmark_observation_t* const*>(landmark_observation_buffer.release());
+    if (out_observations_count) {
+        *out_observations_count = landmark_observation_count;
+    }
+    return true;
+}
+
+void PSM_API psm_aruco_detection_detect_aruco_landmark_observations_free(const psm_landmark_observation_t* const* observations)
+{
+    if (observations) {
+        for (const auto* const* observation = observations; *observation; ++observation) {
+            (*observation)->~LandmarkObservation();
+        }
+        delete[] const_cast<psm_landmark_observation_t*>(reinterpret_cast<const psm_landmark_observation_t*>(observations));
     }
 }
