@@ -19,4 +19,12 @@ extension QRDetection {
         }
         return result;
     }
+
+    public static func detectQR(fromLuminanceImageData imageData: Data,
+                                width: Int32,
+                                height: Int32) -> [LandmarkObservation] {
+                                    let arr = __detectQR(fromLuminanceImageData:imageData, ofWidth:width, andHeight:height);
+
+                                    return arr as! [LandmarkObservation];
+                                }
 }

@@ -73,6 +73,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseFactory.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseTools.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/CalibrationHelpers.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Portals.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"

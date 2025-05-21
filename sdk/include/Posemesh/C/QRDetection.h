@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "API.h"
+#include "LandmarkObservation.h"
 #include "Vector2.h"
 
 #if defined(__cplusplus)
@@ -29,7 +30,17 @@ bool PSM_API psm_qr_detection_detect_qr(
     const psm_vector2_t* const** out_corners,
     uint32_t* out_corners_count);
 
+bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
+    const uint8_t* image_bytes,
+    size_t image_bytes_size,
+    int width,
+    int height,
+    const psm_landmark_observation_t* const** out_observations,
+    uint32_t* out_observations_count);
+
 void PSM_API psm_qr_detection_detect_qr_free(const char* const* contents, const psm_vector2_t* const* corners);
+
+void PSM_API psm_qr_detection_detect_qr_free_landmark_observations(const psm_landmark_observation_t* const* observations);
 
 #if defined(__cplusplus)
 }
