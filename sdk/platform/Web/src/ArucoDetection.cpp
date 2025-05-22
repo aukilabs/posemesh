@@ -24,10 +24,26 @@ bool detectArucoFromLuminance(
 
     return detectionResult;
 }
+
+std::vector<std::shared_ptr<psm::LandmarkObservation>> detectArucoFromLuminanceLandmarkObservations(
+    const std::vector<uint8_t>& imageBytes,
+    int width,
+    int height,
+    int markerFormat)
+{
+    std::vector<std::shared_ptr<psm::LandmarkObservation>> observations;
+    auto lo = ArucoDetection::detectArucoFromLuminance(imageBytes, width, height, (ArucoMarkerFormat)markerFormat);
+    for (auto& observation : lo) {
+        observations.emplace_back(new psm::LandmarkObservation(std::move(observation)));
+    }
+
+    return observations;
+}
 }
 
 EMSCRIPTEN_BINDINGS(ArucoDetection)
 {
     class_<ArucoDetection>("ArucoDetection")
-        .class_function("__detectArucoFromLuminance(imageBytes, width, height, markerFormat, outContents, outCorners)", &detectArucoFromLuminance);
+        .class_function("__detectArucoFromLuminance(imageBytes, width, height, markerFormat, outContents, outCorners)", &detectArucoFromLuminance)
+        .class_function("__detectArucoFromLuminanceLandmarkObservations(imageBytes, width, height, markerFormat)", &detectArucoFromLuminanceLandmarkObservations);
 }
