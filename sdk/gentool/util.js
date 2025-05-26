@@ -2822,6 +2822,268 @@ function fillCGenerateFuncAliasDefines(interfaceJson) {
   }
 }
 
+let defaultMethodNameLangToStyleMap = {};
+defaultMethodNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultMethodNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+function fillMethodName(methodJson, nameLangToStyleMap = defaultMethodNameLangToStyleMap) {
+  fillName('name', methodJson, nameLangToStyleMap);
+}
+
+function fillMethodReturnType(methodJson) {
+  const nameKey = 'returnType';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof methodJson[nameKey] === 'undefined') {
+    methodJson[nameKey] = '';
+    methodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof methodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  methodJson[nameKeyGen] = false;
+}
+
+let defaultConstructorParameterNameLangToStyleMap = {};
+defaultConstructorParameterNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultConstructorParameterNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+let defaultMethodParameterNameLangToStyleMap = {};
+defaultMethodParameterNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultMethodParameterNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+function fillConstructorOrMethodParameterName(parameterJson, isConstructor, nameLangToStyleMap = undefined) {
+  if (typeof parameterJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameterName() method.');
+  }
+  if (typeof nameLangToStyleMap === 'undefined') {
+    nameLangToStyleMap = isConstructor ? defaultConstructorParameterNameLangToStyleMap : defaultMethodParameterNameLangToStyleMap;
+  }
+  fillName('name', parameterJson, nameLangToStyleMap);
+}
+
+function fillConstructorOrMethodParameterType(parameterJson) {
+  const nameKey = 'type';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof parameterJson[nameKey] === 'undefined') {
+    throw new Error(`Missing '${nameKey}' key.`);
+  }
+  if (typeof parameterJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  parameterJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, isObjectiveC) {
+  if (typeof parameterJson !== 'object' || typeof isObjectiveC !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix() method.');
+  }
+  const objectiveCNameKey = 'objectiveC.namePrefix';
+  const swiftNameKey = 'swift.namePrefix';
+  const nameKey = isObjectiveC ? objectiveCNameKey : swiftNameKey;
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof parameterJson[nameKey] === 'undefined') {
+    if (isObjectiveC) {
+      parameterJson[nameKey] = parameterIndex === 0 ? '-' : '';
+    } else {
+      parameterJson[nameKey] = typeof parameterJson[objectiveCNameKey] === 'undefined' ? (parameterIndex === 0 ? '-' : '') : parameterJson[objectiveCNameKey];
+    }
+    parameterJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof parameterJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  if (parameterJson[nameKey] !== '-' && !/^[a-z]*$/.test(parameterJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key value.`);
+  }
+  parameterJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodParameterObjectiveCNamePrefix(parameterJson, parameterIndex) {
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, true);
+}
+
+function fillConstructorOrMethodParameterSwiftNamePrefix(parameterJson, parameterIndex) {
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, false);
+}
+
+function fillConstructorOrMethodParameter(parameterJson, parameterIndex, isConstructor) {
+  if (typeof parameterJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameter() method.');
+  }
+  fillConstructorOrMethodParameterName(parameterJson, isConstructor);
+  fillConstructorOrMethodParameterType(parameterJson);
+  fillConstructorOrMethodParameterObjectiveCNamePrefix(parameterJson, parameterIndex);
+  fillConstructorOrMethodParameterSwiftNamePrefix(parameterJson, parameterIndex);
+}
+
+function fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructor) {
+  if (typeof constructorOrMethodJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameters() method.');
+  }
+  const nameKey = 'parameters';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    if (isConstructor) {
+      throw new Error(`Missing '${nameKey}' key.`);
+    }
+    constructorOrMethodJson[nameKey] = [];
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (!Array.isArray(constructorOrMethodJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  for (const parameterJson of constructorOrMethodJson[nameKey]) {
+    if (typeof parameterJson !== 'object') {
+      throw new Error(`Invalid '${nameKey}' key type.`);
+    }
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+  let parameterIndex = 0;
+  for (const parameterJson of constructorOrMethodJson[nameKey]) {
+    fillConstructorOrMethodParameter(parameterJson, parameterIndex, isConstructor);
+    parameterIndex++;
+  }
+}
+
+function fillMethodStatic(interfaceJson, methodJson) {
+  const nameKey = 'static';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof methodJson[nameKey] === 'undefined') {
+    const parentNameKey = 'static';
+    methodJson[nameKey] = typeof interfaceJson[parentNameKey] === 'boolean' ? interfaceJson[parentNameKey] : false;
+    methodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof methodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  methodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'mode';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = MethodMode.regular;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(MethodMode)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'visibility';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = Visibility.public;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(Visibility)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'noexcept';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = false;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructor) {
+  if (typeof constructorOrMethodJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethod() method.');
+  }
+  if (!isConstructor) {
+    fillMethodName(constructorOrMethodJson);
+    fillMethodReturnType(constructorOrMethodJson);
+  }
+  fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructor);
+  if (!isConstructor) {
+    fillMethodStatic(interfaceJson, constructorOrMethodJson);
+  }
+  fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor);
+}
+
+function fillConstructorsOrMethods(interfaceJson, isConstructors) {
+  if (typeof interfaceJson !== 'object' || typeof isConstructors !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorsOrMethods() method.');
+  }
+  const nameKey = isConstructors ? 'constructors' : 'methods';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = [];
+    interfaceJson[nameKeyGen] = true;
+    return;
+  }
+  if (!Array.isArray(interfaceJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  for (const constructorOrMethodJson of interfaceJson[nameKey]) {
+    if (typeof constructorOrMethodJson !== 'object') {
+      throw new Error(`Invalid '${nameKey}' key type.`);
+    }
+  }
+  interfaceJson[nameKeyGen] = false;
+  for (const constructorOrMethodJson of interfaceJson[nameKey]) {
+    fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructors);
+  }
+}
+
+function fillConstructors(interfaceJson) {
+  fillConstructorsOrMethods(interfaceJson, true);
+}
+
+function fillMethods(interfaceJson) {
+  fillConstructorsOrMethods(interfaceJson, false);
+}
+
 function writeFileContentIfDifferent(filePath, content) {
   if (fs.existsSync(filePath)) {
     if (!fs.statSync(filePath).isFile()) {
@@ -3011,5 +3273,25 @@ module.exports = {
   fillHashOperator,
   fillToStringOperator,
   fillCGenerateFuncAliasDefines,
+  defaultMethodNameLangToStyleMap,
+  fillMethodName,
+  fillMethodReturnType,
+  defaultConstructorParameterNameLangToStyleMap,
+  defaultMethodParameterNameLangToStyleMap,
+  fillConstructorOrMethodParameterName,
+  fillConstructorOrMethodParameterType,
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix,
+  fillConstructorOrMethodParameterObjectiveCNamePrefix,
+  fillConstructorOrMethodParameterSwiftNamePrefix,
+  fillConstructorOrMethodParameter,
+  fillConstructorOrMethodParameters,
+  fillMethodStatic,
+  fillConstructorOrMethodMode,
+  fillConstructorOrMethodVisibility,
+  fillConstructorOrMethodNoexcept,
+  fillConstructorOrMethod,
+  fillConstructorsOrMethods,
+  fillConstructors,
+  fillMethods,
   writeFileContentIfDifferent
 };
