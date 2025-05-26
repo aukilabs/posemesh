@@ -7,7 +7,7 @@
 The posemesh began as a web2 solution to solve real business problems. It proved the tech works, but it still relies
 on Auki's own infrastructure.
 
-Now we're turning it into an open, web3 protocol, to help it grow and start building in public.
+Now we're turning it into an open web3 protocol to help it grow and start building in public.
 
 ## Motivation
 
@@ -23,13 +23,13 @@ Use it to spot gaps, suggest solutions, and help us push more of the system into
 | **Decentralized Protocol** | A set of open, permissionless smart contracts and services that can be run, audited, or extended by anyone without a central authority.                     |
 | **Spatial Computing**      | Processing of 3D position, orientation, and environment data to anchor digital content in physical space.                                                   |
 | **Domain**                 | A physical space represented on Posemesh, identified by an ID (and optionally a Domain NFT) and associated with spatial data (maps, meshes, anchors, etc.). |
-| **Portal**                 | A physical or virtual spatial QR/AQR code used for positioning and building a shared coordinate systems within a Domain; m:n relationships to domains.      |
+| **Portal**                 | A physical or virtual spatial QR/AQR code used for positioning and building a shared coordinate system within a Domain; m:n relationships to domains.      |
 | **ERC‑20 Token**           | The fungible‑token standard on Ethereum‑compatible chains; balances are interchangeable and divisible.                                                      |
 | **Staking**                | Locking tokens in a contract as a financial commitment and to become eligible.                                                                              |
 | **Burning**                | Permanently removing tokens from circulation by sending them to an address with no private key.                                                             |
 | **Credits**                | Accounting units (1 credit ≈ 1 USD) issued when developers burn AUKI; consumed when clients access/consume network resources.                               |
-| **Participation Rewards**  | A finite amount of AUKI tokens in the Reward Pool used to reward early adopters helping bootstrapping the network; coming from the treasury foundation.     |
-| **Performance Rewards**    | The *infinite* amount of AUKI token minted to the Reward Pool when AUKI tokens are burned; used to reward Operators according to monitored performances.    |
+| **Participation Rewards**  | A finite amount of AUKI tokens in the Reward Pool used to reward early adopters helping bootstrap the network; coming from the treasury foundation.     |
+| **Performance Rewards**    | The *infinite* amount of AUKI tokens minted to the Reward Pool when AUKI tokens are burned; used to reward Operators according to monitored performances.    |
 | **Domain Data**            | Files (maps, meshes, anchors, assets, poses) that describe a physical domain; stored on Data Nodes.                                                         |
 
 ---
