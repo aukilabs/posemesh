@@ -43,11 +43,7 @@ Pose PoseEstimation::solvePnP(
     std::vector<cv::Point3f> cvObjectPoints(landmarks.size());
     for (int i = 0; i < landmarks.size(); ++i) {
         auto landmarkPosition = landmarks[i].getPosition();
-        // flip Y and Z (OpenGL -> OpenCV coordinate system conversion)
-        cvObjectPoints[i] = cv::Point3f(
-            landmarkPosition.getX(),
-            -landmarkPosition.getY(),
-            -landmarkPosition.getZ());
+        cvObjectPoints[i] = cv::Point3f(landmarkPosition.getX(), landmarkPosition.getY(), landmarkPosition.getZ());
     }
 
     std::vector<cv::Point2f> cvImagePoints(landmarkObservations.size());
@@ -109,5 +105,4 @@ Pose PoseEstimation::solvePnP(
 
     return PoseTools::fromOpenCVToOpenGL(PoseFactory::create(p, r));
 }
-
 }

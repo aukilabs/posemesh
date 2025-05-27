@@ -23,7 +23,7 @@ Pose PoseTools::fromOpenCVToOpenGL(const Pose& pose)
 
     Quaternion cvRot = pose.getRotation();
     glm::mat3 cvRotationMatrix = glm::mat3_cast(glm::quat(cvRot.getW(), cvRot.getX(), cvRot.getY(), cvRot.getZ()));
-    glm::mat3 glRotationMatrix = cvToGl * cvRotationMatrix;
+    glm::mat3 glRotationMatrix = cvToGl * cvRotationMatrix * cvToGl;
     glm::quat glRotationQuaternion = glm::quat_cast(glRotationMatrix);
     Quaternion q;
     q.setX(glRotationQuaternion.x);
