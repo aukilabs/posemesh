@@ -17,7 +17,7 @@ Posemesh got started as a closed-source web2 network using AR technology to solv
 proved itself in production, yet still depends on Auki's centralized infrastructure.
 For more background, see the [Current Architecture](02-current-architecture.md) document.
 
-We are now transitioning Posemesh to be an open-sourced web3 protocol so that the ecosystem can grow in public. This
+We are now transitioning Posemesh to be an open-source web3 protocol so that the ecosystem can grow in public. This
 document isolates the business logic of Posemesh.
 
 It is not an architectural or SDK specification; instead it describes the actors, components, and state‑changes that
@@ -163,7 +163,7 @@ invalid / valid  ≤  1 % / 10 %  =  0.10   (10 %)
 
 That means you can have at most one failed proof for every ten successful ones (10% of submission failed is acceptable).
 
-Generally the failure ratio would be `r / p`, where *r* is the reward and *p* is the penalty.
+Generally, the failure ratio would be `r / p`, where *r* is the reward and *p* is the penalty.
 
 ## 7.1 Storage Provider
 
@@ -189,7 +189,7 @@ Generally the failure ratio would be `r / p`, where *r* is the reward and *p* is
 - Discovers Participants/Providers and Domain Clusters.
 - Recruits Providers into Domain Clusters when they are needed.
 - Encrypts M:N data/stream exchange between Participants in a Domain Cluster.
-- Encrypts 1:1 messaging between Participant in a Domain Cluster.
+- Encrypts 1:1 messaging between Participants in a Domain Cluster.
 - Generates proofs of delivered network access.
 
 ## 7.3 Computing Provider
