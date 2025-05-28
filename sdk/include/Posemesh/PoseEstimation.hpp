@@ -21,6 +21,12 @@ public:
         const Matrix3x3& cameraMatrix,
         SolvePnpMethod method);
 
+    static Pose PSM_API solvePnPCameraPose(
+        const std::vector<Landmark>& landmarks,
+        const std::vector<LandmarkObservation>& landmarkObservations,
+        const Matrix3x3& cameraMatrix,
+        SolvePnpMethod method);
+
 private:
     PoseEstimation() = delete;
 };

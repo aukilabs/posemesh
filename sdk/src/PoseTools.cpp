@@ -39,4 +39,32 @@ Pose PoseTools::fromOpenGLToOpenCV(const Pose& pose)
     return fromOpenCVToOpenGL(pose);
 }
 
+Pose PoseTools::invertPose(const Pose& pose)
+{
+    Vector3 p = pose.getPosition();
+    glm::vec3 pos = glm::vec3(p.getX(), p.getY(), p.getZ());
+
+    Quaternion r = pose.getRotation();
+    glm::quat rq = glm::quat(r.getW(), r.getX(), r.getY(), r.getZ());
+    glm::mat3 rMat = glm::mat3_cast(rq);
+
+    glm::mat3 rMatInv = glm::transpose(rMat);
+
+    glm::vec3 posInv = -rMatInv * pos;
+
+    Vector3 newP;
+    newP.setX(posInv.x);
+    newP.setY(posInv.y);
+    newP.setZ(posInv.z);
+
+    glm::quat rotInv = glm::quat_cast(rMatInv);
+    Quaternion newRot;
+    newRot.setX(rotInv.x);
+    newRot.setY(rotInv.y);
+    newRot.setZ(rotInv.z);
+    newRot.setW(rotInv.w);
+
+    return PoseFactory::create(newP, newRot);
+}
+
 }
