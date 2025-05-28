@@ -1,0 +1,14 @@
+{
+  "name": "Pose",
+  "properties": [
+    {
+      "name": "Position",
+      "type": "CLASS_MIX:Vector3"
+    },
+    {
+      "name": "Rotation",
+      "type": "CLASS_MIX:Quaternion"
+    }
+  ]
+}
+  

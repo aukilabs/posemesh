@@ -8,79 +8,170 @@
             async function solvePnPTest() {
                 await Posemesh.initializePosemesh();
 
-                let objectPoints = [], imagePoints = [], cameraMatrix = undefined, outR = undefined, outT = undefined;
+                let squareLandmarksOpenGL = [
+                    [-0.15, -0.15],
+                    [0.15, -0.15],
+                    [0.15, 0.15],
+                    [-0.15, 0.15],
+                ];
+
+                let landmarkObservationsOpenGL = [
+                    [
+                        [849.3577, 461.7641],
+                        [1070.642, 461.7641],
+                        [1096.898, 636.8014],
+                        [823.1021, 636.8014],
+                    ],
+                    [
+                        [1324.333, 208.0732],
+                        [1604.393, 129.3065],
+                        [1604.393, 403.1022],
+                        [1324.333, 429.3577],
+                    ],
+                    [
+                        [379.0064, 743.9628],
+                        [552.0745, 570.8946],
+                        [725.1426, 743.9628],
+                        [552.0745, 917.0309],
+                    ],
+                ];
+                
+                let landmarkObservationsDataMoved = [
+                    [
+                        [988.7074, 493.8418],
+                        [1137.713, 518.033],
+                        [1106.013, 671.7959],
+                        [952.5204, 637.9558]
+                    ],
+                    [
+                        [1380.438, 361.8049],
+                        [1572.989, 427.3904],
+                        [1496.451, 617.8901],
+                        [1336.546, 527.9323],
+                    ],
+                    [
+                        [743.4067, 612.1638],
+                        [815.897, 549.9974],
+                        [910.6528, 650.4684],
+                        [831.5657, 702.5591],
+                    ],
+                ];
+                
+                let cameraMatrixData = [
+                    [815.8511, 0, 960],
+                    [0, 815.8511, 540],
+                    [0, 0, 1],
+                ];
+
+                let landmarks = [], landmarkObservations = [], cameraMatrix = undefined, pose = undefined;
                 try {
-                    let squareLength = 0.05;
+                    let lp0 = new Posemesh.Vector3();
+                    lp0.x = squareLandmarksOpenGL[0][0];
+                    lp0.y = squareLandmarksOpenGL[0][1];
+                    let l0 = new Posemesh.Landmark();
+                    l0.position = lp0;
+                    landmarks.push(l0);
+                    lp0.delete();
 
-                    let o0 = new Posemesh.Vector3();
-                    objectPoints.push(o0);
-                    o0.x = -squareLength / 2;
-                    o0.y = squareLength / 2;
+                    let lp1 = new Posemesh.Vector3();
+                    lp1.x = squareLandmarksOpenGL[1][0];
+                    lp1.y = squareLandmarksOpenGL[1][1];
+                    let l1 = new Posemesh.Landmark();
+                    l1.position = lp1;
+                    landmarks.push(l1);
+                    lp1.delete();
 
-                    let o1 = new Posemesh.Vector3();
-                    objectPoints.push(o1);
-                    o1.x = squareLength / 2;
-                    o1.y = squareLength / 2;
+                    let lp2 = new Posemesh.Vector3();
+                    lp2.x = squareLandmarksOpenGL[2][0];
+                    lp2.y = squareLandmarksOpenGL[2][1];
+                    let l2 = new Posemesh.Landmark();
+                    l2.position = lp2;
+                    landmarks.push(l2);
+                    lp2.delete();   
 
-                    let o2 = new Posemesh.Vector3();
-                    objectPoints.push(o2);
-                    o2.x = squareLength / 2;
-                    o2.y = -squareLength / 2;
-                    
-                    let o3 = new Posemesh.Vector3();
-                    objectPoints.push(o3);
-                    o3.x = -squareLength / 2;
-                    o3.y = -squareLength / 2;
+                    let lp3 = new Posemesh.Vector3();
+                    lp3.x = squareLandmarksOpenGL[3][0];
+                    lp3.y = squareLandmarksOpenGL[3][1];
+                    let l3 = new Posemesh.Landmark();
+                    l3.position = lp3;
+                    landmarks.push(l3);
+                    lp3.delete();
 
-                    let i0 = new Posemesh.Vector2();
-                    imagePoints.push(i0);
-                    i0.x = 358.8713;
-                    i0.y = 1128.691;
-
-                    let i1 = new Posemesh.Vector2();
-                    imagePoints.push(i1);
-                    i1.x = 542.3757;
-                    i1.y = 1105.69;
-
-                    let i2 = new Posemesh.Vector2();
-                    imagePoints.push(i2);
-                    i2.x = 560.4747;
-                    i2.y = 1267.68;
-
-                    let i3 = new Posemesh.Vector2();
-                    imagePoints.push(i3);
-                    i3.x = 361.8601;
-                    i3.y = 1295.745;
-
+                    // Matrix3x3 is column-major while JS arrays are row-major, so we take the transposed values.
                     cameraMatrix = new Posemesh.Matrix3x3();
-                    cameraMatrix.m00 = 1444.07;
-                    cameraMatrix.m02 = 723.0972;
-                    cameraMatrix.m11 = 1444.07;
-                    cameraMatrix.m12 = 961.7217;
-                    cameraMatrix.m22 = 1;
+                    cameraMatrix.m00 = cameraMatrixData[0][0];
+                    cameraMatrix.m10 = cameraMatrixData[0][1];
+                    cameraMatrix.m20 = cameraMatrixData[0][2];
+                    cameraMatrix.m01 = cameraMatrixData[1][0];
+                    cameraMatrix.m11 = cameraMatrixData[1][1];
+                    cameraMatrix.m21 = cameraMatrixData[1][2];
+                    cameraMatrix.m02 = cameraMatrixData[2][0];
+                    cameraMatrix.m12 = cameraMatrixData[2][1];
+                    cameraMatrix.m22 = cameraMatrixData[2][2];
 
-                    outR = new Posemesh.Matrix3x3();
-                    outT = new Posemesh.Vector3();
+                    for (let i = 0; i < landmarkObservationsOpenGL.length; i++) {
+                        for (let observation of landmarkObservations) {
+                            observation.delete();
+                        }
+                        landmarkObservations = [];
 
-                    let estimationSuccess = Posemesh.PoseEstimation.solvePnP(objectPoints, imagePoints, cameraMatrix, outR, outT);
-                    console.log('Estimation success =', estimationSuccess);
-                    console.log(`outR = [${outR.m00}, ${outR.m01},  ${outR.m02}, ...]`);
-                    console.log(`outT = (${outT.x}, ${outT.y}, ${outT.z})`);
-                } finally {
-                    if (outT) {
-                        outT.delete();
+                        let landmarkObservationsSet = landmarkObservationsOpenGL[i];
+                        let lo0p = new Posemesh.Vector2();
+                        lo0p.x = landmarkObservationsSet[0][0];
+                        lo0p.y = landmarkObservationsSet[0][1];
+                        let lo0 = new Posemesh.LandmarkObservation();
+                        lo0.position = lo0p;
+                        landmarkObservations.push(lo0);
+                        lo0p.delete();
+
+                        let lo1p = new Posemesh.Vector2();
+                        lo1p.x = landmarkObservationsSet[1][0];
+                        lo1p.y = landmarkObservationsSet[1][1];
+                        let lo1 = new Posemesh.LandmarkObservation();
+                        lo1.position = lo1p;
+                        landmarkObservations.push(lo1);
+                        lo1p.delete();
+
+                        let lo2p = new Posemesh.Vector2();
+                        lo2p.x = landmarkObservationsSet[2][0];
+                        lo2p.y = landmarkObservationsSet[2][1];
+                        let lo2 = new Posemesh.LandmarkObservation();
+                        lo2.position = lo2p;
+                        landmarkObservations.push(lo2);
+                        lo2p.delete();
+
+                        let lo3p = new Posemesh.Vector2();
+                        lo3p.x = landmarkObservationsSet[3][0];
+                        lo3p.y = landmarkObservationsSet[3][1];
+                        let lo3 = new Posemesh.LandmarkObservation();
+                        lo3.position = lo3p;
+                        landmarkObservations.push(lo3);
+                        lo3p.delete();
+
+                        pose = Posemesh.PoseEstimation.solvePnP(landmarks, landmarkObservations, cameraMatrix, Posemesh.SolvePnpMethod.SOLVE_PNP_IPPE_SQUARE);
+                        
+                        let position = pose.position;
+                        let rotation = pose.rotation;
+                        console.log(`position = (${position.x}, ${position.y}, ${position.z})`);
+                        console.log(`rotation = [${rotation.x}, ${rotation.y},  ${rotation.z}, ${rotation.w}]`);
+
+                        rotation.delete();
+                        position.delete();
                     }
-                    if (outR) {
-                        outR.delete();
+                } finally {
+                    if (pose) {
+                        pose.position.delete();
+                        pose.rotation.delete();
+                        pose.delete();
                     }
                     if (cameraMatrix) {
                         cameraMatrix.delete();
                     }
-                    for (let imagePoint of imagePoints) {
-                        imagePoint.delete();
+                    for (let observation of landmarkObservations) {
+                        observation.delete();
                     }
-                    for (let objectPoint of objectPoints) {
-                        objectPoint.delete();
+                    for (let landmark of landmarks) {
+                        landmark.delete();
                     }
                 }
             }

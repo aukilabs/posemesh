@@ -8,7 +8,7 @@
 
 namespace psm {
 
-cv::aruco::PredefinedDictionaryType toCvArucoPredefinedDictionaryType(psm::ArucoMarkerFormat format)
+cv::aruco::PredefinedDictionaryType toCVArucoPredefinedDictionaryType(psm::ArucoMarkerFormat format)
 {
     switch (format) {
     case ArucoMarkerFormat::Set4x4Codes50:
@@ -85,7 +85,7 @@ bool ArucoDetection::detectArucoFromLuminance(
         const cv::Mat cvImage(cv::Size(width, height), CV_8U, const_cast<std::uint8_t*>(imageBytes));
 
         cv::aruco::DetectorParameters detectorParams;
-        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(toCvArucoPredefinedDictionaryType(markerFormat));
+        cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(toCVArucoPredefinedDictionaryType(markerFormat));
         cv::aruco::ArucoDetector detector(dictionary, detectorParams);
 
         std::vector<std::vector<cv::Point2f>> cornersFound;

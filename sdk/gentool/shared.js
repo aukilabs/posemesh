@@ -13,7 +13,9 @@ const manualUmbrellaAndBridgingHeaderNames = new Set([
 // Put your class names that will be used within an std::vector type in JavaScript here:
 const requiredVectorsOfClasses = new Set([
   'Vector2',
-  'Vector3'
+  'Vector3',
+  'Landmark',
+  'LandmarkObservation'
 ]);
 
 module.exports = {

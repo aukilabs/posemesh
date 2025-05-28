@@ -1,18 +1,18 @@
 posemeshModule.PoseEstimation = null;
 
 __internalPosemeshAPI.builderFunctions.push(function() {
-    __internalPosemesh.PoseEstimation.solvePnP = function(objectPoints, imagePoints, cameraMatrix, outR, outT) {
-        let objectPointsVector = undefined, imagePointsVector = undefined;
+    __internalPosemesh.PoseEstimation.solvePnP = function(landmarks, landmarkObservations, cameraMatrix, method) {
+        let landmarksVector = undefined, landmarkObservationsVector = undefined;
         try {
-            objectPointsVector = __internalPosemeshAPI.toVectorVector3(objectPoints, false);
-            imagePointsVector = __internalPosemeshAPI.toVectorVector2(imagePoints, false);
-            return __internalPosemesh.PoseEstimation.__solvePnP(objectPointsVector, imagePointsVector, cameraMatrix, outR, outT);
+            landmarksVector = __internalPosemeshAPI.toVectorLandmark(landmarks, false);
+            landmarkObservationsVector = __internalPosemeshAPI.toVectorLandmarkObservation(landmarkObservations, false);
+            return __internalPosemesh.PoseEstimation.__solvePnP(landmarksVector, landmarkObservationsVector, cameraMatrix, method);
         } finally {
-            if (imagePointsVector) {
-                imagePointsVector.delete();
+            if (landmarkObservationsVector) {
+                landmarkObservationsVector.delete();
             }
-            if (objectPointsVector) {
-                objectPointsVector.delete();
+            if (landmarksVector) {
+                landmarksVector.delete();
             }
         }
     };
