@@ -1,8 +1,8 @@
 #include <Posemesh/CalibrationHelpers.hpp>
-#include <utility>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/mat3x3.hpp>
 #include <glm/vec3.hpp>
-#include <glm/gtc/quaternion.hpp>
+#include <utility>
 
 namespace psm {
 
@@ -28,7 +28,7 @@ const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& inWorld, c
     }
 
     glm::mat3x3 rotationMatrix = glm::mat3x3(rotation);
-    
+
     auto pw = inWorld.getPosition();
     auto pd = inDomain.getPosition();
     glm::vec3 position;
@@ -39,7 +39,7 @@ const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& inWorld, c
     position.x += pw.getX();
     position.y += pw.getY();
     position.z += pw.getZ();
-    
+
     Matrix4x4 calibrationMatrix;
     calibrationMatrix.setM00(rotationMatrix[0][0]);
     calibrationMatrix.setM01(rotationMatrix[0][1]);

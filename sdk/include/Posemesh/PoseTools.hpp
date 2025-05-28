@@ -12,7 +12,7 @@ public:
     static Pose PSM_API fromOpenCVToOpenGL(const Pose& pose);
     static Pose PSM_API fromOpenGLToOpenCV(const Pose& pose);
     static Pose PSM_API invertPose(const Pose& pose);
-    
+
 private:
     PoseTools() = delete;
 };

@@ -16,8 +16,8 @@ NS_SWIFT_NAME(QRDetection) PSM_API @interface PSMQRDetection : NSObject
     NS_REFINED_FOR_SWIFT;
 
 + (NSArray*)detectQRFromLuminanceImageData:(NSData*)imageData
-                               ofWidth:(int32_t)width
-                             andHeight:(int32_t)height
+                                   ofWidth:(int32_t)width
+                                 andHeight:(int32_t)height
     NS_REFINED_FOR_SWIFT;
 
 @end

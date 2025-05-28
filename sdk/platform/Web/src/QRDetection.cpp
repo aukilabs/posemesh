@@ -30,7 +30,7 @@ std::vector<std::shared_ptr<psm::LandmarkObservation>> detectQRFromLuminanceLand
     int height)
 {
     std::vector<std::shared_ptr<psm::LandmarkObservation>> observations;
-    auto lo = QRDetection::detectQRFromLuminance(imageBytes, width, height);    
+    auto lo = QRDetection::detectQRFromLuminance(imageBytes, width, height);
     for (auto& observation : lo) {
         observations.emplace_back(new psm::LandmarkObservation(std::move(observation)));
     }

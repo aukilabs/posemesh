@@ -96,7 +96,7 @@ std::vector<LandmarkObservation> QRDetection::detectQRFromLuminance(
                 LandmarkObservation l;
                 l.setPosition(outCorners[i * 4 + j]);
                 l.setType("qr");
-                std::string content = outContents[i]; 
+                std::string content = outContents[i];
                 if (Portals::isAukiQR(content)) {
                     l.setType("portal");
                     content = Portals::extractShortId(content);
