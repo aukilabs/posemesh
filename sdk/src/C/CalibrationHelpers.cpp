@@ -4,7 +4,7 @@
 #include <memory>
 #include <utility>
 
-const psm_matrix4x4_t* psm_calibration_helpers_get_calibrationmatrix(psm_pose_t* pose_in_domain, psm_pose_t* observed_pose, bool only_rotate_around_y)
+const psm_matrix4x4_t* psm_calibration_helpers_get_calibration_matrix(psm_pose_t* pose_in_domain, psm_pose_t* observed_pose, bool only_rotate_around_y)
 {
     psm::Matrix4x4 calibrationMatrix = psm::CalibrationHelpers::getCalibrationMatrix(*static_cast<const psm::Pose*>(pose_in_domain), *static_cast<const psm::Pose*>(observed_pose), only_rotate_around_y);
 

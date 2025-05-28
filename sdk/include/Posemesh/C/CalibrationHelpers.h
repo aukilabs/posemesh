@@ -18,7 +18,7 @@ typedef struct psm_calibration_helpers psm_calibration_helpers_t;
 extern "C" {
 #endif
 
-const psm_matrix4x4_t* PSM_API psm_calibration_helpers_get_calibrationmatrix(psm_pose_t* pose_in_domain, psm_pose_t* observed_pose, bool only_rotate_around_y);
+const psm_matrix4x4_t* PSM_API psm_calibration_helpers_get_calibration_matrix(psm_pose_t* pose_in_domain, psm_pose_t* observed_pose, bool only_rotate_around_y);
 
 #if defined(__cplusplus)
 }
