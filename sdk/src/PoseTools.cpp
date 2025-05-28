@@ -7,24 +7,17 @@ namespace psm {
 
 Pose PoseTools::fromOpenCVToOpenGL(const Pose& pose)
 {
-    // To convert from OpenCV to OpenGL we need to flip the Y and Z axes.
-    glm::mat3 cvToGl = glm::mat3(
-        1, 0, 0,
-        0, -1, 0,
-        0, 0, -1);
-
     Vector3 cvPos = pose.getPosition();
-    glm::vec3 cvPosition = glm::vec3(cvPos.getX(), cvPos.getY(), cvPos.getZ());
-    glm::vec3 glPosition = cvToGl * cvPosition;
     Vector3 p;
-    p.setX(glPosition.x);
-    p.setY(glPosition.y);
-    p.setZ(glPosition.z);
+    p.setX(cvPos.getX());
+    p.setY(-cvPos.getY());
+    p.setZ(-cvPos.getZ());
 
     Quaternion cvRot = pose.getRotation();
     glm::mat3 cvRotationMatrix = glm::mat3_cast(glm::quat(cvRot.getW(), cvRot.getX(), cvRot.getY(), cvRot.getZ()));
-    glm::mat3 glRotationMatrix = cvToGl * cvRotationMatrix * cvToGl;
-    glm::quat glRotationQuaternion = glm::quat_cast(glRotationMatrix);
+    glm::quat flipYZ = glm::angleAxis(glm::radians(180.0f), glm::vec3(1, 0, 0));
+    glm::quat glRotationQuaternion = flipYZ * glm::quat_cast(cvRotationMatrix);
+
     Quaternion q;
     q.setX(glRotationQuaternion.x);
     q.setY(glRotationQuaternion.y);
