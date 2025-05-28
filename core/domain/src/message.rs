@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
-use posemesh_networking::{client::Client, libp2p::NetworkError};
+use posemesh_networking::{client::{Client, TClient}, libp2p::NetworkError};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, MessageRead, MessageWrite};
 
 use crate::{datastore::common::{DomainError, CHUNK_SIZE}, protobuf::task};
@@ -18,7 +18,7 @@ pub fn prefix_size_message<M: MessageWrite>(message: &M) -> Vec<u8>
     result
 }
 
-pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>>(mut stream: impl AsyncRead + Unpin) -> Result<M, quick_protobuf::Error> {
+pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>, S: AsyncRead + Unpin>(stream: &mut S) -> Result<M, quick_protobuf::Error> {
     let mut size_buffer = [0u8; 4];
     stream.read_exact(&mut size_buffer).await?;
     let size = u32::from_be_bytes(size_buffer);
@@ -29,7 +29,6 @@ pub async fn read_prefix_size_message<M: for<'a> MessageRead<'a>>(mut stream: im
         stream.read_exact(&mut message_buffer[read..read + chunk_size]).await?;
         read += chunk_size;
     }
-    
     deserialize_from_slice(&message_buffer)
 }
 
@@ -52,20 +51,16 @@ pub async fn handshake_then_content<M: MessageWrite>(peer: Client, domain_id: &s
 
 pub async fn handshake_then_vec(peer: Client, domain_id: &str, access_token: &str, receiver: &str, endpoint: &str, vec: Vec<u8>, timeout: u32) -> Result<Stream, DomainError> {
     let mut upload_stream = handshake(peer, domain_id, access_token, receiver, endpoint, timeout).await?;
-    tracing::debug!("Sending vec");
     upload_stream.write_all(&vec).await?;
-    tracing::debug!("Flushing");
     upload_stream.flush().await?;
     Ok(upload_stream)
 }
 
 pub async fn handshake(mut peer: Client, domain_id: &str, access_token: &str, receiver: &str, endpoint: &str, timeout: u32) -> Result<Stream, DomainError> {
-    tracing::debug!("Sending handshake");
     let upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshake{
         access_token: access_token.to_string(),
         domain_id: domain_id.to_string(),
     }), receiver.to_string(), endpoint.to_string(), timeout).await?;
-    tracing::debug!("Handshake sent");
     Ok(upload_stream)
 }
 
@@ -76,17 +71,15 @@ pub async fn request_response_with_handshake<Request: MessageWrite, Response: fo
         upload_stream.write_all(chunk).await?;
     }
     upload_stream.flush().await?;
-    let response = read_prefix_size_message::<Response>(&mut upload_stream).await?;
+    let response = read_prefix_size_message::<Response, _>(&mut upload_stream).await?;
     Ok(response)
 }
 
 pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a> + Send + >(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
     let mut upload_stream = peer.send(prefix_size_message(request), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
-    tracing::debug!("created stream to {}, waiting for response", receiver);
     
-    utils::timeout(Duration::from_millis(timeout_millis as u64), async move {
-        let response = read_prefix_size_message::<Response>(&mut upload_stream).await.expect("Failed to read response");
-        tracing::debug!("received response from {}, returning", receiver);
+    posemesh_utils::timeout(Duration::from_millis(timeout_millis as u64), async move {
+        let response = read_prefix_size_message::<Response, _>(&mut upload_stream).await.expect("Failed to read response");
         Ok(response)
     }).await?
 }

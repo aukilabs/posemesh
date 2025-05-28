@@ -1,14 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
+use async_trait::async_trait;
 use futures::{channel::mpsc::{channel, Sender}, SinkExt};
-use quick_protobuf::serialize_into_slice;
+use mockall::automock;
 use tokio::{spawn, sync::Mutex};
 use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 use crate::protobuf::domain_data::Query;
 use super::{common::{data_id_generator, DomainError, Reader}, fs::from_path_to_hash};
-use sha2::{Sha256, Digest};
 
-pub(crate) struct UpsertMetadata {
+pub struct UpsertMetadata {
     pub name: String,
     pub data_type: String,
     pub size: u32,
@@ -20,7 +20,7 @@ pub(crate) struct UpsertMetadata {
 }
 
 #[derive(Clone)]
-pub(crate) struct Metadata {
+pub struct Metadata {
     pub id: String,
     pub name: String,
     pub data_type: String,
@@ -31,7 +31,7 @@ pub(crate) struct Metadata {
 }
 
 #[derive(Clone)]
-pub struct MetadataStore {
+pub struct PGMetadataStore {
     pg_client: Arc<Mutex<Client>>,
     listeners: Arc<Mutex<HashMap<String, HashMap<String, Listener>>>>,
 }
@@ -47,13 +47,13 @@ impl Listener {
     }
 }
 
-pub(crate) struct MetadataReader {
+pub struct MetadataReader {
     pub(crate) reader: Reader<Metadata>,
     pub(crate) id: Option<String>,
 }
 
-impl MetadataStore {
-    pub async fn new(conn_str: &str) -> Result<MetadataStore, tokio_postgres::Error> {
+impl PGMetadataStore {
+    pub async fn new(conn_str: &str) -> Result<PGMetadataStore, tokio_postgres::Error> {
         let (client, connection) = tokio_postgres::connect(conn_str, NoTls).await?;
 
         // Spawn a task to manage the connection
@@ -63,7 +63,7 @@ impl MetadataStore {
             }
         });
 
-        Ok(MetadataStore { pg_client: Arc::new(Mutex::new(client)), listeners: Arc::new(Mutex::new(HashMap::new())) })
+        Ok(PGMetadataStore { pg_client: Arc::new(Mutex::new(client)), listeners: Arc::new(Mutex::new(HashMap::new())) })
     }
 }
 
@@ -121,16 +121,29 @@ impl Query {
     }
 }
 
-impl MetadataStore {
-    pub(crate) async fn remove_listener(&mut self, domain_id: String, id: String) {
-        let mut listeners = self.listeners.lock().await;
-        tracing::info!("Removing listener for domain_id: {}", domain_id);
-        listeners.entry(domain_id).and_modify(|listeners| {
-            listeners.remove(&id);
-        });
-    }
+#[automock]
+#[async_trait]
+pub trait MetadataStore: Send + Sync {
+    async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> Result<MetadataReader, DomainError>;
+    async fn upsert(&mut self, domain_id: String, metadata: UpsertMetadata) -> Result<(), DomainError>;
+    async fn close_reader(&mut self, domain_id: String, reader: MetadataReader);
+}
 
-    pub(crate) async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> Result<MetadataReader, DomainError> {
+#[async_trait]
+impl MetadataStore for PGMetadataStore {
+    async fn close_reader(&mut self, domain_id: String, mut reader: MetadataReader) {
+        if let Some(id) = reader.id {
+            let mut listeners = self.listeners.lock().await;
+            tracing::info!("Removing listener {} for domain_id: {}", id, domain_id);
+            listeners.entry(domain_id).and_modify(|listeners| {
+                if let Some(mut listener) = listeners.remove(&id) {
+                    listener.sender.close();
+                }
+            });
+        }
+        reader.reader.close();
+    }
+    async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> Result<MetadataReader, DomainError> {
         let domain_id = Uuid::parse_str(&domain_id).map_err(|e| DomainError::Invalid("domain_id".to_string(), domain_id, e.to_string()))?;
         let (sql, params) = query.to_select(domain_id);
         let (mut writer, reader) = channel::<Result<Metadata, DomainError>>(240);
@@ -180,7 +193,7 @@ impl MetadataStore {
         Ok(MetadataReader { reader, id: listener_id })
     }
 
-    pub(crate) async fn upsert(&mut self, domain_id: String, metadata: UpsertMetadata) -> Result<(), DomainError> {
+    async fn upsert(&mut self, domain_id: String, metadata: UpsertMetadata) -> Result<(), DomainError> {
         let client = self.pg_client.clone();
         
         let mut sql = "INSERT INTO domain_data (id, name, data_type, data_size, link, domain_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name, domain_id) DO UPDATE SET data_type=$3,data_size=$4,link=$5,updated_at=now()";

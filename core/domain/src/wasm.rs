@@ -1,10 +1,11 @@
-use std::sync::{Arc, Mutex};
-use futures::{executor::block_on, SinkExt, StreamExt};
-use quick_protobuf::serialize_into_vec;
+use std::{io::{Error, ErrorKind}, pin::Pin, sync::{Arc, Mutex}, task::{Context, Poll}};
+use async_trait::async_trait;
+use futures::{channel::mpsc, executor::block_on, AsyncWrite, StreamExt, SinkExt};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::{RemoteDatastore as r_RemoteDatastore}}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -186,6 +187,115 @@ pub struct RemoteDatastore {
 }
 
 #[wasm_bindgen]
+pub struct DataConsumer {
+    inner: Box<dyn common::DataConsumer>,
+}
+
+#[wasm_bindgen]
+impl DataConsumer {
+    #[wasm_bindgen]
+    pub fn close(&mut self) {
+        block_on(async move {
+            self.inner.close().await;
+        });
+    }
+}
+
+struct DomainDataWriter {
+    metadata: Option<domain_data::Metadata>,
+    content: Option<Vec<u8>>,
+    domain_id: String,
+    metadata_only: bool,
+    sender: mpsc::Sender<domain_data::Data>,
+}
+
+#[async_trait]
+impl AsyncWrite for DomainDataWriter {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        content: &[u8],
+    ) -> Poll<Result<usize, Error>> {
+        if self.metadata.is_none() {
+            // Read only the first 4 bytes (size prefix)
+            if content.len() < 4 {
+                return Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "Incomplete metadata")));
+            }
+
+            match deserialize_from_slice::<domain_data::Metadata>(&content[4..]) {
+                Ok(metadata) => {
+                    self.metadata = Some(metadata);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to deserialize metadata: {}", e);
+                    return Poll::Ready(Err(Error::new(ErrorKind::Other, "Failed to deserialize metadata")));
+                }
+            }
+        } else if !self.metadata_only {
+            self.content
+                .get_or_insert_with(Vec::new)
+                .extend_from_slice(content);
+        }
+
+        let mut done = false;
+        if let Some(ref metadata) = self.metadata {
+            let current_len = self.content.as_ref().map(|c| c.len()).unwrap_or(0);
+            tracing::info!("received {}/{} bytes", current_len, metadata.size);
+            if self.metadata_only || current_len == metadata.size as usize {
+                done = true;
+            }
+            if current_len > metadata.size as usize {
+                tracing::error!("content length {} is greater than metadata size {}", current_len, metadata.size);
+                return Poll::Ready(Err(Error::new(ErrorKind::Other, "Content length is greater than metadata size")));
+            }
+        }
+
+        if done {
+            let metadata = self.metadata.take().unwrap();
+            let data = domain_data::Data {
+                domain_id: self.domain_id.clone(),
+                metadata: metadata.clone(),
+                content: self.content.take().unwrap_or_default(),
+            };
+            let mut sender = self.sender.clone();
+
+            // spawn async send
+            spawn_local(async move {
+                if let Err(e) = sender.send(data).await {
+                    tracing::error!("Failed to send data: {}", e);
+                }
+            });
+        }
+
+        Poll::Ready(Ok(content.len()))
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+    ) -> Poll<Result<(), Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+    ) -> Poll<Result<(), Error>> {
+        tracing::info!("closing DomainDataWriter");
+        self.metadata = None;
+        self.content = None;
+        let mut sender = self.sender.clone();
+        block_on(async move {
+            if let Err(e) = sender.close().await {
+                tracing::error!("Failed to send data: {}", e);
+            }
+        });
+        Poll::Ready(Ok(()))
+    }
+}
+
+
+#[wasm_bindgen]
 impl RemoteDatastore {
     #[wasm_bindgen(constructor)]
     pub fn new(cluster: &DomainCluster) -> Self {
@@ -200,37 +310,34 @@ impl RemoteDatastore {
         domain_id: String,
         query: Query,
         callback: Function,
-        keep_alive: bool
+        keep_alive: bool,
     ) -> js_sys::Promise {
         let query = query.clone();
         let mut inner = self.inner.clone();
 
         future_to_promise(async move {
-            let res = inner.load(domain_id, query.inner, keep_alive).await;
+            let (tx, mut rx) = mpsc::channel::<domain_data::Data>(100);
+            let writer = DomainDataWriter {
+                metadata: None,
+                content: None,
+                domain_id: domain_id.clone(),
+                metadata_only: query.inner.metadata_only,
+                sender: tx,
+            };
+            let res = inner.load::<DomainDataWriter>(domain_id, query.inner, keep_alive, writer).await;
             if let Err(e) = res {
                 return Err(JsValue::from_str(&format!("{}", e)));
             }
-            
-            let mut res = res.unwrap();
+            let res = res.unwrap();
             spawn_local(async move {
-                while let Some(data) = res.next().await {
-                    match data {
-                        Ok(data) => {
-                            let data = from_r_data(&data);
-                            tracing::debug!("Consumed data: {}", data.metadata.name);
-                            let js_data = JsValue::from(data);
-                            callback.call2(&JsValue::NULL, &js_data, &JsValue::NULL).expect("Failed to call callback");
-                        }
-                        Err(e) => {
-                            callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::from_str(&format!("{}", e))).unwrap();
-                        }
-                    }
+                while let Some(data) = rx.next().await {
+                    let data = from_r_data(&data);
+                    callback.call2(&JsValue::NULL, &JsValue::from(data), &JsValue::NULL).expect("Failed to call callback");
                 }
-                tracing::debug!("Consumed all data");
-                callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::NULL).unwrap();
+                tracing::debug!("closing DomainDataConsumer");
+                callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::NULL).expect("Failed to call callback");
             });
-            
-            Ok(JsValue::NULL)
+            Ok(JsValue::from(DataConsumer {inner: res}))
         })
     }
 

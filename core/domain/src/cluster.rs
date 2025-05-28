@@ -130,7 +130,8 @@ impl InnerDomainCluster {
         let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, "/jobs/v1", job, 0).await;
         match response {
             Ok(response) => {
-                self.peer.client.subscribe(response.job_id.clone()).await.unwrap();
+                self.peer.client.subscribe(response.job_id.clone()).await.expect("can't subscribe to job");
+                tracing::debug!("Subscribed to job: {:?}", response.job_id);
                 self.jobs.insert(TopicHash::from_raw(response.job_id.clone()), tx);
             }
             Err(e) => {

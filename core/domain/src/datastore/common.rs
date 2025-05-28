@@ -1,10 +1,12 @@
 
+use std::future::Future;
+
 use crate::{auth::AuthError, protobuf::domain_data::{self, Data}};
 use async_trait::async_trait;
 use posemesh_networking::libp2p::NetworkError;
 use uuid::Uuid;
 
-use futures::channel::{mpsc::{Receiver, Sender}, oneshot::Canceled};
+use futures::{channel::{mpsc::{Receiver, Sender}, oneshot::Canceled}, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -54,10 +56,15 @@ pub trait ReliableDataProducer: Send + Sync {
     async fn close(&mut self) -> ();
 }
 
+#[async_trait]
+pub trait DataConsumer: Send + Sync + Unpin {
+    async fn close(&mut self) -> ();
+    async fn wait_for_done(&mut self) -> Result<(), DomainError>;
+}
 
 #[async_trait]
 pub trait Datastore: Send + Sync + Clone {
-    async fn load(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool) -> Result<DataReader, DomainError>;
+    async fn load<W: AsyncWrite + Unpin + Send + 'static>(self: &mut Self, domain_id: String, query: domain_data::Query, keep_alive: bool, writer: W) -> Result<Box<dyn DataConsumer>, DomainError>;
     async fn upsert(self: &mut Self, domain_id: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>;
 }
 

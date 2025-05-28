@@ -38,9 +38,10 @@ console_error_panic_hook = "0.1.7"
 posemesh-networking = { path = "networking" }
 posemesh-runtime = { path = "runtime" }
 posemesh-domain = { path = "domain" }
-utils = { path = "utils" }
+posemesh-utils = { path = "utils" }
 async-trait = "0.1.88"
 thiserror = "2.0.12"
+mockall = "0.13.1"
 
 [profile.release]
 strip = true

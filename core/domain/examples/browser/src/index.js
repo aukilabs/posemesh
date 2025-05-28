@@ -233,18 +233,9 @@ export class UploadManager {
         }
     }
 
-    async downloadFiles(callback) {
+    async downloadFiles(query, keepAlive, callback) {
         if (this.datastore != null) {
-            let nameRegexp = document.getElementById('nameRegexp').value;
-            if (nameRegexp == "") {
-                nameRegexp = null;
-            }
-            const keepAlive = document.getElementById('keepAlive').checked;
-
-            const query = new Query([], [], [], nameRegexp, null, keepAlive);
-
             const downloader = await this.datastore.consume(this.domainId, query, callback, keepAlive);
-            console.log("Downloader initialized");
             return downloader;
         } else {
             console.error("Haven't initialized");
@@ -325,12 +316,22 @@ async function initializeApp() {
         progressLabel.innerText = "Reconstruction submitted!";
     }
 
+    let downloader = null;
     // Set up download functionality
     downloadBtn.addEventListener("click", async () => {
         downloadBtn.disabled = true;
         downloadBtn.textContent = "Downloading...";
+        downloadContainer.innerHTML = "";
         const scanNames = new Set();
-        await uploadManager.downloadFiles((file, err) => {
+
+        let nameRegexp = document.getElementById('nameRegexp').value;
+        if (nameRegexp == "") {
+            nameRegexp = null;
+        }
+        const keepAlive = document.getElementById('keepAlive').checked;
+
+        const query = new Query([], [], [], nameRegexp, null, true);
+        downloader = await uploadManager.downloadFiles(query, keepAlive, (file, err) => {
             if (err) {
                 console.error("Error in downloadFiles", err);
 
@@ -408,14 +409,27 @@ async function initializeApp() {
                 fileList.appendChild(p);
             }
         });
+
+        endBtn.disabled = false;
     });
 
     // Set up 'keep-alive' checkbox event listener
     keepAliveCheckbox.addEventListener('change', (event) => {
         if (event.target.checked) {
             endBtn.classList.remove('hidden');
+            endBtn.disabled = true;
         } else {
             endBtn.classList.add('hidden');
+        }
+    });
+
+    endBtn.addEventListener('click', () => {
+        if (downloader !== null) {
+            downloader.close();
+            console.log('Download process ended.');
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = "Download Scans";
+            endBtn.disabled = true;
         }
     });
 

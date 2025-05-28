@@ -1,9 +1,13 @@
-use crate::{auth::{handshake, AuthError}, datastore::common::{Datastore, DomainError, CHUNK_SIZE}, message::prefix_size_message, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task}}};
+use crate::{auth::{handshake, AuthError}, datastore::common::{DataConsumer, Datastore, DomainError, CHUNK_SIZE}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task, UnsubscribeDataQueryV1}}};
 use posemesh_networking::{libp2p::{NetworkError, Networking}, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use futures::{select, AsyncReadExt, AsyncWriteExt, StreamExt};
+use futures::{channel::oneshot::{self, Canceled}, select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, FutureExt, StreamExt};
 use posemesh_networking::client::TClient;
 use super::public_key::PublicKeyStorage;
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::spawn;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local as spawn;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CapabilityError {
@@ -36,6 +40,18 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
         if res.is_err() {
             let err = res.err().unwrap();
             if err.kind() == std::io::ErrorKind::UnexpectedEof {
+                let task = Task {
+                    name: claim.task_name.clone(),
+                    receiver: Some(claim.receiver.clone()),
+                    sender: claim.sender.clone(),
+                    endpoint: PRODUCE_DATA_PROTOCOL_V1.to_string(),
+                    status: Status::DONE,
+                    access_token: None,
+                    job_id: job_id.clone(),
+                    output: None,
+                };
+                let buf = serialize_into_vec(&task)?;
+                c.client.publish(job_id.clone(), buf).await.map_err(|e| CapabilityError::NetworkError(e))?;
                 return Ok(());
             } else {
                 return Err(CapabilityError::StreamError(err));
@@ -87,55 +103,28 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
     }
 }
 
-pub async fn serve_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mut stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {
-    let header = handshake(&mut stream, key_loader).await?;
+pub async fn serve_data_v1<S: AsyncStream + 'static, D: Datastore, P: PublicKeyStorage>(stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {    
+    let (mut read, write) = stream.split();
+    let header = handshake(&mut read, key_loader).await?;
     c.client.subscribe(header.job_id.clone()).await?;
-    
-    let mut buf = Vec::<u8>::new();
-    let res = stream.read_to_end(&mut buf).await;
-    if res.is_err() {
-        let err = res.err().unwrap();
-        if err.kind() == std::io::ErrorKind::UnexpectedEof {
-            return Ok(());
-        } else {
-            return Err(CapabilityError::StreamError(err));
-        }
-    }
-    let input = deserialize_from_slice::<ConsumeDataInputV1>(&buf)?;
-    let mut consumer = datastore.load(header.domain_id.clone(), input.query, input.keep_alive).await?;
-    loop {
-        select! {
-            result = consumer.next() => {
-                match result {
-                    Some(Ok(data)) => {
-                        stream.write_all(&prefix_size_message(&data.metadata)).await?;
-                        stream.flush().await?;
-                        for chunk in data.content.chunks(CHUNK_SIZE) {
-                            stream.write_all(chunk).await?;
-                            stream.flush().await?;
-                        }
-                        tracing::info!("Served data: {}, size: {}", data.metadata.name, data.metadata.size);
-                    }
-                    Some(Err(e)) => {
-                        tracing::error!("Error: {:?}", e);
-                        return Err(CapabilityError::DomainError(e));
-                    }
-                    None => break
-                }
+    let input = read_prefix_size_message::<ConsumeDataInputV1, _>(&mut read).await?;
+    let (cancel_tx, mut cancel_rx) = oneshot::channel();
+
+    let mut consumer = datastore.load::<_>(header.domain_id.clone(), input.query, input.keep_alive, write).await?;
+    spawn(async move {
+        let res = read_prefix_size_message::<UnsubscribeDataQueryV1, _>(&mut read).await;
+        let _ = cancel_tx.send(res);
+    });
+
+    select! {
+        res = consumer.wait_for_done().fuse() => res.map_err(|e| CapabilityError::DomainError(e)),
+        res = cancel_rx => {
+            consumer.close().await;
+            match res {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(e)) => Err(CapabilityError::ProtobufError(e)),
+                Err(e) => Err(CapabilityError::DomainError(DomainError::Cancelled("client cancelled".to_string(), e))),
             }
         }
     }
-
-    let task = Task {
-        name: header.task_name.clone(),
-        receiver: Some(header.receiver.clone()),
-        sender: header.sender.clone(),
-        endpoint: CONSUME_DATA_PROTOCOL_V1.to_string(),
-        status: Status::DONE,
-        access_token: None,
-        job_id: header.job_id.clone(),
-        output: None,
-    };
-    let buf = serialize_into_vec(&task)?;
-    c.client.publish(header.job_id.clone(), buf).await.map_err(|e| CapabilityError::NetworkError(e))
 }

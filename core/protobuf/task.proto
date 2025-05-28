@@ -77,6 +77,10 @@ message ConsumeDataInputV1 {
   required bool keep_alive = 2;
 }
 
+message UnsubscribeDataQueryV1 {
+  
+}
+
 message StoreDataOutputV1 {
   repeated string ids = 1;
 }

@@ -6,7 +6,7 @@ use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
 use std::{sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
-use futures::{channel::oneshot, lock::Mutex, select, FutureExt};
+use futures::{channel::oneshot, lock::Mutex, select, AsyncRead, FutureExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -126,8 +126,8 @@ pub trait TokenClaim: Serialize + DeserializeOwned {
     fn add_ttl(&mut self, ttl: Duration);
 }
 
-pub async fn handshake<S: AsyncStream, P: PublicKeyStorage>(stream: &mut S, key_loader: P) -> Result<TaskTokenClaim, AuthError> {
-    let header = read_prefix_size_message::<DomainClusterHandshake>(stream).await?;
+pub async fn handshake<S: AsyncRead + Unpin, P: PublicKeyStorage>(stream: &mut S, key_loader: P) -> Result<TaskTokenClaim, AuthError> {
+    let header = read_prefix_size_message::<DomainClusterHandshake, _>(stream).await?;
     let public_key = key_loader.get_by_domain_id(header.domain_id.clone()).await?;
     let claim = verify_token::<TaskTokenClaim>(&header.access_token, &public_key)?;
     if claim.domain_id != header.domain_id {
