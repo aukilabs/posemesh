@@ -6,22 +6,22 @@
 
 namespace psm {
 
-const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& poseInDomain, const Pose& observedPose, bool onlyRotateAroundY) noexcept
+const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& inWorld, const Pose& inDomain, bool onlyRotateAroundY) noexcept
 {
-    auto rd = poseInDomain.getRotation();
-    auto ro = observedPose.getRotation();
-    glm::quat rotationInDomain(
+    auto rw = inWorld.getRotation();
+    auto rd = inDomain.getRotation();
+    glm::quat rotationWorld(
+        rw.getW(),
+        rw.getX(),
+        rw.getY(),
+        rw.getZ());
+    glm::quat rotationDomain(
         rd.getW(),
         rd.getX(),
         rd.getY(),
         rd.getZ());
-    glm::quat rotationObserved(
-        ro.getW(),
-        ro.getX(),
-        ro.getY(),
-        ro.getZ());
 
-    glm::quat rotation = glm::inverse(rotationObserved) * rotationInDomain;
+    glm::quat rotation = glm::inverse(rotationDomain) * rotationWorld;
 
     if (onlyRotateAroundY) {
         rotation = glm::angleAxis(glm::eulerAngles(rotation).y, glm::vec3(0, 1, 0));
@@ -29,16 +29,16 @@ const Matrix4x4& CalibrationHelpers::getCalibrationMatrix(const Pose& poseInDoma
 
     glm::mat3x3 rotationMatrix = glm::mat3x3(rotation);
     
-    auto pd = poseInDomain.getPosition();
-    auto po = observedPose.getPosition();
+    auto pw = inWorld.getPosition();
+    auto pd = inDomain.getPosition();
     glm::vec3 position;
-    position.x = -po.getX();
-    position.y = -po.getY();
-    position.z = -po.getZ();
+    position.x = -pd.getX();
+    position.y = -pd.getY();
+    position.z = -pd.getZ();
     position = rotation * position;
-    position.x += pd.getX();
-    position.y += pd.getY();
-    position.z += pd.getZ();
+    position.x += pw.getX();
+    position.y += pw.getY();
+    position.z += pw.getZ();
     
     Matrix4x4 calibrationMatrix;
     calibrationMatrix.setM00(rotationMatrix[0][0]);

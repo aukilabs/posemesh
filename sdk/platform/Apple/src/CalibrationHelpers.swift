@@ -1,7 +1,7 @@
 extension CalibrationHelpers {
-    public static func calibrationMatrix(withPoseInDomain poseInDomain: Pose,
-                                         andObservedPose observedPose: Pose,
+    public static func calibrationMatrix(withPoseInWorld inWorld: Pose,
+                                         andPoseInDomain inDomain: Pose,
                                          onlyRotateAroundY: Bool) -> Matrix4x4 {
-        return __calibrationMatrixWithPose(inDomain:poseInDomain, andObservedPose:observedPose, onlyRotateAroundY:onlyRotateAroundY)
+        return __calibrationMatrixWithPose(inWorld:inWorld, andInDomain:inDomain, onlyRotateAroundY:onlyRotateAroundY)
     }
 }
