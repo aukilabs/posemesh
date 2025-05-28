@@ -179,7 +179,6 @@ async fn write_to_downstream<M: MetadataStore + Clone + 'static>(
             result = meta_reader.reader.next() => {
                 match result {
                     Some(Ok(metadata)) => {
-                        tracing::info!("writing metadata {}", metadata.name);
                         writer.write_all(&prefix_size_message(&Metadata {
                             id: metadata.id.clone(),
                             name: metadata.name.clone(),
@@ -189,7 +188,6 @@ async fn write_to_downstream<M: MetadataStore + Clone + 'static>(
                             hash: Some(metadata.hash.clone()),
                         })).await?;
                         writer.flush().await?;
-                        tracing::info!("written metadata {}", metadata.name);
                 
                         if !metadata_only {
                             let path = metadata.link.clone();
@@ -201,7 +199,6 @@ async fn write_to_downstream<M: MetadataStore + Clone + 'static>(
                                 writer.write_all(&buffer[..read_size]).await?;
                                 writer.flush().await?;
                                 written_size += read_size;
-                                tracing::info!("written {}/{} bytes", written_size, metadata.size);
                                 read_size = file.read(&mut buffer).await?;
                             }
                         }

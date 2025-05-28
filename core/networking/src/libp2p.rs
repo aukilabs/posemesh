@@ -798,22 +798,17 @@ async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Stre
     let mut s = ctrl.open_stream(peer_id, protocol).await?;
 
     if !message.is_empty() {
-        tracing::debug!("Sending the first byte of the message");
         match s.write(&message[..1]).await {
             Ok(0) => {
-                tracing::warn!("Failed to send message: check warnings");
                 return Err(NetworkError::StreamError(io::Error::new(io::ErrorKind::ConnectionReset, "Connection reset")));
             }
             Ok(_) => {
-                tracing::debug!("Sending the rest of the message");
                 s.write_all(&message[1..]).await?;
             }
             Err(e) => {
-                tracing::warn!("Failed to send message: {:?}", e);
                 return Err(NetworkError::StreamError(e));
             }
         }
-        tracing::debug!("Flushing the message");
         s.flush().await?;
     }
     Ok(s)

@@ -6,9 +6,9 @@ use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use posemesh_networking::client::TClient;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
 #[derive(Debug)]
@@ -48,7 +48,7 @@ enum Command {
 impl InnerDomainCluster {
     fn init(mut self) {
         let event_receiver = self.peer.event_receiver.clone();
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(target_family = "wasm"))]
         spawn(async move {
             loop {
                 let mut event_receiver = event_receiver.lock().await;
@@ -60,7 +60,7 @@ impl InnerDomainCluster {
             }
         });
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(target_family = "wasm")]
         spawn(async move {
             loop {
                 let mut event_receiver = event_receiver.lock().await;

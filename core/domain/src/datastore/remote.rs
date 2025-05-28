@@ -75,7 +75,6 @@ impl DomainData for RemoteDomainData {
                 length = self.left_buffer.len();
             }
             let chunk = self.left_buffer.drain(..length).collect::<Vec<u8>>();
-            tracing::debug!("length: {}, chunk size: {}", chunk.len(), length);
             let hash = hash_chunk(&chunk);
             self.merkle_tree.insert(hash);
             writer.write_all(&chunk).await?;

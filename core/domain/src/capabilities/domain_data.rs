@@ -4,9 +4,9 @@ use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use futures::{channel::oneshot::{self, Canceled}, select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, FutureExt, StreamExt};
 use posemesh_networking::client::TClient;
 use super::public_key::PublicKeyStorage;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
 #[derive(Debug, thiserror::Error)]
