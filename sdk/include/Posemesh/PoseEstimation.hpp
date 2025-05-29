@@ -27,6 +27,8 @@ public:
         const Matrix3x3& cameraMatrix,
         SolvePnpMethod method);
 
+    static Pose PSM_API cameraPoseFromSolvePnPPose(const Pose& solvePnPPose);
+
 private:
     PoseEstimation() = delete;
 };

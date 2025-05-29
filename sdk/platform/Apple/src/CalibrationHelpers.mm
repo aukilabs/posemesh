@@ -10,4 +10,9 @@
     return [[PSMMatrix4x4 alloc] initWithNativeMatrix4x4:new (std::nothrow) psm::Matrix4x4(psm::CalibrationHelpers::getCalibrationMatrix(*static_cast<const psm::Pose*>([inWorld nativePose]), *static_cast<const psm::Pose*>([inDomain nativePose]), onlyRotateAroundY))];
 }
 
++ (PSMMatrix4x4*)calibrationMatrix2WithPoseInWorld:(PSMPose*)inWorld andInDomain:(PSMPose*)inDomain onlyRotateAroundY:(BOOL)onlyRotateAroundY
+{
+    return [[PSMMatrix4x4 alloc] initWithNativeMatrix4x4:new (std::nothrow) psm::Matrix4x4(psm::CalibrationHelpers::getCalibrationMatrix2(*static_cast<const psm::Pose*>([inWorld nativePose]), *static_cast<const psm::Pose*>([inDomain nativePose]), onlyRotateAroundY))];
+}
+
 @end

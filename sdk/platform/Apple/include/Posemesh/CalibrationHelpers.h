@@ -10,5 +10,6 @@ NS_SWIFT_NAME(CalibrationHelpers) PSM_API @interface PSMCalibrationHelpers : NSO
 - (instancetype _Nonnull)copy NS_UNAVAILABLE;
 
 + (PSMMatrix4x4* _Nonnull)calibrationMatrixWithPoseInWorld:(PSMPose*)inWorld andInDomain:(PSMPose*)inDomain onlyRotateAroundY:(BOOL)onlyRotateAroundY NS_REFINED_FOR_SWIFT;
++ (PSMMatrix4x4* _Nonnull)calibrationMatrix2WithPoseInWorld:(PSMPose*)inWorld andInDomain:(PSMPose*)inDomain onlyRotateAroundY:(BOOL)onlyRotateAroundY NS_REFINED_FOR_SWIFT;
 
 @end

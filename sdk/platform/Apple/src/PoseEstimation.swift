@@ -12,4 +12,8 @@ extension PoseEstimation {
                                 method: SolvePnpMethod) -> Pose {
         return __solvePnPCameraPose(for:landmarks, andLandmarkObservations:landmarkObservations, andCameraMatrix:cameraMatrix, with:method);
     }
+
+    public static func cameraPoseFromSolvePnPPose(_ solvePnPPose: Pose) -> Pose {
+        return __cameraPose(fromSolvePnPPose: solvePnPPose);
+    }
 }

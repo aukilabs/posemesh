@@ -60,4 +60,18 @@ Pose PoseTools::invertPose(const Pose& pose)
     return PoseFactory::create(newP, newRot);
 }
 
+glm::mat4 PoseTools::fromPoseToMatrix(const Pose& pose)
+{
+    Vector3 p = pose.getPosition();
+    glm::vec3 pos = glm::vec3(p.getX(), p.getY(), p.getZ());
+
+    Quaternion r = pose.getRotation();
+    glm::quat rq = glm::quat(r.getW(), r.getX(), r.getY(), r.getZ());
+    glm::mat4 rMat = glm::mat4_cast(rq);
+
+    rMat[3] = glm::vec4(pos, 1.0f);
+
+    return rMat;
+}
+
 }

@@ -112,7 +112,12 @@ Pose PoseEstimation::solvePnPCameraPose(
     const Matrix3x3& cameraMatrix,
     SolvePnpMethod method)
 {
-    Pose poseInOpenGL = solvePnP(landmarks, landmarkObservations, cameraMatrix, method);
-    return PoseTools::invertPose(poseInOpenGL);
+    return cameraPoseFromSolvePnPPose(solvePnP(landmarks, landmarkObservations, cameraMatrix, method));
 }
+
+Pose PoseEstimation::cameraPoseFromSolvePnPPose(const Pose& solvePnPPose)
+{
+    return PoseTools::invertPose(solvePnPPose);
+}
+
 }

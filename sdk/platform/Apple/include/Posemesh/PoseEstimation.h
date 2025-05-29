@@ -16,5 +16,6 @@ NS_SWIFT_NAME(PoseEstimation) PSM_API @interface PSMPoseEstimation : NSObject
 
 + (PSMPose*)solvePnPForLandmarks:(NSArray<PSMLandmark*>*)landmarks andLandmarkObservations:(NSArray<PSMLandmarkObservation*>*)landmarkObservations andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withMethod:(PSMSolvePnpMethod)method NS_REFINED_FOR_SWIFT;
 + (PSMPose*)solvePnPCameraPoseForLandmarks:(NSArray<PSMLandmark*>*)landmarks andLandmarkObservations:(NSArray<PSMLandmarkObservation*>*)landmarkObservations andCameraMatrix:(PSMMatrix3x3*)cameraMatrix withMethod:(PSMSolvePnpMethod)method NS_REFINED_FOR_SWIFT;
++ (PSMPose*)cameraPoseFromSolvePnPPose:(PSMPose*)solvePnPPose NS_REFINED_FOR_SWIFT;
 
 @end

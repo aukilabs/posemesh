@@ -80,4 +80,27 @@
     return pose;
 }
 
++ (PSMPose*)cameraPoseFromSolvePnPPose:(PSMPose*)solvePnPPose
+{
+    psm::Pose poseRaw = psm::PoseEstimation::cameraPoseFromSolvePnPPose(*static_cast<const psm::Pose*>([solvePnPPose nativePose]));
+    PSMPose* pose = [[PSMPose alloc] init];
+
+    psm::Vector3 p = poseRaw.getPosition();
+    PSMVector3* position = [[PSMVector3 alloc] init];
+    [position setX:p.getX()];
+    [position setY:p.getY()];
+    [position setZ:p.getZ()];
+    [pose setPosition:position];
+
+    psm::Quaternion rotationRaw = poseRaw.getRotation();
+    PSMQuaternion* rotation = [[PSMQuaternion alloc] init];
+    [rotation setX:rotationRaw.getX()];
+    [rotation setY:rotationRaw.getY()];
+    [rotation setZ:rotationRaw.getZ()];
+    [rotation setW:rotationRaw.getW()];
+    [pose setRotation:rotation];
+
+    return pose;
+}
+
 @end
