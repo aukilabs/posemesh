@@ -1,5 +1,5 @@
 [package]
-name = "networking"
+name = "posemesh-networking"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,15 +11,17 @@ serde_json = { workspace = true }
 rand = "0.8.5"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-utils = {workspace = true }
+posemesh-utils = {workspace = true }
 thiserror = {workspace = true}
+async-trait = {workspace = true}
+mockall = {workspace = true}
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "dcutr", "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat", "websocket" ] }
 tokio = { workspace = true, features = ["full"] }
 libp2p-webrtc = { workspace = true, features = ["tokio"] }
 libp2p-websocket = { workspace = true }
-runtime = { workspace = true }
+posemesh-runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 libp2p = { workspace = true, features = [ "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay", "noise", "yamux", "dcutr" ] }

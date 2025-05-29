@@ -1,10 +1,11 @@
-use std::sync::{Arc, Mutex};
-use futures::{executor::block_on, SinkExt, StreamExt};
-use quick_protobuf::serialize_into_vec;
+use std::{io::{Error, ErrorKind}, pin::Pin, sync::{Arc, Mutex}, task::{Context, Poll}};
+use async_trait::async_trait;
+use futures::{channel::mpsc, executor::block_on, AsyncWrite, StreamExt, SinkExt};
+use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::init_r_remote_storage, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, DataReader as r_DataReader, DataWriter as r_DataWriter, Datastore, DomainError, Reader as r_Reader, ReliableDataProducer as r_ReliableDataProducer}, remote::{RemoteDatastore as r_RemoteDatastore}}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer, DomainDataWriter}, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -16,7 +17,7 @@ pub struct Query {
 #[wasm_bindgen]
 impl Query {
     #[wasm_bindgen(constructor)]
-    pub fn new(ids: Vec<String>, names: Vec<String>, data_types: Vec<String>, name_regexp: Option<String>, data_type_regexp: Option<String>) -> Self {
+    pub fn new(ids: Vec<String>, names: Vec<String>, data_types: Vec<String>, name_regexp: Option<String>, data_type_regexp: Option<String>, metadata_only: bool) -> Self {
         Self {
             inner: domain_data::Query {
                 ids,
@@ -24,6 +25,7 @@ impl Query {
                 data_types,
                 name_regexp,
                 data_type_regexp,
+                metadata_only,
             }
         }
     }
@@ -104,41 +106,6 @@ fn from_r_data(r_data: &domain_data::Data) -> DomainData {
 }
 
 #[wasm_bindgen]
-pub struct DataReader {
-    inner: Arc<Mutex<r_DataReader>>,
-}
-
-#[wasm_bindgen]
-impl DataReader {
-    #[wasm_bindgen]
-    pub fn next(&mut self) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let future = async move {
-            let mut inner = inner.lock().unwrap();
-            // Attempt to get the next item from the stream
-            match inner.next().await {
-                Some(Ok(data)) => {
-                    tracing::debug!("Got data: {:?}", data.metadata);
-                    // Convert the Rust struct into a JavaScript object
-                    let data = from_r_data(&data);
-                    Ok(JsValue::from(data))
-                }
-                Some(Err(e)) => Err(JsValue::from_str(&format!("{}", e))),
-                None => Ok(JsValue::NULL),
-            }
-        };
-        // Convert the Rust Future into a JavaScript Promise
-        future_to_promise(future)
-    }
-
-    #[wasm_bindgen]
-    pub fn close(&mut self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.close();
-    }
-}
-
-#[wasm_bindgen]
 pub struct DomainCluster {
     inner: Arc<Mutex<r_DomainCluster>>,
 }
@@ -171,8 +138,7 @@ struct ReliableDataProducer {
 
 #[wasm_bindgen]
 impl ReliableDataProducer {
-    #[wasm_bindgen]
-    pub fn push(&mut self, data: DomainData) -> js_sys::Promise {
+    pub fn push(&mut self, data: DomainData) -> Promise {
         let metadata = to_r_metadata(&data.metadata);
         let content = data.content.to_vec();
         let writer = self.inner.clone();
@@ -233,19 +199,27 @@ impl RemoteDatastore {
     pub fn consume(
         &mut self,
         domain_id: String,
-        query: Query
+        query: Query,
+        callback: Function,
+        keep_alive: bool,
     ) -> js_sys::Promise {
         let query = query.clone();
-        let mut inner = self.inner.clone();
+        let inner = self.inner.clone();
 
         future_to_promise(async move {
-            let res = inner.load(domain_id, query.inner, false).await;
+            let res = initialize_consumer(inner, domain_id, query.inner, keep_alive).await;
             if let Err(e) = res {
                 return Err(JsValue::from_str(&format!("{}", e)));
             }
-            let stream = DataReader { inner: Arc::new(Mutex::new(res.unwrap())) };
-            
-            Ok(JsValue::from(stream))
+            let (consumer, mut rx) = res.unwrap();
+            spawn_local(async move {
+                while let Some(data) = rx.next().await {
+                    let data = from_r_data(&data);
+                    callback.call2(&JsValue::NULL, &JsValue::from(data), &JsValue::NULL).expect("Failed to call callback");
+                }
+                callback.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::NULL).expect("Failed to call callback");
+            });
+            Ok(JsValue::from(DataConsumer::new(consumer)))
         })
     }
 
@@ -303,7 +277,7 @@ pub fn start() -> Result<(), JsValue> {
     // Add this line:
     tracing_wasm::set_as_global_default();
 
-    tracing::info!("Starting domain-core");
+    tracing::info!("Starting log for domain");
 
     Ok(())
 }

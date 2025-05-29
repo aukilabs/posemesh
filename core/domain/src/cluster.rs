@@ -1,13 +1,14 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
-use networking::{event, libp2p::{Networking, NetworkingConfig}};
+use posemesh_networking::{event, libp2p::{Networking, NetworkingConfig}};
 use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message, request_response}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
 use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use posemesh_networking::client::TClient;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
 #[derive(Debug)]
@@ -47,7 +48,7 @@ enum Command {
 impl InnerDomainCluster {
     fn init(mut self) {
         let event_receiver = self.peer.event_receiver.clone();
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(target_family = "wasm"))]
         spawn(async move {
             loop {
                 let mut event_receiver = event_receiver.lock().await;
@@ -59,7 +60,7 @@ impl InnerDomainCluster {
             }
         });
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(target_family = "wasm")]
         spawn(async move {
             loop {
                 let mut event_receiver = event_receiver.lock().await;
@@ -119,7 +120,7 @@ impl InnerDomainCluster {
                 }
             }
             Some(event::Event::NewNodeRegistered { node }) => {
-                tracing::debug!("New node registered: {:?}", node.name);
+                tracing::info!("New node registered: {:?}", node.name);
             }
             _ => {}
         }
@@ -129,7 +130,8 @@ impl InnerDomainCluster {
         let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, "/jobs/v1", job, 0).await;
         match response {
             Ok(response) => {
-                self.peer.client.subscribe(response.job_id.clone()).await.unwrap();
+                self.peer.client.subscribe(response.job_id.clone()).await.expect("can't subscribe to job");
+                tracing::debug!("Subscribed to job: {:?}", response.job_id);
                 self.jobs.insert(TopicHash::from_raw(response.job_id.clone()), tx);
             }
             Err(e) => {

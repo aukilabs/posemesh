@@ -87,8 +87,8 @@ where
 #[cfg(target_family = "wasm")]
 pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
 where
-    F: Future<Output = T> + 'static + Send,
-    T: 'static + Send,
+    F: Future<Output = T> + Send,
+    T: Send,
 {
     if duration.is_zero() {
         return Ok(future.await);

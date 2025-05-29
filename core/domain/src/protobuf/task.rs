@@ -513,6 +513,19 @@ impl MessageWrite for ConsumeDataInputV1 {
 
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Default, PartialEq, Clone)]
+pub struct UnsubscribeDataQueryV1 { }
+
+impl<'a> MessageRead<'a> for UnsubscribeDataQueryV1 {
+    fn from_reader(r: &mut BytesReader, _: &[u8]) -> Result<Self> {
+        r.read_to_end();
+        Ok(Self::default())
+    }
+}
+
+impl MessageWrite for UnsubscribeDataQueryV1 { }
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct StoreDataOutputV1 {
     pub ids: Vec<String>,
 }

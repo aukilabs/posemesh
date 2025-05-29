@@ -9,7 +9,7 @@ release = false
 
 [dependencies]
 tokio = { workspace = true }
-networking = { workspace = true }
+posemesh-networking = { workspace = true }
 futures = { workspace = true }
 tracing-subscriber = {workspace = true}
 tracing = {workspace = true}
