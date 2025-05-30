@@ -7,7 +7,8 @@ const manualUmbrellaAndBridgingHeaderNames = new Set([
   'PoseEstimation',
   'Posemesh',
   'QRDetection',
-  'ArucoDetection'
+  'ArucoDetection',
+  'CalibrationHelpers'
 ]);
 
 // Put your class names that will be used within an std::vector type in JavaScript here:

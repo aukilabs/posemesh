@@ -1,3 +1,4 @@
+#include <Posemesh/Portals.hpp>
 #include <Posemesh/QRDetection.hpp>
 #include <iostream>
 #include <opencv2/imgproc.hpp>
@@ -72,4 +73,40 @@ bool QRDetection::detectQRFromLuminance(
     return detectQRFromLuminance(imageBytes.data(), imageBytes.size(), width, height, outContents, outCorners);
 }
 
+std::vector<LandmarkObservation> QRDetection::detectQRFromLuminance(
+    const std::vector<std::uint8_t>& imageBytes,
+    int width,
+    int height)
+{
+    std::vector<std::string> outContents;
+    std::vector<Vector2> outCorners;
+    bool detected = QRDetection::detectQRFromLuminance(
+        imageBytes.data(),
+        imageBytes.size(),
+        width,
+        height,
+        outContents,
+        outCorners);
+
+    std::vector<LandmarkObservation> observations;
+
+    if (detected) {
+        for (int i = 0; i < outContents.size(); i++) {
+            for (int j = 0; j < 4; j++) {
+                LandmarkObservation l;
+                l.setPosition(outCorners[i * 4 + j]);
+                l.setType("qr");
+                std::string content = outContents[i];
+                if (Portals::isAukiQR(content)) {
+                    l.setType("portal");
+                    content = Portals::extractShortId(content);
+                }
+                l.setId(content + "_" + std::to_string(j));
+                observations.push_back(l);
+            }
+        }
+    }
+
+    return observations;
+}
 }

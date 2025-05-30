@@ -17,4 +17,10 @@ NS_SWIFT_NAME(ArucoDetection) PSM_API @interface PSMArucoDetection : NSObject
                             andOutCorners:(NSMutableArray<PSMVector2*>*)outCorners
     NS_REFINED_FOR_SWIFT;
 
++ (NSArray*)detectArucoFromLuminanceImageData:(NSData*)imageData
+                                      ofWidth:(int32_t)width
+                                    andHeight:(int32_t)height
+                              forMarkerFormat:(PSMArucoMarkerFormat)markerFormat
+    NS_REFINED_FOR_SWIFT;
+
 @end

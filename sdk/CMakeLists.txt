@@ -61,6 +61,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/QRDetection.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/ArucoDetection.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/Posemesh.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/C/CalibrationHelpers.h"
         "${POSEMESH_GENERATED_C_HEADERS}"
     PUBLIC_CXX_HEADERS
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/API.hpp"
@@ -71,6 +72,8 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Posemesh.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseFactory.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseTools.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/CalibrationHelpers.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Portals.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Config.cpp"
@@ -78,6 +81,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/C/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/ArucoDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/C/Posemesh.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/C/CalibrationHelpers.cpp"
         "${POSEMESH_GENERATED_C_SOURCES}"
         "${CMAKE_CURRENT_LIST_DIR}/src/Config.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
@@ -93,6 +97,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/Vector4.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseFactory.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseTools.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/CalibrationHelpers.cpp"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_SOURCES}"
@@ -118,6 +123,7 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/Posemesh.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/QRDetection.h"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/ArucoDetection.h"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/include/Posemesh/CalibrationHelpers.h"
             "${POSEMESH_GENERATED_OBJC_HEADERS}"
         CXX_HEADERS
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.hpp"
@@ -128,12 +134,14 @@ if(APPLE)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Util.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.mm"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/ArucoDetection.mm"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/CalibrationHelpers.mm"
             "${POSEMESH_GENERATED_OBJC_SOURCES}"
         Swift_SOURCES
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/Config.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/PoseEstimation.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/QRDetection.swift"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/ArucoDetection.swift"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Apple/src/CalibrationHelpers.swift"
             "${POSEMESH_GENERATED_SWIFT_SOURCES}"
     )
     if(USE_APPLE_UMBRELLA_HEADER)
@@ -157,6 +165,7 @@ elseif(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/QRDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/ArucoDetection.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/Posemesh.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/src/CalibrationHelpers.cpp"
             "${POSEMESH_GENERATED_WEB_CXX_SOURCES}"
     )
 endif()
@@ -206,6 +215,7 @@ if(EMSCRIPTEN)
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/QRDetection.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/Posemesh.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/ArucoDetection.js"
+            "${CMAKE_CURRENT_LIST_DIR}/platform/Web/CalibrationHelpers.js"
             "${POSEMESH_GENERATED_WEB_JS_SOURCES}"
             "${CMAKE_BINARY_DIR}/VerifyCommitId.js"
             "${CMAKE_CURRENT_LIST_DIR}/platform/Web/_Post.js"

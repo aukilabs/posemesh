@@ -40,5 +40,24 @@ __internalPosemeshAPI.builderFunctions.push(function() {
         }
     };
 
+    __internalPosemesh.QRDetection.detectQRFromLuminanceLandmarkObservations = function(imageBytes, width, height) {
+        let imageBytesVector = undefined;
+        try {
+            imageBytesVector = __internalPosemeshAPI.toVectorUint8(imageBytes)
+            let result = []
+            let observations = __internalPosemesh.QRDetection.__detectQRFromLuminanceLandmarkObservations(imageBytesVector, width, height)
+
+            for (let i = 0; i < observations.size(); i++) {
+                result.push(observations.get(i))
+            }
+
+            return result;
+        } finally {
+            if (imageBytesVector) {
+                imageBytesVector.delete();
+            }
+        }
+    };
+
     posemeshModule.QRDetection = __internalPosemesh.QRDetection;
 });

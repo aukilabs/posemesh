@@ -20,4 +20,11 @@ extension ArucoDetection {
         }
         return result;
     }
+
+    public static func detectAruco(fromLuminanceImageData imageData: Data,
+                            width: Int32,
+                            height: Int32,
+                            markerFormat: ArucoMarkerFormat) -> [LandmarkObservation] {
+        return __detectAruco(fromLuminanceImageData:imageData, ofWidth:width, andHeight:height, for:markerFormat) as! [LandmarkObservation];
+    }
 }

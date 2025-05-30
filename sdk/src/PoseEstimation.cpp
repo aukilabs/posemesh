@@ -105,4 +105,19 @@ Pose PoseEstimation::solvePnP(
 
     return PoseTools::fromOpenCVToOpenGL(PoseFactory::create(p, r));
 }
+
+Pose PoseEstimation::solvePnPCameraPose(
+    const std::vector<Landmark>& landmarks,
+    const std::vector<LandmarkObservation>& landmarkObservations,
+    const Matrix3x3& cameraMatrix,
+    SolvePnpMethod method)
+{
+    return cameraPoseFromSolvePnPPose(solvePnP(landmarks, landmarkObservations, cameraMatrix, method));
+}
+
+Pose PoseEstimation::cameraPoseFromSolvePnPPose(const Pose& solvePnPPose)
+{
+    return PoseTools::invertPose(solvePnPPose);
+}
+
 }

@@ -1,6 +1,6 @@
+#import <Posemesh/LandmarkObservation.h>
 #import <Posemesh/QRDetection.h>
-
-#include <Posemesh/QRDetection.hpp>
+#import <Posemesh/QRDetection.hpp>
 
 @implementation PSMQRDetection
 
@@ -32,6 +32,27 @@
     }
 
     return YES;
+}
+
++ (NSArray*)detectQRFromLuminanceImageData:(NSData*)imageData
+                                   ofWidth:(int32_t)width
+                                 andHeight:(int32_t)height
+{
+    NSAssert(imageData, @"imageData is null");
+    NSAssert([imageData length] == width * height, @"imageData size does not correspond to width & height");
+    const uint8_t* bytes = static_cast<const std::uint8_t*>([imageData bytes]);
+    std::vector<uint8_t> data(bytes, bytes + width * height);
+    std::vector<psm::LandmarkObservation> r = psm::QRDetection::detectQRFromLuminance(data, width, height);
+
+    NSMutableArray* result = [[NSMutableArray alloc] init];
+
+    for (auto& corner : r) {
+        PSMLandmarkObservation* o = [[PSMLandmarkObservation alloc] init];
+        *static_cast<psm::LandmarkObservation*>([o nativeLandmarkObservation]) = std::move(corner);
+        [result addObject:o];
+    }
+
+    return result;
 }
 
 @end

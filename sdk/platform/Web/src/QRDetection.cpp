@@ -23,10 +23,25 @@ bool detectQRFromLuminance(
 
     return detectionResult;
 }
+
+std::vector<std::shared_ptr<psm::LandmarkObservation>> detectQRFromLuminanceLandmarkObservations(
+    const std::vector<uint8_t>& imageBytes,
+    int width,
+    int height)
+{
+    std::vector<std::shared_ptr<psm::LandmarkObservation>> observations;
+    auto lo = QRDetection::detectQRFromLuminance(imageBytes, width, height);
+    for (auto& observation : lo) {
+        observations.emplace_back(new psm::LandmarkObservation(std::move(observation)));
+    }
+
+    return observations;
+}
 }
 
 EMSCRIPTEN_BINDINGS(QRDetection)
 {
     class_<QRDetection>("QRDetection")
-        .class_function("__detectQRFromLuminance(imageBytes, width, height, outContents, outCorners)", &detectQRFromLuminance);
+        .class_function("__detectQRFromLuminance(imageBytes, width, height, outContents, outCorners)", &detectQRFromLuminance)
+        .class_function("__detectQRFromLuminanceLandmarkObservations(imageBytes, width, height)", &detectQRFromLuminanceLandmarkObservations);
 }
