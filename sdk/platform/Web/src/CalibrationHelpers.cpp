@@ -7,14 +7,14 @@ using namespace emscripten;
 using namespace psm;
 
 namespace {
-std::shared_ptr<psm::Matrix4x4> getCalibrationMatrix(const Pose& inWorld, const Pose& inDomain, bool onlyRotateAroundY)
+std::shared_ptr<psm::Matrix4x4> getCalibrationMatrix(const Pose& domain, const Pose& observed, bool onlyRotateAroundY)
 {
-    return std::make_shared<psm::Matrix4x4>(CalibrationHelpers::getCalibrationMatrix(inWorld, inDomain, onlyRotateAroundY));
+    return std::make_shared<psm::Matrix4x4>(CalibrationHelpers::getCalibrationMatrix(domain, observed, onlyRotateAroundY));
 }
 }
 
 EMSCRIPTEN_BINDINGS(CalibrationHelpers)
 {
     class_<CalibrationHelpers>("CalibrationHelpers")
-        .class_function("__getCalibrationMatrix(poseInWorld, poseInDomain, onlyRotateAroundY)", &getCalibrationMatrix, nonnull<ret_val>());
+        .class_function("__getCalibrationMatrix(domain, observed, onlyRotateAroundY)", &getCalibrationMatrix, nonnull<ret_val>());
 }

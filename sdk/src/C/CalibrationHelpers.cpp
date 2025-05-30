@@ -4,9 +4,9 @@
 #include <memory>
 #include <utility>
 
-const psm_matrix4x4_t* psm_calibration_helpers_get_calibration_matrix(psm_pose_t* in_world, psm_pose_t* in_domain, bool only_rotate_around_y)
+const psm_matrix4x4_t* psm_calibration_helpers_get_calibration_matrix(psm_pose_t* domain, psm_pose_t* observed, bool only_rotate_around_y)
 {
-    psm::Matrix4x4 calibrationMatrix = psm::CalibrationHelpers::getCalibrationMatrix(*static_cast<const psm::Pose*>(in_world), *static_cast<const psm::Pose*>(in_domain), only_rotate_around_y);
+    psm::Matrix4x4 calibrationMatrix = psm::CalibrationHelpers::getCalibrationMatrix(*static_cast<const psm::Pose*>(domain), *static_cast<const psm::Pose*>(observed), only_rotate_around_y);
 
     psm_matrix4x4_t* result = psm_matrix4x4_create();
     psm_matrix4x4_set_m00(result, calibrationMatrix.getM00());

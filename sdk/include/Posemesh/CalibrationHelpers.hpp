@@ -9,9 +9,8 @@ namespace psm {
 
 class CalibrationHelpers final {
 public:
-    static Matrix4x4 PSM_API getCalibrationMatrix(const Pose& inWorld, const Pose& inDomain, bool onlyRotateAroundY = true) noexcept;
-    static Matrix4x4 PSM_API getCalibrationMatrix2(const Pose& inWorld, const Pose& inDomain, bool onlyRotateAroundY = true) noexcept;
-
+    static Matrix4x4 PSM_API getCalibrationMatrix(const Pose& domain, const Pose& observed, bool onlyRotateAroundY = true) noexcept;
+    
 private:
     CalibrationHelpers() = delete;
 };
