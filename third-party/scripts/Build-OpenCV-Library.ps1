@@ -160,7 +160,8 @@ Switch($Platform) {
         $CMakeGenerator = ''
         $CMakeConfigureArgs = @(
             '-DWITH_CAROTENE=OFF',
-            '-DWITH_PROTOBUF=OFF'
+            '-DWITH_PROTOBUF=OFF',
+            '-DWITH_TBB=OFF'
         )
         Switch($Architecture) {
             'AMD64' { }
