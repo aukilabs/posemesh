@@ -201,6 +201,7 @@ async fn write_to_downstream<M: MetadataStore + Clone + 'static>(
                                 written_size += read_size;
                                 read_size = file.read(&mut buffer).await?;
                             }
+                            tracing::info!("written {}/{} bytes", written_size, metadata.size);
                         }
                     }
                     Some(Err(e)) => {

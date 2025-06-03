@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ids: vec![],
         names: vec![],
         data_types: vec![],
-        name_regexp: None,
+        name_regexp: Some(format!(".*_{}", scan)),
         data_type_regexp: None,
         metadata_only: true,
     };

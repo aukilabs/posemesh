@@ -137,7 +137,7 @@ impl MetadataStore for PGMetadataStore {
             tracing::info!("Removing listener {} for domain_id: {}", id, domain_id);
             listeners.entry(domain_id).and_modify(|listeners| {
                 if let Some(mut listener) = listeners.remove(&id) {
-                    listener.sender.close();
+                    let _ = listener.sender.close();
                 }
             });
         }

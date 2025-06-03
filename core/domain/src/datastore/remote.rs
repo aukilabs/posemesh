@@ -1,6 +1,6 @@
 
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use futures::{channel::{oneshot::Canceled}, io::WriteHalf, select};
+use futures::{channel::oneshot::Canceled, io::WriteHalf, select};
 use uuid::Uuid;
 
 #[cfg(not(target_family = "wasm"))]
@@ -33,19 +33,18 @@ async fn read_from_stream<W: AsyncWrite + Unpin + Send + 'static>(metadata_only:
         src.read_exact(&mut buffer).await?;
 
         let metadata = deserialize_from_slice::<domain_data::Metadata>(&buffer)?;
-        tracing::debug!("remote read_from_stream metadata: {}", metadata.name);
-        dest.write_all(&prefix_size_message(&metadata)).await?;
+        let written = dest.write(&prefix_size_message(&metadata)).await?;
+        let skip = written == 0; // dest skips this data
         dest.flush().await?;
         if !metadata_only {
             let mut content = vec![0u8; metadata.size as usize];
-            let mut read_size = src.read(&mut content).await?;
-            while read_size > 0 {
-                dest.write_all(&content[..read_size]).await?;
+            src.read_exact(&mut content).await?;
+            if !skip {
+                dest.write_all(&content).await?;
                 dest.flush().await?;
-                read_size = src.read(&mut content).await?;
+    
+                tracing::debug!("Read data: {}, {}/{}", metadata.name, metadata.size, content.len());
             }
-
-            tracing::debug!("Read data: {}, {}/{}", metadata.name, metadata.size, content.len());
         }
     }
 }
@@ -182,7 +181,7 @@ impl ReliableDataProducer for RemoteReliableDataProducer {
 #[derive(Debug)]
 struct TaskHandler {
     cancel_tx: Option<oneshot::Sender<()>>,
-    done_rx: Option<oneshot::Receiver<()>>,
+    done_rx: Option<oneshot::Receiver<Result<(), DomainError>>>,
 }
 
 impl TaskHandler {
@@ -192,14 +191,14 @@ impl TaskHandler {
     // Define the function to execute the handler
     fn execute<F>(&mut self, cancel_tx: oneshot::Sender<()>, handler: F)
     where
-        F: Future<Output = ()> + Send + 'static,
+        F: Future<Output = Result<(), DomainError>> + Send + 'static,
     {
         self.cancel_tx = Some(cancel_tx);
-        let (done_tx, done_rx) = oneshot::channel::<()>();
+        let (done_tx, done_rx) = oneshot::channel::<Result<(), DomainError>>();
         self.done_rx = Some(done_rx);
         spawn(async move {
-            handler.await;
-            done_tx.send(()).expect("Failed to send done signal");
+            let res = handler.await;
+            let _ = done_tx.send(res);
         });
     }
 }
@@ -214,9 +213,13 @@ impl DataConsumer for TaskHandler {
 
     async fn wait_for_done(&mut self) -> Result<(), DomainError> {
         if let Some(done_rx) = self.done_rx.take() {
-            done_rx.await.expect("Failed to wait for done signal");
+            match done_rx.await {
+                Ok(res) => res,
+                Err(e) => Err(DomainError::Cancelled("TaskHandler has been cancelled".to_string(), e)),
+            }
+        } else {
+            Err(DomainError::Cancelled("TaskHandler is not initialized".to_string(), Canceled))
         }
-        Ok(())
     }
 }
 
@@ -236,7 +239,6 @@ async fn download_data<W: AsyncWrite + Unpin + Send + 'static>(peer: Client, dom
     let mut download_task = TaskHandler::new();
     let mut peer_clone = peer.clone();
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-    tracing::info!("downloading data");
     download_task.execute(cancel_tx, async move {
         let (reader, mut stream_writer) = upload_stream.split();
         let read_result: Result<(), DomainError> = select! {
@@ -267,10 +269,11 @@ async fn download_data<W: AsyncWrite + Unpin + Send + 'static>(peer: Client, dom
                 message: e.to_string(),
             }).expect("Failed to serialize error") });
             peer_clone.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await.expect("Failed to publish message");
-            return;
+            return Err(e);
         }
         task.status = Status::DONE;
         peer_clone.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to publish message")).await.expect("Failed to publish message");
+        Ok(())
     });
     Ok(download_task)
 }
