@@ -7,22 +7,7 @@ This is a browser example for the domain package. It demonstrates how to use the
 - npm (v6 or later)
 
 ## Setup
-1.a Install the WASM module:
-
-Setup credentials: https://conjurekit.dev/unity/quickstart/#authenticate-towards-the-registry
-```bash
-npm install @aukilabs/posemesh-domain
-```
-
-Ensure your .npmrc file is correctly configured to access the Auki registry. You can find this file in either the /core/examples/browser/.npmrc directory or your home directory as ~/.npmrc.
-Add the following lines to your .npmrc file:
-```
-//npm.dev.aukiverse.com/:_authToken="***"
-@aukilabs:registry=https://npm.dev.aukiverse.com/
-```
-By configuring your .npmrc file as shown, you'll be able to seamlessly access and install packages from the Auki registry.
-
-1.b Build the WASM module:
+1. Build the WASM module:
 - Install Rust
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
