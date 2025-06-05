@@ -1,7 +1,6 @@
 name: Posemesh SDK
 permissions:
   contents: read
-  actions: read
 on:
   pull_request:
     paths-ignore:
