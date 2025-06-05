@@ -27,6 +27,7 @@ posemesh-utils = {workspace = true}
 async-timer = "0.7.4"
 base64 = "0.22.1"
 mockall = {workspace = true}
+wasm-bindgen-test = "0.3.50"
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 libp2p = { workspace = true, features = [ "tokio", "gossipsub", "mdns", "noise", "macros", "tcp", "yamux", "quic", "serde", "relay", "identify", "kad", "dns", "autonat" ] }
@@ -44,6 +45,7 @@ serde-wasm-bindgen = { workspace = true }
 uuid = { version = "1.13.2", features = ["v4", "js"] }
 tracing-wasm = { workspace = true }
 console_error_panic_hook = { workspace = true }
+wasm-bindgen-test = "0.3.50"
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
