@@ -6,7 +6,7 @@ use posemesh_domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult
 /*
     * This is a client that wants to do reconstruction in domain cluster
     * Usage: cargo run --package client-example <port> <name> <domain_manager> <domain_id> <relay>
-    * Example: cargo run --package client-example 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg 12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Example: cargo run --package client-example 0 dmt /ip4/1.2.3.4/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg 12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
