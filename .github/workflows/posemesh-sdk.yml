@@ -67,6 +67,11 @@ jobs:
           restore-keys: |
             rust-cache-${{ matrix.arch }}-${{ matrix.platform }}-
 
+      - name: Run tests
+        run: |
+          cd core
+          make unit-tests
+
       - name: Build Posemesh Base for ${{ matrix.platform }} ${{ matrix.arch }}
         shell: pwsh
         run: ./core/scripts/Build-Library.ps1 ${{ matrix.platform }} ${{ matrix.arch }} Release base -InstallNecessaryRustToolchainsAndTargets
