@@ -42,7 +42,7 @@ npm install -g protoc-gen-ts
 
 - Build rust
 ```bash
-make bundle-domain
+make build-domain-wasm
 ```
 For macos, if you are running into `"No available targets are compatible with triple "wasm32-unknown-unknown"`, you need to use another clang compiler
 
