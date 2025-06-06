@@ -1,6 +1,6 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
 use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::ParseError, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
-use utils::retry_with_delay;
+use posemesh_utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, thread_rng};
 use serde::{Deserialize, Serialize};
@@ -800,14 +800,12 @@ async fn _open_stream(mut ctrl: stream::Control, peer_id: PeerId, protocol: Stre
     if !message.is_empty() {
         match s.write(&message[..1]).await {
             Ok(0) => {
-                tracing::warn!("Failed to send message: check warnings");
                 return Err(NetworkError::StreamError(io::Error::new(io::ErrorKind::ConnectionReset, "Connection reset")));
             }
             Ok(_) => {
                 s.write_all(&message[1..]).await?;
             }
             Err(e) => {
-                tracing::warn!("Failed to send message: {:?}", e);
                 return Err(NetworkError::StreamError(e));
             }
         }

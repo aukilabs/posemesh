@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import tailwindcss from '@tailwindcss/vite'
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   optimizeDeps: {
@@ -13,18 +15,9 @@ export default defineConfig({
   },
   build: {
     target: 'es2020',
-    rollupOptions: {
-      external: ['posemesh-domain']
-    }
-  },
-  resolve: {
-    preserveSymlinks: true,
-    alias: {
-      'posemesh-domain': resolve(__dirname, './pkg/posemesh-domain.js')
-    }
   },
   worker: {
     format: 'es'
   },
-  plugins: [tailwindcss()]
+  plugins: [tailwindcss(), wasm(), topLevelAwait()]
 }); 

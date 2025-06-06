@@ -7,9 +7,9 @@ edition = "2021"
 release = false
 
 [dependencies]
-domain = { workspace = true }
+posemesh-domain = { workspace = true }
 tokio = { workspace = true }
-networking = { workspace = true }
+posemesh-networking = { workspace = true }
 quick-protobuf = { workspace = true }
 futures = { workspace = true }
 tracing-subscriber = {workspace = true}

@@ -5,12 +5,12 @@ edition = "2021"
 rust-version.workspace = true
 
 [dependencies]
-domain = { workspace = true }
-networking = { workspace = true }
+posemesh-domain = { workspace = true }
+posemesh-networking = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = ["domain/default", "networking/default"]
-c = ["domain/c", "networking/c"]
+default = ["posemesh-domain/default", "posemesh-networking/default"]
+c = ["posemesh-domain/c", "posemesh-networking/c"]

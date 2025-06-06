@@ -1,29 +1,25 @@
-# Makefile to build, lint and run integration tests
-# make - build domain packages with all dependencies
-# make run - run all integration tests
-
-RUNNERS = \
-	client-example \
-	domain-manager \
-	data-node \
-	relay \
-	test-concurrent
+# Makefile to build, test domain
+# make build-domain - build domain packages with all dependencies
 
 OS ?= "macOS"
 ARCH ?= "ARM64"
 CONFIG ?= "Release"
 
-RUN_TARGETS = $(addprefix run-,$(RUNNERS))
+.PHONY: build-domain build-domain-wasm unit-tests
 
-.PHONY: all install fix run $(FIX_TARGETS) $(RUN_TARGETS)
-
-all: install
-
-install:
+build-domain:
+ifeq ($(ARCH),WASM)
+	$(MAKE) build-domain-wasm
+else
 	./scripts/Build-Library.ps1 $(OS) $(ARCH) $(CONFIG) domain -InstallNecessaryRustToolchainsAndTargets
+endif
 
-# TODO: Some runners don't stop on their own. Cant be run in parallel as use the same port.
-run: $(RUN_TARGETS)
+build-domain-wasm:
+	wasm-pack build --target bundler --release domain
+	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
-$(RUN_TARGETS):
-	cargo run --package $(patsubst run-%,%,$@)
+unit-tests:
+	wasm-pack test --node domain
+	wasm-pack test --node networking
+	wasm-pack test --node utils
+	cargo test --all-features

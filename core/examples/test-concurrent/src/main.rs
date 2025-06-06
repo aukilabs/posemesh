@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use futures::{AsyncReadExt, StreamExt, AsyncWriteExt};
-use networking::libp2p::{Networking, NetworkingConfig};
+use posemesh_networking::{libp2p::{Networking, NetworkingConfig}, client::TClient};
 use tokio::time::sleep;
 
 #[tokio::main]

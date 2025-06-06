@@ -13,6 +13,7 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &s
                 data_type_regexp: None,
                 names: vec![],
                 data_types: vec![],
+                metadata_only: false,
             },
         };
         let task = task::TaskRequest {

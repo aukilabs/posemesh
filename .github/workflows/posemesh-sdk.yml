@@ -1,4 +1,6 @@
 name: Posemesh SDK
+permissions:
+  contents: read
 on:
   pull_request:
     paths-ignore:
@@ -20,7 +22,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  run_test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-cargo-
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: core/target
+          key: rust-cache-test-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-test-
+            
+      - name: Run unit tests
+        run: make unit-tests
+        
   build_apple_frameworks:
+    needs: run_test
     name: Build Apple SDK
     runs-on: macos-latest
     strategy:
@@ -128,6 +170,7 @@ jobs:
           path: ./sdk/out-Apple-Release/Posemesh.zip
 
   build_web_sdk:
+    needs: run_test
     name: Build Web SDK
     runs-on: ubuntu-latest
 
@@ -199,6 +242,7 @@ jobs:
           path: ./sdk/out-Web-WASM32-Release/*
 
   build_linux_sdk:
+    needs: run_test
     name: Build Linux SDK
     runs-on: ubuntu-latest
     strategy:

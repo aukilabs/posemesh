@@ -7,6 +7,8 @@
 
 #define CHUNK_SIZE (7 * 1024)
 
+typedef struct DataConsumer DataConsumer;
+
 typedef struct DatastoreWrapper_RemoteDatastore DatastoreWrapper_RemoteDatastore;
 
 typedef struct DomainCluster DomainCluster;
@@ -68,12 +70,14 @@ struct DatastoreWrapper_RemoteDatastore *init_remote_storage(struct DomainCluste
 
 void free_datastore(struct DatastoreWrapper_RemoteDatastore *store);
 
-void find_domain_data(struct DatastoreWrapper_RemoteDatastore *store,
-                      const char *domain_id,
-                      struct Query *query,
-                      bool keep_alive,
-                      FindCallback callback,
-                      void *user_data);
+struct DataConsumer *initialize_data_consumer(struct DatastoreWrapper_RemoteDatastore *store,
+                                              const char *domain_id,
+                                              struct Query *query,
+                                              bool keep_alive,
+                                              FindCallback callback,
+                                              void *user_data);
+
+void free_data_consumer(struct DataConsumer *consumer);
 
 void free_reliable_data_producer(struct ReliableDataProducer *producer);
 

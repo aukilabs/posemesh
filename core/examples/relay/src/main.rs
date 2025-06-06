@@ -1,4 +1,4 @@
-use networking::libp2p::{Networking, NetworkingConfig};
+use posemesh_networking::libp2p::{Networking, NetworkingConfig};
 use tokio::{self, select};
 use futures::{AsyncReadExt, StreamExt};
 

@@ -3,13 +3,24 @@
 This is a browser example for the domain package. It demonstrates how to use the domain package in a browser environment.
 
 ## Prerequisites
-
 - Node.js (v14 or later)
 - npm (v6 or later)
-- Rust (latest stable)
-- wasm-pack (latest)
 
-### Installing Protocol Buffers Tools
+## Setup
+1. Build the WASM module:
+- Install Rust
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+```
+
+- Install wasm-pack
+```bash
+cargo install wasm-pack
+cd core
+```
+
+- (Optional) Installing Protocol Buffers Tools
 
 install 
 - protoc (Protocol Buffers Compiler)
@@ -29,19 +40,25 @@ choco install protoc
 npm install -g protoc-gen-ts
 ```
 
-## Setup
-
-1. Build the WASM module:
+- Build rust
 ```bash
-cd core
-wasm-pack build --target web --out-dir ./examples/browser/pkg --out-name posemesh-domain --release domain
+make build-domain-wasm
 ```
-
 For macos, if you are running into `"No available targets are compatible with triple "wasm32-unknown-unknown"`, you need to use another clang compiler
 
 ```
 brew install llvm
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+```
+
+- Link module
+Link once
+```bash
+cd core/domain/pkg
+npm link
+
+cd core/domain/examples/browser
+npm link @aukilabs/posemesh-domain
 ```
 
 2. Install dependencies:
@@ -77,10 +94,10 @@ This will create a production build in the `dist` directory.
 
 ## Features
 
-- File upload with drag-and-drop support
+- Scans upload with drag-and-drop support
 - Upload status tracking
 - WebRTC-based peer-to-peer communication
-- Task monitoring and status updates
-- File download capabilities
+- Trigger refinement on selected scans
+- Scans download capabilities
 
 To modify the protobuf definitions, edit the .proto files in the `protobuf` directory and regenerate the JavaScript files using the commands above. 

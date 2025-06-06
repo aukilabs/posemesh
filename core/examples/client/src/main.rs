@@ -1,29 +1,34 @@
-use futures::StreamExt;
-use std::{collections::HashMap, fs, io::Read, vec};
-use domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
+use futures::{AsyncWrite, StreamExt};
+use quick_protobuf::deserialize_from_slice;
+use std::{collections::HashMap, fs, io::{Error, ErrorKind, Read}, pin::Pin, sync::{Arc, Mutex}, task::{Context, Poll}, vec};
+use posemesh_domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{self, Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
-    * Usage: cargo run --package client-example dmt <port> <name> <domain_manager>
-    * Example: cargo run --package client-example dmt 0 dmt /ip4/54.67.15.233/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
+    * Usage: cargo run --package client-example <port> <name> <domain_manager> <domain_id> <relay>
+    * Example: cargo run --package client-example 0 dmt /ip4/1.2.3.4/udp/18804/quic-v1/p2p/12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg 12D3KooWBMyph6PCuP6GUJkwFdR7bLUPZ3exLvgEPpR93J52GaJg
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 6 {
-        println!("Usage: {} <port> <name> <domain_manager> <relay> <domain_id>", args[0]);
+    if args.len() < 5 {
+        println!("Usage: {} <port> <name> <domain_manager> <domain_id> <relay>", args[0]);
         return Ok(());
     }
     let port = args[1].parse::<u16>().unwrap();
     let name = args[2].clone();
     let domain_manager = args[3].clone();
-    let relay = args[4].clone();
-    let domain_id = args[5].clone();
+    let domain_id = args[4].clone();
+    let relay = if args.len() > 5 {
+        vec![args[5].clone()]
+    } else {
+        vec![]
+    };
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), vec![relay]);
+    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), relay);
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
@@ -31,28 +36,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let dir = fs::read_dir(input_dir).unwrap();
     let scan = "2025-02-26_11-19-47".to_string();
 
-    let domain_id = data_id_generator();
     let query = Query {
         ids: vec![],
         names: vec![],
         data_types: vec![],
-        name_regexp: None,
+        name_regexp: Some(format!(".*_{}", scan)),
         data_type_regexp: None,
+        metadata_only: true,
     };
 
-    let mut downloader = remote_datastore.load(domain_id.clone(), query, false).await?;
+    #[derive(Clone)]
+    struct DataConsumer {
+        name_to_id: Arc<Mutex<HashMap<String, String>>>,
+    }
+    impl AsyncWrite for DataConsumer {
+        fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, content: &[u8]) -> Poll<Result<usize, Error>> {
+            if content.len() < 4 {
+                return Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "Incomplete metadata")));
+            }
 
-    let mut name_to_id = HashMap::new();
-    loop {
-        let data = downloader.next().await;
-        if data.is_none() {
-            break;
+            match deserialize_from_slice::<domain_data::Metadata>(&content[4..]) {
+                Ok(metadata) => {
+                    let mut name_to_id = self.name_to_id.lock().unwrap();
+                    name_to_id.insert(metadata.name, metadata.id);
+                    return Poll::Ready(Ok(content.len()));
+                }
+                Err(e) => {
+                    return Poll::Ready(Err(Error::new(ErrorKind::Other, "Failed to deserialize metadata")));
+                }
+            }
         }
-        let data = data.unwrap().unwrap();
-        name_to_id.insert(data.metadata.name, data.metadata.id);
+        
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Error>> {
+            Poll::Ready(Ok(()))
+        }
+        
+        fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Error>> {
+            Poll::Ready(Ok(()))
+        }
+        
     }
 
-    println!("downloaded {} files", name_to_id.len());
+    let name_to_id = Arc::new(Mutex::new(HashMap::new()));
+
+    let writer = DataConsumer {
+        name_to_id: name_to_id.clone(),
+    };
+
+    let mut downloader = remote_datastore.load(domain_id.clone(), query, false, writer).await?;
+    downloader.wait_for_done().await?;
+    println!("downloaded {} files", name_to_id.lock().unwrap().len());
 
     let mut producer = remote_datastore.upsert(domain_id.clone()).await?;
 
@@ -76,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let data_type = parts.last().unwrap();
                 let name = format!("{}_{}", parts[..parts.len()-1].join("."), scan);
 
-                let id = name_to_id.get(&name).map(|id| id.clone());
+                let id = name_to_id.lock().unwrap().get(&name).map(|id| id.clone());
                 let metadata = UpsertMetadata {
                     id: id.clone().unwrap_or_else(|| data_id_generator()),
                     name,

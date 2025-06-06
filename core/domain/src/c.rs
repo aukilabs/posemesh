@@ -1,12 +1,13 @@
 use std::os::raw::{c_char, c_void, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
+use futures::channel::mpsc;
 use futures::stream::StreamExt;
-use runtime::get_runtime;
+use posemesh_runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
-use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer};
-use crate::binding_helper::init_r_remote_storage;
+use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer, DomainError as r_DomainError};
+use crate::binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer};
 use crate::datastore::remote::RemoteDatastore;
 use crate::protobuf::domain_data::UpsertMetadata;
 use crate::protobuf::domain_data::{self, Data};
@@ -161,6 +162,7 @@ pub extern "C" fn create_domain_data_query(ids_ptr: *const *const c_char, len: c
         data_type_regexp: Some(data_type_regexp),
         names,
         data_types,
+        metadata_only: true,
     };
 
     Box::into_raw(Box::new(query))
@@ -241,7 +243,7 @@ pub extern "C" fn free_domain_cluster(cluster: *mut DomainCluster) {
 
 #[no_mangle]
 pub extern "C" fn init_remote_storage(cluster: *mut DomainCluster) -> *mut DatastoreWrapper<RemoteDatastore> {
-    Box::into_raw(Box::new(DatastoreWrapper::new(Box::new(init_r_remote_storage(cluster)))))
+    Box::into_raw(Box::new(DatastoreWrapper::new(init_r_remote_storage(cluster))))
 }
 
 #[no_mangle]
@@ -256,24 +258,24 @@ pub extern "C" fn free_datastore(store: *mut DatastoreWrapper<RemoteDatastore>) 
 }
 
 pub struct DatastoreWrapper<D: Datastore> {
-    pub inner: Box<D>,
+    pub inner: D,
 }
 
 impl<D: Datastore> DatastoreWrapper<D> {
-    fn new(store: Box<D>) -> Self {
+    fn new(store: D) -> Self {
         DatastoreWrapper { inner: store }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn find_domain_data(
+pub extern "C" fn initialize_data_consumer(
     store: *mut DatastoreWrapper<RemoteDatastore>, // Pointer to Rust struct
     domain_id: *const c_char,    // C string
     query: *mut domain_data::Query, // Pointer to query struct
     keep_alive: bool,
     callback: FindCallback,      // C function pointer
     user_data: *mut c_void       // Custom user data (optional)
-) {
+) -> *mut DataConsumer {
     // Convert domain_id to Rust string
     let domain_id = unsafe {
         assert!(!domain_id.is_null());
@@ -290,28 +292,44 @@ pub extern "C" fn find_domain_data(
     let query_clone = unsafe { (*query).clone() };
 
     let user_data_clone = user_data as usize;
+    let store = store_wrapper.inner.clone();
 
-    // Spawn a Tokio task to process the receiver
-    get_runtime().spawn(async move {
-        let stream = store_wrapper.inner.load(domain_id, query_clone, keep_alive).await.expect("Failed to load domain data");
-        let mut stream = Box::pin(stream);
+    let res: Result<(Box<dyn common::DataConsumer>, mpsc::Receiver<domain_data::Data>), r_DomainError> = get_runtime().block_on(initialize_consumer(store, domain_id, query_clone, keep_alive));
 
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(data) => {
+    match res {
+        Ok((consumer, mut rx)) => {
+            get_runtime().spawn(async move {
+                while let Some(data) = rx.next().await {
                     let c_data = from_rust(&data);
                     let user_data = user_data_clone as *mut c_void;
                     callback(user_data, &c_data, ptr::null());
                 }
-                Err(err) => {
-                    let message = CString::new(err.to_string()).unwrap().into_raw();
-                    let error = DomainError { message };
-                    let user_data = user_data_clone as *mut c_void;
-                    callback(user_data, ptr::null(), &error);
-                }
-            }
+            });
+            Box::into_raw(Box::new(DataConsumer::new(consumer)))
         }
-    });
+        Err(err) => {
+            tracing::error!("Failed to initialize consumer: {}", err);
+            let message = CString::new(err.to_string()).unwrap().into_raw();
+            let error = DomainError { message };
+            let user_data = user_data_clone as *mut c_void;
+            callback(user_data, ptr::null(), &error);
+            return ptr::null_mut();
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn free_data_consumer(consumer: *mut DataConsumer) {
+    if consumer.is_null() {
+        return;
+    }
+
+    let consumer = unsafe { &mut *consumer };
+    consumer.close();
+
+    unsafe {
+        let _ = Box::from_raw(consumer);
+    }
 }
 
 pub struct ReliableDataProducer {
