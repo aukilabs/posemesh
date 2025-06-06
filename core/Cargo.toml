@@ -42,6 +42,7 @@ posemesh-utils = { path = "utils" }
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"
+wasm-bindgen-test = "0.3.50"
 
 [profile.release]
 strip = true

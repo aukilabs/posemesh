@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use futures::{channel::mpsc::{channel, Sender}, SinkExt};
+#[cfg(test)]
 use mockall::automock;
 use tokio::{spawn, sync::Mutex};
 use tokio_postgres::{Client, NoTls};
@@ -121,7 +122,7 @@ impl Query {
     }
 }
 
-#[automock]
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait MetadataStore: Send + Sync {
     async fn load(&mut self, domain_id: String, query: Query, keep_alive: bool) -> Result<MetadataReader, DomainError>;

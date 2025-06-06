@@ -682,12 +682,12 @@ impl MessageWrite for LocalRefinementInputV1 {
 
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Default, PartialEq, Clone)]
-pub struct DomainClusterHandshake {
+pub struct DomainClusterHandshakeRequest {
     pub access_token: String,
     pub domain_id: String,
 }
 
-impl<'a> MessageRead<'a> for DomainClusterHandshake {
+impl<'a> MessageRead<'a> for DomainClusterHandshakeRequest {
     fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
         let mut msg = Self::default();
         while !r.is_eof() {
@@ -702,7 +702,7 @@ impl<'a> MessageRead<'a> for DomainClusterHandshake {
     }
 }
 
-impl MessageWrite for DomainClusterHandshake {
+impl MessageWrite for DomainClusterHandshakeRequest {
     fn get_size(&self) -> usize {
         0
         + 1 + sizeof_len((&self.access_token).len())
@@ -712,6 +712,42 @@ impl MessageWrite for DomainClusterHandshake {
     fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
         w.write_with_tag(10, |w| w.write_string(&**&self.access_token))?;
         w.write_with_tag(18, |w| w.write_string(&**&self.domain_id))?;
+        Ok(())
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct DomainClusterHandshakeResponse {
+    pub code: task::Code,
+    pub err_msg: String,
+}
+
+impl<'a> MessageRead<'a> for DomainClusterHandshakeResponse {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Self::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes) {
+                Ok(8) => msg.code = r.read_enum(bytes)?,
+                Ok(18) => msg.err_msg = r.read_string(bytes)?.to_owned(),
+                Ok(t) => { r.read_unknown(bytes, t)?; }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(msg)
+    }
+}
+
+impl MessageWrite for DomainClusterHandshakeResponse {
+    fn get_size(&self) -> usize {
+        0
+        + 1 + sizeof_varint(*(&self.code) as u64)
+        + 1 + sizeof_len((&self.err_msg).len())
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        w.write_with_tag(8, |w| w.write_enum(*&self.code as i32))?;
+        w.write_with_tag(18, |w| w.write_string(&**&self.err_msg))?;
         Ok(())
     }
 }

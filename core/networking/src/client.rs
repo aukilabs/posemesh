@@ -8,8 +8,10 @@ use std::str::FromStr;
 use tokio::time::sleep;
 #[cfg(target_family = "wasm")]
 use posemesh_utils::sleep;
+#[cfg(test)]
+use mockall::automock;
 
-use crate::libp2p::NetworkError;
+use crate::libp2p::{NetworkError};
 
 async fn retry_send(mut command_sender: mpsc::Sender<Command>, message: Vec<u8>, peer_id: PeerId, protocol: StreamProtocol, timeout_millis: u32, last: bool) -> Result<Stream, NetworkError> {
     let (sender, receiver) = oneshot::channel::<Result<Stream, NetworkError>>();
@@ -51,7 +53,7 @@ pub struct Client {
     sender: mpsc::Sender<Command>,
 }
 
-#[mockall::automock]
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait TClient {
     async fn publish(&mut self, topic: String, message: Vec<u8>) -> Result<(), NetworkError>;
@@ -92,11 +94,10 @@ impl Client {
         Self { sender }
     }
 
-    pub async fn set_stream_handler(&mut self, protocol: String) -> Result<IncomingStreams, NetworkError> {
+    pub async fn set_stream_handler(&mut self, endpoint: &str) -> Result<IncomingStreams, NetworkError> {
         let (sender, receiver) = oneshot::channel::<Result<IncomingStreams, NetworkError>>();
-        let pro = StreamProtocol::try_from_owned(protocol)?;
         self.sender
-            .send(Command::SetStreamHandler { protocol: pro, sender })
+            .send(Command::SetStreamHandler { endpoint: endpoint.to_string(), sender })
             .await?;
 
         match receiver.await {
@@ -133,7 +134,7 @@ pub enum Command {
         response: oneshot::Sender<Result<Stream, NetworkError>>,
     },
     SetStreamHandler {
-        protocol: StreamProtocol,
+        endpoint: String,
         sender: oneshot::Sender<Result<IncomingStreams, NetworkError>>,
     },
     Publish {

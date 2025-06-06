@@ -114,9 +114,13 @@ message LocalRefinementInputV1 {
   required domain_data.Query query = 1;
 }
 
-message DomainClusterHandshake {
+message DomainClusterHandshakeRequest {
   required string access_token = 1;
   required string domain_id = 2;
+}
+message DomainClusterHandshakeResponse {
+  required Code code = 1;
+  required string err_msg = 2;
 }
 
 message GlobalRefinementInputV1 {

@@ -114,7 +114,10 @@ pub struct DomainCluster {
 impl DomainCluster {
     #[wasm_bindgen(constructor)]
     pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        Self { inner: Arc::new(Mutex::new(r_DomainCluster::new(domain_manager_addr, name, false, 0, false, false, private_key, private_key_path, vec![]))) }   
+        let cluster = block_on(async {
+            return r_DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, private_key, private_key_path, vec![]).await;
+        }).expect("failed to join domain cluster");
+        Self { inner: Arc::new(Mutex::new(cluster)) }   
     }
 
     #[wasm_bindgen]

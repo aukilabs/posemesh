@@ -1,7 +1,7 @@
-use crate::{auth::{handshake, AuthError}, datastore::common::{DataConsumer, Datastore, DomainError, CHUNK_SIZE}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task, UnsubscribeDataQueryV1}}};
+use crate::{auth::{handshake, AuthError}, datastore::common::{Datastore, DomainError}, message::{prefix_size_message, read_prefix_size_message}, protobuf::{domain_data::{Metadata, UpsertMetadata}, task::{ConsumeDataInputV1, Status, Task, UnsubscribeDataQueryV1}}};
 use posemesh_networking::{libp2p::{NetworkError, Networking}, AsyncStream};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
-use futures::{channel::oneshot::{self, Canceled}, select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, FutureExt, StreamExt};
+use futures::{channel::oneshot, select, AsyncReadExt, AsyncWriteExt, FutureExt};
 use posemesh_networking::client::TClient;
 use super::public_key::PublicKeyStorage;
 #[cfg(not(target_family = "wasm"))]
@@ -103,9 +103,9 @@ pub async fn store_data_v1<S: AsyncStream, D: Datastore, P: PublicKeyStorage>(mu
     }
 }
 
-pub async fn serve_data_v1<S: AsyncStream + 'static, D: Datastore, P: PublicKeyStorage>(stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {    
+pub async fn serve_data_v1<S: AsyncStream + 'static, D: Datastore, P: PublicKeyStorage>(mut stream: S, mut c: Networking, mut datastore: D, key_loader: P) -> Result<(), CapabilityError> {    
+    let header = handshake(&mut stream, key_loader).await?;
     let (mut read, write) = stream.split();
-    let header = handshake(&mut read, key_loader).await?;
     c.client.subscribe(header.job_id.clone()).await?;
     let input = read_prefix_size_message::<ConsumeDataInputV1, _>(&mut read).await?;
     let (cancel_tx, mut cancel_rx) = oneshot::channel();
