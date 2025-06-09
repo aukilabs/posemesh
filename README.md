@@ -8,7 +8,7 @@ To learn more about this vision, read the [whitepaper](https://auki.ai/whitepape
 
 ## Getting Started:
 
-To get started building on top of the posemesh, check out the [Examples](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md) for sample code, or [build the Posemesh SDK](https://github.com/aukilabs/posemesh/tree/main/sdk) for your platform of choice.
+To get started building on the posemesh, check out the [Examples](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md) for sample code, or [build the Posemesh SDK](https://github.com/aukilabs/posemesh/tree/main/sdk) for your platform of choice.
 
 ## Contributors:
 
