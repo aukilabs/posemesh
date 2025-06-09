@@ -26,6 +26,10 @@ The posemesh is an open protocol built by the community. It is currently managed
     - **hotfix/** - for hotfixes without bug tickets
 - Changelog: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+### Example projects
+
+Links to examples that use the SDK can be found in [samples/example-projects.md](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md).
+
 ## Contact:
 
 For any questions or support, please open an issue, or reach out to Auki Labs via [Discord](https://discord.gg/aukiverse) or [email](mailto:contact@aukilabs.com).
