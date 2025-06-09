@@ -1,11 +1,10 @@
-use std::{io::{Error, ErrorKind}, pin::Pin, sync::{Arc, Mutex}, task::{Context, Poll}};
-use async_trait::async_trait;
-use futures::{channel::mpsc, executor::block_on, AsyncWrite, StreamExt, SinkExt};
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use std::sync::{Arc, Mutex};
+use futures::{executor::block_on, StreamExt};
+use quick_protobuf::serialize_into_vec;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer, DomainDataWriter}, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer}, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -110,16 +109,20 @@ pub struct DomainCluster {
     inner: Arc<Mutex<r_DomainCluster>>,
 }
 
+
+#[wasm_bindgen]
+pub fn join_cluster(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Promise {
+    let future = async move {
+        match r_DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, private_key, private_key_path, vec![]).await {
+            Ok(cluster) => Ok(JsValue::from(DomainCluster { inner: Arc::new(Mutex::new(cluster)) })),
+            Err(e) => Err(JsValue::from_str(&format!("failed to join cluster: {}", e)))
+        }
+    };
+    future_to_promise(future)
+}
+
 #[wasm_bindgen]
 impl DomainCluster {
-    #[wasm_bindgen(constructor)]
-    pub fn new(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Self {
-        let cluster = block_on(async {
-            return r_DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, private_key, private_key_path, vec![]).await;
-        }).expect("failed to join domain cluster");
-        Self { inner: Arc::new(Mutex::new(cluster)) }   
-    }
-
     #[wasm_bindgen]
     pub fn monitor(&self, callback: Function) {
         let inner = self.inner.clone();

@@ -62,7 +62,7 @@ async fn join(manager_id: &str, client: Client, id: &str, name: &str, capabiliti
                 capabilities: capabilities.to_vec(),
             }
         },
-        5000
+        15000
     ).await
 }
 
@@ -232,8 +232,10 @@ impl DomainCluster {
         let capabilities = &vec![];
 
         let networking_clone = networking.clone();
-        join(&domain_manager_id, networking.client, &networking.id, node_name, capabilities).await?;
-
+        let id = networking.id;
+        tracing::info!("Trying to join cluster {domain_manager_id}");
+        join(&domain_manager_id, networking.client, &id, node_name, capabilities).await?;
+        tracing::info!("Managed to join cluster {domain_manager_id}");
         Ok(DomainCluster {
             sender: tx,
             peer: networking_clone,

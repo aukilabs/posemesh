@@ -71,7 +71,6 @@ impl AsyncWrite for DomainDataWriter {
         let mut done = false;
         if let Some(ref metadata) = self.metadata {
             let current_len = self.content.as_ref().map(|c| c.len()).unwrap_or(0);
-            tracing::info!("received {}/{} bytes", current_len, metadata.size);
             if self.metadata_only || current_len == metadata.size as usize {
                 done = true;
             }

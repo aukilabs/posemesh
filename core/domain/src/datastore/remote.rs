@@ -37,13 +37,21 @@ async fn read_from_stream<W: AsyncWrite + Unpin + Send + 'static>(metadata_only:
         let skip = written == 0; // dest skips this data
         dest.flush().await?;
         if !metadata_only {
-            let mut content = vec![0u8; metadata.size as usize];
-            src.read_exact(&mut content).await?;
-            if !skip {
-                dest.write_all(&content).await?;
-                dest.flush().await?;
-    
-                tracing::debug!("Read data: {}, {}/{}", metadata.name, metadata.size, content.len());
+            let mut remaining = metadata.size as usize;
+            let mut written = 0;
+            while remaining > 0 {
+                let chunk_size = std::cmp::min(CHUNK_SIZE, remaining);
+                let mut chunk = vec![0u8; chunk_size];
+                src.read_exact(&mut chunk).await?;
+                
+                if !skip {
+                    dest.write_all(&chunk).await?;
+                    dest.flush().await?;
+                    written += chunk_size;
+                    tracing::info!("Read data: {}, {}/{}", metadata.name, written, metadata.size);
+                }
+                
+                remaining -= chunk_size;
             }
         }
     }
