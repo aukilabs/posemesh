@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package discovery;
+
+message Capability {
+    required string endpoint = 1;
+    required int32 capacity = 2;
+}
+
+message Node {
+    required string id = 1;
+    repeated Capability capabilities = 2;
+    required string name = 3;
+}
+
+message JoinClusterRequest {
+    required Node node = 1;
+}
+
+message JoinClusterResponse {
+}

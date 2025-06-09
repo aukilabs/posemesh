@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_cluster = DomainCluster::new(domain_manager.clone(), name, false, port, false, false, None, Some(private_key_path), relay);
+    let domain_cluster = DomainCluster::join(&domain_manager, &name, false, port, false, false, None, Some(private_key_path), relay).await.expect("failed to join cluster");
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
@@ -134,6 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     while !producer.is_completed().await {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
+    producer.close().await;
 
     println!("producer closed");
 

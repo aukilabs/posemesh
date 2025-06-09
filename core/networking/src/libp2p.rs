@@ -1,11 +1,10 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
-use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::ParseError, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::ParseError, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, ping, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
 use posemesh_utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, thread_rng};
-use serde::{Deserialize, Serialize};
 use libp2p_stream::{self as stream, AlreadyRegistered, IncomingStreams, OpenStreamError};
-use crate::{client::{self, Client}, event, AsyncStream};
+use crate::{client::{self, Client}, event};
 use std::net::{Ipv4Addr, IpAddr};
 
 #[cfg(not(target_family="wasm"))]
@@ -106,6 +105,7 @@ struct PosemeshBehaviour {
     kdht: Toggle<libp2p::kad::Behaviour<MemoryStore>>,
     autonat_client: Toggle<libp2p::autonat::v2::client::Behaviour>,
     relay_client: Toggle<libp2p::relay::client::Behaviour>,
+    ping: libp2p::ping::Behaviour,
     #[cfg(not(target_family="wasm"))]
     mdns: Toggle<mdns::tokio::Behaviour>,
     #[cfg(not(target_family="wasm"))]
@@ -125,7 +125,6 @@ pub struct NetworkingConfig {
     pub private_key: Option<Vec<u8>>,
     pub private_key_path: Option<String>,
     pub enable_kdht: bool,
-    pub name: String,
     pub enable_websocket: bool,
     pub enable_webrtc: bool,
     pub namespace: Option<String>,
@@ -142,19 +141,11 @@ impl Default for NetworkingConfig {
             relay_nodes: vec![],
             private_key: None,
             private_key_path: Some("/volume/pkey".to_string()),
-            name: "Placeholder".to_string(),
             enable_webrtc: false,
             enable_websocket: false, // placeholder
             namespace: None,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Node {
-    pub id: String,
-    pub name: String,
-    pub capabilities: Vec<String>,
 }
 
 fn protocol(namespace: Option<String>, protocol: &str) -> StreamProtocol {
@@ -169,7 +160,7 @@ struct Libp2p {
     swarm: Swarm<PosemeshBehaviour>,
     cfg: NetworkingConfig,
     command_receiver: mpsc::Receiver<client::Command>,
-    pub node: Node,
+    pub node_id: String,
     event_sender: mpsc::Sender<event::Event>,
     find_peer_requests: Arc<Mutex<HashMap<QueryId, oneshot::Sender<Result<(), NetworkError>>>>>,
     cancel_sender: Option<oneshot::Sender<()>>,
@@ -295,7 +286,6 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     let streams = stream::Behaviour::new();
     let identify = libp2p::identify::Behaviour::new(
         libp2p::identify::Config::new(protocol(cfg.namespace.clone(), "id/1.0.0").to_string(), key.public())
-        .with_agent_version(cfg.name.clone())
         .with_push_listen_addr_updates(true),
     );
 
@@ -313,6 +303,7 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
         #[cfg(not(target_family="wasm"))]
         autonat_server: None.into(),
         dcutr: None.into(),
+        ping: libp2p::ping::Behaviour::default()
     };
 
     #[cfg(not(target_family="wasm"))]
@@ -393,7 +384,7 @@ fn enable_webrtc(port: u16) -> Multiaddr {
 }
 
 impl Libp2p {
-    pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<Node, NetworkError> {
+    pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, NetworkError> {
         let private_key = cfg.private_key.clone();
         let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
 
@@ -409,11 +400,6 @@ impl Libp2p {
             listeners.push(enable_webrtc(cfg.port));
         }
         
-        let node = Node {
-            id: key.public().to_peer_id().to_string(),
-            name: cfg.name.clone(),
-            capabilities: vec![],
-        };
         for addr in listeners.iter() {
             match swarm.listen_on(addr.clone()) {
                 Ok(_) => {},
@@ -439,11 +425,12 @@ impl Libp2p {
         let (cancel_sender, cancel_receiver) = oneshot::channel::<()>();
         let mut cancel_receiver = cancel_receiver.fuse();
 
+        let node_id = key.public().to_peer_id();
         let networking = Libp2p {
             cfg: cfg.clone(),
             swarm: swarm,
             command_receiver: command_receiver,
-            node: node.clone(),
+            node_id: node_id.to_string(),
             event_sender: event_sender,
             find_peer_requests: Arc::new(Mutex::new(HashMap::new())),
             cancel_sender: Some(cancel_sender),
@@ -461,7 +448,7 @@ impl Libp2p {
             }
         });
 
-        Ok(node)
+        Ok(node_id.to_string())
     }
 
     async fn run(mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -650,14 +637,30 @@ impl Libp2p {
                     }
                 }
             }
+            SwarmEvent::ConnectionClosed { peer_id, connection_id, endpoint, num_established, cause } => {
+                if num_established == 0 {
+                    self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
+                        dht.remove_peer(&peer_id);
+                    });
+                    self.event_sender.send(event::Event::NodeUnregistered { node_id: peer_id.to_string() }).await.unwrap_or_else(|_| panic!("{}: Failed to send node unregistered event", self.node_id)); 
+                }
+                tracing::info!("Connection closed: {peer_id} {connection_id} {endpoint:?} {num_established} {cause:?}");
+            }
+            SwarmEvent::Behaviour(PosemeshBehaviourEvent::Ping(ping::Event { peer, connection, result, .. })) => {
+                tracing::info!("Ping {peer} {connection} {result:?}");
+                if let Err(e) = result {
+                    // Only log the error since ConnectionClosed will handle peer removal
+                    tracing::error!("Ping failed for peer {peer}: {e}");
+                }
+            }
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 tracing::info!("External address confirmed: {address}");
                 let peer_id = self.swarm.local_peer_id().clone();
                 self.swarm.behaviour_mut().kdht.as_mut().map(|dht| {
                     dht.add_address(&peer_id, address.clone());
-                    if !is_circuit_addr(address.clone()) {
-                        dht.set_mode(Some(kad::Mode::Server));
-                    }
+                    // if !is_circuit_addr(address.clone()) {
+                    //     dht.set_mode(Some(kad::Mode::Server));
+                    // }
                 });
             }
             SwarmEvent::NewExternalAddrCandidate { address } => {
@@ -676,7 +679,7 @@ impl Libp2p {
                 tracing::info!("Autonat Server tested address: {tested_addr}, result: {result:?}");
             }
             SwarmEvent::Behaviour(PosemeshBehaviourEvent::Identify(libp2p::identify::Event::Received {
-                info: libp2p::identify::Info { observed_addr, listen_addrs, protocols, agent_version, .. },
+                info: libp2p::identify::Info { observed_addr, listen_addrs, .. },
                 peer_id,
                 ..
             })) =>
@@ -691,14 +694,6 @@ impl Libp2p {
                         dht.add_address(&peer_id, addr.clone());
                     }
                 });
-
-                let node = Node {
-                    id: peer_id.to_string(),
-                    name: agent_version,
-                    capabilities: protocols.iter().map(|p| p.to_string()).filter(|p| !p.contains("posemesh") && !p.contains("libp2p") && !p.contains("ipfs") && !p.contains("/meshsub/1.0.0") ).collect::<Vec<String>>(),
-                };
-
-                self.event_sender.send(event::Event::NewNodeRegistered { node: node.clone() }).await.unwrap_or_else(|_| panic!("{}: Failed to send new node: {} registered event", self.node.id, node.name));
             },
             e => tracing::debug!("Other events: {e:?}"),
         }
@@ -719,8 +714,8 @@ impl Libp2p {
                 #[cfg(not(target_family="wasm"))]
                 tokio::spawn(open_stream(ctrl, peer_id, protocol, message, response, receiver));
             },
-            client::Command::SetStreamHandler { protocol, sender } => {
-                match self.add_stream_protocol(protocol) {
+            client::Command::SetStreamHandler { endpoint, sender } => {
+                match self.add_stream_protocol(&endpoint) {
                     Ok(stream) => {
                         let _ = sender.send(Ok(stream));
                     }
@@ -767,16 +762,9 @@ impl Libp2p {
         }
     }
 
-    fn add_stream_protocol(&mut self, protocol: StreamProtocol) -> Result<IncomingStreams, NetworkError> {
-        let proto = protocol.clone();
-        let incoming_stream = self.swarm.behaviour_mut().streams.new_control().accept(protocol)?;
-
-        let mut node = self.node.clone();
-
-        node.capabilities.push(proto.to_string());
-
-        self.node = node;
-        self.event_sender.try_send(event::Event::NewNodeRegistered { node: self.node.clone() })?;
+    fn add_stream_protocol(&mut self, endpoint: &str) -> Result<IncomingStreams, NetworkError> {
+        let proto = StreamProtocol::try_from_owned(endpoint.to_string())?;
+        let incoming_stream = self.swarm.behaviour_mut().streams.new_control().accept(proto)?;
 
         Ok(incoming_stream)
     }
@@ -864,7 +852,7 @@ impl Debug for Networking {
 async fn initialize_libp2p(cfg: &NetworkingConfig, receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, NetworkError> {
     let res = Libp2p::new(cfg, receiver, event_sender).await;
     match res {
-        Ok(node) => Ok(node.id),
+        Ok(node) => Ok(node),
         Err(e) => Err(e),
     }
 }

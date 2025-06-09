@@ -1,4 +1,4 @@
-use crate::{capabilities::public_key::{PublicKeyStorage, PUBLIC_KEY_PROTOCOL_V1}, message::{read_prefix_size_message, request_response_raw}, protobuf::task::DomainClusterHandshake};
+use crate::{capabilities::public_key::{PublicKeyStorage, PUBLIC_KEY_PROTOCOL_V1}, message::{prefix_size_message, read_prefix_size_message, request_response_raw}, protobuf::task::{self, DomainClusterHandshakeRequest, DomainClusterHandshakeResponse}};
 use async_timer::Interval;
 use base64::Engine;
 use posemesh_networking::{client::Client, libp2p::NetworkError, AsyncStream};
@@ -6,7 +6,7 @@ use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
 use std::{sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
-use futures::{channel::oneshot, lock::Mutex, select, AsyncRead, FutureExt};
+use futures::{channel::oneshot, lock::Mutex, select, FutureExt, AsyncWriteExt};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -100,6 +100,8 @@ pub enum AuthError {
     PublicKeyAlreadyExists(String),
     #[error("Protobuf error: {0}")]
     ProtobufError(#[from] quick_protobuf::Error),
+    #[error("Handshake failed: {0}")]
+    HandshakeFailed(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -126,13 +128,19 @@ pub trait TokenClaim: Serialize + DeserializeOwned {
     fn add_ttl(&mut self, ttl: Duration);
 }
 
-pub async fn handshake<S: AsyncRead + Unpin, P: PublicKeyStorage>(stream: &mut S, key_loader: P) -> Result<TaskTokenClaim, AuthError> {
-    let header = read_prefix_size_message::<DomainClusterHandshake, _>(stream).await?;
+pub async fn handshake<S: AsyncStream, P: PublicKeyStorage>(stream: &mut S, key_loader: P) -> Result<TaskTokenClaim, AuthError> {
+    let header = read_prefix_size_message::<DomainClusterHandshakeRequest, _>(stream).await?;
     let public_key = key_loader.get_by_domain_id(header.domain_id.clone()).await?;
     let claim = verify_token::<TaskTokenClaim>(&header.access_token, &public_key)?;
     if claim.domain_id != header.domain_id {
         return Err(AuthError::DomainIdMismatch);
     }
+    let response = DomainClusterHandshakeResponse {
+        code: task::Code::OK,
+        err_msg: "".to_string(),
+    };
+    stream.write_all(&prefix_size_message(&response)).await?;
+    stream.flush().await?;
     Ok(claim)
 }
 
@@ -324,9 +332,9 @@ mod tests {
 
         let ttl = Duration::from_secs(3);
         let auth_server      = AuthServer::new(None, Some("volume/domain.pkey".to_string()), ttl).expect("failed to initialize auth server");
-        let mut public_key_proto = ctx.server.client.set_stream_handler(PUBLIC_KEY_PROTOCOL_V1.to_string()).await.expect("failed to add /public-key");
-        
-        let public_key = auth_server.public_key().clone();
+        let mut public_key_proto = ctx.server.client.set_stream_handler(PUBLIC_KEY_PROTOCOL_V1).await.expect("failed to add /public-key");
+
+        let public_key = auth_server.public_key();
         #[derive(Clone)]
         struct TestPublicKeyStorage {
             public_key: Vec<u8>,

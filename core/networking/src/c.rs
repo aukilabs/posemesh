@@ -13,7 +13,6 @@ pub struct Config {
     pub private_key_size: u32,
     pub private_key_path: *const c_char, // private key path can be null, but if private key is null, private key path must be provided
     pub enable_mdns: u8,
-    pub name: *const c_char,
 }
 
 pub fn to_rust(config: &Config) -> NetworkingConfig {
@@ -47,11 +46,6 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         Some(private_key_path.to_string())
     };
 
-    let name = unsafe {
-        assert!(!config.name.is_null(), "Context::new(): config.name is null");
-        CStr::from_ptr(config.name)
-    }.to_str().expect("Context::new(): config.name is not a valid UTF-8 string");
-
     NetworkingConfig {
         bootstrap_nodes: bootstraps,
         relay_nodes: relays,
@@ -61,7 +55,6 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         enable_kdht: true,
         enable_relay_server: false,
         port: 0,
-        name: name.to_string(),
         enable_websocket: false,
         enable_webrtc: false,
         namespace: None,

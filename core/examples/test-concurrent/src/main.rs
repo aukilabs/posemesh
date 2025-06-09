@@ -16,19 +16,14 @@ async fn main() {
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/bootstrap/pkey".to_string()),
-        name: "test-concurrent/bootstrap".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
         namespace: None,
     };
 
-    let protocol = "/chat/v1".to_string();
-    let _protocol_clone = protocol.clone();
-    let protocol_clone_clone = protocol.clone();
-    let protocol_clone_clone_clone = protocol.clone();
-
+    let protocol = "/chat/v1";
     let mut bootstrap = Networking::new(&networking).unwrap();
-    let mut chat_protocol = bootstrap.client.set_stream_handler(protocol.clone()).await.unwrap();
+    let mut chat_protocol = bootstrap.client.set_stream_handler(protocol).await.unwrap();
 
     let bootstrap_id = bootstrap.id.clone();
     let _bootstrap_id_clone = bootstrap_id.clone();
@@ -58,7 +53,6 @@ async fn main() {
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-a/pkey".to_string()),
-        name: "test-concurrent/peer-a".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
         namespace: None,
@@ -75,7 +69,6 @@ async fn main() {
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-b/pkey".to_string()),
-        name: "test-concurrent/peer-b".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
         namespace: None,
@@ -91,7 +84,6 @@ async fn main() {
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some("./volume/test-concurrent/peer-c/pkey".to_string()),
-        name: "test-concurrent/peer-c".to_string(),
         enable_websocket: false,
         enable_webrtc: false,
         namespace: None,
@@ -102,7 +94,7 @@ async fn main() {
     tokio::spawn(async move {
         // sleep(Duration::from_millis(500)).await;
         println!("{}: Sending message", peer_b.id);
-        let mut s = peer_b.client.send(format!("3 - send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol_clone_clone.clone(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_b.id));
+        let mut s = peer_b.client.send(format!("3 - send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_b.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -113,7 +105,7 @@ async fn main() {
     });
     tokio::spawn(async move {
         println!("{}: Sending message", peer_c.id.clone());
-        let mut s = peer_c.client.send(format!("1 - send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol_clone_clone_clone.clone(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_c.id));
+        let mut s = peer_c.client.send(format!("1 - send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_c.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -125,7 +117,7 @@ async fn main() {
 
     tokio::spawn(async move {
         println!("{}: Sending message", peer_a.id);
-        let mut s = peer_a.client.send(format!("2 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.clone(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_a.id));
+        let mut s = peer_a.client.send(format!("2 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_a.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         

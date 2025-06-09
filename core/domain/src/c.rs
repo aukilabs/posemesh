@@ -223,7 +223,10 @@ pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: 
                 .collect::<Vec<String>>()
         }
     };
-    let cluster = DomainCluster::new(domain_manager_addr, name, false, 0, false, false, None, None, nodes);
+    let cluster = get_runtime().block_on(async move {
+        return DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, None, None, nodes).await;
+    }).expect("failed to join cluster");
+    
     Box::into_raw(Box::new(cluster))
 }
 

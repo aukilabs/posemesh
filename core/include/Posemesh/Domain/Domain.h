@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define UNLIMITED_CAPACITY -1
+
 #define CHUNK_SIZE (7 * 1024)
 
 typedef struct DataConsumer DataConsumer;

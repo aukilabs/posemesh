@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, PeerId};
 use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
-use posemesh_networking::{event, libp2p::{Networking, NetworkingConfig}};
-use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message, request_response}, protobuf::task::{self, Job, JobRequest, Status, SubmitJobResponse}};
+use posemesh_networking::{client::Client, event, libp2p::{Networking, NetworkingConfig}, AsyncStream};
+use crate::{capabilities, datastore::common::DomainError, message::request_response, protobuf::{discovery::{Capability, JoinClusterRequest, JoinClusterResponse, Node}, task::{self, Job, JobRequest, Status, SubmitJobResponse}}};
 use std::{collections::HashMap, fmt::Error};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
 use posemesh_networking::client::TClient;
@@ -11,6 +11,9 @@ use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
+pub const UNLIMITED_CAPACITY: i32 = -1;
+pub const JOIN_CLUSTER_PROTOCOL_V1: &str = "/join/v1";
+pub const SUBMIT_JOB_PROTOCOL_V1: &str = "/jobs/v1";
 #[derive(Debug)]
 pub enum TaskUpdateResult {
     Ok(task::Task),
@@ -43,6 +46,24 @@ enum Command {
     MonitorJobs {
         response: oneshot::Sender<Receiver<Job>>,
     }
+}
+
+
+
+async fn join(manager_id: &str, client: Client, id: &str, name: &str, capabilities: &[Capability]) -> Result<JoinClusterResponse, DomainError> {
+    request_response::<JoinClusterRequest, JoinClusterResponse>(
+        client.clone(),
+        manager_id,
+        JOIN_CLUSTER_PROTOCOL_V1,
+        &JoinClusterRequest {
+            node: Node {
+                id: id.to_string(),
+                name: name.to_string(),
+                capabilities: capabilities.to_vec(),
+            }
+        },
+        15000
+    ).await
 }
 
 impl InnerDomainCluster {
@@ -119,15 +140,12 @@ impl InnerDomainCluster {
                     }
                 }
             }
-            Some(event::Event::NewNodeRegistered { node }) => {
-                tracing::info!("New node registered: {:?}", node.name);
-            }
             _ => {}
         }
     }
 
     async fn submit_job(&mut self, job: &JobRequest, mut tx: Sender<TaskUpdateEvent>) {
-        let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, "/jobs/v1", job, 0).await;
+        let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, SUBMIT_JOB_PROTOCOL_V1, job, 0).await;
         match response {
             Ok(response) => {
                 self.peer.client.subscribe(response.job_id.clone()).await.expect("can't subscribe to job");
@@ -173,29 +191,29 @@ pub struct DomainCluster {
     sender: Sender<Command>,
     pub peer: Networking,
     pub manager_id: String,
+    name: String,
 }
 
 impl DomainCluster {
-    pub fn new(
-        manager_addr: String,
-        node_name: String,
+    pub async fn join(
+        manager_addr: &str,
+        node_name: &str,
         join_as_relay: bool,
         port: u16,
         enable_websocket: bool,
         enable_webrtc: bool,
         private_key: Option<Vec<u8>>,
         private_key_path: Option<String>,
-        relays: Vec<String>,
-    ) -> Self {
+        relays: Vec<String>
+    ) -> Result<DomainCluster, DomainError> {
         let networking = Networking::new(&NetworkingConfig {
-            bootstrap_nodes: vec![manager_addr.clone()],
+            bootstrap_nodes: vec![manager_addr.to_string()],
             relay_nodes: relays,
             private_key,
             private_key_path,
             enable_mdns: false,
             enable_kdht: true,
             enable_relay_server: join_as_relay,
-            name: node_name,
             port,
             enable_websocket,
             enable_webrtc,
@@ -211,12 +229,29 @@ impl DomainCluster {
             command_rx: rx,
         };
         dc.init();
+        let capabilities = &vec![];
 
-        DomainCluster {
+        let networking_clone = networking.clone();
+        let id = networking.id;
+        tracing::info!("Trying to join cluster {domain_manager_id}");
+        join(&domain_manager_id, networking.client, &id, node_name, capabilities).await?;
+        tracing::info!("Managed to join cluster {domain_manager_id}");
+        Ok(DomainCluster {
             sender: tx,
-            peer: networking.clone(),
+            peer: networking_clone,
             manager_id: domain_manager_id.clone(),
+            name: node_name.to_string(),
+        })
+    }
+
+    pub async fn with_capabilities(&mut self, capabilities: &[Capability]) -> Result<Vec<impl futures::Stream<Item = (PeerId, impl AsyncStream)>>, DomainError> {
+        join(&self.manager_id, self.peer.client.clone(), &self.peer.id, &self.name, capabilities).await?;
+        let mut streams = Vec::new();
+        for capability in capabilities {
+            let stream = self.peer.client.set_stream_handler(&capability.endpoint).await?;
+            streams.push(stream);
         }
+        Ok(streams)
     }
 
     pub async fn submit_job(&mut self, job: &JobRequest) -> Receiver<TaskUpdateEvent> {
@@ -254,6 +289,5 @@ impl DomainCluster {
             task: t,
         }).await.expect("can't send command"); 
     }
-
     // pub async fn request_response(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn std::error::Error + Send + Sync>>
 }

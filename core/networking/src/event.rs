@@ -3,8 +3,8 @@ use std::error::Error;
 
 #[derive(Debug)]
 pub enum Event {
-    NewNodeRegistered {
-        node: crate::libp2p::Node,
+    NodeUnregistered {
+        node_id: String
     },
     PubSubMessageReceivedEvent {
         topic: TopicHash,

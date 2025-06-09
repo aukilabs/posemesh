@@ -8,7 +8,6 @@ pub struct Config {
     pub bootstraps: Vec<String>,
     pub relays: Vec<String>,
     pub privateKey: Option<Vec<u8>>,
-    pub name: String,
 }
 
 #[wasm_bindgen]
@@ -18,13 +17,11 @@ impl Config {
         bootstraps: Vec<String>,
         relays: Vec<String>,
         private_key: Option<Vec<u8>>,
-        name: String,
     ) -> Self {
         Self {
             bootstraps,
             relays,
             privateKey: private_key,
-            name,
         }
     }
 }
@@ -40,7 +37,6 @@ pub fn posemeshNetworkingContextCreate(config: Config) -> *mut Networking {
         enable_mdns: false,
         enable_kdht: true,
         enable_relay_server: false,
-        name: config.name.clone(),
         port: 0,
         enable_websocket: true,
         enable_webrtc: true,

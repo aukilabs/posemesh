@@ -19,13 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         relay_nodes: vec![],
         private_key: None,
         private_key_path: Some("./volume/relay-example/relay/pkey".to_string()),
-        name: "relay-example/relay".to_string(),
         enable_websocket: true,
         enable_webrtc: true,
         namespace: None,
     };
     let mut relay = Networking::new(relay_cfg)?;
-    let protocol = "/chat".to_string();
+    let protocol = "/chat";
     let mut chat_handler = relay.client.set_stream_handler(protocol).await.unwrap();
 
     loop {

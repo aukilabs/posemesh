@@ -1,4 +1,4 @@
-import { DomainCluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "@aukilabs/posemesh-domain";
+import { join_cluster, RemoteDatastore, Query, DomainData, Metadata, reconstruction_job } from "@aukilabs/posemesh-domain";
 import * as proto from "./protobuf/task";
 function getDataType(fileName) {
     const fileNameMap = {
@@ -83,7 +83,7 @@ export class UploadManager {
     async initializeLibp2p() {
         try {
             console.log("initializing domain cluster");
-            const domainCluster = new DomainCluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
+            const domainCluster = await join_cluster(import.meta.env.VITE_DOMAIN_MANAGER_ADDRESS, import.meta.env.VITE_APP_ID, null, null);
 
             this.domainCluster = domainCluster;
             this.datastore = new RemoteDatastore(domainCluster);
