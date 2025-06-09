@@ -6,6 +6,10 @@ Our mission is to help machines see the world, to enable the future of AI, robot
 
 To learn more about this vision, read the [whitepaper](https://auki.ai/whitepaper).
 
+## Getting Started:
+
+To get started building on top of the posemesh, checkout the [Examples](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md) for sample code, or check out how to [build the Posemesh SDK](https://github.com/aukilabs/posemesh/tree/main/sdk) for your platform of choice.
+
 ## Contributors:
 
 The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.ai). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
