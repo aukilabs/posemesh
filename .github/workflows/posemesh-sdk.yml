@@ -64,7 +64,7 @@ jobs:
   build_apple_frameworks:
     needs: run_test
     name: Build Apple SDK
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
