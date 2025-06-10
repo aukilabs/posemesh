@@ -3,19 +3,18 @@ permissions:
   contents: read
 on:
   pull_request:
-    paths-ignore:
-      - '**/examples/**'
-      - '**/*.md'
-      - '.vscode/**'
-      - '.github/**'
+    paths:
+      - '**'
   push:
     branches:
       - main
-    paths-ignore:
-      - '**/examples/**'
-      - '**/*.md'
-      - '.vscode/**'
-      - '.github/**'
+    paths:
+      - '**'
+      - '!**/examples/**'
+      - '!**/*.md'
+      - '!.vscode/**'
+      - '!.github/**'
+      - '.github/workflows/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
