@@ -87,6 +87,9 @@ jobs:
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       
+      - name: Setup LLVM 18 clang
+        run: echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+
       - name: check clang version
         run: clang --version
 
@@ -137,6 +140,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup LLVM 18 clang
+        run: echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
 
       - name: Download all Frameworks
         uses: actions/download-artifact@v4
