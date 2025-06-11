@@ -87,10 +87,15 @@ jobs:
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       
-      - name: Setup LLVM 18 clang
-        run: echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+      - name: Switch to Xcode 16.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+          sudo xcodebuild -version
 
-      - name: check clang version
+      - name: Check Swift compiler version
+        run: xcrun swift --version
+
+      - name: Check clang version
         run: clang --version
 
       - name: Cache Cargo registry and Git sources (Shared)
