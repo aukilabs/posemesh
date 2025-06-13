@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package msgpb;
+
+option go_package = "pkg/msgpb";
+
+import "domain.proto";
+import "portal.proto";
+import "node.proto";
+
+message Msg {
+  // The request ID (only used for requests and their corresponding responses).
+  string req_id = 1;
+
+  oneof payload {
+    nodepb.RegisterNodeRequest register_node_request = 200;
+    nodepb.RegisterNodeResponse register_node_response = 201;
+    nodepb.ConnectivityCheckRequest connectivity_check_request = 202;
+    nodepb.ConnectivityCheckResponse connectivity_check_response = 203;
+    nodepb.NodeInDomainUpdateRequest node_in_domain_update_request = 204;
+    nodepb.NodeInDomainUpdateResponse node_in_domain_update_response = 205;
+
+    domainpb.CreateDomainRequest create_domain_request = 300;
+    domainpb.CreateDomainResponse create_domain_response = 301;
+    domainpb.DeleteDomainRequest delete_domain_request = 302;
+    domainpb.DeleteDomainResponse delete_domain_response = 303;
+    domainpb.ClearDomainPosesRequest clear_domain_poses_request = 304;
+    domainpb.ClearDomainPosesResponse clear_domain_poses_response = 305;
+    domainpb.RemovePortalsFromDomainRequest remove_portals_from_domain_request = 306;
+    domainpb.RemovePortalsFromDomainResponse remove_portals_from_domain_response = 307;
+    domainpb.UpdateDomainManagerRequest update_domain_manager_request = 308;
+    domainpb.UpdateDomainManagerResponse update_domain_manager_response = 309;
+    domainpb.CancelUpdateDomainManagerRequest cancel_update_domain_manager_request = 310;
+    domainpb.CancelUpdateDomainManagerResponse cancel_update_domain_manager_response = 311;
+
+    portalpb.DeletePortalRequest delete_portal_request = 400; 
+    portalpb.DeletePortalResponse delete_portal_response = 401;
+    portalpb.UpdatePortalSizeRequest update_portal_size_request = 402;
+    portalpb.UpdatePortalSizeResponse update_portal_size_response = 403;
+  }
+}

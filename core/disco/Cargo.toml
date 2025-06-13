@@ -1,0 +1,42 @@
+[package]
+name = "posemesh-disco"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+
+[build-dependencies]
+prost-build = "0.13.5"
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13.5"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true } 
+chrono = "0.4.41"
+libp2p-identity = { workspace = true, features = ["ecdsa"] }
+hex = "0.4.3"
+uuid = { version = "1.17.0", features = ["v4"] }
+base64 = "0.22.1"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+k256 = { version = "0.13.4", features = ["ecdsa"] }
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+tokio = { workspace = true, features = ["full"] }
+tokio-tungstenite = { version = "*", features = ["native-tls"] }
+
+[target.'cfg(target_family="wasm")'.dependencies]
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+tracing-wasm = { workspace = true }
+console_error_panic_hook = { workspace = true }
+web-sys = { version = "0.3.77", features = ["ErrorEvent", "WebSocket", "MessageEvent"] }
+
+[dev-dependencies]
+posemesh-utils = { workspace = true }
+
+[features]
+default = []
+c = []
+node = []
+node-c = []
