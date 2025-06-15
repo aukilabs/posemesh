@@ -486,6 +486,10 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  for (const methodJson of interfaceJson.methods) {
+    
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {

@@ -243,16 +243,20 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
         if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           retValExt = ', nonnull<ret_val>()';
         }
+        const getterConst = propertyJson.getterConst;
+        const getterConstExtForStaticCast = getterConst ? ' const' : '';
+        const getterNoexcept = propertyJson.getterNoexcept;
+        const getterNoexceptExtForStaticCast = getterNoexcept ? ' noexcept' : '';
         if (propStatic) {
           if (propertyJson.type === 'data') {
-            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t* (*)()>(&${funcName}))`;
+            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t* (*)()${getterConstExtForStaticCast}${getterNoexceptExtForStaticCast}>(&${funcName}))`;
             code += `\n        .class_function("__${getterName}Size()", &${funcName}Size)`;
           } else {
             code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
           }
         } else {
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (${nameCxx}::*)()>(&${funcName}))`;
+            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (${nameCxx}::*)()${getterConstExtForStaticCast}${getterNoexceptExtForStaticCast}>(&${funcName}))`;
             code += `\n        .function("__${getterName}Size()", &${funcName}Size)`;
           } else {
             code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;

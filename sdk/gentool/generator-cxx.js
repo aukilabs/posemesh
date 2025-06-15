@@ -355,13 +355,14 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       methodParameters += `std::size_t& outSize`;
     }
     const methodStatic = methodJson.static;
+    const methodStaticPfx = methodStatic ? 'static ' : '';
     const methodMode = methodJson.mode;
     const methodModePfx = methodMode !== util.MethodMode.regular ? 'virtual ' : '';
     const methodModeExt = methodMode === util.MethodMode.pureVirtual ? ' = 0' : (methodMode === util.MethodMode.override ? ' override' : '');
     const methodVisibility = methodJson.visibility;
     const methodNoexceptExt = methodJson.noexcept ? ' noexcept' : '';
     const methodConstExt = methodJson.const ? ' const' : '';
-    const method = `    ${methodModePfx}${methodReturnType} PSM_API ${methodName}(${methodParameters})${methodConstExt}${methodNoexceptExt}${methodModeExt};\n`;
+    const method = `    ${methodStaticPfx}${methodModePfx}${methodReturnType} PSM_API ${methodName}(${methodParameters})${methodConstExt}${methodNoexceptExt}${methodModeExt};\n`;
     switch (methodVisibility) {
       case util.Visibility.public:
         if (methodStatic) {
