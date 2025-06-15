@@ -307,6 +307,56 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.CXX);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.CXX) : 'void';
+    let methodParameters = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.CXX);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.CXX);
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `${parameterType} ${parameterName}`;
+      if (parameterJson.type === 'data') {
+        methodParameters += `, std::size_t ${parameterName}Size`;
+      }
+    }
+    const methodStatic = methodJson.static;
+    const methodMode = methodJson.mode;
+    const methodModePfx = methodMode !== util.MethodMode.regular ? 'virtual ' : '';
+    const methodModeExt = methodMode === util.MethodMode.pureVirtual ? ' = 0' : (methodMode === util.MethodMode.override ? ' override' : '');
+    const methodVisibility = methodJson.visibility;
+    const methodNoexceptExt = methodJson.noexcept ? ' noexcept' : '';
+    const methodConstExt = methodJson.const ? ' const' : '';
+    const method = `    ${methodModePfx}${methodReturnType} PSM_API ${methodName}(${methodParameters})${methodConstExt}${methodNoexceptExt}${methodModeExt};\n`;
+    switch (methodVisibility) {
+      case util.Visibility.public:
+        if (methodStatic) {
+          publicFuncs += method;
+        } else {
+          publicMethods += method;
+        }
+        break;
+      case util.Visibility.protected:
+        if (methodStatic) {
+          protectedFuncs += method;
+        } else {
+          protectedMethods += method;
+        }
+        break;
+      case util.Visibility.private:
+        if (methodStatic) {
+          privateFuncs += method;
+        } else {
+          privateMethods += method;
+        }
+        break;
+      default:
+        throw new Error('Unhandled C++ setter visibility.');
+    }
+  }
+
   const hashOperator = interfaceJson.hashOperator;
   if (hashOperator.defined) {
     privateFriends += `    friend struct std::hash<${name}>;\n`;

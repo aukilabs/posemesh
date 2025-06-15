@@ -1,0 +1,45 @@
+{
+  "name": "Compile_Test_Methods",
+  "aliases": [
+    {
+      "name": "Compile_Test_Methods_Alias"
+    }
+  ],
+  "methods": [
+    {
+      "name": "Void_Method"
+    },
+    {
+      "name": "Int8_Method",
+      "returnType": "int8"
+    },
+    {
+      "name": "Int16_Method",
+      "returnType": "int16"
+    },
+    {
+      "name": "Int32_Method",
+      "returnType": "int32"
+    },
+    {
+      "name": "Int64_Method",
+      "returnType": "int64"
+    },
+    {
+      "name": "Unsigned_Int8_Method",
+      "returnType": "uint8"
+    },
+    {
+      "name": "Unsigned_Int16_Method",
+      "returnType": "uint16"
+    },
+    {
+      "name": "Unsigned_Int32_Method",
+      "returnType": "uint32"
+    },
+    {
+      "name": "Unsigned_Int64_Method",
+      "returnType": "uint64"
+    }
+  ]
+}

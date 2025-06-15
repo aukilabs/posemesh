@@ -668,7 +668,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         } else if (propTypeRaw === 'data') {
           getter += `    std::size_t size;\n`;
           getter += `    const auto* result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
-          getter += `    return [NSData dataWithBytesNoCopy:result length:size freeWhenDone:NO];\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:const_cast<std::uint8_t*>(result) length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -692,7 +692,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         } else if (propTypeRaw === 'data') {
           getter += `    std::size_t size;\n`;
           getter += `    const auto* result = ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
-          getter += `    return [NSData dataWithBytesNoCopy:result length:size freeWhenDone:NO];\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:const_cast<std::uint8_t*>(result) length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
