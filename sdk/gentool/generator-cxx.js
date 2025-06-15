@@ -1176,7 +1176,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         setter += `    }\n`;
         setter += `    auto newData = std::make_unique<std::uint8_t[]>(size);\n`;
         setter += `    std::memcpy(newData.get(), ${setterArgName}, size);\n`;
-        setter += `    ${propName} = {std::move(newData), size, size};\n`;
+        setter += `    ${propName} = { std::move(newData), size, size };\n`;
       } else {
         setter += `    ${propName} = ${setterArgName};\n`;
       }
@@ -1449,7 +1449,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           includesEtc += `    const std::size_t dataSize = std::get<1>(data);\n`;
           includesEtc += `    auto copiedData = std::make_unique<std::uint8_t[]>(dataSize);\n`;
           includesEtc += `    std::memcpy(copiedData.get(), std::get<0>(data).get(), dataSize);\n`;
-          includesEtc += `    return {std::move(copiedData), dataSize, dataSize};\n`;
+          includesEtc += `    return { std::move(copiedData), dataSize, dataSize };\n`;
           includesEtc += `}\n`;
           break;
         case 'equalsData':

@@ -245,14 +245,14 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
         }
         if (propStatic) {
           if (propertyJson.type === 'data') {
-            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t*(*)(void)>(&${funcName}))`;
+            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t* (*)(void)>(&${funcName}))`;
             code += `\n        .class_function("__${getterName}Size()", &${funcName}Size)`;
           } else {
             code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
           }
         } else {
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t*(*)(void)>(&${funcName}))`;
+            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (*)(void)>(&${funcName}))`;
             code += `\n        .function("__${getterName}Size()", &${funcName}Size)`;
           } else {
             code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
