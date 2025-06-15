@@ -307,12 +307,38 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  function setTypeIncludes(theType) {
+    if (util.isIntType(theType)) {
+      includesFirst.add('#include <cstdint>');
+    } else if (theType === 'string' || theType === 'string_ref') {
+      includesFirst.add('#include <string>');
+    } else if (theType === 'string_mix' || theType.startsWith('CLASS_MIX:') || theType.startsWith('CLASS_PTR_MIX:') || theType.startsWith('ARRAY_MIX:') || theType.startsWith('ARRAY_PTR_MIX:')) {
+      throw new Error(`Invalid method return type: ${theType}`);
+    } else if (theType.startsWith('ENUM:') || theType.startsWith('CLASS:') || theType.startsWith('CLASS_REF:') || theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY:') || theType.startsWith('ARRAY_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+      if (theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+        includesFirst.add('#include <memory>');
+      }
+      if (theType.startsWith('ARRAY') || theType.startsWith('ARRAY_REF') || theType.startsWith('ARRAY_PTR') || theType.startsWith('ARRAY_PTR_REF')) {
+        includesFirst.add('#include <vector>');
+      }
+      const subtype = theType.split(':').slice(1).join(':');
+      if (subtype in enums || subtype in interfaces) {
+        includesSecond.add(`#include "${subtype}.hpp"`);
+      }
+    } else if (theType === 'data') {
+      includesFirst.add('#include <cstdint>');
+      includesFirst.add('#include <cstddef>');
+    }
+  }
+
   for (const methodJson of interfaceJson.methods) {
     const methodName = util.getLangName('name', methodJson, util.CXX);
+    setTypeIncludes(methodJson.returnType);
     const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.CXX) : 'void';
     let methodParameters = '';
     for (const parameterJson of methodJson.parameters) {
       const parameterName = util.getLangName('name', parameterJson, util.CXX);
+      setTypeIncludes(parameterJson.type);
       const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.CXX);
       if (methodParameters.length > 0) {
         methodParameters += ', ';
@@ -321,6 +347,12 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       if (parameterJson.type === 'data') {
         methodParameters += `, std::size_t ${parameterName}Size`;
       }
+    }
+    if (methodJson.returnType === 'data') {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `std::size_t& outSize`;
     }
     const methodStatic = methodJson.static;
     const methodMode = methodJson.mode;
