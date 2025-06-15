@@ -665,6 +665,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else if (util.isArrayOfAnyType(propTypeRaw)) {
           getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
+        } else if (propTypeRaw === 'data') {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:result length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -685,6 +689,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else if (util.isArrayOfAnyType(propTypeRaw)) {
           getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
+        } else if (propTypeRaw === 'data') {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:result length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -758,10 +766,18 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       if (util.isArrayOfAnyType(propTypeRaw)) {
         setter += arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgName, nameCxx, nameManagedMember, propertyJson, propStatic);
       } else if (propStatic) {
-        setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        if (propTypeRaw === 'data') {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}([${setterArgName} bytes], static_cast<std::size_t>([${setterArgName} length]));\n`;
+        } else {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        }
       } else {
         setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-        setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        if (propTypeRaw === 'data') {
+          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}([${setterArgName} bytes], static_cast<std::size_t>([${setterArgName} length]));\n`;
+        } else {
+          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        }
       }
       setter += `}\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);

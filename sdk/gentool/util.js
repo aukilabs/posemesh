@@ -817,6 +817,48 @@ function getArrayPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
   }
 }
 
+function getDataType(language, typeFor = TypeFor.Any) {
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return 'std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>'; // ptr, size, capacity
+        case TypeFor.PropGetter:
+        case TypeFor.PropSetter:
+          return 'const std::uint8_t*';
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      return 'const uint8_t*';
+    case Language.ObjC:
+      return 'NSData*';
+    case Language.Swift:
+      return 'Data';
+    case Language.JS:
+      return 'Uint8Array';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getDataSizeType(language) {
+  switch (language) {
+    case Language.CXX:
+      return 'std::size_t';
+    case Language.C:
+      return 'uint64_t';
+    case Language.ObjC:
+      return 'NSUInteger';
+    case Language.Swift:
+      return 'UInt';
+    case Language.JS:
+      return 'BigInt';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
 function getPropertyType(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -883,6 +925,8 @@ function getPropertyType(enums, interfaces, propertyJson, language) {
       return getStringRefType(language);
     case 'string_mix':
       return getStringMixType(language);
+    case 'data':
+      return getDataType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -954,6 +998,8 @@ function getPropertyTypeForGetter(enums, interfaces, propertyJson, language) {
       return getStringRefType(language, TypeFor.PropGetter);
     case 'string_mix':
       return getStringMixType(language, TypeFor.PropGetter);
+    case 'data':
+      return getDataType(language, TypeFor.PropGetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -1025,6 +1071,8 @@ function getPropertyTypeForSetter(enums, interfaces, propertyJson, language) {
       return getStringRefType(language, TypeFor.PropSetter);
     case 'string_mix':
       return getStringMixType(language, TypeFor.PropSetter);
+    case 'data':
+      return getDataType(language, TypeFor.PropSetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -1153,6 +1201,7 @@ function isPrimitiveType(type) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return false;
     default:
       return false;
@@ -1182,6 +1231,7 @@ function getTypeImplicitDefaultValue(type) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return '';
     default:
       return '';
@@ -1215,6 +1265,8 @@ function getTypeMembVarCopyOp(type, membVar) {
     case 'string_ref':
     case 'string_mix':
       return membVar;
+    case 'data':
+      return `deepCopyData(${membVar})`;
     default:
       return membVar;
   }
@@ -1241,6 +1293,7 @@ function getTypeMembVarMoveOp(type, membVar) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return `std::move(${membVar})`;
     default:
       return `std::move(${membVar})`;
@@ -1274,6 +1327,8 @@ function getTypePropEqOp(type, clsParam, prpParam) {
     case 'string_ref':
     case 'string_mix':
       return `${prpParam} == ${clsParam}.${prpParam}`;
+    case 'data':
+      return `equalsData(${prpParam}, ${clsParam}.${prpParam})`;
     default:
       return `${prpParam} == ${clsParam}.${prpParam}`;
   }
@@ -1308,6 +1363,8 @@ function getTypePropHasher(type, param) {
     case 'string_ref':
     case 'string_mix':
       return `hash<string> {}(${param})`;
+    case 'data':
+      return `hashData(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }
@@ -1735,6 +1792,8 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     } else if (isArrayRefType(propertyJson.type) || isArrayMixType(propertyJson.type)) {
       propertyJson.getterNoexcept = true;
     } else if (isArrayPtrRefType(propertyJson.type) || isArrayPtrMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
+    } else if (propertyJson.type === 'data') {
       propertyJson.getterNoexcept = true;
     } else {
       propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
@@ -2199,6 +2258,8 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson, fi
         } else if (isClassPtrType(foundPropertyJson.type) || isClassPtrRefType(foundPropertyJson.type) || isClassPtrMixType(foundPropertyJson.type)) {
           result.canBeDefault = false;
         } else if (isArrayPtrType(foundPropertyJson.type) || isArrayPtrRefType(foundPropertyJson.type) || isArrayPtrMixType(foundPropertyJson.type)) {
+          result.canBeDefault = false;
+        } else if (foundPropertyJson.type === 'data') {
           result.canBeDefault = false;
         }
         break;
@@ -3179,6 +3240,8 @@ module.exports = {
   getArrayPtrType,
   getArrayPtrRefType,
   getArrayPtrMixType,
+  getDataType,
+  getDataSizeType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,

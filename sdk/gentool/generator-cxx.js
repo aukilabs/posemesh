@@ -201,7 +201,11 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const getterMode = util.getPropertyGetterMode(propertyJson);
       const getterVirtualPfx = getterMode !== util.MethodMode.regular ? 'virtual ' : '';
       const getterVirtualExt = getterMode === util.MethodMode.pureVirtual ? ' = 0' : (getterMode === util.MethodMode.override ? ' override' : '');
-      const getter = `    ${propStaticPfx}${getterVirtualPfx}${getterType} PSM_API ${getterName}()${getterConstExt}${getterNoexceptExt}${getterVirtualExt};\n`;
+      let getter = `    ${propStaticPfx}${getterVirtualPfx}${getterType} PSM_API ${getterName}()${getterConstExt}${getterNoexceptExt}${getterVirtualExt};\n`;
+      if (propertyJson.type === 'data') {
+        getter += `    ${propStaticPfx}${getterVirtualPfx}${getterType} PSM_API ${getterName}(std::size_t& outSize)${getterConstExt}${getterNoexceptExt}${getterVirtualExt};\n`;
+        getter += `    ${propStaticPfx}${getterVirtualPfx}std::size_t PSM_API ${getterName}Size()${getterConstExt}${getterNoexceptExt}${getterVirtualExt};\n`;
+      }
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       switch (getterVisibility) {
         case util.Visibility.public:
@@ -239,7 +243,8 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const setterMode = util.getPropertySetterMode(propertyJson);
       const setterVirtualPfx = setterMode !== util.MethodMode.regular ? 'virtual ' : '';
       const setterVirtualExt = setterMode === util.MethodMode.pureVirtual ? ' = 0' : (setterMode === util.MethodMode.override ? ' override' : '');
-      const setter = `    ${propStaticPfx}${setterVirtualPfx}void PSM_API ${setterName}(${setterType} ${setterArgName})${setterConstExt}${setterNoexceptExt}${setterVirtualExt};\n`;
+      const setterExt = (propertyJson.type === 'data') ? ', std::size_t size' : '';
+      const setter = `    ${propStaticPfx}${setterVirtualPfx}void PSM_API ${setterName}(${setterType} ${setterArgName}${setterExt})${setterConstExt}${setterNoexceptExt}${setterVirtualExt};\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       switch (setterVisibility) {
         case util.Visibility.public:
@@ -293,6 +298,11 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
         } else if (typeof enums[propTypeRawInner] !== 'undefined' || typeof interfaces[propTypeRawInner] !== 'undefined') {
           includesSecond.add(`#include "${propTypeRawInner}.hpp"`);
         }
+      } else if (propTypeRaw === 'data') {
+        includesFirst.add('#include <tuple>');
+        includesFirst.add('#include <memory>');
+        includesFirst.add('#include <cstdint>');
+        includesFirst.add('#include <cstddef>');
       }
     }
   }
@@ -499,6 +509,32 @@ function regExpMatchDeps(text, includesFirst, includesSecond, namelessNamespaceF
   }
   if (new RegExp('\\bhashArrayPtr\\b').test(text)) {
     namelessNamespaceFuncNames.add('hashArrayPtr');
+  }
+  if (new RegExp('\\bdeepCopyData\\b').test(text)) {
+    includesFirst.add('#include <tuple>');
+    includesFirst.add('#include <memory>');
+    includesFirst.add('#include <cstdint>');
+    includesFirst.add('#include <cstddef>');
+    includesFirst.add('#include <cstring>');
+    includesFirst.add('#include <utility>');
+    namelessNamespaceFuncNames.add('deepCopyData');
+  }
+  if (new RegExp('\\bequalsData\\b').test(text)) {
+    includesFirst.add('#include <tuple>');
+    includesFirst.add('#include <memory>');
+    includesFirst.add('#include <cstdint>');
+    includesFirst.add('#include <cstddef>');
+    includesFirst.add('#include <cstring>');
+    namelessNamespaceFuncNames.add('equalsData');
+  }
+  if (new RegExp('\\bhashData\\b').test(text)) {
+    includesFirst.add('#include <cstddef>');
+    includesFirst.add('#include <tuple>');
+    includesFirst.add('#include <memory>');
+    includesFirst.add('#include <cstdint>');
+    includesFirst.add('#include <string_view>');
+    includesFirst.add('#include <functional>');
+    namelessNamespaceFuncNames.add('hashData');
   }
 }
 
@@ -1047,8 +1083,25 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       const getterType = util.getPropertyTypeForGetter(enums, interfaces, propertyJson, util.CXX);
       let getter = `${getterType} ${name}::${getterName}()${getterConstExt}${getterNoexceptExt}\n`;
       getter += '{\n';
-      getter += `    return ${propName};\n`;
+      if (propertyJson.type === 'data') {
+        getter += `    return std::get<0>(${propName}).get();\n`;
+      } else {
+        getter += `    return ${propName};\n`;
+      }
       getter += '}\n';
+      if (propertyJson.type === 'data') {
+        getter += `\n`;
+        getter += `${getterType} ${name}::${getterName}(std::size_t& outSize)${getterConstExt}${getterNoexceptExt}\n`;
+        getter += '{\n';
+        getter += `    outSize = std::get<1>(${propName});\n`;
+        getter += `    return std::get<0>(${propName}).get();\n`;
+        getter += '}\n';
+        getter += `\n`;
+        getter += `std::size_t ${name}::${getterName}Size()${getterConstExt}${getterNoexceptExt}\n`;
+        getter += '{\n';
+        getter += `    return std::get<1>(${propName});\n`;
+        getter += '}\n';
+      }
       const getterVisibility = util.getPropertyGetterVisibility(propertyJson);
       switch (getterVisibility) {
         case util.Visibility.public:
@@ -1090,7 +1143,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       const setterName = util.getPropertySetterName(propertyJson, util.CXX);
       const setterType = util.getPropertyTypeForSetter(enums, interfaces, propertyJson, util.CXX);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.CXX);
-      let setter = `void ${name}::${setterName}(${setterType} ${setterArgName})${setterConstExt}${setterNoexceptExt}\n`;
+      const setterExt = (propertyJson.type === 'data') ? ', std::size_t size' : '';
+      let setter = `void ${name}::${setterName}(${setterType} ${setterArgName}${setterExt})${setterConstExt}${setterNoexceptExt}\n`;
       setter += '{\n';
       if (propertyJson.type === 'string' || propertyJson.type === 'string_mix') {
         includesFirst.add('#include <utility>');
@@ -1107,6 +1161,22 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       } else if (util.isArrayPtrType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type)) {
         includesFirst.add('#include <utility>');
         setter += `    ${propName} = std::move(${setterArgName});\n`;
+      } else if (propertyJson.type === 'data') {
+        includesFirst.add('#include <cassert>');
+        includesFirst.add('#include <cstring>');
+        setter += `    if (size <= 0) {\n`;
+        setter += `        std::get<1>(${propName}) = 0;\n`;
+        setter += `        return;\n`;
+        setter += `    }\n`;
+        setter += `    assert(${setterArgName});\n`;
+        setter += `    if (size <= std::get<2>(${propName})) {\n`;
+        setter += `        std::memcpy(std::get<0>(${propName}).get(), ${setterArgName}, size);\n`;
+        setter += `        std::get<1>(${propName}) = size;\n`;
+        setter += `        return;\n`;
+        setter += `    }\n`;
+        setter += `    auto newData = std::make_unique<std::uint8_t[]>(size);\n`;
+        setter += `    std::memcpy(newData.get(), ${setterArgName}, size);\n`;
+        setter += `    ${propName} = {std::move(newData), size, size};\n`;
       } else {
         setter += `    ${propName} = ${setterArgName};\n`;
       }
@@ -1371,6 +1441,38 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           includesEtc += `        result ^= (element ? std::hash<T> {}(*element) : 0) + 0x9e3779b9 + (result << 6) + (result >> 2);\n`;
           includesEtc += `    }\n`;
           includesEtc += `    return result;\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'deepCopyData':
+          includesEtc += `std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t> deepCopyData(const std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>& data)\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    const std::size_t dataSize = std::get<1>(data);\n`;
+          includesEtc += `    auto copiedData = std::make_unique<std::uint8_t[]>(dataSize);\n`;
+          includesEtc += `    std::memcpy(copiedData.get(), std::get<0>(data).get(), dataSize);\n`;
+          includesEtc += `    return {std::move(copiedData), dataSize, dataSize};\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'equalsData':
+          includesEtc += `bool equalsData(const std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>& lhs, const std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>& rhs)\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    const auto lhsSize = std::get<1>(lhs);\n`;
+          includesEtc += `    const auto rhsSize = std::get<1>(rhs);\n`;
+          includesEtc += `    if (lhsSize != rhsSize) {\n`;
+          includesEtc += `        return false;\n`;
+          includesEtc += `    }\n`;
+          includesEtc += `    const auto* lhsData = std::get<0>(lhs).get();\n`;
+          includesEtc += `    const auto* rhsData = std::get<0>(rhs).get();\n`;
+          includesEtc += `    if (lhsData == rhsData) {\n`;
+          includesEtc += `        return true;\n`;
+          includesEtc += `    }\n`;
+          includesEtc += `    return std::memcmp(lhsData, rhsData, lhsSize) == 0;\n`;
+          includesEtc += `}\n`;
+          break;
+        case 'hashData':
+          includesEtc += `std::size_t hashData(const std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>& data)\n`;
+          includesEtc += `{\n`;
+          includesEtc += `    const std::string_view stringView(reinterpret_cast<const char*>(std::get<0>(data).get()), std::get<1>(data));\n`;
+          includesEtc += `    return std::hash<std::string_view> {}(stringView);\n`;
           includesEtc += `}\n`;
           break;
         default:

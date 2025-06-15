@@ -291,3 +291,4 @@
 | `ARRAY_PTR:<TYPE>`     | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter and setter use it by value. |
 | `ARRAY_PTR_REF:<TYPE>` | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter and setter use it by const-ref. |
 | `ARRAY_PTR_MIX:<TYPE>` | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter uses it by const-ref and setter uses it by value. |
+| `data`                 | A binary data type. |

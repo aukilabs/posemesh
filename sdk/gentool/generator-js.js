@@ -244,9 +244,19 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           retValExt = ', nonnull<ret_val>()';
         }
         if (propStatic) {
-          code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
+          if (propertyJson.type === 'data') {
+            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t*(*)(void)>(&${funcName}))`;
+            code += `\n        .class_function("__${getterName}Size()", &${funcName}Size)`;
+          } else {
+            code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
+          }
         } else {
-          code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
+          if (propertyJson.type === 'data') {
+            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t*(*)(void)>(&${funcName}))`;
+            code += `\n        .function("__${getterName}Size()", &${funcName}Size)`;
+          } else {
+            code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
+          }
         }
       }
     }
@@ -412,9 +422,17 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           retValExt = ', nonnull<ret_val>()';
         }
         if (propStatic) {
-          code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
+          if (propertyJson.type === 'data') {
+            code += `\n        .class_function("__${setterName}(${setterArgName}, size)", &${funcName})`;
+          } else {
+            code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
+          }
         } else {
-          code += `\n        .function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
+          if (propertyJson.type === 'data') {
+            code += `\n        .function("__${setterName}(${setterArgName}, size)", &${funcName})`;
+          } else {
+            code += `\n        .function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
+          }
         }
       }
     }
