@@ -370,7 +370,8 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
       const isArray = util.isArrayOfAnyType(propertyJson.type);
-      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : '';
+      const isData = propertyJson.type === 'data';
+      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : (isData ? `${propStatic ? '' : ', '}uint64_t* out_size` : '');
       const getter = `${getterType} PSM_API ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`}${getterExt});\n`;
       const arrayGetterFreeFuncHasOptionToDestroyContainedClasses = doesArrayGetterFreeFuncHaveOptionToDestroyContainedClasses(interfaces, propertyJson.type);
       const isArrayOfAnyPtrType = util.isArrayPtrType(propertyJson.type) || util.isArrayPtrRefType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type);
@@ -383,6 +384,8 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
           let args = [];
           if (isArray) {
             args.push('out_length');
+          } else if (isData) {
+            args.push('out_size');
           }
           publicFuncs += getter;
           funcAliases.push({
@@ -408,6 +411,8 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
           let args = [mainArgName];
           if (isArray) {
             args.push('out_length');
+          } else if (isData) {
+            args.push('out_size');
           }
           publicMethods += getter;
           funcAliases.push({
@@ -442,7 +447,8 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
         setterArgName += '_consumed';
       }
       const isArray = util.isArrayOfAnyType(propertyJson.type);
-      const setterExt = isArray ? `, uint64_t length` : '';
+      const isData = propertyJson.type === 'data';
+      const setterExt = isArray ? `, uint64_t length` : (isData ? `, uint64_t size` : '');
       const setter = `void PSM_API ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName}${setterExt});\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
       if (setterVisibility === util.Visibility.public) {
@@ -451,13 +457,13 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
           publicFuncs += setter;
           funcAliases.push({
             name: `${nameWithoutTSuffix}_${setterName}`,
-            args: [setterArgName]
+            args: isArray ? [setterArgName, 'length'] : (isData ? [setterArgName, 'size'] : [setterArgName])
           });
         } else {
           publicMethods += setter;
           funcAliases.push({
             name: `${nameWithoutTSuffix}_${setterName}`,
-            args: [mainArgName, setterArgName]
+            args: isArray ? [mainArgName, setterArgName, 'length'] : (isData ? [mainArgName, setterArgName, 'size'] : [mainArgName, setterArgName])
           });
         }
       }
@@ -476,6 +482,98 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
         if (typeof enums[underlyingArrayTypeRaw] !== 'undefined' || typeof interfaces[underlyingArrayTypeRaw] !== 'undefined') {
           includesSecond.add(`#include "${underlyingArrayTypeRaw}.h"`);
         }
+      }
+    }
+  }
+
+  function setTypeIncludes(theType) {
+    if (util.isIntType(theType)) {
+      includesFirst.add('#include <stdint.h>');
+    } else if (theType === 'string' || theType === 'string_ref') {
+      // nothing needed here
+    } else if (theType === 'string_mix' || theType.startsWith('CLASS_MIX:') || theType.startsWith('CLASS_PTR_MIX:') || theType.startsWith('ARRAY_MIX:') || theType.startsWith('ARRAY_PTR_MIX:')) {
+      throw new Error(`Invalid method return type: ${theType}`);
+    } else if (theType.startsWith('ENUM:') || theType.startsWith('CLASS:') || theType.startsWith('CLASS_REF:') || theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY:') || theType.startsWith('ARRAY_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+      if (theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+        // nothing needed here
+      }
+      if (theType.startsWith('ARRAY') || theType.startsWith('ARRAY_REF') || theType.startsWith('ARRAY_PTR') || theType.startsWith('ARRAY_PTR_REF')) {
+        // nothing needed here
+      }
+      const subtype = theType.split(':').slice(1).join(':');
+      if (subtype in enums || subtype in interfaces) {
+        includesSecond.add(`#include "${subtype}.h"`);
+      }
+    } else if (theType === 'data') {
+      includesFirst.add('#include <stdint.h>');
+      includesFirst.add('#include <stddef.h>');
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.C);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.C) : 'void';
+    setTypeIncludes(methodJson.returnType);
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let methodParameters = '';
+    let aliasArgs = [];
+    if (!methodJson.static) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `psm_${mainArgName}_t* ${mainArgName}`;
+      aliasArgs.push(mainArgName);
+    }
+    for (const parameterJson of methodJson.parameters) {
+      const parameterNameOriginal = util.getLangName('name', parameterJson, util.C);
+      let parameterName = parameterNameOriginal;
+      if (util.isClassType(parameterJson.type) || util.isClassPtrType(parameterJson.type) || ((util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) && typeof interfaces[parameterJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
+        parameterName += '_consumed';
+      }
+      setTypeIncludes(parameterJson.type);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.C);
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `${parameterType} ${parameterName}`;
+      aliasArgs.push(parameterName);
+      if (util.isArrayOfAnyType(parameterJson.type)) {
+        methodParameters += `, uint64_t ${parameterName}_length`;
+        aliasArgs.push(`${parameterName}_length`);
+      } else if (parameterJson.type === 'data') {
+        methodParameters += `, uint64_t ${parameterName}_size`;
+        aliasArgs.push(`${parameterName}_size`);
+      }
+    }
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_length`;
+      aliasArgs.push('out_length');
+    } else if (methodJson.returnType === 'data') {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_size`;
+      aliasArgs.push('out_size');
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    const method = `${methodReturnType} PSM_API ${nameWithoutTSuffix}_${methodName}(${methodParameters});\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        publicFuncs += method;
+        funcAliases.push({
+          name: `${nameWithoutTSuffix}_${methodName}`,
+          args: aliasArgs
+        });
+      } else {
+        publicMethods += method;
+        funcAliases.push({
+          name: `${nameWithoutTSuffix}_${methodName}`,
+          args: aliasArgs
+        });
       }
     }
   }
@@ -746,7 +844,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
       const setterArgName = util.getPropertySetterArgName(propertyJson, util.C);
       const isArray = util.isArrayOfAnyType(propertyJson.type);
-      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : '';
+      const isData = propertyJson.type === 'data';
+      const getterExt = isArray ? `${propStatic ? '' : ', '}uint64_t* out_length` : (isData ? `${propStatic ? '' : ', '}uint64_t* out_size` : '');
       let getter = `${getterType} ${nameWithoutTSuffix}_${getterName}(${propStatic ? `` : `${getterConstPfx}${name}* ${mainArgName}`}${getterExt})\n`;
       const arrayGetterFreeFuncHasOptionToDestroyContainedClasses = doesArrayGetterFreeFuncHaveOptionToDestroyContainedClasses(interfaces, propertyJson.type);
       const isArrayOfAnyPtrType = util.isArrayPtrType(propertyJson.type) || util.isArrayPtrRefType(propertyJson.type) || util.isArrayPtrMixType(propertyJson.type);
@@ -781,6 +880,13 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getter_result ? &getter_result : nullptr;\n`;
         } else if (isArray) {
           getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
+        } else if (isData) {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    if (out_size) {\n`;
+          getter += `        *out_size = static_cast<uint64_t>(size);\n`;
+          getter += `    }\n`;
+          getter += `    return result;\n`;
         } else {
           getter += `    return psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
@@ -799,6 +905,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `        if (out_length) {\n`;
           getter += `            *out_length = 0;\n`;
           getter += `        }\n`;
+          getter += `        return nullptr;\n`;
+        } else if (isData) {
           getter += `        return nullptr;\n`;
         } else {
           getter += `        return ${util.getTypeImplicitDefaultValue(propTypeRaw)};\n`;
@@ -832,6 +940,13 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getter_result ? &getter_result : nullptr;\n`;
         } else if (isArray) {
           getter += arrayGetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterArgName, nameCxx, propStatic);
+        } else if (isData) {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    if (out_size) {\n`;
+          getter += `        *out_size = static_cast<uint64_t>(size);\n`;
+          getter += `    }\n`;
+          getter += `    return result;\n`;
         } else {
           getter += `    return ${mainArgName}->${util.getPropertyGetterName(propertyJson, util.CXX)}();\n`;
         }
@@ -900,7 +1015,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         setterArgName += '_consumed';
       }
       const isArray = util.isArrayOfAnyType(propertyJson.type);
-      const setterExt = isArray ? `, uint64_t length` : '';
+      const isData = propertyJson.type === 'data';
+      const setterExt = isArray ? `, uint64_t length` : (isData ? `, uint64_t size` : '');
       let setter = `void ${nameWithoutTSuffix}_${setterName}(${propStatic ? `` : `${setterConstPfx}${name}* ${mainArgName}, `}${setterType} ${setterArgName}${setterExt})\n`;
       setter += `{\n`;
       if (propStatic) {
@@ -940,6 +1056,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (isArray) {
           setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
+        } else if (isData) {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName}, static_cast<std::size_t>(size));\n`;
         } else {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -984,6 +1102,8 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(raii_wrapper ? ${setterType.substring(0, setterType.length - 1)} { std::move(*raii_wrapper) } : ${setterType.substring(0, setterType.length - 1)} {});\n`;
         } else if (isArray) {
           setter += arraySetterCode(enums, interfaces, propertyJson, propTypeRaw, mainArgName, setterName, setterArgName, nameCxx, nameWithoutTSuffix, propStatic);
+        } else if (isData) {
+          setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName}, static_cast<std::size_t>(size));\n`;
         } else {
           setter += `    ${mainArgName}->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterArgName});\n`;
         }
@@ -1012,6 +1132,66 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         } else if (isArray) {
           arraySetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond);
         }
+      }
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.C);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.C) : 'void';
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let methodParameters = '';
+    if (!methodJson.static) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `psm_${mainArgName}_t* ${mainArgName}`;
+    }
+    for (const parameterJson of methodJson.parameters) {
+      const parameterNameOriginal = util.getLangName('name', parameterJson, util.C);
+      let parameterName = parameterNameOriginal;
+      if (util.isClassType(parameterJson.type) || util.isClassPtrType(parameterJson.type) || ((util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) && typeof interfaces[parameterJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
+        parameterName += '_consumed';
+      }
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.C);
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `${parameterType} ${parameterName}`;
+      if (util.isArrayOfAnyType(parameterJson.type)) {
+        methodParameters += `, uint64_t ${parameterName}_length`;
+      } else if (parameterJson.type === 'data') {
+        methodParameters += `, uint64_t ${parameterName}_size`;
+      }
+    }
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_length`;
+    } else if (methodJson.returnType === 'data') {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_size`;
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    let method = `${methodReturnType} PSM_API ${nameWithoutTSuffix}_${methodName}(${methodParameters})\n`;
+    method += `{\n`;
+    method += `    // TODO\n`;
+    method += `}\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        if (publicFuncs.length > 0) {
+          publicFuncs += '\n';
+        }
+        publicFuncs += method;
+      } else {
+        if (publicMethods.length > 0) {
+          publicMethods += '\n';
+        }
+        publicMethods += method;
       }
     }
   }
