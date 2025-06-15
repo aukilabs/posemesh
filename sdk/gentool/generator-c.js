@@ -486,8 +486,96 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  function setTypeIncludes(theType) {
+    if (util.isIntType(theType)) {
+      includesFirst.add('#include <stdint.h>');
+    } else if (theType === 'string' || theType === 'string_ref') {
+      // nothing needed here
+    } else if (theType === 'string_mix' || theType.startsWith('CLASS_MIX:') || theType.startsWith('CLASS_PTR_MIX:') || theType.startsWith('ARRAY_MIX:') || theType.startsWith('ARRAY_PTR_MIX:')) {
+      throw new Error(`Invalid method return type: ${theType}`);
+    } else if (theType.startsWith('ENUM:') || theType.startsWith('CLASS:') || theType.startsWith('CLASS_REF:') || theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY:') || theType.startsWith('ARRAY_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+      if (theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+        // nothing needed here
+      }
+      if (theType.startsWith('ARRAY') || theType.startsWith('ARRAY_REF') || theType.startsWith('ARRAY_PTR') || theType.startsWith('ARRAY_PTR_REF')) {
+        // nothing needed here
+      }
+      const subtype = theType.split(':').slice(1).join(':');
+      if (subtype in enums || subtype in interfaces) {
+        includesSecond.add(`#include "${subtype}.h"`);
+      }
+    } else if (theType === 'data') {
+      includesFirst.add('#include <stdint.h>');
+      includesFirst.add('#include <stddef.h>');
+    }
+  }
+
   for (const methodJson of interfaceJson.methods) {
-    
+    const methodName = util.getLangName('name', methodJson, util.C);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.C) : 'void';
+    setTypeIncludes(methodJson.returnType);
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let methodParameters = '';
+    let aliasArgs = [];
+    if (!methodJson.static) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `psm_${mainArgName}_t* ${mainArgName}`;
+      aliasArgs.push(mainArgName);
+    }
+    for (const parameterJson of methodJson.parameters) {
+      const parameterNameOriginal = util.getLangName('name', parameterJson, util.C);
+      let parameterName = parameterNameOriginal;
+      if (util.isClassType(parameterJson.type) || util.isClassPtrType(parameterJson.type) || ((util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) && typeof interfaces[parameterJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
+        parameterName += '_consumed';
+      }
+      setTypeIncludes(parameterJson.type);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.C);
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `${parameterType} ${parameterName}`;
+      aliasArgs.push(parameterName);
+      if (util.isArrayOfAnyType(parameterJson.type)) {
+        methodParameters += `, uint64_t ${parameterName}_length`;
+        aliasArgs.push(`${parameterName}_length`);
+      } else if (parameterJson.type === 'data') {
+        methodParameters += `, uint64_t ${parameterName}_size`;
+        aliasArgs.push(`${parameterName}_size`);
+      }
+    }
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_length`;
+      aliasArgs.push('out_length');
+    } else if (methodJson.returnType === 'data') {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_size`;
+      aliasArgs.push('out_size');
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    const method = `${methodReturnType} PSM_API ${nameWithoutTSuffix}_${methodName}(${methodParameters});\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        publicFuncs += method;
+        funcAliases.push({
+          name: `${nameWithoutTSuffix}_${methodName}`,
+          args: aliasArgs
+        });
+      } else {
+        publicMethods += method;
+        funcAliases.push({
+          name: `${nameWithoutTSuffix}_${methodName}`,
+          args: aliasArgs
+        });
+      }
+    }
   }
 
   let public = publicCtors;
@@ -1044,6 +1132,66 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         } else if (isArray) {
           arraySetterIncludes(enums, interfaces, propTypeRaw, includesFirst, includesSecond);
         }
+      }
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.C);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.C) : 'void';
+    const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
+    let methodParameters = '';
+    if (!methodJson.static) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `psm_${mainArgName}_t* ${mainArgName}`;
+    }
+    for (const parameterJson of methodJson.parameters) {
+      const parameterNameOriginal = util.getLangName('name', parameterJson, util.C);
+      let parameterName = parameterNameOriginal;
+      if (util.isClassType(parameterJson.type) || util.isClassPtrType(parameterJson.type) || ((util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) && typeof interfaces[parameterJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
+        parameterName += '_consumed';
+      }
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.C);
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `${parameterType} ${parameterName}`;
+      if (util.isArrayOfAnyType(parameterJson.type)) {
+        methodParameters += `, uint64_t ${parameterName}_length`;
+      } else if (parameterJson.type === 'data') {
+        methodParameters += `, uint64_t ${parameterName}_size`;
+      }
+    }
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_length`;
+    } else if (methodJson.returnType === 'data') {
+      if (methodParameters.length > 0) {
+        methodParameters += ', ';
+      }
+      methodParameters += `uint64_t* out_size`;
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    let method = `${methodReturnType} PSM_API ${nameWithoutTSuffix}_${methodName}(${methodParameters})\n`;
+    method += `{\n`;
+    method += `    // TODO\n`;
+    method += `}\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        if (publicFuncs.length > 0) {
+          publicFuncs += '\n';
+        }
+        publicFuncs += method;
+      } else {
+        if (publicMethods.length > 0) {
+          publicMethods += '\n';
+        }
+        publicMethods += method;
       }
     }
   }
