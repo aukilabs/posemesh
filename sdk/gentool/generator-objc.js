@@ -767,14 +767,14 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         setter += arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgName, nameCxx, nameManagedMember, propertyJson, propStatic);
       } else if (propStatic) {
         if (propTypeRaw === 'data') {
-          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}([${setterArgName} bytes], static_cast<std::size_t>([${setterArgName} length]));\n`;
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<const std::uint8_t*>([${setterArgName} bytes]), static_cast<std::size_t>([${setterArgName} length]));\n`;
         } else {
           setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
         }
       } else {
         setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
         if (propTypeRaw === 'data') {
-          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}([${setterArgName} bytes], static_cast<std::size_t>([${setterArgName} length]));\n`;
+          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<const std::uint8_t*>([${setterArgName} bytes]), static_cast<std::size_t>([${setterArgName} length]));\n`;
         } else {
           setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
         }

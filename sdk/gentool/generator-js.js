@@ -252,7 +252,7 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           }
         } else {
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (*)(void)>(&${funcName}))`;
+            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (${nameCxx}::*)(void)>(&${funcName}))`;
             code += `\n        .function("__${getterName}Size()", &${funcName}Size)`;
           } else {
             code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
@@ -510,6 +510,12 @@ function generateJsSource(enums, interfaces, interfaceName, interfaceJson) {
           propDef += `        get: function() {\n`;
           propDef += `            return __internalPosemeshAPI.fromVector${converterName}(${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${getterName}()${converterExt})\n`;
           propDef += `        },\n`;
+        } else if (propertyJson.type === 'data') {
+          propDef += `        get: function() {\n`;
+          propDef += `            const ptr = ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${getterName}();\n`;
+          propDef += `            const size = ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${getterName}Size();\n`;
+          propDef += `            return HEAPU8.subarray(ptr, ptr + size);\n`;
+          propDef += `        },\n`;
         } else {
           propDef += `        get: ${propRootObj}.__${getterName},\n`;
         }
@@ -541,6 +547,26 @@ function generateJsSource(enums, interfaces, interfaceName, interfaceJson) {
           }
           propDef += `        set: function(${setterArgName}) {\n`;
           propDef += `            ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${setterName}(__internalPosemeshAPI.toVector${converterName}(${setterArgName}${converterExt}));\n`;
+          propDef += `        },\n`;
+        } else if (propertyJson.type === 'data') {
+          propDef += `        set: function(${setterArgName}) {\n`;
+          propDef += `            if (!(${setterArgName} instanceof Uint8Array)) {\n`;
+          propDef += `                throw new Error('Invalid data type.');\n`;
+          propDef += `            }\n`;
+          propDef += `            if (${setterArgName}.buffer !== HEAPU8.buffer) {\n`;
+          propDef += `                let ptr = null;\n`;
+          propDef += `                try {\n`;
+          propDef += `                    ptr = _malloc(${setterArgName}.byteLength);\n`;
+          propDef += `                    new Uint8Array(HEAPU8.buffer, ptr, ${setterArgName}.byteLength).set(${setterArgName});\n`;
+          propDef += `                    ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${setterName}(ptr, ${setterArgName}.byteLength);\n`;
+          propDef += `                } finally {\n`;
+          propDef += `                    if (ptr) {\n`;
+          propDef += `                        _free(ptr);\n`;
+          propDef += `                    }\n`;
+          propDef += `                }\n`;
+          propDef += `                return;\n`;
+          propDef += `            }\n`;
+          propDef += `            ${propStatic ? `__internalPosemesh.${name}` : 'this'}.__${setterName}(${setterArgName}.byteOffset, ${setterArgName}.byteLength);\n`;
           propDef += `        },\n`;
         } else {
           propDef += `        set: ${propRootObj}.__${setterName},\n`;
