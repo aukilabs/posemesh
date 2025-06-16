@@ -1011,9 +1011,6 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         }
       } else if (parameterJson.type === 'data') {
         includesFirst.add('#include <cstdint>');
-        if (invokeArgs.length > 0) {
-          invokeArgs += ', ';
-        }
         invokeArgs += `static_cast<const std::uint8_t*>([${parameterName} bytes]), [${parameterName} length]`;
       }
     }
@@ -1070,9 +1067,9 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
         method += `    for (auto element : methodResult) {\n`;
         if (enums[innerType].type === 'flag') {
-          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInteger:static_cast<std::uint32_t>(element)]]\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInteger:static_cast<std::uint32_t>(element)]];\n`;
         } else {
-          method += `        [methodResultTransformed addObject:[NSNumber numberWithInteger:static_cast<std::int32_t>(element)]]\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithInteger:static_cast<std::int32_t>(element)]];\n`;
         }
         method += `    }\n`;
         method += `    return methodResultTransformed;\n`;

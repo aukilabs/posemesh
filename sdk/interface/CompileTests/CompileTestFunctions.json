@@ -8,6 +8,27 @@
   ],
   "methods": [
     {
+      "name": "Complex_Method",
+      "returnType": "ARRAY:uint16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "string_ref",
+          "objectiveC.namePrefix": "for"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ENUM:CompileTestExampleEnum",
+          "objectiveC.namePrefix": "with"
+        },
+        {
+          "name": "Third_Parameter",
+          "type": "ARRAY_REF:CompileTestExampleEnum",
+          "objectiveC.namePrefix": "and"
+        }
+      ]
+    },
+    {
       "name": "Void_Method"
     },
     {
