@@ -81,6 +81,7 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseEstimation.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/QRDetection.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/ArucoDetection.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/CompileTestMethods.cpp" # UNIT TEST!
         "${CMAKE_CURRENT_LIST_DIR}/src/Posemesh.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Matrix2x2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/Matrix3x3.cpp"

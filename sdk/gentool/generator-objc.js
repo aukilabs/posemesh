@@ -326,6 +326,12 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   for (const methodJson of interfaceJson.methods) {
     const methodName = util.getLangName('name', methodJson, util.ObjC);
     const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    let methodReturnTypeExt = '';
+    if (util.isClassPtrType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
+      methodReturnTypeExt = ' _Nullable';
+    } else if (methodReturnType.endsWith('*')) {
+      methodReturnTypeExt = ' _Nonnull';
+    }
     setTypeIncludes(methodJson.returnType);
     let methodParameters = '';
     for (const parameterJson of methodJson.parameters) {
@@ -333,29 +339,35 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
       setTypeIncludes(parameterJson.type);
       const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      let parameterTypeExt = '';
+      if (util.isClassPtrType(parameterJson.type) || util.isClassPtrRefType(parameterJson.type)) {
+        parameterTypeExt = ' _Nullable';
+      } else if (methodReturnType.endsWith('*')) {
+        parameterTypeExt = ' _Nonnull';
+      }
       const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
       const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
       if (methodParameters.length > 0) {
         if (parameterObjCNamePrefix === '') {
-          methodParameters += ` ${parameterName}:(${parameterType})${parameterName}`;
+          methodParameters += ` ${parameterName}:(${parameterType}${parameterTypeExt})${parameterName}`;
         } else if (parameterObjCNamePrefix === '-') {
           throw new Error('Invalid prefix.');
         } else {
-          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType})${parameterName}`;
+          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
         }
       } else {
         if (parameterObjCNamePrefix === '') {
-          methodParameters += `${parameterNameFixed}:(${parameterType})${parameterName}`;
+          methodParameters += `${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
         } else if (parameterObjCNamePrefix === '-') {
-          methodParameters += `:(${parameterType})${parameterName}`;
+          methodParameters += `:(${parameterType}${parameterTypeExt})${parameterName}`;
         } else {
-          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType})${parameterName}`;
+          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
         }
       }
     }
     const methodStatic = methodJson.static;
     const methodVisibility = methodJson.visibility;
-    const method = `${methodStatic ? '+' : '-'} (${methodReturnType})${methodName}${methodParameters};\n`;
+    const method = `${methodStatic ? '+' : '-'} (${methodReturnType}${methodReturnTypeExt})${methodName}${methodParameters};\n`;
     if (methodVisibility === util.Visibility.public) {
       if (methodStatic) {
         publicFuncs += method;
