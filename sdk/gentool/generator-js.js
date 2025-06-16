@@ -238,26 +238,43 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           } else {
             shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
           }
+        } else if (propertyJson.type === 'data') {
+          funcName = getterNameCxx;
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.getterConst) {
+              selfArg = `const ${nameCxx}& self`;
+            } else {
+              selfArg = `${nameCxx}& self`;
+            }
+          }
+          unnamedNamespace += `const void* ${funcName}(${selfArg})\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    return ${nameCxx}::${getterNameCxx}();\n`;
+          } else {
+            unnamedNamespace += `    return self.${getterNameCxx}();\n`;
+          }
+          unnamedNamespace += `}\n`;
         }
         let retValExt = '';
         if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {
           retValExt = ', nonnull<ret_val>()';
         }
-        const getterConst = propertyJson.getterConst;
-        const getterConstExtForStaticCast = getterConst ? ' const' : '';
-        const getterNoexcept = propertyJson.getterNoexcept;
-        const getterNoexceptExtForStaticCast = getterNoexcept ? ' noexcept' : '';
         if (propStatic) {
           if (propertyJson.type === 'data') {
-            code += `\n        .class_function("__${getterName}()", static_cast<const std::uint8_t* (*)()${getterConstExtForStaticCast}${getterNoexceptExtForStaticCast}>(&${funcName}), allow_raw_pointers())`;
-            code += `\n        .class_function("__${getterName}Size()", &${funcName}Size)`;
+            code += `\n        .class_function("__${getterName}()", &${funcName}, allow_raw_pointers())`;
+            code += `\n        .class_function("__${getterName}Size()", &${nameCxx}::${funcName}Size)`;
           } else {
             code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
           }
         } else {
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${getterName}()", static_cast<const std::uint8_t* (${nameCxx}::*)()${getterConstExtForStaticCast}${getterNoexceptExtForStaticCast}>(&${funcName}), allow_raw_pointers())`;
-            code += `\n        .function("__${getterName}Size()", &${funcName}Size)`;
+            code += `\n        .function("__${getterName}()", &${funcName}, allow_raw_pointers())`;
+            code += `\n        .function("__${getterName}Size()", &${nameCxx}::${funcName}Size)`;
           } else {
             code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
           }
@@ -420,6 +437,28 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           } else {
             shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
           }
+        } else if (propertyJson.type === 'data') {
+          funcName = setterNameCxx;
+          if (unnamedNamespace.length > 0) {
+            unnamedNamespace += '\n';
+          }
+          let selfArg = '';
+          if (!propStatic) {
+            if (propertyJson.setterConst) {
+              selfArg = `const ${nameCxx}& self, `;
+            } else {
+              selfArg = `${nameCxx}& self, `;
+            }
+          }
+          unnamedNamespace += `void ${setterNameCxx}(${selfArg}const void* ${setterArgName}, std::uint64_t ${setterArgName}Length)\n`;
+          unnamedNamespace += `{\n`;
+          if (propStatic) {
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(${setterArgName}, ${setterArgName}Length);\n`;
+          } else {
+            unnamedNamespace += `    self.${setterNameCxx}(${setterArgName}, ${setterArgName}Length);\n`;
+          }
+          unnamedNamespace += `}\n`;
+          includesFirst.add('#include <cstdint>');
         }
         let retValExt = '';
         if (util.isClassType(propertyJson.type) || util.isClassRefType(propertyJson.type) || util.isClassMixType(propertyJson.type)) {

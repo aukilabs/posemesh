@@ -487,7 +487,7 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
   }
 
   function setTypeIncludes(theType) {
-    if (util.isIntType(theType)) {
+    if (util.isIntType(theType) || theType === 'boolean') {
       includesFirst.add('#include <stdint.h>');
     } else if (theType === 'string' || theType === 'string_ref') {
       // nothing needed here
@@ -1138,6 +1138,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
 
   for (const methodJson of interfaceJson.methods) {
     const methodName = util.getLangName('name', methodJson, util.C);
+    const methodNameCxx = util.getLangName('name', methodJson, util.CXX);
     const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.C) : 'void';
     const mainArgName = util.getStyleName('name', interfaceJson, util.lower_case);
     let methodParameters = '';
@@ -1179,7 +1180,322 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
     const methodVisibility = methodJson.visibility;
     let method = `${methodReturnType} PSM_API ${nameWithoutTSuffix}_${methodName}(${methodParameters})\n`;
     method += `{\n`;
-    method += `    // TODO\n`;
+    method += `    try {\n`;
+    if (!methodStatic) {
+      includesFirst.add('#include <stdexcept>');
+      method += `        if (!${mainArgName}) {\n`;
+      method += `            throw std::invalid_argument("${mainArgName}");\n`;
+      method += `        }\n`;
+    }
+    let invokeParams = '';
+    let finallyCode = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterNameOriginal = util.getLangName('name', parameterJson, util.C);
+      let parameterName = parameterNameOriginal;
+      if (util.isClassType(parameterJson.type) || util.isClassPtrType(parameterJson.type) || ((util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) && typeof interfaces[parameterJson.type.split(':').slice(1).join(':')] !== 'undefined')) {
+        parameterName += '_consumed';
+      }
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.C);
+      if (util.isIntType(parameterJson.type) || parameterJson.type === 'float' || parameterJson.type === 'double') {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        invokeParams += parameterName;
+      } else if (parameterJson.type === 'boolean') {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        invokeParams += `static_cast<bool>(${parameterName})`;
+      } else if (parameterJson.type === 'string' || parameterJson.type === 'string_ref') {
+        includesFirst.add('#include <string>');
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        invokeParams += `(${parameterName} ? std::string { ${parameterName} } : std::string {})`;
+      } else if (util.isEnumType(parameterJson.type)) {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        invokeParams += `static_cast<psm::${util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.CXX)}>(${parameterName})`;
+      } else if (util.isClassType(parameterJson.type)) {
+        includesFirst.add('#include <utility>');
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        finallyCode += `        delete ${parameterName};\n`;
+        invokeParams += `psm::${util.getLangClassName(interfaces[innerType], util.CXX)} { std::move(*${parameterName}) }`;
+      } else if (util.isClassRefType(parameterJson.type)) {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        invokeParams += `psm::${util.getLangClassName(interfaces[innerType], util.CXX)} { *${parameterName} }`;
+      } else if (util.isClassPtrType(parameterJson.type)) {
+        includesFirst.add('#include <utility>');
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        finallyCode += `        delete ${parameterName};\n`;
+        invokeParams += `std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}> { std::move(*${parameterName}) }`;
+      } else if (util.isClassPtrRefType(parameterJson.type)) {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        invokeParams += `std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}> { *${parameterName} }`;
+      } else if (util.isArrayOfAnyType(parameterJson.type)) {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (innerType in enums) {
+          invokeParams += `std::vector<psm::${util.getLangEnumName(enums[innerType], util.CXX)}> { reinterpret_cast<const psm::${util.getLangEnumName(enums[innerType], util.CXX)}*>(${parameterName}), reinterpret_cast<const psm::${util.getLangEnumName(enums[innerType], util.CXX)}*>(${parameterName}) + ${parameterName}_length }`;
+        } else if (innerType in interfaces) {
+          if (util.isArrayType(parameterJson.type) || util.isArrayPtrType(parameterJson.type)) {
+            finallyCode += `        for (std::size_t i = 0; i < ${parameterName}_length; ++i) {\n`;
+            finallyCode += `            delete ${parameterName}[i];\n`;
+            finallyCode += `        }\n`;
+          }
+          if (util.isArrayType(parameterJson.type) || util.isArrayRefType(parameterJson.type)) {
+            method += `        std::vector<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}> ${parameterName}_transformed;\n`;
+            method += `        ${parameterName}_transformed.reserve(${parameterName}_length);\n`;
+            method += `        for (std::size_t i = 0; i < ${parameterName}_length; ++i) {\n`;
+            if (util.isArrayType(parameterJson.type)) {
+              includesFirst.add('#include <utility>');
+              method += `            ${parameterName}_transformed.push_back(std::move(*(${parameterName}[i])));\n`;
+            } else {
+              method += `            ${parameterName}_transformed.push_back(*(${parameterName}[i]));\n`;
+            }
+            method += `        }\n`;
+          } else {
+            method += `        std::vector<std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>> ${parameterName}_transformed;\n`;
+            method += `        ${parameterName}_transformed.reserve(${parameterName}_length);\n`;
+            method += `        for (std::size_t i = 0; i < ${parameterName}_length; ++i) {\n`;
+            if (util.isArrayPtrType(parameterJson.type)) {
+              includesFirst.add('#include <utility>');
+              method += `            ${parameterName}_transformed.push_back(std::move(*(${parameterName}[i])));\n`;
+            } else {
+              method += `            ${parameterName}_transformed.push_back(*(${parameterName}[i]));\n`;
+            }
+            method += `        }\n`;
+          }
+          invokeParams += `${parameterName}_transformed`;
+        } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double') {
+          invokeParams += `std::vector<${util.getPropertyType(enums, interfaces, { "type": innerType }, util.CXX)}> { ${parameterName}, ${parameterName} + ${parameterName}_length }`;
+        } else if (innerType === 'boolean') {
+          method += `        std::vector<bool> ${parameterName}_transformed;\n`;
+          method += `        ${parameterName}_transformed.reserve(${parameterName}_length);\n`;
+          method += `        for (std::size_t i = 0; i < ${parameterName}_length; ++i) {\n`;
+          method += `            ${parameterName}_transformed.push_back(static_cast<bool>(${parameterName}[i]));\n`;
+          method += `        }\n`;
+          invokeParams += `${parameterName}_transformed`;
+        } else if (innerType === 'string') {
+          method += `        std::vector<std::string> ${parameterName}_transformed;\n`;
+          method += `        ${parameterName}_transformed.reserve(${parameterName}_length);\n`;
+          method += `        for (std::size_t i = 0; i < ${parameterName}_length; ++i) {\n`;
+          method += `            ${parameterName}_transformed.push_back(${parameterName}[i] ? std::string { ${parameterName}[i] } : std::string {});\n`;
+          method += `        }\n`;
+          invokeParams += `${parameterName}_transformed`;
+        }
+      } else if (parameterJson.type === 'data') {
+        if (invokeParams.length > 0) {
+          invokeParams += ', ';
+        }
+        invokeParams += `${parameterName}, ${parameterName}_size`;
+      }
+    }
+    let needsConst = false;
+    let needsRef = false;
+    if (methodJson.returnType === 'string_ref' || util.isClassRefType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
+      needsRef = true;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+        if (innerType in enums) {
+          needsRef = util.isArrayRefType(methodJson.returnType);
+        } else if (innerType in interfaces) {
+          needsRef = util.isArrayRefType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType);
+        } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double') {
+          needsRef = util.isArrayRefType(methodJson.returnType);
+        } else if (innerType === 'boolean') {
+          // needsRef change not needed
+        } else if (innerType === 'string') {
+          // needsRef change not needed
+        }
+    } else if (methodJson.returnType === 'data') {
+      // needsRef change not needed
+    }
+    if (methodJson.returnType === 'data') {
+      method += `        std::size_t methodResultSize;\n`;
+      if (invokeParams.length > 0) {
+        invokeParams += ', ';
+      }
+      invokeParams += `methodResultSize`;
+    }
+    method += `        ${(methodJson.returnType.length > 0) ? `${needsConst ? 'const ' : ''}auto${needsRef ? '&' : ''} methodResult = ` : ''}${methodStatic ? `psm::${nameCxx}::` : `${mainArgName}->`}${methodNameCxx}(${invokeParams});\n`;
+    method += finallyCode;
+    if (methodJson.returnType.length > 0) {
+      if (methodJson.returnType === 'boolean') {
+        method += `        return static_cast<std::uint8_t>(methodResult);\n`;
+      } else if (methodJson.returnType === 'string') {
+        includesFirst.add('#include <cstring>');
+        method += `        char* methodResultNative = new char[methodResult.size() + 1];\n`;
+        method += `        std::memcpy(methodResultNative, methodResult.c_str(), methodResult.size() + 1);\n`;
+        method += `        return methodResultNative;\n`;
+      } else if (methodJson.returnType === 'string_ref') {
+        method += `        return methodResult.c_str();\n`;
+      } else if (util.isEnumType(methodJson.returnType)) {
+        method += `        return static_cast<${util.getPropertyTypeForSetter(enums, interfaces, { "type": methodJson.returnType }, util.C)}>(methodResult);\n`;
+      } else if (util.isClassType(methodJson.returnType)) {
+        includesFirst.add('#include <utility>');
+        const innerType = methodJson.returnType.split(':').slice(1).join(':');
+        method += `        return new psm::${util.getLangClassName(interfaces[innerType], util.CXX)} { std::move(methodResult) };\n`;
+      } else if (util.isClassRefType(methodJson.returnType)) {
+        method += `        return &methodResult;\n`;
+      } else if (util.isClassPtrType(methodJson.returnType)) {
+        includesFirst.add('#include <utility>');
+        const innerType = methodJson.returnType.split(':').slice(1).join(':');
+        method += `        return new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}> { std::move(methodResult) };\n`;
+      } else if (util.isClassPtrRefType(methodJson.returnType)) {
+        method += `        return &methodResult;\n`;
+      } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+        const innerType = methodJson.returnType.split(':').slice(1).join(':');
+        if (innerType in enums) {
+
+          if (util.isArrayType(methodJson.returnType)) {
+            includesFirst.add('#include <cstring>');
+            method += `        auto* methodResultNative = new ${util.getLangEnumName(enums[innerType], util.C)}[methodResult.size()];\n`;
+            method += `        std::memcpy(methodResultNative, methodResult.data(), methodResult.size() * sizeof(methodResultNative[0]));\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          } else {
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return reinterpret_cast<const ${util.getLangEnumName(enums[innerType], util.C)}*>(methodResult.data());\n`;
+          }
+
+        } else if (innerType in interfaces) {
+          if (util.isArrayType(methodJson.returnType)) {
+            includesFirst.add('#include <utility>');
+            method += `        auto** methodResultNative = new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}*[methodResult.size() + 1];\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNative[i] = new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(std::move(methodResult[i]));\n`;
+            method += `        }\n`;
+            method += `        methodResultNative[methodResult.size()] = nullptr;\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          } else if (util.isArrayRefType(methodJson.returnType)) {
+            method += `        const auto** methodResultNative = new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}*[methodResult.size() + 1];\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNative[i] = &(methodResult[i]);\n`;
+            method += `        }\n`;
+            method += `        methodResultNative[methodResult.size()] = nullptr;\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          } else if (util.isArrayPtrType(methodJson.returnType)) {
+            includesFirst.add('#include <utility>');
+            method += `        auto** methodResultNative = new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>*[methodResult.size() + 1];\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNative[i] = new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(std::move(methodResult[i]));\n`;
+            method += `        }\n`;
+            method += `        methodResultNative[methodResult.size()] = nullptr;\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          } else if (util.isArrayPtrRefType(methodJson.returnType)) {
+            method += `        const auto** methodResultNative = new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>*[methodResult.size() + 1];\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNative[i] = &(methodResult[i]);\n`;
+            method += `        }\n`;
+            method += `        methodResultNative[methodResult.size()] = nullptr;\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          }
+        } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double') {
+          if (util.isArrayType(methodJson.returnType)) {
+            includesFirst.add('#include <cstring>');
+            method += `        auto* methodResultNative = new ${util.getPropertyType(enums, interfaces, { "type": innerType }, util.CXX)}[methodResult.size()];\n`;
+            method += `        std::memcpy(methodResultNative, methodResult.data(), methodResult.size() * sizeof(methodResultNative[0]));\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+          } else {
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResult.data();\n`;
+          }
+        } else if (innerType === 'boolean') {
+            method += `        auto* methodResultNative = new std::uint8_t[methodResult.size()];\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNative[i] = static_cast<std::uint8_t>(methodResult[i]);\n`;
+            method += `        }\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return methodResultNative;\n`;
+        } else if (innerType === 'string') {
+            includesFirst.add('#include <cstring>');
+            method += `        std::size_t methodResultNativeSize = (methodResult.size() + 1) * sizeof(void*);\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            methodResultNativeSize += methodResult[i].size() + 1;\n`;
+            method += `        }\n`;
+            method += `        auto* methodResultNative = new char[methodResultNativeSize];\n`;
+            method += `        auto** methodResultNativePtr = reinterpret_cast<char**>(methodResultNative);\n`;
+            method += `        auto* methodResultNativeData = methodResultNative + ((methodResult.size() + 1) * sizeof(void*));\n`;
+            method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
+            method += `            *methodResultNativePtr++ = methodResultNativeData;\n`;
+            method += `            std::memcpy(methodResultNativeData, methodResult[i].c_str(), methodResult[i].size() + 1);\n`;
+            method += `            methodResultNativeData += methodResult[i].size() + 1;\n`;
+            method += `        }\n`;
+            method += `        *methodResultNativePtr = nullptr;\n`;
+            method += `        if (out_length) {\n`;
+            method += `            *out_length = methodResult.size();\n`;
+            method += `        }\n`;
+            method += `        return const_cast<const char**>(reinterpret_cast<char**>(methodResultNative));\n`;
+        }
+      } else if (methodJson.returnType === 'data') {
+        method += `        if (out_size) {\n`;
+        method += `            *out_size = methodResultSize;\n`;
+        method += `        }\n`;
+        method += `        return methodResult;\n`;
+      } else {
+        method += `        return methodResult;\n`;
+      }
+    }
+    method += `    } catch (...) {\n`;
+    if (util.isIntType(methodJson.returnType) || methodJson.returnType === 'float' || methodJson.returnType === 'double' || methodJson.returnType === 'boolean') {
+      method += `        return 0;\n`;
+    } else if (methodJson.returnType === 'string' || methodJson.returnType === 'string_ref') {
+      method += `        return nullptr;\n`;
+    } else if (util.isEnumType(methodJson.returnType)) {
+      method += `        return static_cast<${util.getPropertyTypeForSetter(enums, interfaces, { "type": methodJson.returnType }, util.C)}>(0);\n`;
+    } else if (util.isClassOfAnyType(methodJson.returnType)) {
+      method += `        return nullptr;\n`;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      method += `        if (out_length) {\n`;
+      method += `            *out_length = 0;\n`;
+      method += `        }\n`;
+      method += `        return nullptr;\n`;
+    } else if (methodJson.returnType === 'data') {
+      method += `        if (out_size) {\n`;
+      method += `            *out_size = 0;\n`;
+      method += `        }\n`;
+      method += `        return nullptr;\n`;
+    }
+    method += `    }\n`;
     method += `}\n`;
     if (methodVisibility === util.Visibility.public) {
       if (methodStatic) {
