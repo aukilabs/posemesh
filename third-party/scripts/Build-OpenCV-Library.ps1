@@ -160,7 +160,9 @@ Switch($Platform) {
         $CMakeGenerator = ''
         $CMakeConfigureArgs = @(
             '-DWITH_CAROTENE=OFF',
-            '-DWITH_PROTOBUF=OFF'
+            '-DWITH_ITT=OFF',
+            '-DWITH_PROTOBUF=OFF',
+            '-DWITH_TBB=OFF'
         )
         Switch($Architecture) {
             'AMD64' { }
@@ -169,8 +171,6 @@ Switch($Platform) {
                 $CMakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$CMakeToolchainFilePath"
                 $CMakeConfigureArgs += "-DCPU_BASELINE=DETECT"
                 $CMakeConfigureArgs += "-DCMAKE_CROSSCOMPILING=ON"
-                $CMakeConfigureArgs += "-DWITH_ITT=OFF"
-                $CMakeConfigureArgs += "-DWITH_TBB=OFF"
             }
             Default {
                 Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Linux' platform."
