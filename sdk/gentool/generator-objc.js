@@ -305,6 +305,66 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  function setTypeIncludes(theType) {
+    if (util.isIntType(theType)) {
+      includesFirst.add('#include <stdint.h>');
+    } else if (theType === 'string' || theType === 'string_ref') {
+      // nothing needed here
+    } else if (theType === 'string_mix' || theType.startsWith('CLASS_MIX:') || theType.startsWith('CLASS_PTR_MIX:') || theType.startsWith('ARRAY_MIX:') || theType.startsWith('ARRAY_PTR_MIX:')) {
+      throw new Error(`Invalid method return type: ${theType}`);
+    } else if (theType.startsWith('ENUM:') || theType.startsWith('CLASS:') || theType.startsWith('CLASS_REF:') || theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY:') || theType.startsWith('ARRAY_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+      const subtype = theType.split(':').slice(1).join(':');
+      if (subtype in enums || subtype in interfaces) {
+        importsSecond.add(`#import "${subtype}.h"`);
+      }
+    } else if (theType === 'data') {
+      includesFirst.add('#include <stdint.h>');
+      includesFirst.add('#include <stddef.h>');
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.ObjC);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    setTypeIncludes(methodJson.returnType);
+    let methodParameters = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
+      setTypeIncludes(parameterJson.type);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
+      const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
+      if (methodParameters.length > 0) {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += ` ${parameterName}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          throw new Error('Invalid prefix.');
+        } else {
+          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      } else {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += `${parameterNameFixed}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          methodParameters += `:(${parameterType})${parameterName}`;
+        } else {
+          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      }
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    const method = `${methodStatic ? '+' : '-'} (${methodReturnType})${methodName}${methodParameters};\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        publicFuncs += method;
+      } else {
+        publicMethods += method;
+      }
+    }
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {

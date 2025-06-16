@@ -1391,7 +1391,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             method += `        }\n`;
             method += `        return methodResultNative;\n`;
           } else if (util.isArrayRefType(methodJson.returnType)) {
-            method += `        const auto** methodResultNative = new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}*[methodResult.size() + 1];\n`;
+            method += `        const auto** methodResultNative = new const psm::${util.getLangClassName(interfaces[innerType], util.CXX)}*[methodResult.size() + 1];\n`;
             method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
             method += `            methodResultNative[i] = &(methodResult[i]);\n`;
             method += `        }\n`;
@@ -1412,7 +1412,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             method += `        }\n`;
             method += `        return methodResultNative;\n`;
           } else if (util.isArrayPtrRefType(methodJson.returnType)) {
-            method += `        const auto** methodResultNative = new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>*[methodResult.size() + 1];\n`;
+            method += `        const auto** methodResultNative = new const std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>*[methodResult.size() + 1];\n`;
             method += `        for (std::size_t i = 0; i < methodResult.size(); ++i) {\n`;
             method += `            methodResultNative[i] = &(methodResult[i]);\n`;
             method += `        }\n`;
