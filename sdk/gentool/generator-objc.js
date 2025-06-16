@@ -1105,34 +1105,34 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
         method += `    for (auto element : methodResult) {\n`;
         if (innerType === 'int8') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithChar:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithChar:element]];\n`;
         } else if (innerType === 'int16') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithShort:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithShort:element]];\n`;
         } else if (innerType === 'int32') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithInt:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithInt:element]];\n`;
         } else if (innerType === 'int64') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithLongLong:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithLongLong:element]];\n`;
         } else if (innerType === 'uint8') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedChar:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedChar:element]];\n`;
         } else if (innerType === 'uint16') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedShort:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedShort:element]];\n`;
         } else if (innerType === 'uint32') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedInt:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInt:element]];\n`;
         } else if (innerType === 'uint64') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedLongLong:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedLongLong:element]];\n`;
         } else if (innerType === 'float') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithFloat:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithFloat:element]];\n`;
         } else if (innerType === 'double') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithDouble:element]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithDouble:element]];\n`;
         } else if (innerType === 'boolean') {
-          method += `       [methodResultTransformed addObject:[NSNumber numberWithBool:static_cast<BOOL>(element)]];\n`;
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithBool:static_cast<BOOL>(element)]];\n`;
         }
         method += `    }\n`;
         method += `    return methodResultTransformed;\n`;
       } else if (innerType === 'string') {
         method += `    NSMutableArray<NSString*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
         method += `    for (const auto& element : methodResult) {\n`;
-        method += `       [methodResultTransformed addObject:[NSString stringWithUTF8String:element.c_str()]];\n`;
+        method += `        [methodResultTransformed addObject:[NSString stringWithUTF8String:element.c_str()]];\n`;
         method += `    }\n`;
         method += `    return methodResultTransformed;\n`;
       }
