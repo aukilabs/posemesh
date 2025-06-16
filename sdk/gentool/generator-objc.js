@@ -928,24 +928,48 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       } else if (parameterJson.type === 'string' || parameterJson.type === 'string_ref') {
         invokeArgs += `[${parameterName} UTF8String]`;
       } else if (util.isEnumType(parameterJson.type)) {
-        invokeArgs += `static_cast<psm::${parameterType}>(${parameterName})`;
+        invokeArgs += `static_cast<psm::${util.getLangEnumName(enums[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>(${parameterName})`;
       } else if (util.isClassType(parameterJson.type)) {
         invokeArgs += `*static_cast<psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isClassRefType(parameterJson.type)) {
         invokeArgs += `*static_cast<const psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isClassPtrType(parameterJson.type)) {
-        invokeArgs += `*static_cast<std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+        invokeArgs += `*static_cast<std::shared_ptr<psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isClassPtrRefType(parameterJson.type)) {
-        invokeArgs += `*static_cast<std::shared_ptr<const psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+        invokeArgs += `*static_cast<std::shared_ptr<const psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isArrayOfAnyType(parameterJson.type)) {
+        // TODO
+      } else if (parameterJson.type === 'data') {
+        includesFirst.add('#include <cstdint>');
+        if (invokeArgs.length > 0) {
+          invokeArgs += ', ';
+        }
+        invokeArgs += `static_cast<const std::uint8_t*>([${parameterName} bytes]), [${parameterName} length]`;
       }
     }
     let mthResCnst = false;
+    let mthResPtr = false;
     let mthResRef = false;
     if (util.isClassRefType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
       mthResCnst = true;
+      mthResPtr = false;
       mthResRef = true;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      // TODO
+    } else if (methodJson.returnType === 'data') {
+      mthResCnst = true;
+      mthResPtr = true;
+      mthResRef = false;
     }
-    method += `    ${methodJson.returnType.length > 0 ? `${mthResCnst ? 'const ' : ''}auto${mthResRef ? '&' : ''} methodResult = ` : ''}${methodStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getLangName('name', methodJson, util.CXX)}(${invokeArgs});\n`;
+    if (methodJson.returnType === 'data') {
+      includesFirst.add('#include <cstddef>');
+      method += `    std::size_t methodResultSize;\n`;
+      if (invokeArgs.length > 0) {
+        invokeArgs += ', ';
+      }
+      invokeArgs += `methodResultSize`;
+    }
+    method += `    ${methodJson.returnType.length > 0 ? `${mthResCnst ? 'const ' : ''}auto${mthResPtr ? '*' : (mthResRef ? '&' : '')} methodResult = ` : ''}${methodStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getLangName('name', methodJson, util.CXX)}(${invokeArgs});\n`;
     if (util.isIntType(methodJson.returnType) || methodJson.returnType === 'float' || methodJson.returnType === 'double') {
       method += `    return methodResult;\n`;
     } else if (methodJson.returnType === 'boolean') {
@@ -968,6 +992,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
     } else if (util.isClassPtrRefType(methodJson.returnType)) {
       const innerType = methodJson.returnType.split(':').slice(1).join(':');
       method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(methodResult)];\n`;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      // TODO
+    } else if (methodJson.returnType === 'data') {
+      method += `    return [NSData initWithBytesNoCopy:methodResult length:methodResultSize freeWhenDone:NO];\n`;
     }
     method += `}\n`;
     if (methodVisibility === util.Visibility.public) {

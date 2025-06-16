@@ -239,6 +239,7 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
             shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
           }
         } else if (propertyJson.type === 'data') {
+          includesFirst.add('#include <cstdint>');
           funcName = getterNameCxx;
           if (unnamedNamespace.length > 0) {
             unnamedNamespace += '\n';
@@ -251,12 +252,12 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
               selfArg = `${nameCxx}& self`;
             }
           }
-          unnamedNamespace += `const void* ${funcName}(${selfArg})\n`;
+          unnamedNamespace += `std::uint32_t ${funcName}(${selfArg})\n`;
           unnamedNamespace += `{\n`;
           if (propStatic) {
-            unnamedNamespace += `    return ${nameCxx}::${getterNameCxx}();\n`;
+            unnamedNamespace += `    return reinterpret_cast<std::uint32_t>(${nameCxx}::${getterNameCxx}());\n`;
           } else {
-            unnamedNamespace += `    return self.${getterNameCxx}();\n`;
+            unnamedNamespace += `    return reinterpret_cast<std::uint32_t>(self.${getterNameCxx}());\n`;
           }
           unnamedNamespace += `}\n`;
         }
@@ -265,18 +266,14 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           retValExt = ', nonnull<ret_val>()';
         }
         if (propStatic) {
+          code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
           if (propertyJson.type === 'data') {
-            code += `\n        .class_function("__${getterName}()", &${funcName}, allow_raw_pointers())`;
             code += `\n        .class_function("__${getterName}Size()", &${nameCxx}::${funcName}Size)`;
-          } else {
-            code += `\n        .class_function("__${getterName}()", &${funcName}${retValExt})`;
           }
         } else {
+          code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${getterName}()", &${funcName}, allow_raw_pointers())`;
             code += `\n        .function("__${getterName}Size()", &${nameCxx}::${funcName}Size)`;
-          } else {
-            code += `\n        .function("__${getterName}()", &${funcName}${retValExt})`;
           }
         }
       }
@@ -438,6 +435,7 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
             shared.requiredVectorsOfClasses.add(propTypeRawWithoutPfx);
           }
         } else if (propertyJson.type === 'data') {
+          includesFirst.add('#include <cstdint>');
           funcName = setterNameCxx;
           if (unnamedNamespace.length > 0) {
             unnamedNamespace += '\n';
@@ -450,12 +448,12 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
               selfArg = `${nameCxx}& self, `;
             }
           }
-          unnamedNamespace += `void ${setterNameCxx}(${selfArg}const void* ${setterArgName}, std::uint64_t ${setterArgName}Length)\n`;
+          unnamedNamespace += `void ${setterNameCxx}(${selfArg}std::uint32_t ${setterArgName}, std::uint64_t ${setterArgName}Length)\n`;
           unnamedNamespace += `{\n`;
           if (propStatic) {
-            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(static_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(reinterpret_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
           } else {
-            unnamedNamespace += `    self.${setterNameCxx}(static_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
+            unnamedNamespace += `    self.${setterNameCxx}(reinterpret_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
           }
           unnamedNamespace += `}\n`;
           includesFirst.add('#include <cstdint>');
@@ -466,13 +464,13 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
         }
         if (propStatic) {
           if (propertyJson.type === 'data') {
-            code += `\n        .class_function("__${setterName}(${setterArgName}, size)", &${funcName}, allow_raw_pointers())`;
+            code += `\n        .class_function("__${setterName}(${setterArgName}, size)", &${funcName}${retValExt})`;
           } else {
             code += `\n        .class_function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
           }
         } else {
           if (propertyJson.type === 'data') {
-            code += `\n        .function("__${setterName}(${setterArgName}, size)", &${funcName}, allow_raw_pointers())`;
+            code += `\n        .function("__${setterName}(${setterArgName}, size)", &${funcName}${retValExt})`;
           } else {
             code += `\n        .function("__${setterName}(${setterArgName})", &${funcName}${retValExt})`;
           }
