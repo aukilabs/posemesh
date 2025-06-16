@@ -1,0 +1,700 @@
+{
+  "name": "Compile_Test_Functions",
+  "static": true,
+  "aliases": [
+    {
+      "name": "Compile_Test_Functions_Alias"
+    }
+  ],
+  "methods": [
+    {
+      "name": "Void_Method"
+    },
+    {
+      "name": "Int8_Method",
+      "returnType": "int8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "int8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "int8"
+        }
+      ]
+    },
+    {
+      "name": "Int16_Method",
+      "returnType": "int16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "int16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "int16"
+        }
+      ]
+    },
+    {
+      "name": "Int32_Method",
+      "returnType": "int32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "int32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "int32"
+        }
+      ]
+    },
+    {
+      "name": "Int64_Method",
+      "returnType": "int64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "int64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "int64"
+        }
+      ]
+    },
+    {
+      "name": "Unsigned_Int8_Method",
+      "returnType": "uint8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "uint8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "uint8"
+        }
+      ]
+    },
+    {
+      "name": "Unsigned_Int16_Method",
+      "returnType": "uint16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "uint16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "uint16"
+        }
+      ]
+    },
+    {
+      "name": "Unsigned_Int32_Method",
+      "returnType": "uint32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "uint32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "uint32"
+        }
+      ]
+    },
+    {
+      "name": "Unsigned_Int64_Method",
+      "returnType": "uint64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "uint64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "Float_Method",
+      "returnType": "float",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "float"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "name": "Double_Method",
+      "returnType": "double",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "double"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "double"
+        }
+      ]
+    },
+    {
+      "name": "Bool_Method",
+      "returnType": "boolean",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "boolean"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "String_Method",
+      "returnType": "string",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "string"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "String_Ref_Method",
+      "returnType": "string_ref",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "string_ref"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "string_ref"
+        }
+      ]
+    },
+    {
+      "name": "Enum_Method",
+      "returnType": "ENUM:CompileTestExampleEnum",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ENUM:CompileTestExampleEnum"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ENUM:CompileTestExampleEnum"
+        }
+      ]
+    },
+    {
+      "name": "Class_Method",
+      "returnType": "CLASS:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "CLASS:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "CLASS:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Class_Ref_Method",
+      "returnType": "CLASS_REF:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "CLASS_REF:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "CLASS_REF:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Class_Ptr_Method",
+      "returnType": "CLASS_PTR:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "CLASS_PTR:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "CLASS_PTR:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Class_Ptr_Ref_Method",
+      "returnType": "CLASS_PTR_REF:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "CLASS_PTR_REF:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "CLASS_PTR_REF:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Array_Int8_Method",
+      "returnType": "ARRAY:int8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:int8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:int8"
+        }
+      ]
+    },
+    {
+      "name": "Array_Int16_Method",
+      "returnType": "ARRAY:int16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:int16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:int16"
+        }
+      ]
+    },
+    {
+      "name": "Array_Int32_Method",
+      "returnType": "ARRAY:int32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:int32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:int32"
+        }
+      ]
+    },
+    {
+      "name": "Array_Int64_Method",
+      "returnType": "ARRAY:int64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:int64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:int64"
+        }
+      ]
+    },
+    {
+      "name": "Array_Unsigned_Int8_Method",
+      "returnType": "ARRAY:uint8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:uint8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:uint8"
+        }
+      ]
+    },
+    {
+      "name": "Array_Unsigned_Int16_Method",
+      "returnType": "ARRAY:uint16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:uint16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:uint16"
+        }
+      ]
+    },
+    {
+      "name": "Array_Unsigned_Int32_Method",
+      "returnType": "ARRAY:uint32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:uint32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:uint32"
+        }
+      ]
+    },
+    {
+      "name": "Array_Unsigned_Int64_Method",
+      "returnType": "ARRAY:uint64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:uint64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:uint64"
+        }
+      ]
+    },
+    {
+      "name": "Array_Float_Method",
+      "returnType": "ARRAY:float",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:float"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:float"
+        }
+      ]
+    },
+    {
+      "name": "Array_Double_Method",
+      "returnType": "ARRAY:double",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:double"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:double"
+        }
+      ]
+    },
+    {
+      "name": "Array_Bool_Method",
+      "returnType": "ARRAY:boolean",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:boolean"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:boolean"
+        }
+      ]
+    },
+    {
+      "name": "Array_String_Method",
+      "returnType": "ARRAY:string",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:string"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:string"
+        }
+      ]
+    },
+    {
+      "name": "Array_Enum_Method",
+      "returnType": "ARRAY:CompileTestExampleEnum",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:CompileTestExampleEnum"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:CompileTestExampleEnum"
+        }
+      ]
+    },
+    {
+      "name": "Array_Class_Method",
+      "returnType": "ARRAY:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Int8_Method",
+      "returnType": "ARRAY_REF:int8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:int8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:int8"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Int16_Method",
+      "returnType": "ARRAY_REF:int16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:int16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:int16"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Int32_Method",
+      "returnType": "ARRAY_REF:int32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:int32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:int32"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Int64_Method",
+      "returnType": "ARRAY_REF:int64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:int64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:int64"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int8_Method",
+      "returnType": "ARRAY_REF:uint8",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:uint8"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:uint8"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int16_Method",
+      "returnType": "ARRAY_REF:uint16",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:uint16"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:uint16"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int32_Method",
+      "returnType": "ARRAY_REF:uint32",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:uint32"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:uint32"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Unsigned_Int64_Method",
+      "returnType": "ARRAY_REF:uint64",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:uint64"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:uint64"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Float_Method",
+      "returnType": "ARRAY_REF:float",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:float"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:float"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Double_Method",
+      "returnType": "ARRAY_REF:double",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:double"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:double"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Bool_Method",
+      "returnType": "ARRAY_REF:boolean",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:boolean"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:boolean"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_String_Method",
+      "returnType": "ARRAY_REF:string",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:string"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:string"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Enum_Method",
+      "returnType": "ARRAY_REF:CompileTestExampleEnum",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:CompileTestExampleEnum"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:CompileTestExampleEnum"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ref_Class_Method",
+      "returnType": "ARRAY_REF:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_REF:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_REF:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ptr_Class_Method",
+      "returnType": "ARRAY_PTR:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_PTR:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_PTR:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Array_Ptr_Ref_Class_Method",
+      "returnType": "ARRAY_PTR_REF:CompileTestDummyClass",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "ARRAY_PTR_REF:CompileTestDummyClass"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "ARRAY_PTR_REF:CompileTestDummyClass"
+        }
+      ]
+    },
+    {
+      "name": "Data_Method",
+      "returnType": "data",
+      "parameters": [
+        {
+          "name": "First_Parameter",
+          "type": "data"
+        },
+        {
+          "name": "Second_Parameter",
+          "type": "data"
+        }
+      ]
+    }
+  ]
+}

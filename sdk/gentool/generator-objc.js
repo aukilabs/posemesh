@@ -367,7 +367,7 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
     const methodStatic = methodJson.static;
     const methodVisibility = methodJson.visibility;
-    const method = `${methodStatic ? '+' : '-'} (${methodReturnType}${methodReturnTypeExt})${methodName}${methodParameters};\n`;
+    const method = `${methodStatic ? '+' : '-'} (${methodReturnType}${methodReturnTypeExt})${methodName}${methodParameters} NS_REFINED_FOR_SWIFT;\n`;
     if (methodVisibility === util.Visibility.public) {
       if (methodStatic) {
         publicFuncs += method;
@@ -878,6 +878,109 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             includesFirst.add('#include <utility>');
           }
         }
+      }
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.ObjC);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    let methodParameters = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
+      const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
+      if (methodParameters.length > 0) {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += ` ${parameterName}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          throw new Error('Invalid prefix.');
+        } else {
+          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      } else {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += `${parameterNameFixed}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          methodParameters += `:(${parameterType})${parameterName}`;
+        } else {
+          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      }
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    let method = `${methodStatic ? '+' : '-'} (${methodReturnType})${methodName}${methodParameters}\n`;
+    method += `{\n`;
+    let invokeArgs = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      if (invokeArgs.length > 0) {
+        invokeArgs += ', ';
+      }
+      if (util.isIntType(parameterJson.type) || parameterJson.type === 'float' || parameterJson.type === 'double') {
+        invokeArgs += `${parameterName}`;
+      } else if (parameterJson.type === 'boolean') {
+        invokeArgs += `static_cast<bool>(${parameterName})`;
+      } else if (parameterJson.type === 'string' || parameterJson.type === 'string_ref') {
+        invokeArgs += `[${parameterName} UTF8String]`;
+      } else if (util.isEnumType(parameterJson.type)) {
+        invokeArgs += `static_cast<psm::${parameterType}>(${parameterName})`;
+      } else if (util.isClassType(parameterJson.type)) {
+        invokeArgs += `*static_cast<psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassRefType(parameterJson.type)) {
+        invokeArgs += `*static_cast<const psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassPtrType(parameterJson.type)) {
+        invokeArgs += `*static_cast<std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassPtrRefType(parameterJson.type)) {
+        invokeArgs += `*static_cast<std::shared_ptr<const psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+      }
+    }
+    let mthResCnst = false;
+    let mthResRef = false;
+    if (util.isClassRefType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
+      mthResCnst = true;
+      mthResRef = true;
+    }
+    method += `    ${methodJson.returnType.length > 0 ? `${mthResCnst ? 'const ' : ''}auto${mthResRef ? '&' : ''} methodResult = ` : ''}${methodStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getLangName('name', methodJson, util.CXX)}(${invokeArgs});\n`;
+    if (util.isIntType(methodJson.returnType) || methodJson.returnType === 'float' || methodJson.returnType === 'double') {
+      method += `    return methodResult;\n`;
+    } else if (methodJson.returnType === 'boolean') {
+      method += `    return methodResult ? YES : NO;\n`;
+    } else if (methodJson.returnType === 'string' || methodJson.returnType === 'string_ref') {
+      method += `    return [NSString stringWithUTF8String:methodResult.c_str()];\n`;
+    } else if (util.isEnumType(methodJson.returnType)) {
+      method += `    return static_cast<${methodReturnType}>(methodResult);\n`;
+    } else if (util.isClassType(methodJson.returnType)) {
+      includesFirst.add('#include <utility>');
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(std::move(methodResult))];\n`;
+    } else if (util.isClassRefType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(methodResult)];\n`;
+    } else if (util.isClassPtrType(methodJson.returnType)) {
+      includesFirst.add('#include <utility>');
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(std::move(methodResult))];\n`;
+    } else if (util.isClassPtrRefType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(methodResult)];\n`;
+    }
+    method += `}\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        if (publicFuncs.length > 0) {
+          publicFuncs += '\n';
+        }
+        publicFuncs += method;
+      } else {
+        if (publicMethods.length > 0) {
+          publicMethods += '\n';
+        }
+        publicMethods += method;
       }
     }
   }

@@ -453,9 +453,9 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
           unnamedNamespace += `void ${setterNameCxx}(${selfArg}const void* ${setterArgName}, std::uint64_t ${setterArgName}Length)\n`;
           unnamedNamespace += `{\n`;
           if (propStatic) {
-            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(${setterArgName}, ${setterArgName}Length);\n`;
+            unnamedNamespace += `    psm::${nameCxx}::${setterNameCxx}(static_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
           } else {
-            unnamedNamespace += `    self.${setterNameCxx}(${setterArgName}, ${setterArgName}Length);\n`;
+            unnamedNamespace += `    self.${setterNameCxx}(static_cast<const std::uint8_t*>(${setterArgName}), ${setterArgName}Length);\n`;
           }
           unnamedNamespace += `}\n`;
           includesFirst.add('#include <cstdint>');
