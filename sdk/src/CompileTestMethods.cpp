@@ -2,6 +2,11 @@
 
 namespace psm {
 
+std::vector<std::uint16_t> CompileTestMethods::complexMethod(const std::string& firstParameter, CompileTestExampleEnum secondParameter, const std::vector<CompileTestExampleEnum>& thirdParameter)
+{
+    return {};
+}
+
 void CompileTestMethods::voidMethod() { }
 
 std::int8_t CompileTestMethods::int8Method(std::int8_t firstParameter, std::int8_t secondParameter)

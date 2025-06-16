@@ -126,7 +126,9 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         if (innerType in enums) {
           parameterEval = `${parameterName}.map { NSNumber(value: $0.rawValue) }`;
         } else if (innerType in interfaces) {
-          // TODO
+          if (util.isArrayPtrType(parameterJson.type) || util.isArrayPtrRefType(parameterJson.type)) {
+            parameterEval = `${parameterName}.map { $0 ?? NSNull() }`;
+          }
         } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean') {
           parameterEval = `${parameterName}.map { NSNumber(value: $0) }`;
         }
@@ -169,9 +171,46 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         }
       }
     }
+    let postMap = '';
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        if (enums[innerType].type === 'flag') {
+          postMap += `.map { ${util.getLangEnumName(enums[innerType], util.Swift)}(rawValue: $0.uintValue)! }`;
+        } else {
+          postMap += `.map { ${util.getLangEnumName(enums[innerType], util.Swift)}(rawValue: $0.intValue)! }`;
+        }
+      } else if (innerType in interfaces) {
+        if (util.isArrayPtrType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType)) {
+          postMap += `.map { $0 as? ${util.getLangClassName(interfaces[innerType], util.Swift)} }`;
+        }
+      } else if (innerType === 'int8') {
+        postMap += `.map { $0.int8Value }`;
+      } else if (innerType === 'int16') {
+        postMap += `.map { $0.int16Value }`;
+      } else if (innerType === 'int32') {
+        postMap += `.map { $0.int32Value }`;
+      } else if (innerType === 'int64') {
+        postMap += `.map { $0.int64Value }`;
+      } else if (innerType === 'uint8') {
+        postMap += `.map { $0.uint8Value }`;
+      } else if (innerType === 'uint16') {
+        postMap += `.map { $0.uint16Value }`;
+      } else if (innerType === 'uint32') {
+        postMap += `.map { $0.uint32Value }`;
+      } else if (innerType === 'uint64') {
+        postMap += `.map { $0.uint64Value }`;
+      } else if (innerType === 'float') {
+        postMap += `.map { $0.floatValue }`;
+      } else if (innerType === 'double') {
+        postMap += `.map { $0.doubleValue }`;
+      } else if (innerType === 'boolean') {
+        postMap += `.map { $0.boolValue }`;
+      }
+    }
     let prop = '';
     prop += `    public${methodStatic ? ' static' : ''} func ${methodNameSwift}(${argsSwift}) -> ${methodReturnTypeSwift} {\n`;
-    prop += `        return __${methodNameObjC}(${argsObjC});\n`;
+    prop += `        return __${methodNameObjC}(${argsObjC})${postMap};\n`;
     prop += `    }\n`;
     if (methodStatic) {
       if (codeStaticProps.length > 0) {

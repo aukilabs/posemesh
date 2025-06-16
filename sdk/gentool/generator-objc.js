@@ -342,7 +342,7 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
       let parameterTypeExt = '';
       if (util.isClassPtrType(parameterJson.type) || util.isClassPtrRefType(parameterJson.type)) {
         parameterTypeExt = ' _Nullable';
-      } else if (methodReturnType.endsWith('*')) {
+      } else if (parameterType.endsWith('*')) {
         parameterTypeExt = ' _Nonnull';
       }
       const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
@@ -936,7 +936,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       } else if (util.isClassPtrType(parameterJson.type)) {
         invokeArgs += `*static_cast<std::shared_ptr<psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isClassPtrRefType(parameterJson.type)) {
-        invokeArgs += `*static_cast<std::shared_ptr<const psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+        invokeArgs += `*static_cast<const std::shared_ptr<psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isArrayOfAnyType(parameterJson.type)) {
         const innerType = parameterJson.type.split(':').slice(1).join(':');
         if (innerType in enums) {
@@ -979,7 +979,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean' || innerType === 'string') {
             method += `    std::vector<${util.getPropertyType(enums, interfaces, { "type": innerType }, util.CXX)}> ${parameterName}Transformed;\n`;
             method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
-            method += `    for (NSNumber* number in ${parameterName}) {\n`;
+            method += `    for (${innerType === 'string' ? 'NSString' : 'NSNumber'}* ${innerType === 'string' ? 'string' : 'number'} in ${parameterName}) {\n`;
             if (innerType === 'int8') {
               method += `        ${parameterName}Transformed.push_back([number charValue]);\n`;
             } else if (innerType === 'int16') {
@@ -1003,7 +1003,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             } else if (innerType === 'boolean') {
               method += `        ${parameterName}Transformed.push_back(static_cast<bool>([number boolValue]));\n`;
             } else if (innerType === 'string') {
-              method += `        ${parameterName}Transformed.push_back([number UTF8String]);\n`;
+              method += `        ${parameterName}Transformed.push_back([string UTF8String]);\n`;
             }
             method += `    }\n`;
             invokeArgs += `${parameterName}Transformed`;
@@ -1134,7 +1134,7 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
         method += `    return methodResultTransformed;\n`;
       }
     } else if (methodJson.returnType === 'data') {
-      method += `    return [[NSData alloc] initWithBytesNoCopy:methodResult length:methodResultSize freeWhenDone:NO];\n`;
+      method += `    return [[NSData alloc] initWithBytesNoCopy:const_cast<std::uint8_t*>(methodResult) length:methodResultSize freeWhenDone:NO];\n`;
     }
     method += `}\n`;
     if (methodVisibility === util.Visibility.public) {
