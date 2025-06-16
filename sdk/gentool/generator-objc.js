@@ -938,7 +938,77 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       } else if (util.isClassPtrRefType(parameterJson.type)) {
         invokeArgs += `*static_cast<std::shared_ptr<const psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
       } else if (util.isArrayOfAnyType(parameterJson.type)) {
-        // TODO
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (innerType in enums) {
+          const isFlagType = enums[innerType].type === 'flag';
+          method += `    std::vector<psm::${util.getLangEnumName(enums[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+          method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+          method += `    for (NSNumber* number in ${parameterName}) {\n`;
+          if (isFlagType) {
+            method += `        if (std::strcmp([number objCType], @encode(NSUInteger)) == 0) {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number unsignedIntegerValue]));\n`;
+            method += `        } else {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number unsignedIntValue]));\n`;
+            method += `        }\n`;
+          } else {
+            method += `        if (std::strcmp([number objCType], @encode(NSInteger)) == 0) {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number integerValue]));\n`;
+            method += `        } else {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number intValue]));\n`;
+            method += `        }\n`;
+          }
+          method += `    }\n`;
+          invokeArgs += `${parameterName}Transformed`;
+        } else if (innerType in interfaces) {
+          if (util.isArrayType(parameterJson.type) || util.isArrayRefType(parameterJson.type)) {
+            method += `    std::vector<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC)} element in ${parameterName}) {\n`;
+            method += `        ${parameterName}Transformed.emplace_back(*static_cast<const psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}*>([element native${innerType}]));\n`;
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          } else if (util.isArrayPtrType(parameterJson.type) || util.isArrayPtrRefType(parameterJson.type)) {
+            method += `    std::vector<std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}>> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC)} element in ${parameterName}) {\n`;
+            method += `        ${parameterName}Transformed.emplace_back(*static_cast<const std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}>*>([element managed${innerType}]));\n`;
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          }
+        } else {
+          if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean' || innerType === 'string') {
+            method += `    std::vector<${util.getPropertyType(enums, interfaces, { "type": innerType }, util.CXX)}> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (NSNumber* number in ${parameterName}) {\n`;
+            if (innerType === 'int8') {
+              method += `        ${parameterName}Transformed.push_back([number charValue]);\n`;
+            } else if (innerType === 'int16') {
+              method += `        ${parameterName}Transformed.push_back([number shortValue]);\n`;
+            } else if (innerType === 'int32') {
+              method += `        ${parameterName}Transformed.push_back([number intValue]);\n`;
+            } else if (innerType === 'int64') {
+              method += `        ${parameterName}Transformed.push_back([number longLongValue]);\n`;
+            } else if (innerType === 'uint8') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedCharValue]);\n`;
+            } else if (innerType === 'uint16') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedShortValue]);\n`;
+            } else if (innerType === 'uint32') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedIntValue]);\n`;
+            } else if (innerType === 'uint64') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedLongLongValue]);\n`;
+            } else if (innerType === 'float') {
+              method += `        ${parameterName}Transformed.push_back([number floatValue]);\n`;
+            } else if (innerType === 'double') {
+              method += `        ${parameterName}Transformed.push_back([number doubleValue]);\n`;
+            } else if (innerType === 'boolean') {
+              method += `        ${parameterName}Transformed.push_back(static_cast<bool>([number boolValue]));\n`;
+            } else if (innerType === 'string') {
+              method += `        ${parameterName}Transformed.push_back([number UTF8String]);\n`;
+            }
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          }
+        }
       } else if (parameterJson.type === 'data') {
         includesFirst.add('#include <cstdint>');
         if (invokeArgs.length > 0) {
@@ -954,8 +1024,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       mthResCnst = true;
       mthResPtr = false;
       mthResRef = true;
-    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
-      // TODO
+    } else if (util.isArrayRefType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType)) {
+      mthResCnst = true;
+      mthResPtr = false;
+      mthResRef = true;
     } else if (methodJson.returnType === 'data') {
       mthResCnst = true;
       mthResPtr = true;
@@ -981,21 +1053,91 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
     } else if (util.isClassType(methodJson.returnType)) {
       includesFirst.add('#include <utility>');
       const innerType = methodJson.returnType.split(':').slice(1).join(':');
-      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(std::move(methodResult))];\n`;
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(std::move(methodResult))];\n`;
     } else if (util.isClassRefType(methodJson.returnType)) {
       const innerType = methodJson.returnType.split(':').slice(1).join(':');
-      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(methodResult)];\n`;
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(methodResult)];\n`;
     } else if (util.isClassPtrType(methodJson.returnType)) {
       includesFirst.add('#include <utility>');
       const innerType = methodJson.returnType.split(':').slice(1).join(':');
-      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(std::move(methodResult))];\n`;
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(std::move(methodResult))];\n`;
     } else if (util.isClassPtrRefType(methodJson.returnType)) {
       const innerType = methodJson.returnType.split(':').slice(1).join(':');
-      method += `    return [${util.getLangClassName(interfaces[innerType], util.ObjC)} initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(methodResult)];\n`;
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(methodResult)];\n`;
     } else if (util.isArrayOfAnyType(methodJson.returnType)) {
-      // TODO
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (auto element : methodResult) {\n`;
+        if (enums[innerType].type === 'flag') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInteger:static_cast<std::uint32_t>(element)]]\n`;
+        } else {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithInteger:static_cast<std::int32_t>(element)]]\n`;
+        }
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      } else if (innerType in interfaces) {
+        const cxxType = util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX);
+        let objcType = util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC);
+        objcType = objcType.substring(0, objcType.length - 1);
+        method += `    NSMutableArray<${objcType}*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        if (util.isArrayType(methodJson.returnType)) {
+          includesFirst.add('#include <utility>');
+          method += `    for (auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithNative${innerType}:new psm::${cxxType}(std::move(element))]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayRefType(methodJson.returnType)) {
+          method += `    for (const auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithNative${innerType}:new psm::${cxxType}(element)]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayPtrType(methodJson.returnType)) {
+          includesFirst.add('#include <utility>');
+          method += `    for (auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${cxxType}>(std::move(element))]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayPtrRefType(methodJson.returnType)) {
+          method += `    for (const auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${cxxType}>(element)]];\n`;
+          method += `    }\n`;
+        }
+        method += `    return methodResultTransformed;\n`;
+      } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean') {
+        method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (auto element : methodResult) {\n`;
+        if (innerType === 'int8') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithChar:element]];\n`;
+        } else if (innerType === 'int16') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithShort:element]];\n`;
+        } else if (innerType === 'int32') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithInt:element]];\n`;
+        } else if (innerType === 'int64') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithLongLong:element]];\n`;
+        } else if (innerType === 'uint8') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedChar:element]];\n`;
+        } else if (innerType === 'uint16') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedShort:element]];\n`;
+        } else if (innerType === 'uint32') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedInt:element]];\n`;
+        } else if (innerType === 'uint64') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithUnsignedLongLong:element]];\n`;
+        } else if (innerType === 'float') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithFloat:element]];\n`;
+        } else if (innerType === 'double') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithDouble:element]];\n`;
+        } else if (innerType === 'boolean') {
+          method += `       [methodResultTransformed addObject:[NSNumber numberWithBool:static_cast<BOOL>(element)]];\n`;
+        }
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      } else if (innerType === 'string') {
+        method += `    NSMutableArray<NSString*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (const auto& element : methodResult) {\n`;
+        method += `       [methodResultTransformed addObject:[NSString stringWithUTF8String:element.c_str()]];\n`;
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      }
     } else if (methodJson.returnType === 'data') {
-      method += `    return [NSData initWithBytesNoCopy:methodResult length:methodResultSize freeWhenDone:NO];\n`;
+      method += `    return [[NSData alloc] initWithBytesNoCopy:methodResult length:methodResultSize freeWhenDone:NO];\n`;
     }
     method += `}\n`;
     if (methodVisibility === util.Visibility.public) {
