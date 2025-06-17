@@ -257,6 +257,10 @@
     {
       "name": "Array_Ptr_Mix_Class_Prop",
       "type": "ARRAY_PTR_MIX:CompileTestDummyClass"
+    },
+    {
+      "name": "Data_Prop",
+      "type": "data"
     }
   ]
 }

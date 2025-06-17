@@ -22,6 +22,8 @@
 | `hashOperator`               |          | *HashOperator*             | Options for the hash operator. See [definition](#hashoperator-json-options). |
 | `toStringOperator`           |          | *ToStringOperator*         | Options for the to-string operator. See [definition](#tostringoperator-json-options). |
 | `c.generateFuncAliasDefines` |          | *boolean*                  | Determine whether the C header will contain the macro defines for all class functions with the first part of the function replaced with names for all class aliases or not. Default is `true`. |
+| `constructors`               |          | *Constructor[]*            | Custom constructors of the class. No custom constructors by default. See [definition](#constructor-json-options). |
+| `methods`                    |          | *Method[]*                 | Custom methods of the class. No custom methods by default. See [definition](#method-json-options). |
 
 ### Alias JSON options
 
@@ -163,6 +165,45 @@
 | `defined` |          | *boolean* | Determine whether the to-string operator is defined or not. Inferred from class `static` option. |
 | `custom`  |          | *boolean* | Determine whether the to-string operator will have a custom implementation or not. Default is `false`. |
 
+### Constructor JSON options
+
+| Name         | Required | Type                     | Description |
+|--------------|----------|--------------------------|-------------|
+| `parameters` | &#x2705; | *ConstructorParameter[]* | List of parameters that the constructor takes. Must contain at least one entry. See [definition](#constructorparameter-json-options). |
+| `mode`       |          | *MethodMode*             | Method mode of the constructor. See possible [method modes](#method-modes). Default is `regular`. |
+| `visibility` |          | *Visibility*             | Visibility of the constructor. See possible [visibilities](#visibilities). Default is `public`. |
+| `noexcept`   |          | *boolean*                | Determine whether the constructor will have the `noexcept` modifier or not. Default is `false`. |
+
+### ConstructorParameter JSON options
+
+| Name                    | Required | Type     | Description |
+|-------------------------|----------|----------|-------------|
+| `name`                  | &#x2705; | *string* | Name of the constructor parameter in `Camel_Snake_Case` naming convention. Same naming convention and language specializations possible as in class `name` option. |
+| `type`                  | &#x2705; | *string* | Type of the constructor parameter. See [list](#valid-types) of valid types. Note that the type **cannot** be `string_mix`, `CLASS_MIX:<TYPE>`, `CLASS_PTR_MIX:<TYPE>`, `ARRAY_MIX:<TYPE>` or `ARRAY_PTR_MIX:<TYPE>`. |
+| `objectiveC.namePrefix` |          | *string* | Prefix of the constructor parameter in Objective-C. Only lowercase letters are allowed here. Use empty string to omit the prefix. If `-` is used, both the prefix and the name will be omitted. Default is `-` for the very first parameter and empty string for all other parameters. |
+| `swift.namePrefix`      |          | *string* | Prefix of the constructor parameter in Swift. Only lowercase letters are allowed here. Use empty string to omit the prefix. If `-` is used, both the prefix and the name will be omitted. Inferred from `objectiveC.namePrefix` option. |
+
+### Method JSON options
+
+| Name         | Required | Type                | Description |
+|--------------|----------|---------------------|-------------|
+| `name`       | &#x2705; | *string*            | Name of the method in `Camel_Snake_Case` naming convention. Same naming convention and language specializations possible as in class `name` option. |
+| `returnType` |          | string              | Return type of the method. See [list](#valid-types) of valid types. Note that the type **cannot** be `string_mix`, `CLASS_MIX:<TYPE>`, `CLASS_PTR_MIX:<TYPE>`, `ARRAY_MIX:<TYPE>` or `ARRAY_PTR_MIX:<TYPE>`. Empty string means no return type (void). Default is empty string. |
+| `parameters` |          | *MethodParameter[]* | List of parameters that the method takes. See [definition](#methodparameter-json-options). Default is an empty array. |
+| `static`     |          | *boolean*           | Determine whether the method will be static or not. Inferred from class `static` option. |
+| `mode`       |          | *MethodMode*        | Method mode of the method. See possible [method modes](#method-modes). Default is `regular`. |
+| `visibility` |          | *Visibility*        | Visibility of the method. See possible [visibilities](#visibilities). Default is `public`. |
+| `noexcept`   |          | *boolean*           | Determine whether the method will have the `noexcept` modifier or not. Default is `false`. |
+
+### MethodParameter JSON options
+
+| Name                    | Required | Type     | Description |
+|-------------------------|----------|----------|-------------|
+| `name`                  | &#x2705; | *string* | Name of the method parameter in `Camel_Snake_Case` naming convention. Same naming convention and language specializations possible as in class `name` option. |
+| `type`                  | &#x2705; | *string* | Type of the method parameter. See [list](#valid-types) of valid types. Note that the type **cannot** be `string_mix`, `CLASS_MIX:<TYPE>`, `CLASS_PTR_MIX:<TYPE>`, `ARRAY_MIX:<TYPE>` or `ARRAY_PTR_MIX:<TYPE>`. |
+| `objectiveC.namePrefix` |          | *string* | Prefix of the method parameter in Objective-C. Only lowercase letters are allowed here. Use empty string to omit the prefix. If `-` is used, both the prefix and the name will be omitted. Default is `-` for the very first parameter and empty string for all other parameters. |
+| `swift.namePrefix`      |          | *string* | Prefix of the method parameter in Swift. Only lowercase letters are allowed here. Use empty string to omit the prefix. If `-` is used, both the prefix and the name will be omitted. Inferred from `objectiveC.namePrefix` option. |
+
 ### Naming conventions
 
 | Naming convention key   | Example |
@@ -250,3 +291,4 @@
 | `ARRAY_PTR:<TYPE>`     | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter and setter use it by value. |
 | `ARRAY_PTR_REF:<TYPE>` | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter and setter use it by const-ref. |
 | `ARRAY_PTR_MIX:<TYPE>` | An array of a custom generated class `<TYPE>` type wrapped in a `std::shared_ptr` smart pointer. Maps to `std::vector` C++ type. In C++ getter uses it by const-ref and setter uses it by value. |
+| `data`                 | A binary data type. |

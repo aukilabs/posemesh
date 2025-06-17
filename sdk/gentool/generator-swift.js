@@ -100,6 +100,130 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       }
     }
   }
+  for (const methodJson of interfaceJson.methods) {
+    let methodNameSwift = util.getLangName('name', methodJson, util.Swift);
+    let methodNameObjC = util.getLangName('name', methodJson, util.ObjC);
+    const methodReturnTypeSwift = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.Swift) : 'Void';
+    const methodReturnTypeObjC = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    if (methodVisibility !== util.Visibility.public) {
+      continue;
+    }
+    let argsSwift = '';
+    let argsObjC = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.Swift);
+      const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
+      const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
+      const parameterSwiftNamePrefix = parameterJson['swift.namePrefix'];
+      const parameterSwiftNamePrefixFixed = parameterSwiftNamePrefix.charAt(0).toUpperCase() + parameterSwiftNamePrefix.slice(1);
+      let parameterEval = parameterName;
+      if (util.isArrayOfAnyType(parameterJson.type)) {
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (innerType in enums) {
+          parameterEval = `${parameterName}.map { NSNumber(value: $0.rawValue) }`;
+        } else if (innerType in interfaces) {
+          if (util.isArrayPtrType(parameterJson.type) || util.isArrayPtrRefType(parameterJson.type)) {
+            parameterEval = `${parameterName}.map { $0 ?? NSNull() }`;
+          }
+        } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean') {
+          parameterEval = `${parameterName}.map { NSNumber(value: $0) }`;
+        }
+      }
+      if (argsSwift.length > 0) {
+        argsSwift += ', ';
+        if (parameterSwiftNamePrefix === '') {
+          argsSwift += `${parameterName} ${parameterName}: ${parameterType}`;
+        } else if (parameterSwiftNamePrefix === '-') {
+          argsSwift += `${parameterName}: ${parameterType}`;
+        } else {
+          argsSwift += `${parameterSwiftNamePrefix}${parameterNameFixed} ${parameterName}: ${parameterType}`;
+        }
+      } else {
+        if (parameterSwiftNamePrefix === '') {
+          argsSwift += `${parameterName} ${parameterName}: ${parameterType}`;
+        } else if (parameterSwiftNamePrefix === '-') {
+          argsSwift += `${parameterName}: ${parameterType}`;
+        } else {
+          argsSwift += `${parameterSwiftNamePrefix}${parameterNameFixed} ${parameterName}: ${parameterType}`;
+        }
+      }
+      if (argsObjC.length > 0) {
+        argsObjC += ', ';
+        if (parameterObjCNamePrefix === '') {
+          argsObjC += `${parameterName}: ${parameterEval}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          argsObjC += `${parameterEval}`;
+        } else {
+          argsObjC += `${parameterObjCNamePrefix}${parameterNameFixed}: ${parameterEval}`;
+        }
+      } else {
+        if (parameterObjCNamePrefix === '') {
+          methodNameObjC += `${parameterObjCNamePrefixFixed}`;
+          argsObjC += `${parameterEval}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          argsObjC += `${parameterEval}`;
+        } else {
+          argsObjC += `${parameterObjCNamePrefix}${parameterNameFixed}: ${parameterEval}`;
+        }
+      }
+    }
+    let postMap = '';
+    if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        if (enums[innerType].type === 'flag') {
+          postMap += `.map { ${util.getLangEnumName(enums[innerType], util.Swift)}(rawValue: $0.uintValue)! }`;
+        } else {
+          postMap += `.map { ${util.getLangEnumName(enums[innerType], util.Swift)}(rawValue: $0.intValue)! }`;
+        }
+      } else if (innerType in interfaces) {
+        if (util.isArrayPtrType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType)) {
+          postMap += `.map { $0 as? ${util.getLangClassName(interfaces[innerType], util.Swift)} }`;
+        }
+      } else if (innerType === 'int8') {
+        postMap += `.map { $0.int8Value }`;
+      } else if (innerType === 'int16') {
+        postMap += `.map { $0.int16Value }`;
+      } else if (innerType === 'int32') {
+        postMap += `.map { $0.int32Value }`;
+      } else if (innerType === 'int64') {
+        postMap += `.map { $0.int64Value }`;
+      } else if (innerType === 'uint8') {
+        postMap += `.map { $0.uint8Value }`;
+      } else if (innerType === 'uint16') {
+        postMap += `.map { $0.uint16Value }`;
+      } else if (innerType === 'uint32') {
+        postMap += `.map { $0.uint32Value }`;
+      } else if (innerType === 'uint64') {
+        postMap += `.map { $0.uint64Value }`;
+      } else if (innerType === 'float') {
+        postMap += `.map { $0.floatValue }`;
+      } else if (innerType === 'double') {
+        postMap += `.map { $0.doubleValue }`;
+      } else if (innerType === 'boolean') {
+        postMap += `.map { $0.boolValue }`;
+      }
+    }
+    let prop = '';
+    prop += `    public${methodStatic ? ' static' : ''} func ${methodNameSwift}(${argsSwift}) -> ${methodReturnTypeSwift} {\n`;
+    prop += `        return __${methodNameObjC}(${argsObjC})${postMap};\n`;
+    prop += `    }\n`;
+    if (methodStatic) {
+      if (codeStaticProps.length > 0) {
+        codeStaticProps += `\n`;
+      }
+      codeStaticProps += prop;
+    } else {
+      if (codeMemberProps.length > 0) {
+        codeMemberProps += `\n`;
+      }
+      codeMemberProps += prop;
+    }
+  }
   code += codeMemberProps;
   if (codeMemberProps.length > 0 && codeStaticProps.length > 0) {
     code += `\n`;

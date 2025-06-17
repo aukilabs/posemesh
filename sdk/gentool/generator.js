@@ -148,6 +148,8 @@ function generate() {
       util.fillHashOperator(interfaceJson);
       util.fillToStringOperator(interfaceJson);
       util.fillCGenerateFuncAliasDefines(interfaceJson);
+      util.fillConstructors(interfaceJson);
+      util.fillMethods(interfaceJson);
       interfaces[interfaceName] = interfaceJson;
       validateInterface(interfaceName, interfaceJson);
     } catch (error) {

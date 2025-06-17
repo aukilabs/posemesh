@@ -817,6 +817,48 @@ function getArrayPtrMixType(interfaces, language, type, typeFor = TypeFor.Any) {
   }
 }
 
+function getDataType(language, typeFor = TypeFor.Any) {
+  switch (language) {
+    case Language.CXX:
+      switch (typeFor) {
+        case TypeFor.Any:
+          return 'std::tuple<std::unique_ptr<std::uint8_t[]>, std::size_t, std::size_t>'; // ptr, size, capacity
+        case TypeFor.PropGetter:
+        case TypeFor.PropSetter:
+          return 'const std::uint8_t*';
+        default:
+          throw new Error(`Unknown TypeFor value: ${typeFor}`);
+      }
+    case Language.C:
+      return 'const uint8_t*';
+    case Language.ObjC:
+      return 'NSData*';
+    case Language.Swift:
+      return 'Data';
+    case Language.JS:
+      return 'Uint8Array';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
+function getDataSizeType(language) {
+  switch (language) {
+    case Language.CXX:
+      return 'std::size_t';
+    case Language.C:
+      return 'uint64_t';
+    case Language.ObjC:
+      return 'NSUInteger';
+    case Language.Swift:
+      return 'UInt';
+    case Language.JS:
+      return 'BigInt';
+    default:
+      throw new Error(`Unknown language: ${language}`);
+  }
+}
+
 function getPropertyType(enums, interfaces, propertyJson, language) {
   const key = 'type';
   if (typeof propertyJson[key] === 'undefined') {
@@ -883,6 +925,8 @@ function getPropertyType(enums, interfaces, propertyJson, language) {
       return getStringRefType(language);
     case 'string_mix':
       return getStringMixType(language);
+    case 'data':
+      return getDataType(language);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -954,6 +998,8 @@ function getPropertyTypeForGetter(enums, interfaces, propertyJson, language) {
       return getStringRefType(language, TypeFor.PropGetter);
     case 'string_mix':
       return getStringMixType(language, TypeFor.PropGetter);
+    case 'data':
+      return getDataType(language, TypeFor.PropGetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -1025,6 +1071,8 @@ function getPropertyTypeForSetter(enums, interfaces, propertyJson, language) {
       return getStringRefType(language, TypeFor.PropSetter);
     case 'string_mix':
       return getStringMixType(language, TypeFor.PropSetter);
+    case 'data':
+      return getDataType(language, TypeFor.PropSetter);
     default:
       throw new Error(`Unknown type: ${propertyJson[key]}`);
   }
@@ -1153,6 +1201,7 @@ function isPrimitiveType(type) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return false;
     default:
       return false;
@@ -1182,6 +1231,7 @@ function getTypeImplicitDefaultValue(type) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return '';
     default:
       return '';
@@ -1215,6 +1265,8 @@ function getTypeMembVarCopyOp(type, membVar) {
     case 'string_ref':
     case 'string_mix':
       return membVar;
+    case 'data':
+      return `deepCopyData(${membVar})`;
     default:
       return membVar;
   }
@@ -1241,6 +1293,7 @@ function getTypeMembVarMoveOp(type, membVar) {
     case 'string':
     case 'string_ref':
     case 'string_mix':
+    case 'data':
       return `std::move(${membVar})`;
     default:
       return `std::move(${membVar})`;
@@ -1274,6 +1327,8 @@ function getTypePropEqOp(type, clsParam, prpParam) {
     case 'string_ref':
     case 'string_mix':
       return `${prpParam} == ${clsParam}.${prpParam}`;
+    case 'data':
+      return `equalsData(${prpParam}, ${clsParam}.${prpParam})`;
     default:
       return `${prpParam} == ${clsParam}.${prpParam}`;
   }
@@ -1308,6 +1363,8 @@ function getTypePropHasher(type, param) {
     case 'string_ref':
     case 'string_mix':
       return `hash<string> {}(${param})`;
+    case 'data':
+      return `hashData(${param})`;
     default:
       return `hash<${type}> {}(${param})`;
   }
@@ -1735,6 +1792,8 @@ function fillProperty(interfaceJson, propertyJson, nameLangToStyleMap = defaultP
     } else if (isArrayRefType(propertyJson.type) || isArrayMixType(propertyJson.type)) {
       propertyJson.getterNoexcept = true;
     } else if (isArrayPtrRefType(propertyJson.type) || isArrayPtrMixType(propertyJson.type)) {
+      propertyJson.getterNoexcept = true;
+    } else if (propertyJson.type === 'data') {
       propertyJson.getterNoexcept = true;
     } else {
       propertyJson.getterNoexcept = isPrimitiveType(propertyJson.type);
@@ -2199,6 +2258,8 @@ function fillConstructorInitializedProperties(interfaceJson, constructorJson, fi
         } else if (isClassPtrType(foundPropertyJson.type) || isClassPtrRefType(foundPropertyJson.type) || isClassPtrMixType(foundPropertyJson.type)) {
           result.canBeDefault = false;
         } else if (isArrayPtrType(foundPropertyJson.type) || isArrayPtrRefType(foundPropertyJson.type) || isArrayPtrMixType(foundPropertyJson.type)) {
+          result.canBeDefault = false;
+        } else if (foundPropertyJson.type === 'data') {
           result.canBeDefault = false;
         }
         break;
@@ -2822,6 +2883,268 @@ function fillCGenerateFuncAliasDefines(interfaceJson) {
   }
 }
 
+let defaultMethodNameLangToStyleMap = {};
+defaultMethodNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultMethodNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultMethodNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+function fillMethodName(methodJson, nameLangToStyleMap = defaultMethodNameLangToStyleMap) {
+  fillName('name', methodJson, nameLangToStyleMap);
+}
+
+function fillMethodReturnType(methodJson) {
+  const nameKey = 'returnType';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof methodJson[nameKey] === 'undefined') {
+    methodJson[nameKey] = '';
+    methodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof methodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  methodJson[nameKeyGen] = false;
+}
+
+let defaultConstructorParameterNameLangToStyleMap = {};
+defaultConstructorParameterNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultConstructorParameterNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultConstructorParameterNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+let defaultMethodParameterNameLangToStyleMap = {};
+defaultMethodParameterNameLangToStyleMap[Language.CXX] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.C] = NameStyle.lower_case;
+defaultMethodParameterNameLangToStyleMap[Language.ObjC] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.Swift] = NameStyle.camelBack;
+defaultMethodParameterNameLangToStyleMap[Language.JS] = NameStyle.camelBack;
+
+function fillConstructorOrMethodParameterName(parameterJson, isConstructor, nameLangToStyleMap = undefined) {
+  if (typeof parameterJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameterName() method.');
+  }
+  if (typeof nameLangToStyleMap === 'undefined') {
+    nameLangToStyleMap = isConstructor ? defaultConstructorParameterNameLangToStyleMap : defaultMethodParameterNameLangToStyleMap;
+  }
+  fillName('name', parameterJson, nameLangToStyleMap);
+}
+
+function fillConstructorOrMethodParameterType(parameterJson) {
+  const nameKey = 'type';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof parameterJson[nameKey] === 'undefined') {
+    throw new Error(`Missing '${nameKey}' key.`);
+  }
+  if (typeof parameterJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  parameterJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, isObjectiveC) {
+  if (typeof parameterJson !== 'object' || typeof isObjectiveC !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix() method.');
+  }
+  const objectiveCNameKey = 'objectiveC.namePrefix';
+  const swiftNameKey = 'swift.namePrefix';
+  const nameKey = isObjectiveC ? objectiveCNameKey : swiftNameKey;
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof parameterJson[nameKey] === 'undefined') {
+    if (isObjectiveC) {
+      parameterJson[nameKey] = parameterIndex === 0 ? '-' : '';
+    } else {
+      parameterJson[nameKey] = typeof parameterJson[objectiveCNameKey] === 'undefined' ? (parameterIndex === 0 ? '-' : '') : parameterJson[objectiveCNameKey];
+    }
+    parameterJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof parameterJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  if (parameterJson[nameKey] !== '-' && !/^[a-z]*$/.test(parameterJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key value.`);
+  }
+  parameterJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodParameterObjectiveCNamePrefix(parameterJson, parameterIndex) {
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, true);
+}
+
+function fillConstructorOrMethodParameterSwiftNamePrefix(parameterJson, parameterIndex) {
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix(parameterJson, parameterIndex, false);
+}
+
+function fillConstructorOrMethodParameter(parameterJson, parameterIndex, isConstructor) {
+  if (typeof parameterJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameter() method.');
+  }
+  fillConstructorOrMethodParameterName(parameterJson, isConstructor);
+  fillConstructorOrMethodParameterType(parameterJson);
+  fillConstructorOrMethodParameterObjectiveCNamePrefix(parameterJson, parameterIndex);
+  fillConstructorOrMethodParameterSwiftNamePrefix(parameterJson, parameterIndex);
+}
+
+function fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructor) {
+  if (typeof constructorOrMethodJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethodParameters() method.');
+  }
+  const nameKey = 'parameters';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    if (isConstructor) {
+      throw new Error(`Missing '${nameKey}' key.`);
+    }
+    constructorOrMethodJson[nameKey] = [];
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (!Array.isArray(constructorOrMethodJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  for (const parameterJson of constructorOrMethodJson[nameKey]) {
+    if (typeof parameterJson !== 'object') {
+      throw new Error(`Invalid '${nameKey}' key type.`);
+    }
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+  let parameterIndex = 0;
+  for (const parameterJson of constructorOrMethodJson[nameKey]) {
+    fillConstructorOrMethodParameter(parameterJson, parameterIndex, isConstructor);
+    parameterIndex++;
+  }
+}
+
+function fillMethodStatic(interfaceJson, methodJson) {
+  const nameKey = 'static';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof methodJson[nameKey] === 'undefined') {
+    const parentNameKey = 'static';
+    methodJson[nameKey] = typeof interfaceJson[parentNameKey] === 'boolean' ? interfaceJson[parentNameKey] : false;
+    methodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof methodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  methodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'mode';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = MethodMode.regular;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(MethodMode)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'visibility';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = Visibility.public;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'string') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  let found = false;
+  for (const [key, value] of Object.entries(Visibility)) {
+    if (constructorOrMethodJson[nameKey] === value) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Unknown '${nameKey}' value: ${constructorOrMethodJson[nameKey]}`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor) {
+  const nameKey = 'noexcept';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof constructorOrMethodJson[nameKey] === 'undefined') {
+    constructorOrMethodJson[nameKey] = false;
+    constructorOrMethodJson[nameKeyGen] = true;
+    return;
+  }
+  if (typeof constructorOrMethodJson[nameKey] !== 'boolean') {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  constructorOrMethodJson[nameKeyGen] = false;
+}
+
+function fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructor) {
+  if (typeof constructorOrMethodJson !== 'object' || typeof isConstructor !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorOrMethod() method.');
+  }
+  if (!isConstructor) {
+    fillMethodName(constructorOrMethodJson);
+    fillMethodReturnType(constructorOrMethodJson);
+  }
+  fillConstructorOrMethodParameters(constructorOrMethodJson, isConstructor);
+  if (!isConstructor) {
+    fillMethodStatic(interfaceJson, constructorOrMethodJson);
+  }
+  fillConstructorOrMethodMode(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodVisibility(constructorOrMethodJson, isConstructor);
+  fillConstructorOrMethodNoexcept(constructorOrMethodJson, isConstructor);
+}
+
+function fillConstructorsOrMethods(interfaceJson, isConstructors) {
+  if (typeof interfaceJson !== 'object' || typeof isConstructors !== 'boolean') {
+    throw new Error('Invalid usage of fillConstructorsOrMethods() method.');
+  }
+  const nameKey = isConstructors ? 'constructors' : 'methods';
+  const nameKeyGen = `${nameKey}.gen`;
+  if (typeof interfaceJson[nameKey] === 'undefined') {
+    interfaceJson[nameKey] = [];
+    interfaceJson[nameKeyGen] = true;
+    return;
+  }
+  if (!Array.isArray(interfaceJson[nameKey])) {
+    throw new Error(`Invalid '${nameKey}' key type.`);
+  }
+  for (const constructorOrMethodJson of interfaceJson[nameKey]) {
+    if (typeof constructorOrMethodJson !== 'object') {
+      throw new Error(`Invalid '${nameKey}' key type.`);
+    }
+  }
+  interfaceJson[nameKeyGen] = false;
+  for (const constructorOrMethodJson of interfaceJson[nameKey]) {
+    fillConstructorOrMethod(interfaceJson, constructorOrMethodJson, isConstructors);
+  }
+}
+
+function fillConstructors(interfaceJson) {
+  fillConstructorsOrMethods(interfaceJson, true);
+}
+
+function fillMethods(interfaceJson) {
+  fillConstructorsOrMethods(interfaceJson, false);
+}
+
 function writeFileContentIfDifferent(filePath, content) {
   if (fs.existsSync(filePath)) {
     if (!fs.statSync(filePath).isFile()) {
@@ -2917,6 +3240,8 @@ module.exports = {
   getArrayPtrType,
   getArrayPtrRefType,
   getArrayPtrMixType,
+  getDataType,
+  getDataSizeType,
   getPropertyType,
   getPropertyTypeForGetter,
   getPropertyTypeForSetter,
@@ -3011,5 +3336,25 @@ module.exports = {
   fillHashOperator,
   fillToStringOperator,
   fillCGenerateFuncAliasDefines,
+  defaultMethodNameLangToStyleMap,
+  fillMethodName,
+  fillMethodReturnType,
+  defaultConstructorParameterNameLangToStyleMap,
+  defaultMethodParameterNameLangToStyleMap,
+  fillConstructorOrMethodParameterName,
+  fillConstructorOrMethodParameterType,
+  fillConstructorOrMethodParameterObjectiveCOrSwiftNamePrefix,
+  fillConstructorOrMethodParameterObjectiveCNamePrefix,
+  fillConstructorOrMethodParameterSwiftNamePrefix,
+  fillConstructorOrMethodParameter,
+  fillConstructorOrMethodParameters,
+  fillMethodStatic,
+  fillConstructorOrMethodMode,
+  fillConstructorOrMethodVisibility,
+  fillConstructorOrMethodNoexcept,
+  fillConstructorOrMethod,
+  fillConstructorsOrMethods,
+  fillConstructors,
+  fillMethods,
   writeFileContentIfDifferent
 };

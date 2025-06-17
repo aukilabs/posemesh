@@ -305,6 +305,78 @@ function generateHeader(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  function setTypeIncludes(theType) {
+    if (util.isIntType(theType)) {
+      includesFirst.add('#include <stdint.h>');
+    } else if (theType === 'string' || theType === 'string_ref') {
+      // nothing needed here
+    } else if (theType === 'string_mix' || theType.startsWith('CLASS_MIX:') || theType.startsWith('CLASS_PTR_MIX:') || theType.startsWith('ARRAY_MIX:') || theType.startsWith('ARRAY_PTR_MIX:')) {
+      throw new Error(`Invalid method return type: ${theType}`);
+    } else if (theType.startsWith('ENUM:') || theType.startsWith('CLASS:') || theType.startsWith('CLASS_REF:') || theType.startsWith('CLASS_PTR:') || theType.startsWith('CLASS_PTR_REF:') || theType.startsWith('ARRAY:') || theType.startsWith('ARRAY_REF:') || theType.startsWith('ARRAY_PTR:') || theType.startsWith('ARRAY_PTR_REF:')) {
+      const subtype = theType.split(':').slice(1).join(':');
+      if (subtype in enums || subtype in interfaces) {
+        importsSecond.add(`#import "${subtype}.h"`);
+      }
+    } else if (theType === 'data') {
+      includesFirst.add('#include <stdint.h>');
+      includesFirst.add('#include <stddef.h>');
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.ObjC);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    let methodReturnTypeExt = '';
+    if (util.isClassPtrType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
+      methodReturnTypeExt = ' _Nullable';
+    } else if (methodReturnType.endsWith('*')) {
+      methodReturnTypeExt = ' _Nonnull';
+    }
+    setTypeIncludes(methodJson.returnType);
+    let methodParameters = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
+      setTypeIncludes(parameterJson.type);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      let parameterTypeExt = '';
+      if (util.isClassPtrType(parameterJson.type) || util.isClassPtrRefType(parameterJson.type)) {
+        parameterTypeExt = ' _Nullable';
+      } else if (parameterType.endsWith('*')) {
+        parameterTypeExt = ' _Nonnull';
+      }
+      const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
+      const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
+      if (methodParameters.length > 0) {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += ` ${parameterName}:(${parameterType}${parameterTypeExt})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          throw new Error('Invalid prefix.');
+        } else {
+          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
+        }
+      } else {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += `${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          methodParameters += `:(${parameterType}${parameterTypeExt})${parameterName}`;
+        } else {
+          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType}${parameterTypeExt})${parameterName}`;
+        }
+      }
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    const method = `${methodStatic ? '+' : '-'} (${methodReturnType}${methodReturnTypeExt})${methodName}${methodParameters} NS_REFINED_FOR_SWIFT;\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        publicFuncs += method;
+      } else {
+        publicMethods += method;
+      }
+    }
+  }
+
   let public = publicCtors;
   if (publicOperators.length > 0) {
     if (public.length > 0) {
@@ -665,6 +737,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else if (util.isArrayOfAnyType(propTypeRaw)) {
           getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
+        } else if (propTypeRaw === 'data') {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:const_cast<std::uint8_t*>(result) length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}psm::${nameCxx}::${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -685,6 +761,10 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
           getter += `    return getterResult ? [[${getterType.substring(0, getterType.length - 1)} alloc] initWithManaged${propTypeRawWithoutPfx}:&getterResult] : nil;\n`;
         } else if (util.isArrayOfAnyType(propTypeRaw)) {
           getter += arrayGetterCode(enums, interfaces, propTypeRaw, getterType, nameCxx, nameManagedMember, propertyJson, propStatic);
+        } else if (propTypeRaw === 'data') {
+          getter += `    std::size_t size;\n`;
+          getter += `    const auto* result = ${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}(size);\n`;
+          getter += `    return [NSData dataWithBytesNoCopy:const_cast<std::uint8_t*>(result) length:size freeWhenDone:NO];\n`;
         } else {
           getter += `    return ${getterPfx}${nameManagedMember}.get()->${util.getPropertyGetterName(propertyJson, util.CXX)}()${getterExt};\n`;
         }
@@ -758,10 +838,18 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
       if (util.isArrayOfAnyType(propTypeRaw)) {
         setter += arraySetterCode(enums, interfaces, propTypeRaw, setterType, setterArgName, nameCxx, nameManagedMember, propertyJson, propStatic);
       } else if (propStatic) {
-        setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        if (propTypeRaw === 'data') {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<const std::uint8_t*>([${setterArgName} bytes]), static_cast<std::size_t>([${setterArgName} length]));\n`;
+        } else {
+          setter += `    psm::${nameCxx}::${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        }
       } else {
         setter += `    NSAssert(${nameManagedMember}.get() != nullptr, @"${nameManagedMember} is null");\n`;
-        setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        if (propTypeRaw === 'data') {
+          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(static_cast<const std::uint8_t*>([${setterArgName} bytes]), static_cast<std::size_t>([${setterArgName} length]));\n`;
+        } else {
+          setter += `    ${nameManagedMember}.get()->${util.getPropertySetterName(propertyJson, util.CXX)}(${setterPfx}${setterArgName}${setterExt});\n`;
+        }
       }
       setter += `}\n`;
       const setterVisibility = util.getPropertySetterVisibility(propertyJson);
@@ -790,6 +878,276 @@ function generateSource(enums, interfaces, interfaceName, interfaceJson) {
             includesFirst.add('#include <utility>');
           }
         }
+      }
+    }
+  }
+
+  for (const methodJson of interfaceJson.methods) {
+    const methodName = util.getLangName('name', methodJson, util.ObjC);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.ObjC) : 'void';
+    let methodParameters = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterNameFixed = parameterName.charAt(0).toUpperCase() + parameterName.slice(1);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      const parameterObjCNamePrefix = parameterJson['objectiveC.namePrefix'];
+      const parameterObjCNamePrefixFixed = parameterObjCNamePrefix.charAt(0).toUpperCase() + parameterObjCNamePrefix.slice(1);
+      if (methodParameters.length > 0) {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += ` ${parameterName}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          throw new Error('Invalid prefix.');
+        } else {
+          methodParameters += ` ${parameterObjCNamePrefix}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      } else {
+        if (parameterObjCNamePrefix === '') {
+          methodParameters += `${parameterNameFixed}:(${parameterType})${parameterName}`;
+        } else if (parameterObjCNamePrefix === '-') {
+          methodParameters += `:(${parameterType})${parameterName}`;
+        } else {
+          methodParameters += `${parameterObjCNamePrefixFixed}${parameterNameFixed}:(${parameterType})${parameterName}`;
+        }
+      }
+    }
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    let method = `${methodStatic ? '+' : '-'} (${methodReturnType})${methodName}${methodParameters}\n`;
+    method += `{\n`;
+    let invokeArgs = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.ObjC);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.ObjC);
+      if (invokeArgs.length > 0) {
+        invokeArgs += ', ';
+      }
+      if (util.isIntType(parameterJson.type) || parameterJson.type === 'float' || parameterJson.type === 'double') {
+        invokeArgs += `${parameterName}`;
+      } else if (parameterJson.type === 'boolean') {
+        invokeArgs += `static_cast<bool>(${parameterName})`;
+      } else if (parameterJson.type === 'string' || parameterJson.type === 'string_ref') {
+        invokeArgs += `[${parameterName} UTF8String]`;
+      } else if (util.isEnumType(parameterJson.type)) {
+        invokeArgs += `static_cast<psm::${util.getLangEnumName(enums[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>(${parameterName})`;
+      } else if (util.isClassType(parameterJson.type)) {
+        invokeArgs += `*static_cast<psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassRefType(parameterJson.type)) {
+        invokeArgs += `*static_cast<const psm::${util.getPropertyType(enums, interfaces, parameterJson, util.CXX)}*>([${parameterName} native${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassPtrType(parameterJson.type)) {
+        invokeArgs += `*static_cast<std::shared_ptr<psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isClassPtrRefType(parameterJson.type)) {
+        invokeArgs += `*static_cast<const std::shared_ptr<psm::${util.getLangClassName(interfaces[parameterJson.type.split(':').slice(1).join(':')], util.CXX)}>*>([${parameterName} managed${parameterJson.type.split(':').slice(1).join(':')}])`;
+      } else if (util.isArrayOfAnyType(parameterJson.type)) {
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (innerType in enums) {
+          const isFlagType = enums[innerType].type === 'flag';
+          method += `    std::vector<psm::${util.getLangEnumName(enums[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+          method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+          method += `    for (NSNumber* number in ${parameterName}) {\n`;
+          if (isFlagType) {
+            method += `        if (std::strcmp([number objCType], @encode(NSUInteger)) == 0) {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number unsignedIntegerValue]));\n`;
+            method += `        } else {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number unsignedIntValue]));\n`;
+            method += `        }\n`;
+          } else {
+            method += `        if (std::strcmp([number objCType], @encode(NSInteger)) == 0) {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number integerValue]));\n`;
+            method += `        } else {\n`;
+            method += `            ${parameterName}Transformed.push_back(static_cast<decltype(${parameterName}Transformed)::value_type>([number intValue]));\n`;
+            method += `        }\n`;
+          }
+          method += `    }\n`;
+          invokeArgs += `${parameterName}Transformed`;
+        } else if (innerType in interfaces) {
+          if (util.isArrayType(parameterJson.type) || util.isArrayRefType(parameterJson.type)) {
+            method += `    std::vector<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC)} element in ${parameterName}) {\n`;
+            method += `        ${parameterName}Transformed.emplace_back(*static_cast<const psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}*>([element native${innerType}]));\n`;
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          } else if (util.isArrayPtrType(parameterJson.type) || util.isArrayPtrRefType(parameterJson.type)) {
+            method += `    std::vector<std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}>> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC)} element in ${parameterName}) {\n`;
+            method += `        ${parameterName}Transformed.emplace_back(*static_cast<const std::shared_ptr<psm::${util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX)}>*>([element managed${innerType}]));\n`;
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          }
+        } else {
+          if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean' || innerType === 'string') {
+            method += `    std::vector<${util.getPropertyType(enums, interfaces, { "type": innerType }, util.CXX)}> ${parameterName}Transformed;\n`;
+            method += `    ${parameterName}Transformed.reserve([${parameterName} count]);\n`;
+            method += `    for (${innerType === 'string' ? 'NSString' : 'NSNumber'}* ${innerType === 'string' ? 'string' : 'number'} in ${parameterName}) {\n`;
+            if (innerType === 'int8') {
+              method += `        ${parameterName}Transformed.push_back([number charValue]);\n`;
+            } else if (innerType === 'int16') {
+              method += `        ${parameterName}Transformed.push_back([number shortValue]);\n`;
+            } else if (innerType === 'int32') {
+              method += `        ${parameterName}Transformed.push_back([number intValue]);\n`;
+            } else if (innerType === 'int64') {
+              method += `        ${parameterName}Transformed.push_back([number longLongValue]);\n`;
+            } else if (innerType === 'uint8') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedCharValue]);\n`;
+            } else if (innerType === 'uint16') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedShortValue]);\n`;
+            } else if (innerType === 'uint32') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedIntValue]);\n`;
+            } else if (innerType === 'uint64') {
+              method += `        ${parameterName}Transformed.push_back([number unsignedLongLongValue]);\n`;
+            } else if (innerType === 'float') {
+              method += `        ${parameterName}Transformed.push_back([number floatValue]);\n`;
+            } else if (innerType === 'double') {
+              method += `        ${parameterName}Transformed.push_back([number doubleValue]);\n`;
+            } else if (innerType === 'boolean') {
+              method += `        ${parameterName}Transformed.push_back(static_cast<bool>([number boolValue]));\n`;
+            } else if (innerType === 'string') {
+              method += `        ${parameterName}Transformed.push_back([string UTF8String]);\n`;
+            }
+            method += `    }\n`;
+            invokeArgs += `${parameterName}Transformed`;
+          }
+        }
+      } else if (parameterJson.type === 'data') {
+        includesFirst.add('#include <cstdint>');
+        invokeArgs += `static_cast<const std::uint8_t*>([${parameterName} bytes]), [${parameterName} length]`;
+      }
+    }
+    let mthResCnst = false;
+    let mthResPtr = false;
+    let mthResRef = false;
+    if (util.isClassRefType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType)) {
+      mthResCnst = true;
+      mthResPtr = false;
+      mthResRef = true;
+    } else if (util.isArrayRefType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType)) {
+      mthResCnst = true;
+      mthResPtr = false;
+      mthResRef = true;
+    } else if (methodJson.returnType === 'data') {
+      mthResCnst = true;
+      mthResPtr = true;
+      mthResRef = false;
+    }
+    if (methodJson.returnType === 'data') {
+      includesFirst.add('#include <cstddef>');
+      method += `    std::size_t methodResultSize;\n`;
+      if (invokeArgs.length > 0) {
+        invokeArgs += ', ';
+      }
+      invokeArgs += `methodResultSize`;
+    }
+    method += `    ${methodJson.returnType.length > 0 ? `${mthResCnst ? 'const ' : ''}auto${mthResPtr ? '*' : (mthResRef ? '&' : '')} methodResult = ` : ''}${methodStatic ? `psm::${nameCxx}::` : `${nameManagedMember}.get()->`}${util.getLangName('name', methodJson, util.CXX)}(${invokeArgs});\n`;
+    if (util.isIntType(methodJson.returnType) || methodJson.returnType === 'float' || methodJson.returnType === 'double') {
+      method += `    return methodResult;\n`;
+    } else if (methodJson.returnType === 'boolean') {
+      method += `    return methodResult ? YES : NO;\n`;
+    } else if (methodJson.returnType === 'string' || methodJson.returnType === 'string_ref') {
+      method += `    return [NSString stringWithUTF8String:methodResult.c_str()];\n`;
+    } else if (util.isEnumType(methodJson.returnType)) {
+      method += `    return static_cast<${methodReturnType}>(methodResult);\n`;
+    } else if (util.isClassType(methodJson.returnType)) {
+      includesFirst.add('#include <utility>');
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(std::move(methodResult))];\n`;
+    } else if (util.isClassRefType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithNative${innerType}:new psm::${util.getLangClassName(interfaces[innerType], util.CXX)}(methodResult)];\n`;
+    } else if (util.isClassPtrType(methodJson.returnType)) {
+      includesFirst.add('#include <utility>');
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(std::move(methodResult))];\n`;
+    } else if (util.isClassPtrRefType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      method += `    return [[${util.getLangClassName(interfaces[innerType], util.ObjC)} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${util.getLangClassName(interfaces[innerType], util.CXX)}>(methodResult)];\n`;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (auto element : methodResult) {\n`;
+        if (enums[innerType].type === 'flag') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInteger:static_cast<std::uint32_t>(element)]];\n`;
+        } else {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithInteger:static_cast<std::int32_t>(element)]];\n`;
+        }
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      } else if (innerType in interfaces) {
+        const cxxType = util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.CXX);
+        let objcType = util.getPropertyType(enums, interfaces, { "type": `CLASS:${innerType}` }, util.ObjC);
+        objcType = objcType.substring(0, objcType.length - 1);
+        method += `    NSMutableArray<${objcType}*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        if (util.isArrayType(methodJson.returnType)) {
+          includesFirst.add('#include <utility>');
+          method += `    for (auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithNative${innerType}:new psm::${cxxType}(std::move(element))]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayRefType(methodJson.returnType)) {
+          method += `    for (const auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithNative${innerType}:new psm::${cxxType}(element)]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayPtrType(methodJson.returnType)) {
+          includesFirst.add('#include <utility>');
+          method += `    for (auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${cxxType}>(std::move(element))]];\n`;
+          method += `    }\n`;
+        } else if (util.isArrayPtrRefType(methodJson.returnType)) {
+          method += `    for (const auto& element : methodResult) {\n`;
+          method += `        [methodResultTransformed addObject:[[${objcType} alloc] initWithManaged${innerType}:new std::shared_ptr<psm::${cxxType}>(element)]];\n`;
+          method += `    }\n`;
+        }
+        method += `    return methodResultTransformed;\n`;
+      } else if (util.isIntType(innerType) || innerType === 'float' || innerType === 'double' || innerType === 'boolean') {
+        method += `    NSMutableArray<NSNumber*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (auto element : methodResult) {\n`;
+        if (innerType === 'int8') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithChar:element]];\n`;
+        } else if (innerType === 'int16') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithShort:element]];\n`;
+        } else if (innerType === 'int32') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithInt:element]];\n`;
+        } else if (innerType === 'int64') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithLongLong:element]];\n`;
+        } else if (innerType === 'uint8') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedChar:element]];\n`;
+        } else if (innerType === 'uint16') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedShort:element]];\n`;
+        } else if (innerType === 'uint32') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedInt:element]];\n`;
+        } else if (innerType === 'uint64') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithUnsignedLongLong:element]];\n`;
+        } else if (innerType === 'float') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithFloat:element]];\n`;
+        } else if (innerType === 'double') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithDouble:element]];\n`;
+        } else if (innerType === 'boolean') {
+          method += `        [methodResultTransformed addObject:[NSNumber numberWithBool:static_cast<BOOL>(element)]];\n`;
+        }
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      } else if (innerType === 'string') {
+        method += `    NSMutableArray<NSString*>* methodResultTransformed = [[NSMutableArray alloc] init];\n`;
+        method += `    for (const auto& element : methodResult) {\n`;
+        method += `        [methodResultTransformed addObject:[NSString stringWithUTF8String:element.c_str()]];\n`;
+        method += `    }\n`;
+        method += `    return methodResultTransformed;\n`;
+      }
+    } else if (methodJson.returnType === 'data') {
+      method += `    return [[NSData alloc] initWithBytesNoCopy:const_cast<std::uint8_t*>(methodResult) length:methodResultSize freeWhenDone:NO];\n`;
+    }
+    method += `}\n`;
+    if (methodVisibility === util.Visibility.public) {
+      if (methodStatic) {
+        if (publicFuncs.length > 0) {
+          publicFuncs += '\n';
+        }
+        publicFuncs += method;
+      } else {
+        if (publicMethods.length > 0) {
+          publicMethods += '\n';
+        }
+        publicMethods += method;
       }
     }
   }
