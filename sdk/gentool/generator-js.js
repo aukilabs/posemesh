@@ -479,6 +479,249 @@ function generateCppSource(enums, interfaces, interfaceName, interfaceJson) {
     }
   }
 
+  for (const methodJson of interfaceJson.methods) {
+    let methodNameJS = util.getLangName('name', methodJson, util.JS);
+    let methodNameCXX = util.getLangName('name', methodJson, util.CXX);
+    const methodReturnType = methodJson.returnType.length > 0 ? util.getPropertyTypeForGetter(enums, interfaces, { "type": methodJson.returnType }, util.CXX) : 'void';
+    const methodStatic = methodJson.static;
+    const methodVisibility = methodJson.visibility;
+    if (methodVisibility !== util.Visibility.public) {
+      continue;
+    }
+    let argsDecl = '';
+    if (!methodStatic) {
+      argsDecl = `${nameCxx}& self`;
+    }
+    let argsInvk = '';
+    let argsNames = '';
+    let preamble = '';
+    for (const parameterJson of methodJson.parameters) {
+      const parameterName = util.getLangName('name', parameterJson, util.CXX);
+      const parameterType = util.getPropertyTypeForSetter(enums, interfaces, parameterJson, util.CXX);
+      if (argsDecl.length > 0) {
+        argsDecl += ', ';
+      }
+      if (argsInvk.length > 0) {
+        argsInvk += ', ';
+      }
+      if (argsNames.length > 0) {
+        argsNames += ', ';
+      }
+      if (util.isEnumType(parameterJson.type)) {
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (enums[innerType].type === 'flag') {
+          argsDecl += `std::uint32_t ${parameterName}`;
+          argsInvk += `static_cast<${util.getLangEnumName(enums[innerType], util.CXX)}>(${parameterName})`;
+          argsNames += parameterName;
+        } else {
+          argsDecl += `std::int32_t ${parameterName}`;
+          argsInvk += `static_cast<${util.getLangEnumName(enums[innerType], util.CXX)}>(${parameterName})`;
+          argsNames += parameterName;
+        }
+      } else if (util.isClassOfAnyType(parameterJson.type)) {
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        if (util.isClassType(parameterJson.type)) {
+          argsDecl += `${util.getPropertyTypeForSetter(enums, interfaces, { "type": `CLASS_PTR:${innerType}` }, util.CXX)} ${parameterName}`;
+          argsInvk += `*${parameterName}`;
+          argsNames += parameterName;
+        } else if (util.isClassRefType(parameterJson.type)) {
+          argsDecl += `${util.getPropertyTypeForSetter(enums, interfaces, { "type": `CLASS_PTR_REF:${innerType}` }, util.CXX)} ${parameterName}`;
+          argsInvk += `*${parameterName}`;
+          argsNames += parameterName;
+        } else {
+          argsDecl += `${parameterType} ${parameterName}`;
+          argsInvk += `${parameterName}`;
+          argsNames += parameterName;
+        }
+      } else if (util.isArrayOfAnyType(parameterJson.type)) {
+        const innerType = parameterJson.type.split(':').slice(1).join(':');
+        const isArrRef = util.isArrayRefType(parameterJson.type);
+        if (innerType in enums) {
+          if (enums[innerType].type === 'flag') {
+            argsDecl += `${isArrRef ? 'const ' : ''}std::vector<std::uint32_t>${isArrRef ? '&' : ''} ${parameterName}`;
+            argsInvk += `${parameterName}Transformed`;
+            argsNames += parameterName;
+            preamble += `    std::vector<${util.getLangEnumName(enums[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+            preamble += `    for (auto value : ${parameterName}) {\n`;
+            preamble += `        ${parameterName}Transformed.push_back(static_cast<${util.getLangEnumName(enums[innerType], util.CXX)}>(value));\n`;
+            preamble += `    }\n`;
+          } else {
+            argsDecl += `${isArrRef ? 'const ' : ''}std::vector<std::int32_t>${isArrRef ? '&' : ''} ${parameterName}`;
+            argsInvk += `${parameterName}Transformed`;
+            argsNames += parameterName;
+            preamble += `    std::vector<${util.getLangEnumName(enums[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+            preamble += `    for (auto value : ${parameterName}) {\n`;
+            preamble += `        ${parameterName}Transformed.push_back(static_cast<${util.getLangEnumName(enums[innerType], util.CXX)}>(value));\n`;
+            preamble += `    }\n`;
+          }
+        } else if (innerType in interfaces) {
+          if (util.isArrayType(parameterJson.type)) {
+            argsDecl += `std::vector<std::shared_ptr<${util.getLangClassName(interfaces[innerType], util.CXX)}>> ${parameterName}`;
+            argsInvk += `${parameterName}Transformed`;
+            argsNames += parameterName;
+            preamble += `    std::vector<${util.getLangClassName(interfaces[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+            preamble += `    for (const auto& value : ${parameterName}) {\n`;
+            preamble += `        ${parameterName}Transformed.push_back(*value);\n`;
+            preamble += `    }\n`;
+          } else if (util.isArrayRefType(parameterJson.type)) {
+            argsDecl += `const std::vector<std::shared_ptr<${util.getLangClassName(interfaces[innerType], util.CXX)}>>& ${parameterName}`;
+            argsInvk += `${parameterName}Transformed`;
+            argsNames += parameterName;
+            preamble += `    std::vector<${util.getLangClassName(interfaces[innerType], util.CXX)}> ${parameterName}Transformed;\n`;
+            preamble += `    for (const auto& value : ${parameterName}) {\n`;
+            preamble += `        ${parameterName}Transformed.push_back(*value);\n`;
+            preamble += `    }\n`;
+          } else {
+            argsDecl += `${parameterType} ${parameterName}`;
+            argsInvk += `${parameterName}`;
+            argsNames += parameterName;
+          }
+        } else if (innerType === 'boolean') {
+          if (util.isArrayType(parameterJson.type)) {
+            argsDecl += `std::vector<std::uint8_t> ${parameterName}`;
+          } else if (util.isArrayRefType(parameterJson.type)) {
+            argsDecl += `const std::vector<std::uint8_t>& ${parameterName}`;
+          } else {
+            throw new Error('Invalid code path.');
+          }
+          argsInvk += `${parameterName}Transformed`;
+          argsNames += parameterName;
+          preamble += `    std::vector<bool> ${parameterName}Transformed;\n`;
+          preamble += `    for (auto value : ${parameterName}) {\n`;
+          preamble += `        ${parameterName}Transformed.push_back(static_cast<bool>(value));\n`;
+          preamble += `    }\n`;
+        } else {
+          argsDecl += `${parameterType} ${parameterName}`;
+          argsInvk += `${parameterName}`;
+          argsNames += parameterName;
+        }
+      } else if (parameterJson.type === 'data') {
+        argsDecl += `std::uint32_t ${parameterName}, std::uint64_t ${parameterName}Size`;
+        argsInvk += `reinterpret_cast<const std::uint8_t*>(${parameterName}), ${parameterName}Size`;  
+        argsNames += `${parameterName}, ${parameterName}Size`;
+      } else {
+        argsDecl += `${parameterType} ${parameterName}`;
+        argsInvk += `${parameterName}`;
+        argsNames += parameterName;
+      }
+    }
+    if (methodJson.returnType === 'data') {
+      if (argsDecl.length > 0) {
+        argsDecl += ', ';
+      }
+      if (argsInvk.length > 0) {
+        argsInvk += ', ';
+      }
+      if (argsNames.length > 0) {
+        argsNames += ', ';
+      }
+      argsDecl += `std::uint32_t outSizePtr`;
+      argsInvk += `outSize`;
+      argsNames += `outSizePtr`;
+    }
+    if (unnamedNamespace.length > 0) {
+      unnamedNamespace += '\n';
+    }
+    let methodReturnTypeEval = methodReturnType;
+    if (util.isEnumType(methodJson.returnType)) {
+      if (enums[methodJson.returnType.split(':').slice(1).join(':')].type === 'flag') {
+        methodReturnTypeEval = 'std::uint32_t';
+      } else {
+        methodReturnTypeEval = 'std::int32_t';
+      }
+    } else if (util.isClassType(methodJson.returnType) || util.isClassRefType(methodJson.returnType)) {
+      methodReturnTypeEval = `std::shared_ptr<${util.getLangClassName(interfaces[methodJson.returnType.split(':').slice(1).join(':')], util.CXX)}>`;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        if (enums[innerType].type === 'flags') {
+          methodReturnTypeEval = 'std::vector<std::uint32_t>';
+        } else {
+          methodReturnTypeEval = 'std::vector<std::int32_t>';
+        }
+      } else if (innerType in interfaces) {
+        if (util.isArrayType(methodJson.returnType) || util.isArrayRefType(methodJson.returnType)) {
+          methodReturnTypeEval = `std::vector<std::shared_ptr<${util.getLangClassName(interfaces[innerType], util.CXX)}>>`;
+        }
+      } else if (innerType === 'boolean') {
+        methodReturnTypeEval = 'std::vector<std::uint8_t>';
+      }
+    } else if (methodJson.returnType === 'data') {
+      methodReturnTypeEval = 'std::uint32_t';
+    }
+    unnamedNamespace += `${methodReturnTypeEval} ${methodNameCXX}(${argsDecl})\n`;
+    unnamedNamespace += `{\n`;
+    unnamedNamespace += preamble;
+    if (methodJson.returnType === 'data') {
+      unnamedNamespace += `    std::size_t outSize;\n`;
+    }
+    let isPtr = methodJson.returnType === 'data';
+    let isRef = methodJson.returnType === 'string_ref' || util.isClassRefType(methodJson.returnType) || util.isClassPtrRefType(methodJson.returnType) || util.isArrayRefType(methodJson.returnType) || util.isArrayPtrRefType(methodJson.returnType);
+    unnamedNamespace += `    ${methodJson.returnType.length > 0 ? `const auto${isPtr ? '*' : ''}${isRef ? '&' : ''} returnResult = ` : ''}${methodStatic ? `${nameCxx}::` : `self.`}${methodNameCXX}(${argsInvk});\n`;
+    if (util.isEnumType(methodJson.returnType)) {
+      if (enums[methodJson.returnType.split(':').slice(1).join(':')].type === 'flag') {
+        unnamedNamespace += `    return static_cast<std::uint32_t>(returnResult);\n`;
+      } else {
+        unnamedNamespace += `    return static_cast<std::int32_t>(returnResult);\n`;
+      }
+    } else if (util.isClassType(methodJson.returnType) || util.isClassRefType(methodJson.returnType)) {
+      const canMove = util.isClassType(methodJson.returnType);
+      unnamedNamespace += `    return std::make_shared<${util.getLangClassName(interfaces[methodJson.returnType.split(':').slice(1).join(':')], util.CXX)}>(${canMove ? 'std::move(' : ''}returnResult${canMove ? ')' : ''});\n`;
+    } else if (util.isArrayOfAnyType(methodJson.returnType)) {
+      const innerType = methodJson.returnType.split(':').slice(1).join(':');
+      if (innerType in enums) {
+        const isFlag = enums[innerType].type === 'flag';
+        if (isFlag) {
+          unnamedNamespace += `    std::vector<std::uint32_t> returnResultTransformed;\n`;
+        } else {
+          unnamedNamespace += `    std::vector<std::int32_t> returnResultTransformed;\n`;
+        }
+        unnamedNamespace += `    for (auto element : returnResult) {\n`;
+        if (isFlag) {
+          unnamedNamespace += `        returnResultTransformed.push_back(static_cast<std::uint32_t>(element));\n`;
+        } else {
+          unnamedNamespace += `        returnResultTransformed.push_back(static_cast<std::int32_t>(element));\n`;
+        }
+        unnamedNamespace += `    }\n`;
+        unnamedNamespace += `    return returnResultTransformed;\n`;
+      } else if (innerType in interfaces) {
+        const isArrTyp = util.isArrayType(methodJson.returnType);
+        if (isArrTyp || util.isArrayRefType(methodJson.returnType)) {
+          unnamedNamespace += `    std::vector<std::shared_ptr<${util.getLangClassName(interfaces[innerType], util.CXX)}>> returnResultTransformed;\n`;
+          unnamedNamespace += `    for (${isArrTyp ? '' : 'const '}auto${isArrTyp ? '' : '&'} element : returnResult) {\n`;
+          unnamedNamespace += `        returnResultTransformed.push_back(std::make_shared<${util.getLangClassName(interfaces[innerType], util.CXX)}>(${isArrTyp ? 'std::move(' : ''}element${isArrTyp ? ')' : ''}));\n`;
+          unnamedNamespace += `    }\n`;
+          unnamedNamespace += `    return returnResultTransformed;\n`;
+        } else {
+          unnamedNamespace += `    return returnResult;\n`;
+        }
+      } else if (innerType === 'boolean') {
+        unnamedNamespace += `    std::vector<std::uint8_t> returnResultTransformed;\n`;
+        unnamedNamespace += `    for (auto element : returnResult) {\n`;
+        unnamedNamespace += `        returnResultTransformed.push_back(static_cast<std::uint8_t>(element));\n`;
+        unnamedNamespace += `    }\n`;
+        unnamedNamespace += `    return returnResultTransformed;\n`;
+      } else {
+        unnamedNamespace += `    return returnResult;\n`;
+      }
+    } else if (methodJson.returnType === 'data') {
+      unnamedNamespace += `    *reinterpret_cast<std::uint64_t*>(outSizePtr) = outSize;\n`;
+      unnamedNamespace += `    return reinterpret_cast<std::uint32_t>(returnResult);\n`;
+    } else if (methodJson.returnType.length > 0) {
+      unnamedNamespace += `    return returnResult;\n`;
+    }
+    unnamedNamespace += `}\n`;
+    includesFirst.add('#include <cstddef>');
+    includesFirst.add('#include <cstdint>');
+    includesFirst.add('#include <memory>');
+    includesFirst.add('#include <utility>');
+    if (methodStatic) {
+      code += `\n        .class_function("__${methodNameJS}(${argsNames})", &${methodNameCXX})`;
+    } else {
+      code += `\n        .function("__${methodNameJS}(${argsNames})", &${methodNameCXX})`;
+    }
+  }
+
   code += `;\n`;
   code += `}\n`;
 
