@@ -1,9 +1,8 @@
-use futures::channel::mpsc::Receiver;
 use quick_protobuf::serialize_into_vec;
 
-use crate::{cluster::{DomainCluster, TaskUpdateEvent}, protobuf::{domain_data::Query, task}};
+use crate::{cluster::{DomainCluster, TaskUpdatesSink}, datastore::common::DomainError, protobuf::{domain_data::Query, task}};
 
-pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &str, scans: Vec<String>) -> Receiver<TaskUpdateEvent> {
+pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &str, scans: Vec<String>, handler: TaskUpdatesSink) -> Result<(), DomainError> {
     let mut uploaded = Vec::<task::TaskRequest>::new();
     for scan in scans {
         let input = task::LocalRefinementInputV1 {
@@ -72,5 +71,5 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &s
 
     tracing::debug!("job has {} tasks", job.tasks.len());
 
-    domain_cluster.submit_job(&job).await
+    domain_cluster.submit_job(&job, handler).await
 }

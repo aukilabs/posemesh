@@ -44,8 +44,8 @@ async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"
 wasm-bindgen-test = "0.3.50"
-libp2p-identity = "0.2.11"
 hex = "0.4.3"
+uuid = "1.17.0"
 
 [profile.release]
 strip = true

@@ -1,3 +1,4 @@
+use posemesh_utils::crypto::CryptoError;
 use prost::{DecodeError, EncodeError};
 
 #[derive(Debug, thiserror::Error)]
@@ -16,6 +17,6 @@ pub enum DiscoveryError {
     InvalidUrl(String),
     #[error("Invalid registration credential")]
     InvalidCredentials,
-    #[error("Failed to sign message: {0}")]
-    SigningError(#[from] k256::ecdsa::signature::Error),
+    #[error("Crypto error: {0}")]
+    CryptoError(#[from] CryptoError),
 }

@@ -14,16 +14,14 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true } 
 chrono = "0.4.41"
-libp2p-identity = { workspace = true, features = ["ecdsa"] }
-hex = "0.4.3"
-uuid = { version = "1.17.0", features = ["v4"] }
+hex = { workspace=true }
+posemesh-utils = { workspace = true, features = ["crypto"] }
 base64 = "0.22.1"
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-k256 = { version = "0.13.4", features = ["ecdsa"] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = { version = "*", features = ["native-tls"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
@@ -31,12 +29,13 @@ wasm-bindgen-futures = { workspace = true }
 tracing-wasm = { workspace = true }
 console_error_panic_hook = { workspace = true }
 web-sys = { version = "0.3.77", features = ["ErrorEvent", "WebSocket", "MessageEvent"] }
+uuid = { workspace = true, features = ["v4", "js"] }
 
-[dev-dependencies]
-posemesh-utils = { workspace = true }
+[target.'cfg(target_family="wasm")'.dependencies.getrandom]
+version = "0.3.3"
+features = ["wasm_js"]
 
 [features]
 default = []
 c = []
 node = []
-node-c = []

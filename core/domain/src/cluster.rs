@@ -1,9 +1,22 @@
-use libp2p::{gossipsub::TopicHash, PeerId};
-use futures::{channel::{mpsc::{channel, Receiver, SendError, Sender}, oneshot}, AsyncReadExt, SinkExt, StreamExt};
-use posemesh_networking::{client::Client, event, libp2p::{Networking, NetworkingConfig}, AsyncStream};
-use crate::{capabilities, datastore::common::DomainError, message::request_response, protobuf::{discovery::{Capability, JoinClusterRequest, JoinClusterResponse, Node}, task::{self, Job, JobRequest, Status, SubmitJobResponse}}};
-use std::{collections::HashMap, fmt::Error};
-use quick_protobuf::{deserialize_from_slice, serialize_into_vec};
+use async_trait::async_trait;
+use libp2p::PeerId;
+use futures::{channel::{mpsc::{unbounded, UnboundedReceiver, UnboundedSender}, oneshot}, lock::Mutex, Sink, SinkExt, Stream, StreamExt};
+#[cfg(not(target_family="wasm"))]
+use posemesh_networking::AsyncStream;
+use posemesh_networking::{client::Client, event, libp2p::{Networking, NetworkingConfig}};
+use posemesh_utils::retry_with_delay;
+
+#[cfg(not(target_family="wasm"))]
+use posemesh_disco::client::DiscoClient;
+
+#[cfg(not(target_family = "wasm"))]
+use tokio::time::sleep;
+#[cfg(target_family = "wasm")]
+use posemesh_utils::sleep;
+
+use crate::{datastore::common::DomainError, message::{prefix_size_message, read_prefix_size_message, request_response}, protobuf::{common::Capability, discovery::{JoinClusterRequest, JoinClusterResponse, Node}, task::{self, JobRequest, SubmitJobResponse, Task}}};
+use std::{collections::HashMap, pin::Pin, sync::Arc, task::{Context, Poll}, time::Duration};
+use quick_protobuf::deserialize_from_slice;
 use posemesh_networking::client::TClient;
 
 #[cfg(not(target_family = "wasm"))]
@@ -14,45 +27,74 @@ use wasm_bindgen_futures::spawn_local as spawn;
 pub const UNLIMITED_CAPACITY: i32 = -1;
 pub const JOIN_CLUSTER_PROTOCOL_V1: &str = "/join/v1";
 pub const SUBMIT_JOB_PROTOCOL_V1: &str = "/jobs/v1";
-#[derive(Debug)]
-pub enum TaskUpdateResult {
-    Ok(task::Task),
-    Err(DomainError),
+
+// pub trait TaskUpdateHandler: Send {
+//     fn on_task_update(&self, t: &Task);
+// }
+
+pub struct TaskUpdatesSink {
+    sender: UnboundedSender<Task>,
 }
 
-#[derive(Debug)]
-pub struct TaskUpdateEvent {
-    pub topic: TopicHash,
-    pub from: Option<PeerId>,
-    pub result: TaskUpdateResult,
+pub struct TaskUpdatesStream {
+    receiver: UnboundedReceiver<Task>,
 }
 
-struct InnerDomainCluster {
-    command_rx: Receiver<Command>,
-    manager: String,
-    peer: Networking,
-    jobs: HashMap<TopicHash, Sender<TaskUpdateEvent>>,
-}
-
-enum Command {
-    SubmitJob {
-        job: JobRequest,
-        task_updates_channel: Sender<TaskUpdateEvent>,
-        response: oneshot::Sender<bool>,
-    },
-    UpdateTask {
-        task: task::Task,
-    },
-    MonitorJobs {
-        response: oneshot::Sender<Receiver<Job>>,
+impl TaskUpdatesStream {
+    pub fn new(receiver: UnboundedReceiver<Task>) -> Self {
+        TaskUpdatesStream { receiver }
     }
 }
 
+pub fn new_task_update_duplex() -> (TaskUpdatesSink, TaskUpdatesStream) {
+    let (sender, receiver) = unbounded();
+    (TaskUpdatesSink { sender }, TaskUpdatesStream { receiver })
+}
 
+impl Stream for TaskUpdatesStream {
+    type Item = Task;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.receiver.poll_next_unpin(cx)
+    }
+}
+
+impl Sink<Task> for TaskUpdatesSink {
+    type Error = DomainError;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.sender.poll_ready(cx).map_err(|e| DomainError::SendCommandError(e))
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: Task) -> Result<(), Self::Error> {
+        self.sender.start_send(item).map_err(|e| DomainError::SendCommandError(e))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.sender.close_channel();
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl TaskUpdatesSink {
+    fn on_task_update(&self, t: &Task) {
+        let mut sender = self.sender.clone();
+        let task = t.clone();
+        spawn(async move {
+            if let Err(e) = sender.send(task).await {
+                tracing::error!("Failed to send task update: {:?}", e);
+            }
+        });
+    }
+}
 
 async fn join(manager_id: &str, client: Client, id: &str, name: &str, capabilities: &[Capability]) -> Result<JoinClusterResponse, DomainError> {
     request_response::<JoinClusterRequest, JoinClusterResponse>(
-        client.clone(),
+        client,
         manager_id,
         JOIN_CLUSTER_PROTOCOL_V1,
         &JoinClusterRequest {
@@ -65,149 +107,252 @@ async fn join(manager_id: &str, client: Client, id: &str, name: &str, capabiliti
         15000
     ).await
 }
-
-impl InnerDomainCluster {
-    fn init(mut self) {
-        let event_receiver = self.peer.event_receiver.clone();
-        #[cfg(not(target_family = "wasm"))]
-        spawn(async move {
-            loop {
-                let mut event_receiver = event_receiver.lock().await;
-                tokio::select! {
-                    Some(command) = self.command_rx.next() => self.handle_command(command).await,
-                    event = event_receiver.next() => self.handle_event(event).await,
-                    else => break,
-                }
-            }
-        });
-
-        #[cfg(target_family = "wasm")]
-        spawn(async move {
-            loop {
-                let mut event_receiver = event_receiver.lock().await;
-                futures::select! {
-                    command = self.command_rx.select_next_some() => self.handle_command(command).await,
-                    event = event_receiver.next() => self.handle_event(event).await,
-                    complete => break,
-                }
-            }
-        })
-    }
-
-    async fn handle_command(&mut self, command: Command) {
-        match command {
-            Command::SubmitJob { job, task_updates_channel, response } => {
-                let _ = self.submit_job(&job, task_updates_channel).await;
-                let _ = response.send(true);
-            },
-            Command::UpdateTask { task } => {
-                let _ = self.peer.client.publish(task.job_id.clone(), serialize_into_vec(&task).expect("can't serialize task update")).await;
-            }
-            Command::MonitorJobs { response } => {
-                let _ = response.send(self.monitor_jobs().await);
-            }
-        }
-    }
-
-    async fn handle_event(&mut self, e: Option<event::Event>) {
-        match e {
-            Some(event::Event::PubSubMessageReceivedEvent { topic, message, from }) => {
-                let mut task = deserialize_from_slice::<task::Task>(&message).expect("can't deserialize task");
-                if let Some(tx) = self.jobs.get_mut(&topic) {
-                    if let Err(e) = tx.send(TaskUpdateEvent {
-                        topic: topic.clone(),
-                        from: from,
-                        result: TaskUpdateResult::Ok(task.clone()),
-                    }).await {
-                        if SendError::is_disconnected(&e) {
-                            self.jobs.remove(&topic);
-                            return;
-                        }
-                        task.status = Status::FAILED;
-                        if let Err(e) = tx.send(TaskUpdateEvent {
-                            topic: topic.clone(),
-                            from: from,
-                            result: TaskUpdateResult::Ok(task.clone()),
-                        }).await {
-                            tracing::error!("Error sending failed task update: {:?}", e);
-                            if SendError::is_disconnected(&e) {
-                                self.jobs.remove(&topic);
-                                return;
-                            }
-                        }
-                        // // TODO: send failed task update with error
-                        // self.peer.publish(topic.to_string().clone(), serialize_into_vec(&task).expect("can't serialize task update")).await.unwrap();
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    async fn submit_job(&mut self, job: &JobRequest, mut tx: Sender<TaskUpdateEvent>) {
-        let response = request_response::<JobRequest, SubmitJobResponse>(self.peer.client.clone(), &self.manager, SUBMIT_JOB_PROTOCOL_V1, job, 0).await;
-        match response {
-            Ok(response) => {
-                self.peer.client.subscribe(response.job_id.clone()).await.expect("can't subscribe to job");
-                tracing::debug!("Subscribed to job: {:?}", response.job_id);
-                self.jobs.insert(TopicHash::from_raw(response.job_id.clone()), tx);
-            }
-            Err(e) => {
-                tracing::error!("Error submitting job: {:?}", e);
-                tx.close_channel();
-            }
-        }
-    }
-
-    async fn monitor_jobs(&mut self) -> Receiver<Job> {
-        let (mut tx, rx) = channel::<Job>(3072);
-        let mut stream = self.peer.client.send("ack".as_bytes().to_vec(), self.manager.clone(), "/monitor/v1".to_string(), 0).await.expect("monitor jobs");
-
-        spawn(async move {
-            loop {
-                let mut size_buffer = [0u8; 4];
-                if let Err(e) = stream.read_exact(&mut size_buffer).await {
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                        tx.close_channel();
-                        break;
-                    }
-                    tracing::error!("Error reading size: {:?}", e);
-                    continue;
-                }
-                let size = u32::from_be_bytes(size_buffer);
-                let mut message_buffer = vec![0u8; size as usize];
-                stream.read_exact(&mut message_buffer).await.expect("can't read message");
-                let job = deserialize_from_slice::<Job>(&message_buffer).expect("can't deserialize job");
-                tx.send(job).await.expect("can't send job to monitor");
-            }
-        });
-
-        rx
-    }
-}
+use futures::channel::mpsc::{self, Sender, Receiver};
 
 #[derive(Clone)]
 pub struct DomainCluster {
-    sender: Sender<Command>,
-    pub peer: Networking,
+    command_tx: Sender<DomainCommand>,
     pub manager_id: String,
+    pub peer: Networking,
+}
+
+enum DomainCommand {
+    SubmitJob(JobRequest, TaskUpdatesSink, oneshot::Sender<Result<(), DomainError>>),
+    MonitorJobs(TaskUpdatesSink, oneshot::Sender<Result<(), DomainError>>),
+    OnEvent(event::Event),
+    OnTaskUpdate(Task),
+}
+
+struct InnerDomainCluster {
+    manager_id: String,
+    manager: String,
+    peer: Networking,
     name: String,
+    command_rx: Receiver<DomainCommand>,
+    jobs: Arc<Mutex<HashMap<String, TaskUpdatesSink>>>,
+    capabilities: Vec<Capability>,
 }
 
 impl DomainCluster {
-    pub async fn join(
-        manager_addr: &str,
-        node_name: &str,
+    pub fn init(manager_id: String, manager: String, peer: Networking, name: String, capabilities: Vec<Capability>) -> Self {
+        let (tx, rx) = mpsc::channel(100);
+        let mut inner = InnerDomainCluster {
+            manager_id: manager_id.clone(),
+            manager,
+            peer: peer.clone(),
+            name,
+            command_rx: rx,
+            jobs: Arc::new(Mutex::new(HashMap::new())),
+            capabilities,
+        };
+
+        spawn(async move {
+            inner.run().await;
+        });
+
+        Self {
+            command_tx: tx,
+            manager_id,
+            peer
+        }
+    }
+
+    pub async fn submit_job(&mut self, job: &JobRequest, handler: TaskUpdatesSink) -> Result<(), DomainError> {
+        let (response_tx, response_rx) = oneshot::channel();
+        self.command_tx.send(DomainCommand::SubmitJob(job.clone(), handler, response_tx)).await?;
+        response_rx.await.map_err(|e| DomainError::Cancelled("submit job", e))?
+    }
+
+    pub async fn monitor_jobs(&mut self, handler: TaskUpdatesSink) -> Result<(), DomainError> {
+        let (response_tx, response_rx) = oneshot::channel();
+        self.command_tx.send(DomainCommand::MonitorJobs(handler, response_tx)).await?;
+        response_rx.await.map_err(|e| DomainError::Cancelled("monitor jobs", e))?
+    }
+}
+
+impl InnerDomainCluster {
+    async fn handle_command(&mut self, cmd: DomainCommand) -> Result<(), DomainError> {
+        match cmd {
+            DomainCommand::SubmitJob(job, handler, response) => {
+                let result = async {
+                    let response = request_response::<JobRequest, SubmitJobResponse>(
+                        self.peer.client.clone(), 
+                        &self.manager_id,
+                        SUBMIT_JOB_PROTOCOL_V1,
+                        &job,
+                        0
+                    ).await?;
+                    
+                    let job_id = response.job_id.clone();
+                    self.peer.client.subscribe(job_id.clone()).await?;
+                    tracing::debug!("Subscribed to job: {:?}", job_id);
+                    let mut jobs = self.jobs.lock().await;
+                    jobs.insert(job_id, handler);
+                    Ok(())
+                }.await;
+                let _ = response.send(result);
+                Ok(())
+            }
+
+            DomainCommand::MonitorJobs(handler, response) => {
+                let result = async {
+                    let mut stream = self.peer.client.send(
+                        "ack".as_bytes().to_vec(),
+                        &self.manager_id,
+                        "/monitor/v1",
+                        0
+                    ).await?;
+
+                    spawn(async move {
+                        loop {
+                            match read_prefix_size_message::<task::Task, _>(&mut stream).await {
+                                Ok(task) => {
+                                    handler.on_task_update(&task);
+                                }
+                                Err(e) => {
+                                    if let quick_protobuf::Error::Io(e) = e {
+                                        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                                            break;
+                                        }
+                                        tracing::error!("Error loading tasks update from domain manager: {:?}", e);
+                                        break;
+                                    }
+                                    tracing::error!("Error loading tasks update from domain manager: {:?}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    Ok(())
+                }.await;
+                let _ = response.send(result);
+                Ok(())
+            }
+
+            DomainCommand::OnEvent(e) => {
+                match e {
+                    event::Event::NodeUnregistered { node_id } => {
+                        if node_id == self.manager_id {
+                            let name = self.name.clone();
+                            let jobs = self.jobs.clone();
+                            let manager_id = self.manager_id.clone();
+                            let client = self.peer.client.clone();
+                            let capabilities = self.capabilities.clone();
+                            let peer_id = self.peer.id.clone();
+
+                            spawn(async move {
+                                use posemesh_utils::INFINITE_RETRIES;
+
+                                let mut jobs = jobs.lock().await;
+                                jobs.clear();
+
+                                let _ = posemesh_utils::retry_with_delay(move || {
+                                    let manager_id = manager_id.clone();
+                                    let client = client.clone();
+                                    let name = name.clone();
+                                    let capabilities = capabilities.clone();
+                                    let peer_id = peer_id.clone();
+                                    Box::pin(async move {
+                                        join(&manager_id, client, &peer_id, &name, &capabilities).await
+                                    })
+                                },
+                                    INFINITE_RETRIES,
+                                    Duration::from_secs(60)
+                                ).await;
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+
+            DomainCommand::OnTaskUpdate(t) => {
+                let mut jobs = self.jobs.lock().await;
+                if let Some(handler) = jobs.get_mut(&t.job_id) {
+                    handler.on_task_update(&t);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn run(&mut self) {
+        while let Some(cmd) = self.command_rx.next().await {
+            if let Err(e) = self.handle_command(cmd).await {
+                tracing::error!("Error handling command: {:?}", e);
+            }
+        }
+    }
+}
+
+#[async_trait]
+pub trait EventHandler: Send {
+    fn handle_event(&mut self, e: event::Event);
+    fn handle_task_update(&mut self, t: &Task); 
+}
+
+impl EventHandler for DomainCluster {
+    fn handle_event(&mut self, e: event::Event) {
+        let _ = self.command_tx.try_send(DomainCommand::OnEvent(e));
+    }
+
+    fn handle_task_update(&mut self, t: &Task) {
+        let _ = self.command_tx.try_send(DomainCommand::OnTaskUpdate(t.clone()));
+    }
+}
+
+pub fn validate_pubsub_message(topic: &str, message: &[u8], from: Option<PeerId>) -> Result<Task, DomainError> {
+    let mut task = deserialize_from_slice::<task::Task>(&message)?;
+    if from.is_none() {
+        tracing::error!("Received task update from unknown peer: {:?}", task);
+        return Err(DomainError::InvalidPubsubMessage("task update from unknown peer"));
+    }
+    if task.receiver.get_or_insert("".to_string()).to_string() != from.unwrap().to_string() && task.sender != from.unwrap().to_string() {
+        tracing::error!("Received task update for wrong receiver: {:?}", task);
+        return Err(DomainError::InvalidPubsubMessage("task update for wrong receiver")); 
+    }
+    if task.job_id != topic.to_string() {
+        tracing::error!("Received task update for wrong job: {:?}", task);
+        return Err(DomainError::InvalidPubsubMessage("task update for wrong job"));
+    }
+    Ok(task)
+}
+
+#[derive(Clone)]
+pub struct PosemeshSwarm {
+    pub peer: Networking,
+
+    addresses: Arc<Mutex<Vec<String>>>,
+    expected_addresses_length: usize,
+    addresses_ready: Arc<Mutex<Option<oneshot::Sender<Vec<String>>>>>,
+    #[cfg(not(target_family="wasm"))]
+    disco_client: Arc<Mutex<Option<DiscoClient>>>,
+
+    domains: Arc<Mutex<HashMap<String, Box<dyn EventHandler>>>>,
+    capabilities: Arc<Mutex<Vec<Capability>>>,
+}
+
+impl PosemeshSwarm {
+    #[cfg(not(target_family="wasm"))]
+    pub async fn as_node(&mut self, disco_url: &str, wallet_private_key: Option<&str>, wallet_private_key_path: Option<&str>, registration_secret: &str, capabilities: &[Capability]) -> Result<Vec<impl futures::Stream<Item = (PeerId, impl AsyncStream)>>, DomainError> {
+        let disco_client = DiscoClient::new(wallet_private_key, wallet_private_key_path, disco_url, registration_secret).await?;
+        self.disco_client = Arc::new(Mutex::new(Some(disco_client)));
+
+        self.with_capabilities(capabilities).await
+    }
+    pub async fn init(
         join_as_relay: bool,
         port: u16,
         enable_websocket: bool,
         enable_webrtc: bool,
-        private_key: Option<Vec<u8>>,
+        private_key: Option<String>,
         private_key_path: Option<String>,
-        relays: Vec<String>
-    ) -> Result<DomainCluster, DomainError> {
+        relays: Vec<String>,
+    ) -> Result<PosemeshSwarm, DomainError> {
         let networking = Networking::new(&NetworkingConfig {
-            bootstrap_nodes: vec![manager_addr.to_string()],
+            bootstrap_nodes: vec![],
             relay_nodes: relays,
             private_key,
             private_key_path,
@@ -218,76 +363,142 @@ impl DomainCluster {
             enable_websocket,
             enable_webrtc,
             namespace: None,
-        }).unwrap();
-        let domain_manager_id = manager_addr.split("/").last().unwrap().to_string();
-
-        let (tx, rx) = channel::<Command>(3072);
-        let dc = InnerDomainCluster {
-            manager: domain_manager_id.clone(),
-            peer: networking.clone(),
-            jobs: HashMap::new(),
-            command_rx: rx,
-        };
-        dc.init();
-        let capabilities = &vec![];
-
-        let networking_clone = networking.clone();
-        let id = networking.id;
-        tracing::info!("Trying to join cluster {domain_manager_id}");
-        join(&domain_manager_id, networking.client, &id, node_name, capabilities).await?;
-        tracing::info!("Managed to join cluster {domain_manager_id}");
-        Ok(DomainCluster {
-            sender: tx,
-            peer: networking_clone,
-            manager_id: domain_manager_id.clone(),
-            name: node_name.to_string(),
-        })
-    }
-
-    pub async fn with_capabilities(&mut self, capabilities: &[Capability]) -> Result<Vec<impl futures::Stream<Item = (PeerId, impl AsyncStream)>>, DomainError> {
-        join(&self.manager_id, self.peer.client.clone(), &self.peer.id, &self.name, capabilities).await?;
-        let mut streams = Vec::new();
-        for capability in capabilities {
-            let stream = self.peer.client.set_stream_handler(&capability.endpoint).await?;
-            streams.push(stream);
+        })?;
+        #[cfg(not(target_family = "wasm"))]
+        let mut expected_addresses_len: usize = 2;
+        #[cfg(target_family = "wasm")]
+        let mut expected_addresses_len: usize = 0;
+        if enable_webrtc {
+            expected_addresses_len+=1;
         }
-        Ok(streams)
-    }
+        if enable_websocket {
+            expected_addresses_len+=1;
+        }
 
-    pub async fn submit_job(&mut self, job: &JobRequest) -> Receiver<TaskUpdateEvent> {
-        let (tx, rx) = oneshot::channel::<bool>();
-        let (updates_tx, updates_rx) = channel::<TaskUpdateEvent>(3072);
-        let cmd = Command::SubmitJob {
-            job: job.clone(),
-            response: tx,
-            task_updates_channel: updates_tx,
+        let dc = PosemeshSwarm {
+            peer: networking,
+            #[cfg(not(target_family="wasm"))]
+            disco_client: Arc::new(Mutex::new(None)),
+            addresses: Arc::new(Mutex::new(Vec::new())),
+            expected_addresses_length: expected_addresses_len,
+            addresses_ready: Arc::new(Mutex::new(None)),
+            domains: Arc::new(Mutex::new(HashMap::new())),
+            capabilities: Arc::new(Mutex::new(Vec::new()))
         };
-        self.sender.send(cmd).await.unwrap_or_else(|_| panic!("can't send command {}", job.name));
-        let _ = rx.await.unwrap_or_else(|_| panic!("can't wait for response {}", job.name));
-        updates_rx
+
+        dc.clone().listen().await;
+        Ok(dc)
     }
 
-    pub async fn monitor_jobs(&mut self) -> Receiver<Job> {
-        let (tx, rx) = oneshot::channel::<Receiver<Job>>();
-        let cmd = Command::MonitorJobs {
-            response: tx,
-        };
-        self.sender.send(cmd).await.expect("can't send command");
-        rx.await.expect("can't wait for response")
-    }
-
-    pub async fn fail_task(&mut self, task: &task::Task, err: Error) {
-        let mut t = task.clone();
-        t.status = Status::FAILED;
-        t.output = Some(task::Any {
-            type_url: "Error".to_string(),
-            value: serialize_into_vec(&task::Error {
-                message: format!("{:?}", err),
-            }).unwrap(),
+    async fn listen(mut self) -> Vec<String> {
+        let (tx, rx) = oneshot::channel::<Vec<String>>();
+        let event_receiver = self.peer.event_receiver.clone();
+        if self.expected_addresses_length > 0 {
+            self.addresses_ready = Arc::new(Mutex::new(Some(tx)));
+        } else {
+            let _ = tx.send(vec![]);
+        }
+        #[cfg(not(target_family = "wasm"))]
+        spawn(async move {
+            loop {
+                let mut event_receiver = event_receiver.lock().await;
+                tokio::select! {
+                    event = event_receiver.next() => self.handle_event(event).await,
+                    else => break,
+                }
+            }
         });
-        self.sender.send(Command::UpdateTask  {
-            task: t,
-        }).await.expect("can't send command"); 
+
+        #[cfg(target_family = "wasm")]
+        spawn(async move {
+            loop {
+                let event = {
+                    let mut event_receiver = event_receiver.lock().await;
+                    event_receiver.next().await
+                };
+                self.handle_event(event).await;
+            }
+        });
+
+        rx.await.unwrap()
     }
-    // pub async fn request_response(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, Box<dyn std::error::Error + Send + Sync>>
+
+    async fn handle_event(&mut self, e: Option<event::Event>) {
+        match e {
+            Some(event::Event::PubSubMessageReceivedEvent { topic, message, from }) => {
+                let task = validate_pubsub_message(&topic.to_string(), &message, from);
+                if let Ok(task) = task {
+                    let domains = self.domains.clone();
+                    spawn(async move {
+                        let mut domains = domains.lock().await;
+                        domains.iter_mut().for_each(|(_, d)| d.handle_task_update(&task));
+                    });
+                }
+            }
+            Some(event::Event::NewAddress { address }) => {
+                let mut addresses = self.addresses.lock().await;
+                addresses.push(address.to_string());
+                if addresses.len() == self.expected_addresses_length {
+                    if let Some(tx) = self.addresses_ready.lock().await.take() {
+                        let _ = tx.send(addresses.clone());
+                    }
+                }
+            }
+            Some(e) => {
+                let domains = self.domains.clone();
+                spawn(async move {
+                    let mut domains = domains.lock().await;
+                    domains.iter_mut().for_each(|(_, d)| d.handle_event(e.clone()));
+                });
+            }
+            _ => {}
+        }
+    }
+
+    #[cfg(not(target_family="wasm"))]
+    async fn with_capabilities(&mut self, capabilities: &[Capability]) -> Result<Vec<impl futures::Stream<Item = (PeerId, impl AsyncStream)>>, DomainError> {
+        let mut disco_client_lock = self.disco_client.lock().await;
+        if let Some(disco_client) = disco_client_lock.as_mut() {
+            // TODO: can't add capabilities here, because they are using different protobuf builders
+            disco_client.register_compatible(self.addresses.lock().await.clone(), &vec![]).await?;
+            drop(disco_client_lock);
+            let mut streams = Vec::new();
+            for capability in capabilities {
+                let stream = self.peer.client.set_stream_handler(&capability.endpoint).await?;
+                streams.push(stream);
+            }
+            Ok(streams)
+        } else {
+            Err(DomainError::RegisterCapabilityError("Disco client not found"))
+        }
+    }
+    // TODO: should take domain_id, and disco will find the manager by id
+    pub async fn join_domain(&mut self, domain_manager_id: &str, dc: impl EventHandler + 'static) -> Result<(), DomainError> {  
+        let mut domains = self.domains.lock().await;
+        domains.insert(domain_manager_id.to_string(), Box::new(dc));
+
+        Ok(())
+    }
+}
+
+pub async fn join_domain(swarm: &mut PosemeshSwarm, domain_manager: &str, name: &str) -> Result<DomainCluster, DomainError> {
+    let domain_manager_id = if domain_manager.split('/').last().is_none() {
+        return Err(DomainError::InvalidManagerAddress(domain_manager.to_string()));
+    } else {
+        domain_manager.split('/').last().unwrap()
+    };
+
+    let peer = swarm.peer.clone();
+
+    let capabilities = swarm.capabilities.clone();
+    let capabilities = capabilities.lock().await;
+    let dc = DomainCluster::init(domain_manager_id.to_string(), domain_manager.to_string(), peer.clone(), name.to_string(), capabilities.clone());
+    let mut parsed_addresses = HashMap::new();
+    parsed_addresses.insert(domain_manager_id.to_string(), vec![domain_manager.to_string()]);
+    swarm.peer.client.bootstrap(parsed_addresses).await?;
+    sleep(Duration::from_secs(10)).await;
+    let _ = join(domain_manager_id, peer.client.clone(), &peer.id, name, &capabilities).await?;
+    drop(capabilities);
+    swarm.join_domain(domain_manager_id, dc.clone()).await?;
+    Ok(dc)
 }

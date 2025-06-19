@@ -2,14 +2,11 @@ syntax = "proto2";
 
 package discovery;
 
-message Capability {
-    required string endpoint = 1;
-    required int32 capacity = 2;
-}
+import "../common/common.proto";
 
 message Node {
     required string id = 1;
-    repeated Capability capabilities = 2;
+    repeated common.Capability capabilities = 2;
     required string name = 3;
 }
 

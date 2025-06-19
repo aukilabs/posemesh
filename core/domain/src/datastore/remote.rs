@@ -12,7 +12,7 @@ use std::{collections::HashSet, future::Future, sync::Arc};
 use async_trait::async_trait;
 use posemesh_networking::client::{Client, TClient};
 use libp2p::Stream;
-use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::common::{Datastore, DomainError}, message::{handshake, handshake_then_prefixed_content, prefix_size_message, read_prefix_size_message}, protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Any, ConsumeDataInputV1, Status, Task}}};
+use crate::{capabilities::domain_data::{CONSUME_DATA_PROTOCOL_V1, PRODUCE_DATA_PROTOCOL_V1}, cluster::{new_task_update_duplex, DomainCluster, TaskUpdatesStream}, datastore::common::{Datastore, DomainError}, message::{handshake, handshake_then_prefixed_content, prefix_size_message, read_prefix_size_message}, protobuf::{domain_data, task::{self, mod_ResourceRecruitment as ResourceRecruitment, Any, ConsumeDataInputV1, Status, Task}}};
 use super::common::{hash_chunk, DataConsumer, DomainData, ReliableDataProducer, CHUNK_SIZE};
 use futures::{channel::oneshot, lock::Mutex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, StreamExt};
 use rs_merkle::{algorithms::Sha256, MerkleTree};
@@ -223,10 +223,10 @@ impl DataConsumer for TaskHandler {
         if let Some(done_rx) = self.done_rx.take() {
             match done_rx.await {
                 Ok(res) => res,
-                Err(e) => Err(DomainError::Cancelled("TaskHandler has been cancelled".to_string(), e)),
+                Err(e) => Err(DomainError::Cancelled("TaskHandler", e)),
             }
         } else {
-            Err(DomainError::Cancelled("TaskHandler is not initialized".to_string(), Canceled))
+            Err(DomainError::Cancelled("TaskHandler", Canceled))
         }
     }
 }
@@ -327,49 +327,37 @@ impl Datastore for RemoteDatastore {
             nonce: Uuid::new_v4().to_string(),
         };
 
-        let mut download_task_recv = self.cluster.submit_job(job).await;
+        let (task_updates_sink, mut task_updates_stream) = new_task_update_duplex();
+        self.cluster.submit_job(job, task_updates_sink).await?;
         let (tx, rx) = oneshot::channel::<Result<TaskHandler, DomainError>>();
 
         spawn(async move {
-            if let Some(update) = download_task_recv.next().await {
-                match update {
-                    TaskUpdateEvent {
-                        result: TaskUpdateResult::Ok(mut task),
-                        ..
-                    } => match task.status {
-                        Status::PENDING => {
-                            task.status = Status::STARTED;
-                            if let Err(e) = peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await {
-                                tracing::error!("Failed to publish message: {:?}", e);
-                            }
-                            let download_task = download_data(peer.clone(), domain_id.clone(), metadata_only, writer, task, data).await;
-                            tx.send(download_task).expect("Failed to send completion signal");
-                            return;
-                        },
-                        Status::FAILED => {
-                            tracing::error!("Failed to download data: {:?}", task);
-                            tx.send(Err(DomainError::Cancelled("Failed to download data".to_string(), Canceled))).expect("Failed to send completion signal");
-                            return;
-                        },
-                        _ => {
-                            tracing::debug!("Task status: {:?}", task.status);
-                            tx.send(Err(DomainError::Cancelled("We are not supposed to handle this status".to_string(), Canceled))).expect("Failed to send completion signal");
-                            return;
+            if let Some(mut task) = task_updates_stream.next().await {
+                match task.status {
+                    Status::PENDING => {
+                        task.status = Status::STARTED;
+                        if let Err(e) = peer.publish(task.job_id.clone(), serialize_into_vec(&task).expect("Failed to serialize message")).await {
+                            tracing::error!("Failed to publish message: {:?}", e);
                         }
-                    }
-                    TaskUpdateEvent {
-                        result: TaskUpdateResult::Err(e),
-                        ..
-                    } => {
-                        tracing::error!("Task update failure: {:?}", e);
-                        tx.send(Err(e)).expect("Failed to send completion signal");
+                        let download_task = download_data(peer.clone(), domain_id.clone(), metadata_only, writer, task, data).await;
+                        tx.send(download_task).expect("Failed to send completion signal");
+                        return;
+                    },
+                    Status::FAILED => {
+                        tracing::error!("Failed to download data: {:?}", task);
+                        tx.send(Err(DomainError::Cancelled("Failed to download data", Canceled))).expect("Failed to send completion signal");
+                        return;
+                    },
+                    _ => {
+                        tracing::debug!("Task status: {:?}", task.status);
+                        tx.send(Err(DomainError::Cancelled("We are not supposed to handle this status", Canceled))).expect("Failed to send completion signal");
                         return;
                     }
                 }
+            } else {
+                tracing::debug!("task update channel is closed");
+                tx.send(Err(DomainError::Cancelled("Task update channel is closed", Canceled))).expect("Failed to send completion signal");
             }
-
-            tracing::debug!("task update channel is closed");
-            tx.send(Err(DomainError::Cancelled("Task update channel is closed".to_string(), Canceled))).expect("Failed to send completion signal");
         });
 
         // TODO: handle more statuses for example domain manager cancel this task by sending a Failed status when it runs out of credits
@@ -380,12 +368,15 @@ impl Datastore for RemoteDatastore {
         match res {
             Ok(Ok(download_task)) => Ok(Box::new(download_task)),
             Ok(Err(e)) => Err(e),
-            Err(e) => Err(DomainError::Cancelled("Failed to download data".to_string(), e)),
+            Err(e) => Err(DomainError::Cancelled("Failed to download data", e)),
         }
     }
 
     async fn upsert(&mut self, domain_id: String) -> Result<Box<dyn ReliableDataProducer>, DomainError>{
-        let mut upload_job_recv = self.cluster.submit_job(&task::JobRequest {
+        let (task_updates_sink, mut task_updates_stream) = new_task_update_duplex();
+
+        let mut peer = self.cluster.peer.client.clone();
+        let job = &task::JobRequest {
             nonce: Uuid::new_v4().to_string(),
             domain_id: domain_id.clone(),
             name: "stream uploading recordings".to_string(),
@@ -409,19 +400,16 @@ impl Datastore for RemoteDatastore {
                     receiver: None,
                 }
             ],
-        }).await;
+        };
+        self.cluster.submit_job(job, task_updates_sink).await?;
 
-        let mut peer = self.cluster.peer.client.clone();
         let (tx, rx) = oneshot::channel::<Option<RemoteReliableDataProducer>>();
         let domain_id = domain_id.clone();
         spawn(async move{
             loop {
-                let update = upload_job_recv.next().await;
+                let update = task_updates_stream.next().await;
                 match update {
-                    Some(TaskUpdateEvent {
-                        result: TaskUpdateResult::Ok(mut task),
-                        ..
-                    }) => match task.status {
+                    Some(mut task) => match task.status {
                         Status::PENDING => {
                             task.status = Status::STARTED;
 
@@ -455,13 +443,6 @@ impl Datastore for RemoteDatastore {
                         tracing::debug!("task update channel is closed");
                         break;
                     }
-                    Some(TaskUpdateEvent {
-                        result: TaskUpdateResult::Err(e),
-                        ..
-                    }) => {
-                        tracing::error!("Task update failure: {:?}", e);
-                        break;
-                    }
                 }
             }
         });
@@ -470,7 +451,7 @@ impl Datastore for RemoteDatastore {
         if let Ok(Some(producer)) = producer {
             Ok(Box::new(producer))
         } else {
-            Err(DomainError::Cancelled("Failed to upload data".to_string(), Canceled))
+            Err(DomainError::Cancelled("Failed to upload data", Canceled))
         }
     }
 }

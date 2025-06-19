@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::{error::DiscoveryError};
 
-fn setup_ws(url: &str) -> Result<web_sys::WebSocket, DiscoveryError> {
+pub async fn setup_ws(url: &str, credentials: &str) -> Result<web_sys::WebSocket, DiscoveryError> {
     use wasm_bindgen::{prelude::Closure, JsCast};
     use web_sys::MessageEvent;
     let ws = web_sys::WebSocket::new(url)
@@ -33,13 +33,4 @@ fn setup_ws(url: &str) -> Result<web_sys::WebSocket, DiscoveryError> {
     onerror_callback.forget();
 
     Ok(ws)
-}
-
-#[wasm_bindgen]
-pub struct DiscoClient {
-    ws: Option<web_sys::WebSocket>
-}
-
-#[wasm_bindgen]
-impl DiscoClient {
 }

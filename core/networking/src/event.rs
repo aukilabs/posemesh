@@ -1,7 +1,7 @@
 use libp2p::{gossipsub::TopicHash, Multiaddr, PeerId};
 use std::error::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Event {
     NodeUnregistered {
         node_id: String

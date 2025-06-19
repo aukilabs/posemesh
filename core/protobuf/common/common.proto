@@ -1,0 +1,8 @@
+syntax = "proto2";
+
+package common;
+
+message Capability {
+    required string endpoint = 1;
+    required int32 capacity = 2;
+}

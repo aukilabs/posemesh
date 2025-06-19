@@ -1,5 +1,5 @@
 #[cfg(target_family="wasm")]
-mod wasm;
+pub mod wasm;
 
 mod protobuf;
 pub mod error;

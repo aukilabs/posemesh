@@ -1,11 +1,19 @@
-use base64::{alphabet::STANDARD, engine::general_purpose, Engine};
-use libp2p_identity::secp256k1::Keypair;
+use base64::{engine::general_purpose, Engine};
+use posemesh_utils::crypto::{parse_secp256k1_private_key, Secp256k1KeyPair};
 use prost::Message;
+#[cfg(not(target_family = "wasm"))]
 use tokio::{net::TcpStream, spawn};
+#[cfg(not(target_family = "wasm"))]
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+#[cfg(target_family = "wasm")]
+use wasm_bindgen_futures::spawn_local as spawn;
+// #[cfg(target_family = "wasm")]
+// use crate::wasm::setup_ws;
+
 use crate::{error::DiscoveryError, protobuf::common::Capability, utils::{handle_message, new_register_node_request_v1}};
 use futures::{stream::SplitSink, StreamExt, SinkExt};
 
+#[cfg(not(target_family = "wasm"))]
 async fn setup_ws(url: &str, registration_credentials: &str) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, DiscoveryError> {
     use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
 
@@ -17,13 +25,15 @@ async fn setup_ws(url: &str, registration_credentials: &str) -> Result<WebSocket
 }
 
 pub struct DiscoClient {
+    #[cfg(not(target_family = "wasm"))]
     ws: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, tokio_tungstenite::tungstenite::Message>,
-    keypair: Keypair,
+    keypair: Secp256k1KeyPair,
     centralized_id: String,
 }
 
 impl DiscoClient {
-    pub async fn new(keypair: &Keypair, disco_url: &str, registration_credentials: &str) -> Result<Self, DiscoveryError> {
+    pub async fn new(private_key: Option<&str>, private_key_path: Option<&str>, disco_url: &str, registration_credentials: &str) -> Result<Self, DiscoveryError> {
+        let keypair = parse_secp256k1_private_key(private_key, private_key_path)?;
         let decoded = general_purpose::STANDARD.decode(registration_credentials).map_err(|_| DiscoveryError::InvalidCredentials)?;
         let decoded_str = String::from_utf8(decoded).map_err(|_| DiscoveryError::InvalidCredentials)?;
         let parts: Vec<&str> = decoded_str.split(':').collect();
@@ -32,7 +42,7 @@ impl DiscoClient {
         }
         let centralized_id = parts[0].to_string();
         
-        let ws = setup_ws(disco_url, registration_credentials).await?;
+        let ws = setup_ws(&format!("{}/ws/v1/connect", disco_url), registration_credentials).await?;
         let (writer, mut reader) = ws.split();
         spawn(async move {
             while let Some(msg) = reader.next().await {
@@ -40,6 +50,14 @@ impl DiscoClient {
                     Ok(msg) => {
                         if msg.is_close() {
                             tracing::warn!("Disco connection closed: {:?}", msg);
+                            continue;
+                        }
+                        if msg.is_ping() {
+                            tracing::info!("Received ping");
+                            continue;
+                        }
+                        if msg.is_pong() {
+                            tracing::info!("Received pong");
                             continue;
                         }
                         if !msg.is_binary() {
@@ -56,7 +74,7 @@ impl DiscoClient {
                 }
             }
         });
-        Ok(DiscoClient { ws: writer, keypair: keypair.clone(), centralized_id })
+        return Ok(DiscoClient { ws: writer, keypair, centralized_id });
     }
     pub async fn register_compatible(&mut self, addrs: Vec<String>, capabilities: &[Capability]) -> Result<(), DiscoveryError> {
         let message = new_register_node_request_v1(&self.centralized_id, &self.keypair, addrs);

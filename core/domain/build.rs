@@ -25,7 +25,7 @@ fn main() {
 
     let out_dir = Path::new("./src").join("protobuf");
 
-    let in_dir = PathBuf::from("../protobuf");
+    let in_dir = PathBuf::from("../protobuf").join("domain-cluster");
     // Re-run this build.rs if the protos dir changes (i.e. a new file is added)
     println!("cargo:rerun-if-changed={}", in_dir.to_str().unwrap());
 
@@ -39,6 +39,19 @@ fn main() {
         let path = entry.unwrap().path();
         if path.extension() == proto_ext {
             // Re-run this build.rs if any of the files in the protos dir change
+            println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
+            protos.push(path);
+        }
+    }
+
+    // Add common proto files
+    let common_dir = PathBuf::from("../protobuf").join("common");
+    println!("cargo:rerun-if-changed={}", common_dir.to_str().unwrap());
+    
+    let common_dir_entries = fs::read_dir(common_dir.clone()).unwrap();
+    for entry in common_dir_entries {
+        let path = entry.unwrap().path();
+        if path.extension() == proto_ext {
             println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
             protos.push(path);
         }
