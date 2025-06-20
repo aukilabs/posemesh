@@ -57,7 +57,7 @@ features = ["wasm_js"]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = ["fs"]
+default = []
 c = []
 fs = ["dep:tokio-postgres"]
 

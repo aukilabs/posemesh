@@ -7,7 +7,7 @@ use posemesh_runtime::get_runtime;
 
 use crate::cluster::DomainCluster;
 use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer, DomainError as r_DomainError};
-use crate::binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer};
+use crate::binding_helper::{init_r_remote_storage, initialize_consumer, init_r_domain_cluster, DataConsumer};
 use crate::datastore::remote::RemoteDatastore;
 use crate::protobuf::domain_data::UpsertMetadata;
 use crate::protobuf::domain_data::{self, Data};
@@ -224,7 +224,7 @@ pub extern "C" fn init_domain_cluster(domain_manager_addr: *const c_char, name: 
         }
     };
     let cluster = get_runtime().block_on(async move {
-        return DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, None, None, nodes).await;
+        init_r_domain_cluster(domain_manager_addr, name, None, None, nodes).await
     }).expect("failed to join cluster");
     
     Box::into_raw(Box::new(cluster))

@@ -4,7 +4,7 @@ use quick_protobuf::serialize_into_vec;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer}, cluster::{join_domain, new_task_update_duplex, DomainCluster as r_DomainCluster, PosemeshSwarm as r_PosemeshSwarm}, datastore::{common::{data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::{init_r_remote_storage, init_r_domain_cluster, initialize_consumer, DataConsumer}, cluster::{new_task_update_duplex, DomainCluster as r_DomainCluster, PosemeshSwarm as r_PosemeshSwarm}, datastore::{common::{data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -112,14 +112,9 @@ pub struct DomainCluster {
 #[wasm_bindgen]
 pub fn join_cluster(domain_manager_addr: String, name: String, private_key: Option<String>, private_key_path: Option<String>) -> Promise {
     let future = async move {
-        match r_PosemeshSwarm::init(false, 0, false, false, private_key, private_key_path, vec![]).await {
-            Ok(mut swarm) => {
-                match join_domain(&mut swarm, &domain_manager_addr, &name).await {
-                    Ok(cluster) => Ok(JsValue::from(DomainCluster { inner: Arc::new(Mutex::new(cluster)) })),
-                    Err(e) => Err(JsValue::from_str(&format!("failed to join cluster: {}", e)))
-                }
-            }
-            Err(e) => Err(JsValue::from_str(&format!("failed to init swarm: {}", e)))
+        match init_r_domain_cluster(domain_manager_addr, name, private_key, private_key_path, vec![]).await {
+            Ok(cluster) => Ok(JsValue::from(DomainCluster { inner: Arc::new(Mutex::new(cluster)) })),
+            Err(e) => Err(JsValue::from_str(&format!("failed to join cluster: {}", e)))
         }
     };
     future_to_promise(future)

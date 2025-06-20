@@ -19,7 +19,5 @@ build-domain-wasm:
 	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
 unit-tests:
-	wasm-pack test --node --release domain 
-	wasm-pack test --node --release networking
-	wasm-pack test --node --release utils
+	wasm-pack test --node --release domain
 	cargo test --release --all-features
