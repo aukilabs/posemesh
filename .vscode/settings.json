@@ -25,5 +25,9 @@
         "**/sdk/platform/Web/src/**/*.c": "c",
         "**/sdk/platform/Web/src/**/*.cpp": "cpp"
     },
-    "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
+    "rust-analyzer.cargo.extraEnv": {
+        "PROTOC": "/opt/homebrew/bin/protoc",
+        "PATH": "/opt/homebrew/bin:${env:PATH}"
+    },
+    // "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
 }

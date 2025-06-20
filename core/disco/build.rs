@@ -1,6 +1,11 @@
 use std::{path::{Path, PathBuf}, fs};
 
 fn main() {
+    // Only run protobuf generation when not in release mode
+    if std::env::var("PROFILE").unwrap_or_default() == "release" {
+        return;
+    }
+
     let out_dir = Path::new("./src").join("protobuf");
 
     let in_dir = PathBuf::from("../protobuf").join("disco");
@@ -21,7 +26,6 @@ fn main() {
             println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
             protos.push(path.clone());
             mod_rs.push_str(&format!("pub mod {}pb;\n", path.file_stem().unwrap().to_string_lossy().to_string()));
-            // mod_rs.push_str(&format!("  include!(concat!(\"{}\", \"/{}.rs\"));\n", out_dir.as_os_str().to_string_lossy().to_string(), path.file_stem().unwrap().to_string_lossy().to_string()));
         }
     }
 

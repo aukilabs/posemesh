@@ -5,6 +5,11 @@ use pb_rs::{types::FileDescriptor, ConfigBuilder};
 use std::{path::{Path, PathBuf}, fs};
 
 fn main() {
+    // Only run protobuf generation when not in release mode
+    if std::env::var("PROFILE").unwrap_or_default() == "release" {
+        return;
+    }
+
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     cbindgen::Builder::new()
