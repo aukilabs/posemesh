@@ -59,6 +59,8 @@ jobs:
             rust-cache-test-
             
       - name: Run unit tests
+        env:
+          CARGO_HOME: ~/.cargo
         run: make unit-tests
         
   build_apple_frameworks:
