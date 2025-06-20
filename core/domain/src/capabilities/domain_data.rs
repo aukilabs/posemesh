@@ -123,7 +123,7 @@ pub async fn serve_data_v1<S: AsyncStream + 'static, D: Datastore, P: PublicKeyS
             match res {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(e)) => Err(CapabilityError::ProtobufError(e)),
-                Err(e) => Err(CapabilityError::DomainError(DomainError::Cancelled("client cancelled".to_string(), e))),
+                Err(e) => Err(CapabilityError::DomainError(DomainError::Cancelled("libp2p", e))),
             }
         }
     }

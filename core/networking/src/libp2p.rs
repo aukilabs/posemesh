@@ -1,8 +1,7 @@
 use futures::{channel::{mpsc::{self, channel, Receiver}, oneshot}, executor::block_on, lock::Mutex, AsyncWriteExt, SinkExt, StreamExt, FutureExt};
-use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::ParseError, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId}, multiaddr::{Multiaddr, Protocol}, noise, ping, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
+use libp2p::{core::muxing::StreamMuxerBox, dcutr, gossipsub::{self, IdentTopic, SubscriptionError}, identity::{Keypair, ParseError}, kad::{self, store::MemoryStore, GetClosestPeersOk, ProgressStep, QueryId, RoutingUpdate}, multiaddr::{self, Multiaddr, Protocol}, noise, ping, swarm::{behaviour::toggle::Toggle, DialError, InvalidProtocol, NetworkBehaviour, SwarmEvent}, yamux, PeerId, Stream, StreamProtocol, Swarm, Transport, TransportError};
 use posemesh_utils::retry_with_delay;
 use std::{collections::HashMap, error::Error, fmt::{self, Debug, Formatter}, io::{self, Read, Write}, str::FromStr, sync::Arc, time::Duration};
-use rand::{rngs::OsRng, thread_rng};
 use libp2p_stream::{self as stream, AlreadyRegistered, IncomingStreams, OpenStreamError};
 use crate::{client::{self, Client}, event};
 use std::net::{Ipv4Addr, IpAddr};
@@ -57,6 +56,12 @@ pub enum NetworkError {
     InvalidProtocol(#[from] InvalidProtocol),
     #[error("Parse error: {0}")]
     ParseError(#[from] ParseError),
+    #[error("Multiaddr parse error: {0}")]
+    MultiaddrParseError(#[from] multiaddr::Error),
+    #[error("KDHT not enabled")]
+    KadDHTNotEnabled,
+    #[error("Failed to bootstrap")]
+    BootstrapError(&'static str),
 }
 
 fn is_public_ip(ip: IpAddr) -> bool {
@@ -122,7 +127,7 @@ pub struct NetworkingConfig {
     pub bootstrap_nodes: Vec<String>,
     pub relay_nodes: Vec<String>,
     pub enable_mdns: bool,
-    pub private_key: Option<Vec<u8>>,
+    pub private_key: Option<String>,
     pub private_key_path: Option<String>,
     pub enable_kdht: bool,
     pub enable_websocket: bool,
@@ -167,7 +172,7 @@ struct Libp2p {
 }
 
 #[cfg(not(target_family="wasm"))]
-fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
+fn keypair_file(private_key_path: &str) -> libp2p::identity::Keypair {
     let path = Path::new(private_key_path);
     // Check if the keypair file exists
     if let Ok(mut file) = fs::File::open(path) {
@@ -201,18 +206,18 @@ fn keypair_file(private_key_path: &String) -> libp2p::identity::Keypair {
 }
 
 fn parse_or_create_keypair(
-    private_key: Option<Vec<u8>>,
-    private_key_path: Option<String>,
+    private_key: Option<&str>,
+    private_key_path: Option<&str>,
 ) -> libp2p::identity::Keypair {
-    let private_key = private_key.unwrap_or_default();
+    let private_key = private_key.unwrap_or_default().to_string();
     // load private key into keypair
-    if let Ok(keypair) = libp2p::identity::Keypair::ed25519_from_bytes(private_key) {
+    if let Ok(keypair) = libp2p::identity::Keypair::ed25519_from_bytes(private_key.as_bytes().to_vec()) {
         return keypair;
     }
 
     #[cfg(not(target_family="wasm"))]
     if let Some(key_path) = private_key_path {
-        return keypair_file(&key_path);
+        return keypair_file(key_path);
     }
 
     libp2p::identity::Keypair::generate_ed25519()
@@ -229,6 +234,8 @@ async fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehav
         )?
         .with_quic()
         .with_other_transport(|id_keys| {
+            use rand::thread_rng;
+
             Ok(webrtc::tokio::Transport::new(
                 id_keys.clone(),
                 webrtc::tokio::Certificate::generate(&mut thread_rng())?,
@@ -315,12 +322,15 @@ fn build_behavior(key: libp2p::identity::Keypair, cfg: &NetworkingConfig) -> Pos
     
     #[cfg(not(target_family="wasm"))]
     if cfg.enable_relay_server {
+        use rand::rngs::OsRng;
         let mut relay_config = libp2p::relay::Config::default();
         relay_config.max_circuit_bytes = 1024 * 1024 * 1024; // 1GB
         let relay = libp2p::relay::Behaviour::new(key.public().to_peer_id(), relay_config);
         behavior.relay = Some(relay).into();
         behavior.autonat_server = Some(libp2p::autonat::v2::server::Behaviour::new(OsRng)).into();
     } else {
+        use rand::rngs::OsRng;
+
         behavior.autonat_client = Some(libp2p::autonat::v2::client::Behaviour::new(OsRng,libp2p::autonat::v2::client::Config::default())).into();
         behavior.dcutr = Some(libp2p::dcutr::Behaviour::new(key.public().to_peer_id())).into();
     }
@@ -385,9 +395,7 @@ fn enable_webrtc(port: u16) -> Multiaddr {
 
 impl Libp2p {
     pub async fn new(cfg: &NetworkingConfig, command_receiver: mpsc::Receiver<client::Command>, event_sender: mpsc::Sender<event::Event>) -> Result<String, NetworkError> {
-        let private_key = cfg.private_key.clone();
-        let key = parse_or_create_keypair(private_key, cfg.private_key_path.clone());
-
+        let key = parse_or_create_keypair(cfg.private_key.as_deref(), cfg.private_key_path.as_deref());
         let behaviour = build_behavior(key.clone(), cfg);
 
         let mut swarm = build_swarm(key.clone(), behaviour).await.map_err(|e| NetworkError::SwarmInitializationFailed(e))?;
@@ -452,7 +460,6 @@ impl Libp2p {
     }
 
     async fn run(mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        tracing::info!("Starting networking");
         
         #[cfg(not(target_family="wasm"))]
         loop {
@@ -563,7 +570,14 @@ impl Libp2p {
             SwarmEvent::NewListenAddr { address, .. } => {
                 let local_peer_id = *self.swarm.local_peer_id();
                 let address = address.clone().with(Protocol::P2p(local_peer_id));
-                self.event_sender.send(event::Event::NewAddress { address: address.clone() }).await.expect("failed to send new address");
+                
+                if address.iter().any(|p| match p {
+                    Protocol::Ip4(ip) => ip.is_loopback(),
+                    Protocol::Ip6(ip) => ip.is_loopback(),
+                    _ => false
+                }) {
+                    self.event_sender.send(event::Event::NewAddress { address: address.clone() }).await.expect("failed to send new address");
+                }
                 println!("Local node is listening on {:?}", address);
             }
             SwarmEvent::ConnectionEstablished {
@@ -749,6 +763,24 @@ impl Libp2p {
                 };
                 let _ = cancel_sender.send(());
                 let _ = sender.send(());
+            }
+            client::Command::Bootstrap { addresses, sender } => {
+                if let Some(kdht) = self.swarm.behaviour_mut().kdht.as_mut() {
+                    for (peer_id, addrs) in addresses {
+                        for addr in addrs {
+                            let res = kdht.add_address(&peer_id, addr);
+                            if RoutingUpdate::Failed == res {
+                                let _ = sender.send(Err(NetworkError::BootstrapError("Failed to bootstrap")));
+                                return;
+                            }
+                        }
+                    }
+                    
+                    let _ = sender.send(Ok(()));
+                } else {
+                    tracing::error!("KDHT is not enabled");
+                    let _ = sender.send(Err(NetworkError::KadDHTNotEnabled));
+                }
             }
         }
     }

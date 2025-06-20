@@ -9,7 +9,7 @@ use posemesh_runtime::get_runtime;
 pub struct Config {
     pub bootstraps: *const c_char, // a list of bootstrap nodes separated by comma
     pub relays: *const c_char,
-    pub private_key: *const c_uchar, // private key can be null
+    pub private_key: *const c_char, // private key can be null
     pub private_key_size: u32,
     pub private_key_path: *const c_char, // private key path can be null, but if private key is null, private key path must be provided
     pub enable_mdns: u8,
@@ -32,9 +32,9 @@ pub fn to_rust(config: &Config) -> NetworkingConfig {
         None
     } else {
         let private_key = unsafe {
-            std::slice::from_raw_parts(config.private_key, config.private_key_size as usize)
-        };
-        Some(private_key.to_vec())
+            CStr::from_ptr(config.private_key)
+        }.to_str().expect("Context::new(): config.private_key is not a valid UTF-8 string");
+        Some(private_key.to_string())
     };
 
     let private_key_path = if config.private_key_path.is_null() {
@@ -137,7 +137,7 @@ fn send_message(
             eprintln!("send_message(): {:?}", error);
             return 0;
         }
-    }.to_string();
+    };
 
     let protocol = match unsafe {
         assert!(!protocol.is_null(), "send_message(): protocol is null");
@@ -148,7 +148,7 @@ fn send_message(
             eprintln!("send_message(): {:?}", error);
             return 0;
         }
-    }.to_string();
+    };
     let context = unsafe {
         assert!(!context.is_null(), "send_message(): context is null");
         &mut *context

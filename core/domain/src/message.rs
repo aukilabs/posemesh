@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use futures::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use futures::{channel::oneshot::Canceled, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use libp2p::Stream;
 use posemesh_networking::{client::Client, libp2p::NetworkError};
 use quick_protobuf::{deserialize_from_slice, serialize_into_vec, MessageRead, MessageWrite};
@@ -60,7 +60,7 @@ pub async fn handshake(mut peer: Client, domain_id: &str, access_token: &str, re
     let mut upload_stream = peer.send(prefix_size_message(&task::DomainClusterHandshakeRequest{
         access_token: access_token.to_string(),
         domain_id: domain_id.to_string(),
-    }), receiver.to_string(), endpoint.to_string(), timeout).await?;
+    }), receiver, endpoint, timeout).await?;
 
     let response = read_prefix_size_message::<task::DomainClusterHandshakeResponse, _>(&mut upload_stream).await?;
     match response.code {
@@ -80,17 +80,16 @@ pub async fn request_response_with_handshake<Request: MessageWrite, Response: fo
     Ok(response)
 }
 
-pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a> + Send + >(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
-    let mut upload_stream = peer.send(prefix_size_message(request), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
-    
+pub async fn request_response<Request: MessageWrite, Response: for<'a> MessageRead<'a> + Send>(mut peer: Client, receiver: &str, endpoint: &str, request: &Request, timeout_millis: u32) -> Result<Response, DomainError> {
+    let mut upload_stream = peer.send(prefix_size_message(request), receiver, endpoint, timeout_millis).await?;
     posemesh_utils::timeout(Duration::from_millis(timeout_millis as u64), async move {
-        let response = read_prefix_size_message::<Response, _>(&mut upload_stream).await.expect("Failed to read response");
+        let response = read_prefix_size_message::<Response, _>(&mut upload_stream).await?;
         Ok(response)
     }).await?
 }
 
 pub async fn request_response_raw(mut peer:Client, receiver: &str, endpoint: &str, request: &[u8], timeout_millis: u32) -> Result<Vec<u8>, NetworkError> {
-    let mut upload_stream = peer.send(request.to_vec(), receiver.to_string(), endpoint.to_string(), timeout_millis).await?;
+    let mut upload_stream = peer.send(request.to_vec(), receiver, endpoint, timeout_millis).await?;
     upload_stream.close().await?;
     let mut response = Vec::new();
     upload_stream.read_to_end(&mut response).await?;

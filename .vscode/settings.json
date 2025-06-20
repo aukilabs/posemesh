@@ -24,5 +24,12 @@
         "**/sdk/platform/Web/src/**/*.hpp": "cpp",
         "**/sdk/platform/Web/src/**/*.c": "c",
         "**/sdk/platform/Web/src/**/*.cpp": "cpp"
-    }
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "PROTOC": "/opt/homebrew/bin/protoc",
+        "PATH": "/opt/homebrew/bin:${env:PATH}:/opt/homebrew/opt/llvm/bin",
+        "CC": "/opt/homebrew/opt/llvm/bin/clang",
+        "CXX": "/opt/homebrew/opt/llvm/bin/clang++"
+    },
+    // "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
 }

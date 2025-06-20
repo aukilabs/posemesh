@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package domainpb;
+
+option go_package = "pkg/msgpb/domainpb";
+option csharp_namespace = "Auki.Posemesh.Domain.Protobuf.Gen";
+option objc_class_prefix = "Domainpb";
+
+// Request sent to notify domain manager that a domain was created on it.
+message CreateDomainRequest {
+  // ID of the domain being created.
+  string domain_id = 1;
+}
+
+message CreateDomainResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+message DeleteDomainRequest {
+  // ID of the domain being deleted.
+  string domain_id = 1;
+}
+
+message DeleteDomainResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+message ClearDomainPosesRequest {
+  // ID of the domain being cleared.
+  string domain_id = 1;
+}
+
+message ClearDomainPosesResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+message RemovePortalsFromDomainRequest {
+  // ID of the domain from which portals are removed.
+  string domain_id = 1;
+
+  // IDs of portals to remove from domain.
+  repeated string portal_ids = 2;
+}
+
+message RemovePortalsFromDomainResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+// Request sent to old and new domain managers when manager is updated.
+message UpdateDomainManagerRequest {
+  // ID of the domain.
+  string domain_id = 1;
+
+  // ID of the new domain manager node.
+  string new_manager_node_id = 2;
+
+  // ID of the old domain manager node.
+  string old_manager_node_id = 3;
+}
+
+message UpdateDomainManagerResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+// Request sent to old and new domain managers when domain manager update is cancelled.
+message CancelUpdateDomainManagerRequest {
+  // ID of the domain.
+  string domain_id = 1;
+
+  // ID of the would-be new domain manager node if not cancelled.
+  string new_manager_node_id = 2;
+
+  // ID of the old domain manager node.
+  string old_manager_node_id = 3;
+
+  // Reason of the cancellation.
+  string reason = 4;
+}
+
+message CancelUpdateDomainManagerResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}

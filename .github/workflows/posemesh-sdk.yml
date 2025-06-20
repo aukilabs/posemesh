@@ -205,7 +205,7 @@ jobs:
 
       - name: Install Rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      
+
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4
         with:

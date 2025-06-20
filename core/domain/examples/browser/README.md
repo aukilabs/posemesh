@@ -20,7 +20,7 @@ cargo install wasm-pack
 cd core
 ```
 
-- (Optional) Installing Protocol Buffers Tools
+- Installing Protocol Buffers Tools
 
 install 
 - protoc (Protocol Buffers Compiler)
