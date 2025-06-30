@@ -1,10 +1,14 @@
-use futures::channel::mpsc::Receiver;
 use quick_protobuf::serialize_into_vec;
 
-use crate::{cluster::{DomainCluster, TaskUpdateEvent}, protobuf::{domain_data::Query, task}};
+use crate::{cluster::{DomainCluster, TaskUpdatesSink}, datastore::common::DomainError, protobuf::{domain_data::Query, task}};
 
-pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &str, scans: Vec<String>) -> Receiver<TaskUpdateEvent> {
+pub fn new_reconstruction_job_request(
+    domain_id: &str,
+    scans: Vec<String>,
+    manager_id: &str,
+) -> task::JobRequest {
     let mut uploaded = Vec::<task::TaskRequest>::new();
+    
     for scan in scans {
         let input = task::LocalRefinementInputV1 {
             query: Query {
@@ -16,6 +20,7 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &s
                 metadata_only: false,
             },
         };
+        
         let task = task::TaskRequest {
             needs: vec![],
             resource_recruitment: task::ResourceRecruitment {
@@ -31,10 +36,10 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &s
                 min_cpu: Some(0),
             },
             data: Some(task::Any {
-                type_url: "LocalRefinementInputV1".to_string(), // TODO: use actual type url
+                type_url: "LocalRefinementInputV1".to_string(),
                 value: serialize_into_vec(&input).expect("cant serialize input"),
             }),
-            sender: domain_cluster.manager_id.clone(),
+            sender: manager_id.to_string(),
             receiver: None,
         };
         uploaded.push(task);
@@ -53,24 +58,28 @@ pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &s
         capability_filters: task::CapabilityFilters {
             endpoint: "/global-refinement/v1".to_string(),
             min_gpu: Some(1),
-            min_cpu: Some(1),
+            min_cpu: None,
         },
         data: Some(task::Any {
-            type_url: "GlobalRefinementInputV1".to_string(), // TODO: use actual type url
-            value: vec![],
+            type_url: "GlobalRefinementInputV1".to_string(),
+            value: vec![], // TODO: serialize actual input
         }),
-        sender: domain_cluster.manager_id.clone(),
+        sender: manager_id.to_string(),
         receiver: None,
     });
 
-    let job = task::JobRequest {
-        domain_id: domain_id.to_string(),
-        name: "refinement job".to_string(),
+    task::JobRequest {
+        name: "reconstruction".to_string(),
         tasks: uploaded,
-        nonce: "".to_string(),
-    };
+        nonce: "".to_string(), // TODO: generate proper nonce
+        domain_id: domain_id.to_string(),
+    }
+}
+
+pub async fn reconstruction_job(mut domain_cluster: DomainCluster, domain_id: &str, scans: Vec<String>, handler: TaskUpdatesSink) -> Result<(), DomainError> {
+    let job = new_reconstruction_job_request(domain_id, scans, &domain_cluster.manager_id);
 
     tracing::debug!("job has {} tasks", job.tasks.len());
 
-    domain_cluster.submit_job(&job).await
+    domain_cluster.submit_job(&job, handler).await
 }

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use libp2p::{PeerId, Stream, StreamProtocol};
+use libp2p::{multiaddr::Protocol, Multiaddr, PeerId, Stream, StreamProtocol};
 use libp2p_stream::IncomingStreams;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use futures::{channel::{mpsc, oneshot}, SinkExt};
 use std::str::FromStr;
 #[cfg(not(target_family = "wasm"))]
@@ -116,11 +116,43 @@ impl Client {
         receiver.await.map_err(|e| NetworkError::ChannelReceiverError(e))
     }
     
+    pub async fn bootstrap(&mut self, addresses: HashMap<String, Vec<String>>) -> Result<(), NetworkError> {
+        let mut parsed_addresses = HashMap::new();
+        for (peer_id_str, addrs) in addresses {
+            let peer_id = PeerId::from_str(&peer_id_str)?;
+            let multiaddrs = addrs.iter()
+                .filter(|addr| {
+                    // Filter out circuit addresses
+                    !addr.contains("/p2p-circuit")
+                })
+                .map(|addr| {
+                    let mut maddr = addr.parse::<Multiaddr>()?;
+                    // Only push peer id if it doesn't end with one
+                    if !matches!(maddr.iter().last(), Some(Protocol::P2p(_))) {
+                        maddr.push(Protocol::P2p(peer_id));
+                    }
+                    Ok(maddr)
+                })
+                .collect::<Result<Vec<Multiaddr>, NetworkError>>()?;
+            parsed_addresses.insert(peer_id, multiaddrs);
+        }
+
+        let (sender, receiver) = oneshot::channel::<Result<(), NetworkError>>();
+        self.sender
+            .send(Command::Bootstrap { addresses: parsed_addresses, sender })
+            .await?;
+
+        match receiver.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(NetworkError::ChannelReceiverError(e)),
+        }
+    }
+
     // timeout is in milliseconds
-    pub async fn send(&mut self, message: Vec<u8>, peer_id: String, protocol: String, timeout: u32) -> Result<Stream, NetworkError> {
-        let peer_id = PeerId::from_str(&peer_id)?;
-        let pro = StreamProtocol::try_from_owned(protocol)?; 
-        
+    pub async fn send(&mut self, message: Vec<u8>, peer_id: &str, protocol: &str, timeout: u32) -> Result<Stream, NetworkError> {
+        let peer_id = PeerId::from_str(peer_id)?;
+        let pro = StreamProtocol::try_from_owned(protocol.to_string())?; 
         retry_send(self.sender.clone(), message, peer_id, pro, timeout, false).await
     }
 }
@@ -148,5 +180,9 @@ pub enum Command {
     },
     Cancel {
         sender: oneshot::Sender<()>,
+    },
+    Bootstrap {
+        addresses: HashMap<PeerId, Vec<Multiaddr>>,
+        sender: oneshot::Sender<Result<(), NetworkError>>,
     }
 }

@@ -13,7 +13,7 @@ use wasm_bindgen_futures::spawn_local as spawn;
 use wasm_bindgen::prelude::*;
 
 
-use crate::{cluster::DomainCluster, datastore::{common::{self, DomainError}, remote::RemoteDatastore}, protobuf::domain_data};
+use crate::{cluster::{join_domain, DomainCluster, PosemeshSwarm}, datastore::{common::{self, DomainError}, remote::RemoteDatastore}, protobuf::domain_data};
 
 pub(crate) fn init_r_remote_storage(cluster: *mut DomainCluster) -> RemoteDatastore {
     unsafe {
@@ -25,6 +25,11 @@ pub(crate) fn init_r_remote_storage(cluster: *mut DomainCluster) -> RemoteDatast
 
         RemoteDatastore::new(cluster_copy)
     }
+}
+
+pub(crate) async fn init_r_domain_cluster(domain_manager_addr: String, name: String, private_key: Option<String>, private_key_path: Option<String>, relay_nodes: Vec<String>) -> Result<DomainCluster, DomainError> {
+    let mut swarm = PosemeshSwarm::init(false, 0, false, false, private_key, private_key_path, relay_nodes).await?;
+    join_domain(&mut swarm, &domain_manager_addr, &name).await
 }
 pub struct DomainDataWriter {
     metadata: Option<domain_data::Metadata>,

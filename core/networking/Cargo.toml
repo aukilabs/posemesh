@@ -24,7 +24,7 @@ libp2p-websocket = { workspace = true }
 posemesh-runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
-libp2p = { workspace = true, features = [ "ping", "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay", "noise", "yamux", "dcutr" ] }
+libp2p = { workspace = true, features = [ "ping", "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "noise", "yamux", "relay", "dcutr" ] }
 libp2p-webrtc-websys = { workspace = true }
 libp2p-websocket-websys = { workspace = true }
 tracing-wasm = { workspace = true }

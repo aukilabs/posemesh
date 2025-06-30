@@ -1,7 +1,7 @@
 use futures::{AsyncWrite, StreamExt};
 use quick_protobuf::deserialize_from_slice;
 use std::{collections::HashMap, fs, io::{Error, ErrorKind, Read}, pin::Pin, sync::{Arc, Mutex}, task::{Context, Poll}, vec};
-use posemesh_domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{self, Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
+use posemesh_domain::{cluster::{join_domain, new_task_update_duplex, PosemeshSwarm}, datastore::{common::{data_id_generator, Datastore}, remote::RemoteDatastore}, protobuf::domain_data::{self, Metadata, Query, UpsertMetadata}, spatial::reconstruction::reconstruction_job};
 
 /*
     * This is a client that wants to do reconstruction in domain cluster
@@ -10,7 +10,10 @@ use posemesh_domain::{cluster::{DomainCluster, TaskUpdateEvent, TaskUpdateResult
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_line_number(true)
+        .init();
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 5 {
         println!("Usage: {} <port> <name> <domain_manager> <domain_id> <relay>", args[0]);
@@ -28,7 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = format!("./volume/{}", name);
     let private_key_path = format!("{}/pkey", base_path);
 
-    let domain_cluster = DomainCluster::join(&domain_manager, &name, false, port, false, false, None, Some(private_key_path), relay).await.expect("failed to join cluster");
+    let mut swarm = PosemeshSwarm::init(false, port, false, false, None, Some(private_key_path), relay).await?;
+    // let wallet_private_key_path = format!("{}/wallet_private_key", base_path);
+    // swarm.as_node("wss://dds.dev.aukiverse.com", None,  Some(&wallet_private_key_path), "MzUwNGI2YzgtODI0ZC00NjZiLThjYzYtMGIyYTYzMWRmNTA3OlpUVmtOVFprTnpjdE56azVZeTAwTkRVMkxXSXdaamd0WmprMU16bGtNMk0wTldZeg==", &[]).await?;
+
+    let domain_cluster = join_domain(&mut swarm, &domain_manager, &name).await?;
     let mut remote_datastore = RemoteDatastore::new(domain_cluster.clone());
     
     let input_dir = format!("{}/input", base_path);
@@ -138,14 +145,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     println!("producer closed");
 
-    let mut recv = reconstruction_job(domain_cluster, &domain_id, vec![scan]).await; 
+    let (task_update_sink, mut task_update_stream) = new_task_update_duplex();
+    reconstruction_job(domain_cluster, &domain_id, vec![scan], task_update_sink).await?; 
 
     loop {
         tokio::select! {
-            Some(TaskUpdateEvent {
-                result: TaskUpdateResult::Ok(task),
-                ..
-            }) = recv.next() => {
+            Some(task) = task_update_stream.next() => {
                 println!("Received task {} status update: {:?}", task.name, task.status);
             }
             else => {

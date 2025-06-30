@@ -25,10 +25,10 @@ async fn main() {
     let mut bootstrap = Networking::new(&networking).unwrap();
     let mut chat_protocol = bootstrap.client.set_stream_handler(protocol).await.unwrap();
 
-    let bootstrap_id = bootstrap.id.clone();
-    let _bootstrap_id_clone = bootstrap_id.clone();
-    let bootstrap_id_clone_clone = bootstrap_id.clone();
-    let bootstrap_id_clone_clone_clone = bootstrap_id.clone();
+    let bootstrap_id = bootstrap.id;
+    let bootstrap_id_clone = bootstrap_id.clone();
+    let bootstrap_id_clone_clone = bootstrap_id_clone.clone();
+    let bootstrap_id_clone_clone_clone = bootstrap_id_clone_clone.clone();
     tokio::spawn(async move {
         while let Some((peer, mut stream)) = chat_protocol.next().await {
             let buf = &mut Vec::new();
@@ -62,7 +62,7 @@ async fn main() {
 
     let peer_b_cfg = NetworkingConfig {
         port: 8084,
-        bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id_clone_clone.clone())],
+        bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id)],
         enable_relay_server: false,
         enable_kdht: true,
         enable_mdns: false,
@@ -77,7 +77,7 @@ async fn main() {
 
     let peer_c_cfg = NetworkingConfig {
         port: 8086,
-        bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id_clone_clone.clone())],
+        bootstrap_nodes: vec![format!("/ip4/127.0.0.1/udp/8080/quic-v1/p2p/{}", bootstrap_id)],
         enable_relay_server: false,
         enable_kdht: true,
         enable_mdns: false,
@@ -94,7 +94,7 @@ async fn main() {
     tokio::spawn(async move {
         // sleep(Duration::from_millis(500)).await;
         println!("{}: Sending message", peer_b.id);
-        let mut s = peer_b.client.send(format!("3 - send from {}", peer_b.id).as_bytes().to_vec(), bootstrap_id_clone_clone.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_b.id));
+        let mut s = peer_b.client.send(format!("3 - send from {}", peer_b.id).as_bytes().to_vec(), &bootstrap_id_clone, protocol, 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_b.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -105,7 +105,7 @@ async fn main() {
     });
     tokio::spawn(async move {
         println!("{}: Sending message", peer_c.id.clone());
-        let mut s = peer_c.client.send(format!("1 - send from {}", peer_c.id).as_bytes().to_vec(), bootstrap_id_clone_clone_clone.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_c.id));
+        let mut s = peer_c.client.send(format!("1 - send from {}", peer_c.id).as_bytes().to_vec(), &bootstrap_id_clone_clone, protocol, 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_c.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         let buf = &mut Vec::new();
@@ -117,7 +117,7 @@ async fn main() {
 
     tokio::spawn(async move {
         println!("{}: Sending message", peer_a.id);
-        let mut s = peer_a.client.send(format!("2 - send from {}", peer_a.id).as_bytes().to_vec(), bootstrap_id.clone(), protocol.to_string(), 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_a.id));
+        let mut s = peer_a.client.send(format!("2 - send from {}", peer_a.id).as_bytes().to_vec(), &bootstrap_id_clone_clone_clone, protocol, 0).await.unwrap_or_else(|_| panic!("{}: can't send message", peer_a.id));
         s.flush().await.expect("can't flush stream");
         s.close().await.expect("can't close stream");
         

@@ -1,12 +1,11 @@
 
-use std::future::Future;
-
 use crate::{auth::AuthError, protobuf::domain_data::{self, Data}};
 use async_trait::async_trait;
+use posemesh_disco::error::DiscoveryError;
 use posemesh_networking::libp2p::NetworkError;
 use uuid::Uuid;
 
-use futures::{channel::{mpsc::{Receiver, Sender}, oneshot::Canceled}, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{channel::{mpsc::{Receiver, SendError, Sender}, oneshot::Canceled}, AsyncWrite};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub type Reader<T> = Receiver<Result<T, DomainError>>;
@@ -22,8 +21,8 @@ pub const CHUNK_SIZE: usize = 7 * 1024; // receiver over webRTC gets error Custo
 pub enum DomainError {
     #[error("Not found")]
     NotFound(String),
-    #[error("{0} Cancelled: {1}")]
-    Cancelled(String, Canceled),
+    #[error("{0} cancelled: {1}")]
+    Cancelled(&'static str, Canceled),
     #[error("IO error: {0}")]
     Io(#[from]std::io::Error),
     #[cfg(all(feature="fs", not(target_family="wasm")))]
@@ -42,6 +41,16 @@ pub enum DomainError {
     ProtobufError(#[from] quick_protobuf::Error),
     #[error("Auth error: {0}")]
     AuthError(#[from] AuthError),
+    #[error("Invalid manager address: {0}")]
+    InvalidManagerAddress(String),
+    #[error("Disco error: {0}")]
+    DiscoError(#[from] DiscoveryError),
+    #[error("Can't register capability: {0}")]
+    RegisterCapabilityError(&'static str),
+    #[error("Failed to send command: {0}")]
+    SendCommandError(#[from] SendError),
+    #[error("Invalid pubsub message: {0}")]
+    InvalidPubsubMessage(&'static str),
 }
 
 #[async_trait]

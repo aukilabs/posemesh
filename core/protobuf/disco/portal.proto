@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package portalpb;
+
+option go_package = "pkg/msgpb/portalpb";
+option csharp_namespace = "Auki.Posemesh.Portal.Protobuf.Gen";
+option objc_class_prefix = "Portalpb";
+
+message DeletePortalRequest {
+  // ID of the portal being deleted.
+  string portal_id = 1;
+}
+
+message DeletePortalResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}
+
+enum UpdatePortalSizeAction {
+  REMOVE_PORTAL_FROM_DOMAINS = 0;
+  DELETE_POSES = 1;
+
+  reserved 100 to max;
+}
+
+message UpdatePortalSizeRequest {
+  // ID of the domain being created.
+  string portal_id = 1;
+
+  // New size of portal.
+  double size = 2;
+
+  // The action to do regarding the portal.
+  UpdatePortalSizeAction action = 3;
+}
+
+message UpdatePortalSizeResponse {
+  // Whether the request was received fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}

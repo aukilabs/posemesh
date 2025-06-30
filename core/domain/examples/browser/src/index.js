@@ -330,7 +330,7 @@ async function initializeApp() {
         }
         const keepAlive = document.getElementById('keepAlive').checked;
 
-        const query = new Query([], [], [], nameRegexp, null, true);
+        const query = new Query([], [], [], nameRegexp, null, false);
         downloader = await uploadManager.downloadFiles(query, keepAlive, (file, err) => {
             if (err) {
                 console.error("Error in downloadFiles", err);
@@ -486,7 +486,6 @@ function createTaskTable(tasks) {
 }
 
 if (document.readyState !== 'loading') {
-    console.log('document is already ready, just execute code here');
     initializeApp();
 } else {
     // Initialize the application when the DOM is loaded
