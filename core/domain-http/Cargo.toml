@@ -1,0 +1,28 @@
+[package]
+name = "posemesh-domain-http"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/aukilabs/posemesh/tree/main/core"
+description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
+license = "MIT License"
+
+[dependencies]
+base64 = {workspace = true}
+serde_json = {workspace = true}
+serde = { workspace = true, features = ["derive"] }
+futures = { workspace = true }
+tracing = { workspace = true }
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "stream", "rustls-tls"]}
+
+[target.'cfg(not(target_family="wasm"))'.dependencies]
+tokio = { workspace = true, features = ["full"] }
+
+[target.'cfg(target_family="wasm")'.dependencies]
+tracing-wasm.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+serde-wasm-bindgen.workspace = true
+
+[dev-dependencies]
+dotenvy = "0.15.7"
+wasm-bindgen-test.workspace = true
