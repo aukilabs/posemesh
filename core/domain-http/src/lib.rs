@@ -71,20 +71,20 @@ mod tests {
     use futures::{channel::mpsc, StreamExt};
     use tokio::spawn;
 
-    fn get_config() -> config::Config {
+    fn get_config() -> (config::Config, String) {
         if std::path::Path::new("../.env.local").exists() {
             dotenvy::from_filename("../.env.local").ok();
             dotenvy::dotenv().ok();
         }
         let config = config::Config::from_env().unwrap();
-        config
+        (config, std::env::var("DOMAIN_ID").unwrap())
     }
 
     #[tokio::test]
     async fn test_download_domain_data_with_app_credential() {
         // Create a test client
         let config = get_config();
-        let client = DomainClient::new_with_app_credential(&config.api_url, &config.dds_url, &config.client_id, &config.app_key, &config.app_secret).await.expect("Failed to create client");
+        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key, &config.0.app_secret).await.expect("Failed to create client");
         
         // Create a test query
         let query = DownloadQuery {
@@ -95,7 +95,7 @@ mod tests {
 
         // Test the download function
         let result = client.download_domain_data(
-            &config.domain_id,
+            &config.1,
             &query
         ).await;
 
@@ -115,7 +115,7 @@ mod tests {
         let config = get_config();
         let user_email = std::env::var("USER_EMAIL").unwrap();
         let user_password = std::env::var("USER_PASSWORD").unwrap();
-        let client = DomainClient::new_with_user_credential(&config.api_url, &config.dds_url, &config.client_id, &user_email, &user_password).await.expect("Failed to create client");
+        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &user_email, &user_password).await.expect("Failed to create client");
 
         let data = vec![UploadDomainData {
             create: None,
@@ -137,7 +137,7 @@ mod tests {
             }
             tx.close().await.unwrap();
         });
-        let result = client.upload_domain_data(&config.domain_id, rx).await;
+        let result = client.upload_domain_data(&config.1, rx).await;
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
         assert_eq!(result.unwrap().len(), 2);
