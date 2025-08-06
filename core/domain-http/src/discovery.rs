@@ -55,6 +55,7 @@ pub struct DomainWithServer {
     pub domain_server: DomainServer,
 }
 
+#[derive(Debug, Clone)]
 pub struct DiscoveryService {
     dds_url: String,
     client: Client,

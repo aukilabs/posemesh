@@ -13,6 +13,7 @@ pub mod wasm;
 
 use crate::discovery::DiscoveryService;
 
+#[derive(Debug, Clone)]
 pub struct DomainClient {
     discovery_client: DiscoveryService,
     pub client_id: String,
