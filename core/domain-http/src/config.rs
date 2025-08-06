@@ -10,8 +10,6 @@ pub struct Config {
     pub client_id: String,
     pub app_key: String,
     pub app_secret: String,
-    #[cfg(debug_assertions)]
-    pub domain_id: String,
 }
 
 impl Config {
@@ -22,8 +20,6 @@ impl Config {
             client_id: std::env::var("CLIENT_ID")?,
             app_key: std::env::var("APP_KEY")?,
             app_secret: std::env::var("APP_SECRET")?,
-            #[cfg(debug_assertions)]
-            domain_id: std::env::var("DOMAIN_ID")?,
         })
     }
 }
