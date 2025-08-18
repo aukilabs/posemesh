@@ -1,6 +1,8 @@
 use futures::{channel::mpsc, stream::StreamExt, SinkExt};
 use reqwest::{Client, Response, Body};
 use serde::{Deserialize, Serialize};
+#[cfg(target_family = "wasm")]
+use wasm_bindgen_futures::js_sys::Uint8Array;
 use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -28,6 +30,15 @@ pub struct DomainData {
     pub data: Vec<u8>,
 }
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+impl DomainData {
+    #[cfg(target_family = "wasm")]
+    #[wasm_bindgen]
+    pub fn get_data_bytes(self) -> Uint8Array {
+        Uint8Array::from(self.data.as_slice())
+    }
+}
+
 #[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
 #[derive(Debug, Serialize, Clone)]
 pub struct UpdateDomainData {
@@ -51,7 +62,6 @@ pub struct UploadDomainData {
     pub data: Vec<u8>,
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
 #[derive(Debug, Serialize)]
 pub struct DownloadQuery {
     pub ids: Vec<String>,
@@ -64,13 +74,51 @@ struct ListDomainData {
     pub data: Vec<DomainData>,
 }
 
+pub async fn download_metadata_v1(
+    url: &str,
+    client_id: &str,
+    access_token: &str,
+    domain_id: &str,
+    query: &DownloadQuery,
+) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut params = HashMap::new();
+    
+    if !query.ids.is_empty() {
+        params.insert("ids", query.ids.join(","));
+    }
+    if let Some(name) = &query.name {
+        params.insert("name", name.clone());
+    }
+    if let Some(data_type) = &query.data_type {
+        params.insert("data_type", data_type.clone());
+    }
+
+    let response = Client::new()
+        .get(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .bearer_auth(access_token)
+        .header("Accept", "application/json")
+        .header("posemesh-client-id", client_id)
+        .query(&params)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        let data = response.json::<ListDomainData>().await?;
+        Ok(data.data)
+    } else {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("Failed to download data. Status: {} - {}", status, text).into())
+    }
+}
+
 pub async fn download_v1(
     url: &str,
     client_id: &str,
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<Response, Box<dyn std::error::Error>> {
+) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
     let mut params = HashMap::new();
     
     if !query.ids.is_empty() {
@@ -107,7 +155,7 @@ pub async fn download_v1_stream(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error>> {
+) -> Result<mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error + Send + Sync>> {
     let response = download_v1(url, client_id, access_token, domain_id, query).await?;
     let (mut tx, rx) = mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
 
@@ -199,7 +247,7 @@ pub async fn upload_v1_stream(
     access_token: &str,
     domain_id: &str,
     mut rx: mpsc::Receiver<UploadDomainData>,
-) -> Result<Vec<DomainData>, Box<dyn std::error::Error>> {
+) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
     use futures::channel::oneshot;
 
     let boundary = "boundary";
@@ -330,7 +378,7 @@ pub async fn upload_v1(
     access_token: &str,
     domain_id: &str,
     data: Vec<UploadDomainData>,
-) -> Result<Vec<DomainData>, Box<dyn std::error::Error>> {
+) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
     let boundary = "boundary";
 
     let mut create_body = Vec::new();

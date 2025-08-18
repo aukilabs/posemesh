@@ -8,8 +8,10 @@ pub struct Config {
     pub api_url: String,
     pub dds_url: String,
     pub client_id: String,
-    pub app_key: String,
-    pub app_secret: String,
+    pub app_key: Option<String>,
+    pub app_secret: Option<String>,
+    pub email: Option<String>,
+    pub password: Option<String>,
 }
 
 impl Config {
@@ -18,8 +20,10 @@ impl Config {
             api_url: std::env::var("API_URL")?,
             dds_url: std::env::var("DDS_URL")?,
             client_id: std::env::var("CLIENT_ID")?,
-            app_key: std::env::var("APP_KEY")?,
-            app_secret: std::env::var("APP_SECRET")?,
+            app_key: std::env::var("APP_KEY").ok(),
+            app_secret: std::env::var("APP_SECRET").ok(),
+            email: std::env::var("POSEMESH_EMAIL").ok(),
+            password: std::env::var("POSEMESH_PASSWORD").ok(),
         })
     }
 }
