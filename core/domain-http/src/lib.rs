@@ -2,7 +2,7 @@ use futures::channel::mpsc::Receiver;
 
 #[cfg(target_family = "wasm")]
 use crate::domain_data::UploadDomainData;
-use crate::domain_data::{download_v1_stream, DomainData, DownloadQuery};
+use crate::domain_data::{download_metadata_v1, download_v1_stream, upload_v1, DomainData, DownloadQuery};
 
 mod auth;
 pub mod config;
@@ -30,35 +30,40 @@ impl DomainClient {
         }
     }
 
-    pub async fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
         let _ = dc.discovery_client.sign_in_as_auki_app(app_key, app_secret).await?;
         Ok(dc)
     }
 
-    pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
         let _ = dc.discovery_client.sign_in_with_auki_account(email, password).await?;
         Ok(dc)
     }
 
-    pub async fn download_domain_data(&self, domain_id: &str, query: &DownloadQuery) -> Result<Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error>> {
+    pub async fn download_domain_data(&self, domain_id: &str, query: &DownloadQuery) -> Result<Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         let rx = download_v1_stream(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, query).await?;
         Ok(rx)
     }
 
     #[cfg(not(target_family = "wasm"))]
-    pub async fn upload_domain_data(&self, domain_id: &str, data: Receiver<domain_data::UploadDomainData>) -> Result<Vec<DomainData>, Box<dyn std::error::Error>> {
+    pub async fn upload_domain_data(&self, domain_id: &str, data: Receiver<domain_data::UploadDomainData>) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
         use crate::domain_data::upload_v1_stream;
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         upload_v1_stream(&domain.domain.domain_server.url, &domain.access_token, domain_id, data).await
     }
 
     #[cfg(target_family = "wasm")]
-    pub async fn upload_domain_data(&self, domain_id: &str, data: Vec<UploadDomainData>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn upload_domain_data(&self, domain_id: &str, data: Vec<UploadDomainData>) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         upload_v1(&domain.domain.domain_server.url, &domain.access_token, domain_id, data).await
+    }
+
+    pub async fn download_metadata(&self, domain_id: &str, query: &DownloadQuery) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        download_metadata_v1(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, query).await
     }
 }
 
@@ -84,7 +89,7 @@ mod tests {
     async fn test_download_domain_data_with_app_credential() {
         // Create a test client
         let config = get_config();
-        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key, &config.0.app_secret).await.expect("Failed to create client");
+        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key.unwrap(), &config.0.app_secret.unwrap()).await.expect("Failed to create client");
         
         // Create a test query
         let query = DownloadQuery {

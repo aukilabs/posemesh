@@ -86,7 +86,7 @@ impl AuthClient {
         self.token_cache.lock().await.refresh_token = None;
     }
 
-    pub async fn get_dds_access_token(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn get_dds_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         if self.app_key.is_some() {
             return self.get_dds_app_access_token().await;
         } else {
@@ -94,7 +94,7 @@ impl AuthClient {
         }
     }
 
-    async fn get_dds_app_access_token(&self) -> Result<String, Box<dyn std::error::Error>> {
+    async fn get_dds_app_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
             let cache = self.token_cache.lock().await;
             DdsTokenCache {
@@ -146,7 +146,7 @@ impl AuthClient {
         Ok(token_cache.access_token.unwrap())
     }
 
-    async fn get_dds_user_access_token(&self) -> Result<String, Box<dyn std::error::Error>> {
+    async fn get_dds_user_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
             let cache = self.token_cache.lock().await;
             DdsTokenCache {
@@ -203,7 +203,7 @@ impl AuthClient {
         Ok(token_cache.access_token.unwrap())
     }
 
-    pub async fn user_login(&mut self, email: &str, password: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn user_login(&mut self, email: &str, password: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let email = email.to_string();
         let password = password.to_string();
         let client = self.client.clone();
@@ -262,11 +262,11 @@ impl AuthClient {
 }
 
 
-pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(cache: &R, token_fetcher: F) -> Result<R, Box<dyn std::error::Error>>
+pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(cache: &R, token_fetcher: F) -> Result<R, Box<dyn std::error::Error + Send + Sync>>
 where
     F: FnOnce() -> Fut,
     R: TokenCache + Clone, 
-    Fut: std::future::Future<Output = Result<R, Box<dyn std::error::Error>>>,
+    Fut: std::future::Future<Output = Result<R, Box<dyn std::error::Error + Send + Sync>>>,
 {
     // Check if we have a valid cached token
     if let Some(expires_at) = cache.get_expires_at() {
@@ -291,7 +291,7 @@ pub struct JwtClaim {
     exp: u64,
 }
 
-pub fn parse_jwt(token: &str) -> Result<JwtClaim, Box<dyn std::error::Error>> {
+pub fn parse_jwt(token: &str) -> Result<JwtClaim, Box<dyn std::error::Error + Send + Sync>> {
     let parts = token.split('.').collect::<Vec<&str>>();
     if parts.len() != 3 {
         return Err("Invalid JWT token".into());

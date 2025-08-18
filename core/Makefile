@@ -5,7 +5,7 @@ OS ?= "macOS"
 ARCH ?= "ARM64"
 CONFIG ?= "Release"
 
-.PHONY: build-domain build-domain-wasm unit-tests
+.PHONY: build-domain build-domain-wasm unit-tests build-domain-http-wasm
 
 build-domain:
 ifeq ($(ARCH),WASM)
@@ -18,9 +18,10 @@ build-domain-wasm:
 	wasm-pack build --target bundler --release domain
 	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
-build-domain-wasm-http:
+build-domain-http-wasm:
+	rm -rf domain-http/pkg
 	wasm-pack build --target bundler --release domain-http
-	sed -i '' 's/"name": "posemesh-domain-http"/"name": "@aukilabs\/posemesh-domain-http"/' domain-http/pkg/package.json
+	cd domain-http/pkg && npm link
 
 unit-tests:
 	WASM_BINDGEN_USE_BROWSER=1 wasm-pack test --chrome --headless domain-http

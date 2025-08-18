@@ -81,7 +81,7 @@ impl DiscoveryService {
         }
     }
 
-    pub async fn list_domains(&self, access_token: &str) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error>> {
+    pub async fn list_domains(&self, access_token: &str) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
         let response = self.client
             .get(&format!("{}/api/v1/domains?with=domain_server", self.dds_url))
             .bearer_auth(access_token)
@@ -98,19 +98,19 @@ impl DiscoveryService {
         }
     }
 
-    pub async fn sign_in_with_auki_account(&mut self, email: &str, password: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn sign_in_with_auki_account(&mut self, email: &str, password: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _ = self.api_client.user_login(email, password).await?;
         self.cache.lock().await.clear();
         Ok(())
     }
 
-    pub async fn sign_in_as_auki_app(&mut self, app_key: &str, app_secret: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn sign_in_as_auki_app(&mut self, app_key: &str, app_secret: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.api_client.set_app_credentials(app_key, app_secret).await;
         self.cache.lock().await.clear();
         Ok(())
     }
 
-    pub async fn auth_domain(&self, domain_id: &str) -> Result<DomainWithToken, Box<dyn std::error::Error>> {
+    pub async fn auth_domain(&self, domain_id: &str) -> Result<DomainWithToken, Box<dyn std::error::Error + Send + Sync>> {
         let access_token = self.api_client.get_dds_access_token().await?;
         // Check cache first
         let cache = if let Some(cached_domain) = self.cache.lock().await.get(domain_id) {
