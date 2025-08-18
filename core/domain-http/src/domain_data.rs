@@ -62,7 +62,7 @@ pub struct UploadDomainData {
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DownloadQuery {
     pub ids: Vec<String>,
     pub name: Option<String>,
