@@ -26,5 +26,4 @@ build-domain-http-wasm:
 unit-tests:
 	WASM_BINDGEN_USE_BROWSER=1 wasm-pack test --chrome --headless domain-http
 	wasm-pack test --node domain-http
-	cargo test --all-features
 	cargo test --release --all-features

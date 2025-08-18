@@ -2,7 +2,7 @@ use futures::channel::mpsc::Receiver;
 
 #[cfg(target_family = "wasm")]
 use crate::domain_data::UploadDomainData;
-use crate::domain_data::{download_metadata_v1, download_v1_stream, upload_v1, DomainData, DownloadQuery};
+use crate::domain_data::{download_metadata_v1, download_v1_stream, DomainData, DownloadQuery};
 
 mod auth;
 pub mod config;
@@ -118,9 +118,7 @@ mod tests {
     async fn test_upload_domain_data_with_user_credential() {
         use futures::SinkExt;
         let config = get_config();
-        let user_email = std::env::var("USER_EMAIL").unwrap();
-        let user_password = std::env::var("USER_PASSWORD").unwrap();
-        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &user_email, &user_password).await.expect("Failed to create client");
+        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.email.unwrap(), &config.0.password.unwrap()).await.expect("Failed to create client");
 
         let data = vec![UploadDomainData {
             create: None,
