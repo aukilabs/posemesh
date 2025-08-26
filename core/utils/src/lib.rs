@@ -1,5 +1,4 @@
-use std::time::Duration;
-use std::{error::Error, io};
+use std::{io::{Error, ErrorKind}, time::Duration};
 use futures::{self, Future, FutureExt};
 
 #[cfg(not(target_family = "wasm"))]
@@ -13,6 +12,9 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Promise;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsValue;
+
+#[cfg(feature="crypto")]
+pub mod crypto;
 
 #[cfg(target_family = "wasm")]
 pub async fn sleep(duration: Duration) {
@@ -40,9 +42,12 @@ pub const INFINITE_RETRIES: u32 = 0;
 /// # Returns
 /// * `Ok(T)` - The successful result
 /// * `Err(E)` - The error from the last attempt if all attempts failed
-pub async fn retry_with_delay<F, T, E>(mut f: F, max_attempts: u32, delay: Duration) -> Result<T, E>
+
+
+pub async fn retry_with_delay<F, Fut, T, E>(mut f: F, max_attempts: u32, delay: Duration) -> Result<T, E>
 where
-    F: FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, E>> + Send>>,
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
     E: std::fmt::Debug,
 {
     let mut retries = 0;
@@ -85,10 +90,9 @@ where
 }
 
 #[cfg(target_family = "wasm")]
-pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Error>
 where
     F: Future<Output = T> + Send,
-    T: Send,
 {
     if duration.is_zero() {
         return Ok(future.await);
@@ -96,12 +100,12 @@ where
     let timeout_fut = gloo_timers::future::TimeoutFuture::new(duration.as_millis() as u32);
     futures::select! {
         result = future.fuse() => Ok(result),
-        _ = timeout_fut.fuse() => Err(io::Error::new(io::ErrorKind::TimedOut, "Operation timed out")),
+        _ = timeout_fut.fuse() => Err(Error::new(ErrorKind::TimedOut, "Operation timed out")),
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
-pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, Error>
 where
     F: Future<Output = T>,
 {
@@ -110,5 +114,5 @@ where
     }
     tokio::time::timeout(duration, future)
         .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Operation timed out"))
+        .map_err(|_| Error::new(ErrorKind::TimedOut, "Operation timed out"))
 }

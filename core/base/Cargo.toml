@@ -14,3 +14,6 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [features]
 default = ["posemesh-domain/default", "posemesh-networking/default"]
 c = ["posemesh-domain/c", "posemesh-networking/c"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

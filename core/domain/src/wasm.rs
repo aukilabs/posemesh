@@ -4,7 +4,7 @@ use quick_protobuf::serialize_into_vec;
 use js_sys::Function;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
-use crate::{binding_helper::{init_r_remote_storage, initialize_consumer, DataConsumer}, cluster::{DomainCluster as r_DomainCluster, TaskUpdateResult}, datastore::{common::{data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
+use crate::{binding_helper::{init_r_remote_storage, init_r_domain_cluster, initialize_consumer, DataConsumer}, cluster::{new_task_update_duplex, DomainCluster as r_DomainCluster, PosemeshSwarm as r_PosemeshSwarm}, datastore::{common::{data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer}, remote::RemoteDatastore as r_RemoteDatastore}, protobuf::domain_data, spatial::reconstruction::reconstruction_job as r_reconstruction_job};
 use wasm_bindgen_futures::{future_to_promise, js_sys::{self, Promise, Uint8Array}, spawn_local};
 
 #[derive(Clone)]
@@ -109,11 +109,10 @@ pub struct DomainCluster {
     inner: Arc<Mutex<r_DomainCluster>>,
 }
 
-
 #[wasm_bindgen]
-pub fn join_cluster(domain_manager_addr: String, name: String, private_key: Option<Vec<u8>>, private_key_path: Option<String>) -> Promise {
+pub fn join_cluster(domain_manager_addr: String, name: String, private_key: Option<String>, private_key_path: Option<String>) -> Promise {
     let future = async move {
-        match r_DomainCluster::join(&domain_manager_addr, &name, false, 0, false, false, private_key, private_key_path, vec![]).await {
+        match init_r_domain_cluster(domain_manager_addr, name, private_key, private_key_path, vec![]).await {
             Ok(cluster) => Ok(JsValue::from(DomainCluster { inner: Arc::new(Mutex::new(cluster)) })),
             Err(e) => Err(JsValue::from_str(&format!("failed to join cluster: {}", e)))
         }
@@ -121,21 +120,21 @@ pub fn join_cluster(domain_manager_addr: String, name: String, private_key: Opti
     future_to_promise(future)
 }
 
-#[wasm_bindgen]
-impl DomainCluster {
-    #[wasm_bindgen]
-    pub fn monitor(&self, callback: Function) {
-        let inner = self.inner.clone();
-        block_on(async move {
-            let mut rx = inner.lock().unwrap().monitor_jobs().await;
-            while let Some(job) = rx.next().await {
-                let job_bytes = serialize_into_vec(&job).unwrap();
-                let js_arr = Uint8Array::from(&job_bytes[..]);
-                callback.call1(&JsValue::NULL, &js_arr).unwrap();
-            }
-        });
-    }
-}
+// #[wasm_bindgen]
+// impl DomainCluster {
+//     #[wasm_bindgen]
+//     pub fn monitor(&self, callback: Function) {
+//         let inner = self.inner.clone();
+//         block_on(async move {
+//             // let mut rx = inner.lock().unwrap().monitor_jobs().await;
+//             while let Some(job) = rx.next().await {
+//                 let job_bytes = serialize_into_vec(&job).unwrap();
+//                 let js_arr = Uint8Array::from(&job_bytes[..]);
+//                 callback.call1(&JsValue::NULL, &js_arr).unwrap();
+//             }
+//         });
+//     }
+// }
 
 #[wasm_bindgen]
 struct ReliableDataProducer {
@@ -198,7 +197,7 @@ impl RemoteDatastore {
     pub fn new(cluster: &DomainCluster) -> Self {
         let r_domain_cluster = cluster.inner.lock().unwrap();
         let cluster = r_domain_cluster.clone();
-        Self { inner: init_r_remote_storage(Box::into_raw(Box::new(cluster))) }
+        Self { inner: r_RemoteDatastore::new(cluster) }
     }
 
     #[wasm_bindgen]
@@ -253,23 +252,24 @@ pub fn reconstruction_job(cluster: &DomainCluster, domain_id: String, scans: Vec
     drop(cluster);
 
     future_to_promise(async move {
-        let mut r = r_reconstruction_job(cluster_clone, &domain_id, scans).await;
-        spawn_local(async move {
-            while let Some(task_update) = r.next().await {
-                match task_update.result {
-                    TaskUpdateResult::Ok(task) => {
-                        tracing::debug!("Task {}-{} update status {:?}", task.job_id, task.name, task.status);
-                        let task_update_bytes = serialize_into_vec(&task).unwrap();
+        let (sink, mut stream) = new_task_update_duplex();
+        let r = r_reconstruction_job(cluster_clone, &domain_id, scans, sink).await;
+        match r {
+            Ok(_) => {
+                spawn_local(async move {
+                    while let Some(task_update) = stream.next().await {
+                        let task_update_bytes = serialize_into_vec(&task_update).unwrap();
                         let js_arr = Uint8Array::from(&task_update_bytes[..]);
                         callback.call1(&JsValue::NULL, &js_arr).unwrap();
                     }
-                    TaskUpdateResult::Err(e) => {
-                        tracing::error!("Error: {}", e);
-                    }
-                }
+                });
+
+                Ok(JsValue::NULL)
             }
-        });
-        Ok(JsValue::NULL)
+            Err(e) => {
+                return Err(JsValue::from_str(&format!("{}", e)));
+            }
+        }
     })
 }
 

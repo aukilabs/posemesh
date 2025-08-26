@@ -7,6 +7,10 @@ rust-version.workspace = true
 [dependencies]
 futures = { workspace = true }
 tracing = { workspace = true }
+hex = { workspace = true, optional = true }
+tiny-keccak = { version = "2.0.2", features = ["keccak"], optional = true }
+k256 = { version = "0.13.4", features = ["ecdsa"], optional = true }
+thiserror = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
@@ -17,3 +21,7 @@ wasm-bindgen-futures = { workspace = true }
 web-sys = { version = "0.3", features = ["Window"] }
 js-sys = "0.3"
 gloo-timers = { workspace = true, features = ["futures"] }
+
+[features]
+default = ["crypto"]
+crypto = ["hex", "tiny-keccak", "k256", "thiserror"]

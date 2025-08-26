@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package nodepb;
+
+// https://developers.google.com/protocol-buffers/docs/reference/java/com/google/protobuf/Timestamp
+import "google/protobuf/timestamp.proto";
+
+option go_package = "pkg/msgpb/nodepb";
+option csharp_namespace = "Auki.Posemesh.Node.Protobuf.Gen";
+option objc_class_prefix = "Nodepb";
+
+message PortalInDomain {
+  string portal_id = 1;
+
+  string short_id = 2;
+
+  string domain_id = 3;
+
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// Connectivity check result for a single address.
+message ConnectivityCheckResult {
+  // Node address in p2p multiaddr format.
+  string address = 1;
+
+  // Whether the node is reachable using this address.
+  bool reachable = 2;
+}
+
+// Request sent from a node to Discovery Service in order to register.
+message RegisterNodeRequest {
+  // The node version.
+  string version = 1;
+
+  string signature = 2;
+
+  string timestamp = 3;
+
+  string public_key = 4;
+
+  // Capabilities in JSON object format.
+  string capabilities = 5;
+
+  // Addresses of the node, in p2p multiaddr format.
+  repeated string addrs = 6;
+}
+
+// Response sent from Discovery Service to a node with registration result.
+message RegisterNodeResponse {
+  // The node ID.
+  string node_id = 1;
+
+  // Organization ID of the node.
+  string organization_id = 2;
+
+  // IDs of domains which the node should is part of.
+  repeated string domain_ids = 3;
+
+  // Portals in domains.
+  repeated PortalInDomain portals_in_domains = 4;
+
+  // IP under which the node is available.
+  string external_ip = 5;
+
+  // Results of the connectivity checks.
+  repeated ConnectivityCheckResult results = 6;
+}
+
+// Request sent from a node to Discovery Service to request a connectivity check.
+message ConnectivityCheckRequest {
+  // Addresses of the node, in p2p multiaddr format.
+  repeated string addrs = 1;
+}
+
+// Response sent from Discovery Service to a node with connectivity check results.
+message ConnectivityCheckResponse {
+  // Whether the request was received/processed fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+
+  // IP under which the node is available.
+  string external_ip = 3;
+
+  // Results of the connectivity checks.
+  repeated ConnectivityCheckResult results = 4;
+}
+
+// Request sent from a node to Discovery Service to add the node to the domain.
+message NodeInDomainUpdateRequest {
+  string domain_id = 1;
+}
+
+// Response sent from Discovery Service to a node with NodeInDomainUpdate result.
+message NodeInDomainUpdateResponse {
+  // Whether the request was received/processed fine.
+  bool ok = 1;
+
+  // Error text.
+  string error = 2;
+}

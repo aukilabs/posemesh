@@ -7,7 +7,7 @@ use wasm_bindgen_futures::{future_to_promise, js_sys::{Promise, Error}};
 pub struct Config {
     pub bootstraps: Vec<String>,
     pub relays: Vec<String>,
-    pub privateKey: Option<Vec<u8>>,
+    pub privateKey: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -16,7 +16,7 @@ impl Config {
     pub fn new(
         bootstraps: Vec<String>,
         relays: Vec<String>,
-        private_key: Option<Vec<u8>>,
+        private_key: Option<String>,
     ) -> Self {
         Self {
             bootstraps,
@@ -67,7 +67,7 @@ pub fn posemeshNetworkingContextSendMessage(context: *mut Networking, message: V
     };
 
     return future_to_promise(async move {
-        match networking.client.send(message, peer_id, protocol, timeout).await {
+        match networking.client.send(message, &peer_id, &protocol, timeout).await {
             Ok(_) => { Ok(JsValue::from(true)) },
             Err(error) => {
                 eprintln!("posemesh_networking_context_send_message(): {:?}", error);
