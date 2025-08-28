@@ -34,7 +34,7 @@ pub struct DomainData {
 impl DomainData {
     #[cfg(target_family = "wasm")]
     #[wasm_bindgen]
-    pub fn get_data_bytes(self) -> Uint8Array {
+    pub fn get_data_bytes(&self) -> Uint8Array {
         Uint8Array::from(self.data.as_slice())
     }
 }
@@ -518,7 +518,11 @@ fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
 }
 
 fn find_headers_end(data: &[u8]) -> Option<usize> {
-    // Look for double CRLF which marks the end of headers
-    data.windows(4).position(|window| window == b"\r\n\r\n")
-        .or_else(|| data.windows(2).position(|window| window == b"\n\n"))
+    if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+        Some(i + 4) // body starts after \r\n\r\n
+    } else if let Some(i) = data.windows(2).position(|w| w == b"\n\n") {
+        Some(i + 2) // body starts after \n\n
+    } else {
+        None
+    }
 }
