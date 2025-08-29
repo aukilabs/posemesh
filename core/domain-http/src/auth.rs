@@ -9,39 +9,59 @@ use std::{sync::Arc, time};
 pub struct AuthClient {
     api_url: String,
     client: Client,
-    token_cache: Arc<Mutex<DdsTokenCache>>,
+    dds_token_cache: Arc<Mutex<Option<DdsTokenCache>>>,
+    user_token_cache: Arc<Mutex<Option<UserTokenCache>>>,
     client_id: String,
     app_key: Option<String>,
     app_secret: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DdsTokenCache {
-    // User refresh token
-    refresh_token: Option<String>,
-    // DDS access token
-    access_token: Option<String>,
-    // DDS access token expiration time as UTC timestamp
-    expires_at: Option<u64>,
+pub struct UserTokenCache {
+    refresh_token: String,
+    access_token: String,
+    expires_at: u64,
 }
 
-impl TokenCache for DdsTokenCache {
-    fn get_access_token(&self) -> Option<String> {
+impl TokenCache for UserTokenCache {
+    fn get_access_token(&self) -> String {
         self.access_token.clone()
     }
 
-    fn get_expires_at(&self) -> Option<u64> {
+    fn get_expires_at(&self) -> u64 {
         self.expires_at
     }
 
     fn set_expires_at(&mut self, expires_at: u64) {
-        self.expires_at = Some(expires_at);
+        self.expires_at = expires_at;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DdsTokenCache {
+    // DDS access token
+    access_token: String,
+    // DDS access token expiration time as UTC timestamp
+    expires_at: u64,
+}
+
+impl TokenCache for DdsTokenCache {
+    fn get_access_token(&self) -> String {
+        self.access_token.clone()
+    }
+
+    fn get_expires_at(&self) -> u64 {
+        self.expires_at
+    }
+
+    fn set_expires_at(&mut self, expires_at: u64) {
+        self.expires_at = expires_at;
     }
 }
 
 pub(crate) trait TokenCache {
-    fn get_access_token(&self) -> Option<String>;
-    fn get_expires_at(&self) -> Option<u64>;
+    fn get_access_token(&self) -> String;
+    fn get_expires_at(&self) -> u64;
     fn set_expires_at(&mut self, expires_at: u64);
 }
 
@@ -67,11 +87,8 @@ impl AuthClient {
         Self {
             api_url: api_url.to_string(),
             client: Client::new(),
-            token_cache: Arc::new(Mutex::new(DdsTokenCache {
-                access_token: None,
-                expires_at: None,
-                refresh_token: None,
-            })),
+            dds_token_cache: Arc::new(Mutex::new(None)),
+            user_token_cache: Arc::new(Mutex::new(None)),
             client_id: client_id.to_string(),
             app_key: None,
             app_secret: None,
@@ -81,9 +98,8 @@ impl AuthClient {
     pub async fn set_app_credentials(&mut self, app_key: &str, app_secret: &str) {
         self.app_key = Some(app_key.to_string());
         self.app_secret = Some(app_secret.to_string());
-        self.token_cache.lock().await.access_token = None;
-        self.token_cache.lock().await.expires_at = None;
-        self.token_cache.lock().await.refresh_token = None;
+        *self.dds_token_cache.lock().await = None;
+        *self.user_token_cache.lock().await = None;
     }
 
     pub async fn get_dds_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -96,18 +112,17 @@ impl AuthClient {
 
     async fn get_dds_app_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
-            let cache = self.token_cache.lock().await;
-            DdsTokenCache {
-                refresh_token: cache.refresh_token.clone(),
-                access_token: cache.access_token.clone(),
-                expires_at: cache.expires_at.clone(),
-            }
+            let cache = self.dds_token_cache.lock().await;
+            cache.clone()
         };
 
         let app_key = self.app_key.clone().ok_or("App key is not set".to_string())?;
         let app_secret = self.app_secret.clone().ok_or("App secret is not set".to_string())?;
 
-        let token_cache = get_cached_or_fresh_token(&token_cache, || {
+        let token_cache = get_cached_or_fresh_token(&token_cache.unwrap_or(DdsTokenCache {
+            access_token: "".to_string(),
+            expires_at: 0,
+        }), || {
             let app_key = app_key.to_string();
             let app_secret = app_secret.to_string();
             let client = self.client.clone();
@@ -125,9 +140,8 @@ impl AuthClient {
                 if response.status().is_success() {
                     let token_response: DdsTokenResponse = response.json().await?;
                     Ok(DdsTokenCache {
-                        refresh_token: None,
-                        access_token: Some(token_response.access_token.clone()),
-                        expires_at: None,
+                        access_token: token_response.access_token.clone(),
+                        expires_at: parse_jwt(&token_response.access_token)?.exp,
                     })
                 } else {
                     let status = response.status();
@@ -138,69 +152,98 @@ impl AuthClient {
         }).await?;
 
         {
-            let mut cache = self.token_cache.lock().await;
-            cache.access_token = token_cache.access_token.clone();
-            cache.expires_at = token_cache.expires_at.clone();
+            let mut cache = self.dds_token_cache.lock().await;
+            *cache = Some(token_cache.clone());
         }
 
-        Ok(token_cache.access_token.unwrap())
+        Ok(token_cache.access_token)
     }
 
     async fn get_dds_user_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
-            let cache = self.token_cache.lock().await;
-            DdsTokenCache {
-                refresh_token: cache.refresh_token.clone(),
-                access_token: cache.access_token.clone(),
-                expires_at: cache.expires_at.clone(),
-            }
+            let cache = self.dds_token_cache.lock().await;
+            cache.clone()
         };
 
-        if token_cache.access_token.is_none() {
+        if token_cache.is_none() {
             return Err("No access token found".into());
         }
 
-        if token_cache.refresh_token.is_none() {
-            return Err("No refresh token found".into());
+        let user_token_cache = {
+            let cache = self.user_token_cache.lock().await;
+            cache.clone()
+        };
+
+        if user_token_cache.is_none() {
+            return Err("Login first".into());
         }
 
-        let refresh_token = token_cache.refresh_token.clone().unwrap();
-
-        let token_cache = get_cached_or_fresh_token(&token_cache, || {
+        let token_cache = get_cached_or_fresh_token(&token_cache.unwrap(), || {
             let client = self.client.clone();
             let api_url = self.api_url.clone();
             let client_id = self.client_id.clone();
+
             async move {
-                let response = client
-                    .post(&format!("{}/user/refresh", api_url))
+                let client_clone = client.clone();
+                let api_url_clone = api_url.clone();
+                let client_id_clone = client_id.clone();
+                let refresh_token = user_token_cache.clone().unwrap().refresh_token;
+                let user_token_cache = get_cached_or_fresh_token(&user_token_cache.unwrap(), || {
+                    async move {
+                        let response = client_clone
+                            .post(&format!("{}/user/refresh", api_url_clone))
+                            .header("Content-Type", "application/json")
+                            .header("posemesh-client-id", client_id_clone)
+                            .header("Authorization", format!("Bearer {}", refresh_token))
+                            .send()
+                            .await.expect("Failed to refresh token");
+                            
+                        if response.status().is_success() {
+                            let token_response: UserTokenResponse = response.json().await?; 
+                            Ok(UserTokenCache {
+                                refresh_token: token_response.refresh_token.clone(),
+                                access_token: token_response.access_token.clone(),
+                                expires_at: parse_jwt(&token_response.access_token)?.exp,
+                            })
+                        } else {
+                            Err(format!("Failed to refresh token. Status: {}", response.status()).into())
+                        }
+                    }
+                }).await?;
+
+                {
+                    let mut cache = self.user_token_cache.lock().await;
+                    *cache = Some(user_token_cache.clone());
+                }
+
+                let dds_response = client
+                    .post(&format!("{}/service/domains-access-token", api_url))
+                    .header("Authorization", format!("Bearer {}", user_token_cache.access_token))
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)
-                    .header("Authorization", format!("Bearer {}", refresh_token))
                     .send()
-                    .await.expect("Failed to refresh token");
+                    .await?;
 
-                if response.status().is_success() {
-                    let token_response: UserTokenResponse = response.json().await?;
+                if dds_response.status().is_success() {
+                    let dds_token_response: DdsTokenResponse = dds_response.json().await?;
                     Ok(DdsTokenCache {
-                        refresh_token: None,
-                        access_token: Some(token_response.access_token.clone()),
-                        expires_at: None,
+                        access_token: dds_token_response.access_token.clone(),
+                        expires_at: parse_jwt(&dds_token_response.access_token)?.exp,
                     })
                 } else {
-                    let status = response.status();
-                    let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    Err(format!("Failed to refresh token. Status: {} - {}", status, text).into())
+                    let status = dds_response.status();
+                    let text = dds_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                    Err(format!("Failed to get DDS access token. Status: {} - {}", status, text).into())
                 }
             }
         }).await?;
 
         {
-            let mut cache = self.token_cache.lock().await;
-            cache.access_token = token_cache.access_token.clone();
-            cache.expires_at = token_cache.expires_at.clone();
+            let mut cache = self.dds_token_cache.lock().await;
+            *cache = Some(token_cache.clone());
         }
 
-        Ok(token_cache.access_token.unwrap())
+        Ok(token_cache.access_token)
     }
 
     pub async fn user_login(&mut self, email: &str, password: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -210,9 +253,8 @@ impl AuthClient {
         let api_url = self.api_url.clone();
         let client_id = self.client_id.clone();
         let client_id_2 = client_id.clone();
-        self.token_cache.lock().await.access_token = None;
-        self.token_cache.lock().await.expires_at = None;
-        self.token_cache.lock().await.refresh_token = None;
+        *self.dds_token_cache.lock().await = None;
+        *self.user_token_cache.lock().await = None;
         self.app_key = None;
         self.app_secret = None;
         
@@ -232,8 +274,12 @@ impl AuthClient {
         if response.status().is_success() {
             let token_response: UserTokenResponse = response.json().await?;
             {
-                let mut cache = self.token_cache.lock().await;
-                cache.refresh_token = Some(token_response.refresh_token.clone());
+                let mut cache = self.user_token_cache.lock().await;
+                *cache = Some(UserTokenCache {
+                    refresh_token: token_response.refresh_token.clone(),
+                    access_token: token_response.access_token.clone(),
+                    expires_at: parse_jwt(&token_response.access_token)?.exp,
+                });
             }
 
             let dds_response = client
@@ -246,10 +292,11 @@ impl AuthClient {
 
             if dds_response.status().is_success() {
                 let dds_token_response: DdsTokenResponse = dds_response.json().await?;
-                let mut cache = self.token_cache.lock().await;
-                cache.access_token = Some(dds_token_response.access_token.clone());
-                cache.expires_at = Some(parse_jwt(&dds_token_response.access_token)?.exp);
-                cache.refresh_token = Some(token_response.refresh_token.clone());
+                let mut cache = self.dds_token_cache.lock().await;
+                *cache = Some(DdsTokenCache {
+                    access_token: dds_token_response.access_token.clone(),
+                    expires_at: parse_jwt(&dds_token_response.access_token)?.exp,
+                });
                 Ok(dds_token_response.access_token)
             } else {
                 Err(format!("Failed to get DDS access token. Status: {}", dds_response.status()).into())
@@ -261,25 +308,26 @@ impl AuthClient {
 
 }
 
+const REFRESH_CACHE_TIME: u64 = 3;
 
 pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(cache: &R, token_fetcher: F) -> Result<R, Box<dyn std::error::Error + Send + Sync>>
 where
     F: FnOnce() -> Fut,
-    R: TokenCache + Clone, 
+    R: TokenCache + Clone,
     Fut: std::future::Future<Output = Result<R, Box<dyn std::error::Error + Send + Sync>>>,
 {
     // Check if we have a valid cached token
-    if let Some(expires_at) = cache.get_expires_at() {
-        // If token expires in more than 5 minutes, return cached token
-        if expires_at - time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs() > 300 {
-            return Ok(cache.clone());
-        }
+    let expires_at = cache.get_expires_at();
+    let current_time = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs();
+    // If token expires in more than REFRESH_CACHE_TIME seconds, return cached token
+    if expires_at > current_time && expires_at - current_time > REFRESH_CACHE_TIME {
+        return Ok(cache.clone());
     }
 
     // Fetch new token
     let mut token_response = token_fetcher().await?;
 
-    let claim = parse_jwt(&token_response.get_access_token().unwrap())?;
+    let claim = parse_jwt(&token_response.get_access_token())?;
     // Use the actual expiration from JWT if available
     token_response.set_expires_at(claim.exp);
 
@@ -288,7 +336,7 @@ where
 
 #[derive(Debug, Deserialize)]
 pub struct JwtClaim {
-    exp: u64,
+    pub exp: u64,
 }
 
 pub fn parse_jwt(token: &str) -> Result<JwtClaim, Box<dyn std::error::Error + Send + Sync>> {

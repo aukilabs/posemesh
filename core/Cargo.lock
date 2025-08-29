@@ -3107,7 +3107,7 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",

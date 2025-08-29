@@ -4,7 +4,7 @@ use futures::lock::Mutex;
 use reqwest::Client;
 use serde::Deserialize;
 
-use crate::auth::{get_cached_or_fresh_token, AuthClient, TokenCache};
+use crate::auth::{get_cached_or_fresh_token, parse_jwt, AuthClient, TokenCache};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Domain {
@@ -29,18 +29,12 @@ pub struct DomainWithToken {
     pub expires_at: u64,
 }
 impl TokenCache for DomainWithToken {
-    fn get_access_token(&self) -> Option<String> {
-        if self.access_token.is_empty() {
-            return None;
-        }
-        Some(self.access_token.clone())
+    fn get_access_token(&self) -> String {
+        self.access_token.clone()
     }
 
-    fn get_expires_at(&self) -> Option<u64> {
-        if self.expires_at == 0 {
-            return None;
-        }
-        Some(self.expires_at)
+    fn get_expires_at(&self) -> u64 {
+        self.expires_at
     }
 
     fn set_expires_at(&mut self, expires_at: u64) {
@@ -99,14 +93,14 @@ impl DiscoveryService {
     }
 
     pub async fn sign_in_with_auki_account(&mut self, email: &str, password: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _ = self.api_client.user_login(email, password).await?;
         self.cache.lock().await.clear();
+        let _ = self.api_client.user_login(email, password).await?;
         Ok(())
     }
 
     pub async fn sign_in_as_auki_app(&mut self, app_key: &str, app_secret: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.api_client.set_app_credentials(app_key, app_secret).await;
         self.cache.lock().await.clear();
+        self.api_client.set_app_credentials(app_key, app_secret).await;
         Ok(())
     }
 
@@ -148,7 +142,8 @@ impl DiscoveryService {
                     .await?;
 
                 if response.status().is_success() {
-                    let domain_with_token: DomainWithToken = response.json().await?;
+                    let mut domain_with_token: DomainWithToken = response.json().await?;
+                    domain_with_token.expires_at = parse_jwt(&domain_with_token.access_token)?.exp;
                     Ok(domain_with_token)
                 } else {
                     let status = response.status();

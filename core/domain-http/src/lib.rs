@@ -70,11 +70,13 @@ impl DomainClient {
 #[cfg(not(target_family = "wasm"))]
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::domain_data::{UpdateDomainData, UploadDomainData};
 
     use super::*;
     use futures::{channel::mpsc, StreamExt};
-    use tokio::spawn;
+    use tokio::{spawn, time::sleep};
 
     fn get_config() -> (config::Config, String) {
         if std::path::Path::new("../.env.local").exists() {
@@ -144,6 +146,30 @@ mod tests {
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
         assert_eq!(result.unwrap().len(), 2);
+
+        sleep(Duration::from_secs(5)).await;
+
+        // Create a test query
+        let query = DownloadQuery {
+            ids: vec![],
+            name: None,
+            data_type: Some("dmt_accel_csv".to_string()),
+        };
+
+        // Test the download function
+        let result = client.download_domain_data(
+            &config.1,
+            &query
+        ).await;
+
+        assert!(result.is_ok(), "error message : {:?}", result.err());
+
+        let mut count = 0;
+        let mut rx = result.unwrap();
+        while let Some(Ok(_)) = rx.next().await {
+            count += 1;
+        }
+        assert!(count > 0);
     }
 }
 
