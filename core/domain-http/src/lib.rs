@@ -2,7 +2,7 @@ use futures::channel::mpsc::Receiver;
 
 #[cfg(target_family = "wasm")]
 use crate::domain_data::{UploadDomainData, upload_v1};
-use crate::domain_data::{download_metadata_v1, download_v1_stream, DomainData, DownloadQuery};
+use crate::domain_data::{download_by_id, download_metadata_v1, download_v1_stream, DomainData, DownloadQuery};
 
 mod auth;
 pub mod config;

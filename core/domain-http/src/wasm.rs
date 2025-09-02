@@ -37,9 +37,9 @@ pub fn sign_in_with_app_credential(api_url: String, dds_url: String, client_id: 
 
 // Sign in with user credential, return a DomainClient
 #[wasm_bindgen(js_name = "signInWithUserCredential")]
-pub fn sign_in_with_user_credential(api_url: String, dds_url: String, client_id: String, email: String, password: String) -> Promise {
+pub fn sign_in_with_user_credential(api_url: String, dds_url: String, client_id: String, email: String, password: String, logout: bool) -> Promise {    
     let future = async move {
-        let res = r_DomainClient::new_with_user_credential(&api_url, &dds_url, &client_id, &email, &password).await;
+        let res = r_DomainClient::new_with_user_credential(&api_url, &dds_url, &client_id, &email, &password, logout).await;
         match res {
             Ok(domain_client) => Ok(JsValue::from(DomainClient { domain_client: domain_client })),
             Err(e) => Err(JsError::new(&e.to_string()).into()),

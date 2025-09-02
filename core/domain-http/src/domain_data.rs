@@ -45,11 +45,27 @@ pub struct UpdateDomainData {
     pub id: String,
 }
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+impl UpdateDomainData {
+    #[cfg(target_family = "wasm")]
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: String) -> Self {
+        Self { id }
+    }
+}
 #[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
 #[derive(Debug, Serialize, Clone)]
 pub struct CreateDomainData {
     pub name: String,
     pub data_type: String,
+}
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+impl CreateDomainData {
+    #[cfg(target_family = "wasm")]
+    #[wasm_bindgen(constructor)]
+    pub fn new(name: String, data_type: String) -> Self {
+        Self { name, data_type }
+    }
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
@@ -60,6 +76,15 @@ pub struct UploadDomainData {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateDomainData>,
     pub data: Vec<u8>,
+}
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+impl UploadDomainData {
+    #[cfg(target_family = "wasm")]
+    #[wasm_bindgen(constructor)]
+    pub fn new(create: Option<CreateDomainData>, update: Option<UpdateDomainData>, data: Uint8Array) -> Self {
+        Self { create, update, data: data.to_vec() }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -281,7 +306,6 @@ pub async fn upload_v1_stream(
             tracing::error!("Create failed with error: {}", e);
             create_signal.send(Err(e.into())).unwrap();
             return;
-            // return Err(e.into());
         }
 
         let create_response = create_response.unwrap();
@@ -307,7 +331,6 @@ pub async fn upload_v1_stream(
             tracing::error!("Update failed with error: {}", e);
             update_signal.send(Err(e.into())).unwrap();
             return;
-            // return Err(e.into());
         }
         let update_response = update_response.unwrap();
         if update_response.status().is_success() {
@@ -428,10 +451,10 @@ pub async fn upload_v1(
     let create_response = Client::new()
         .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
-        .header("Content-Type", "multipart/form-data")
+        .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
         .body(create_body)
         .send()
-        .await.unwrap();
+        .await?;
 
     let mut res = Vec::new();
     if create_response.status().is_success() {
@@ -445,7 +468,7 @@ pub async fn upload_v1(
     let update_response = Client::new()
         .post(&format!("{}/api/v1/domains/{}/data", url_2, domain_id_2))
         .bearer_auth(access_token_2)
-        .header("Content-Type", "multipart/form-data")
+        .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
         .body(update_body)
         .send()
         .await.unwrap();
