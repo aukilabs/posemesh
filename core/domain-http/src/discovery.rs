@@ -103,9 +103,37 @@ impl DiscoveryService {
         }
     }
 
-    pub async fn sign_in_with_auki_account(&mut self, email: &str, password: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn sign_in_with_auki_account(&mut self, email: &str, password: &str, logout: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.cache.lock().await.clear();
         let _ = self.api_client.user_login(email, password).await?;
+        if !logout {
+            let mut api_client = self.api_client.clone();
+            let email = email.to_string();
+            let password = password.to_string();
+            spawn(async move {
+                loop {
+                    let expires_at = api_client.get_expires_at().await.inspect_err(|e| tracing::error!("Failed to get expires at: {}", e));
+                    if let Ok(expires_at) = expires_at {
+                        let expiration = {
+                            let now = now_unix_secs();
+                            let duration = expires_at - now;
+                            if duration > 600 {
+                                Some(Duration::from_secs(duration))
+                            } else {
+                                None
+                            }
+                        };
+                        
+                        if let Some(expiration) = expiration {
+                            tracing::info!("Refreshing token in {} seconds", expiration.as_secs());
+                            sleep(expiration).await;
+                        }
+
+                        let _ = api_client.user_login(&email, &password).await.inspect_err(|e| tracing::error!("Failed to login: {}", e));
+                    }
+                }
+            });
+        }
         Ok(())
     }
 

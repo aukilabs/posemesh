@@ -29,16 +29,16 @@ impl DomainClient {
             client_id: client_id.to_string(),
         }
     }
-
+    
     pub async fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
         let _ = dc.discovery_client.sign_in_as_auki_app(app_key, app_secret).await?;
         Ok(dc)
     }
 
-    pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str, logout: bool) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
-        let _ = dc.discovery_client.sign_in_with_auki_account(email, password).await?;
+        let _ = dc.discovery_client.sign_in_with_auki_account(email, password, logout).await?;
         Ok(dc)
     }
 
@@ -120,7 +120,7 @@ mod tests {
     async fn test_upload_domain_data_with_user_credential() {
         use futures::SinkExt;
         let config = get_config();
-        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.email.unwrap(), &config.0.password.unwrap()).await.expect("Failed to create client");
+        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.email.unwrap(), &config.0.password.unwrap(), true).await.expect("Failed to create client");
 
         let data = vec![UploadDomainData {
             create: None,

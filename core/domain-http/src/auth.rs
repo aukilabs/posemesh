@@ -96,6 +96,25 @@ impl AuthClient {
         }
     }
 
+    /// Get the expiration time of the user refresh token or DDS access token
+    pub async fn get_expires_at(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        let token_cache = {
+            let cache = self.user_token_cache.lock().await;
+            cache.clone()
+        };
+        if token_cache.is_none() {
+            let dds_token_cache = {
+                let cache = self.dds_token_cache.lock().await;
+                cache.clone()
+            };
+            if dds_token_cache.is_none() {
+                return Err("No token found".into());
+            }
+            return Ok(dds_token_cache.unwrap().expires_at);
+        }
+        Ok(parse_jwt(&token_cache.unwrap().refresh_token)?.exp)
+    }
+
     pub async fn set_app_credentials(&mut self, app_key: &str, app_secret: &str) {
         self.app_key = Some(app_key.to_string());
         self.app_secret = Some(app_secret.to_string());
