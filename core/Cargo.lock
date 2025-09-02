@@ -3084,7 +3084,7 @@ dependencies = [
  "pb-rs",
  "posemesh-networking",
  "posemesh-runtime",
- "posemesh-utils 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "posemesh-utils 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "quick-protobuf",
  "quick-protobuf-codec 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ring 0.17.14",
@@ -3107,13 +3107,13 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
  "dotenvy",
  "futures",
- "posemesh-utils 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "posemesh-utils 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest",
  "serde",
  "serde-wasm-bindgen",
@@ -3143,7 +3143,7 @@ dependencies = [
  "libp2p-websocket-websys",
  "mockall",
  "posemesh-runtime",
- "posemesh-utils 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "posemesh-utils 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.8.5",
  "serde",
  "serde-wasm-bindgen",
@@ -3167,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "posemesh-utils"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "gloo-timers 0.3.0",
@@ -3179,9 +3179,9 @@ dependencies = [
 
 [[package]]
 name = "posemesh-utils"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88eb6afaf35fbe802154535039a4096214d6118f313d5fb6dc19d85a2540c66c"
+checksum = "72bd5802b2511683e83e92b1f33d116de6f2af130fa3a4127baae3337d3343f2"
 dependencies = [
  "futures",
  "gloo-timers 0.3.0",

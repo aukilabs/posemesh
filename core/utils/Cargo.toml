@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-utils"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "Utility functions and helpers for async operations, retries, and timeouts, supporting both native and WebAssembly targets."

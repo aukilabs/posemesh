@@ -100,7 +100,7 @@ where
 
 #[cfg(target_family = "wasm")]
 pub fn now_unix_secs() -> u64 {
-    let millis: f64 = js_sys::Date::now(); // milliseconds since epoch
+    let millis: f64 = wasm_bindgen_futures::js_sys::Date::now(); // milliseconds since epoch
     // truncate/floor safely
     let secs_f64 = (millis / 1000.0).floor();
     // convert to u64 safely
