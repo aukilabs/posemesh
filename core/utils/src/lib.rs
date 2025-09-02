@@ -16,16 +16,7 @@ use wasm_bindgen::JsValue;
 
 #[cfg(target_family = "wasm")]
 pub async fn sleep(duration: Duration) {
-    let window = web_sys::window().expect("no window");
-    let promise = Promise::new(&mut |resolve, _| {
-        window.set_timeout_with_callback_and_timeout_and_arguments_0(
-            &Closure::once_into_js(move || {
-                resolve.call0(&JsValue::null()).unwrap();
-            }).unchecked_ref(),
-            duration.as_millis() as i32,
-        ).expect("failed to set timeout");
-    });
-    JsFuture::from(promise).await.expect("failed to wait");
+    gloo_timers::future::TimeoutFuture::new(duration.as_millis() as u32).await;
 }
 
 pub const INFINITE_RETRIES: u32 = 0;
@@ -87,8 +78,8 @@ where
 #[cfg(target_family = "wasm")]
 pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, io::Error>
 where
-    F: Future<Output = T> + Send,
-    T: Send,
+    F: Future<Output = T>,
+    T: Send + Sync,
 {
     if duration.is_zero() {
         return Ok(future.await);
@@ -111,4 +102,22 @@ where
     tokio::time::timeout(duration, future)
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Operation timed out"))
+}
+
+#[cfg(target_family = "wasm")]
+pub fn now_unix_secs() -> u64 {
+    let millis: f64 = js_sys::Date::now(); // milliseconds since epoch
+    // truncate/floor safely
+    let secs_f64 = (millis / 1000.0).floor();
+    // convert to u64 safely
+    u64::try_from(secs_f64 as i128).unwrap_or(u64::MAX)
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn now_unix_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }

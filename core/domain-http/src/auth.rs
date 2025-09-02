@@ -3,7 +3,8 @@ use reqwest::Client;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 
-use std::{sync::Arc, time};
+use posemesh_utils::now_unix_secs;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct AuthClient {
@@ -299,7 +300,9 @@ impl AuthClient {
                 });
                 Ok(dds_token_response.access_token)
             } else {
-                Err(format!("Failed to get DDS access token. Status: {}", dds_response.status()).into())
+                let status = dds_response.status();
+                let text = dds_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                Err(format!("Failed to get DDS access token. Status: {} - {}", status, text).into())
             }
         } else {
             Err(format!("Failed to login. Status: {}", response.status()).into())
@@ -318,7 +321,7 @@ where
 {
     // Check if we have a valid cached token
     let expires_at = cache.get_expires_at();
-    let current_time = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs();
+    let current_time = now_unix_secs();
     // If token expires in more than REFRESH_CACHE_TIME seconds, return cached token
     if expires_at > current_time && expires_at - current_time > REFRESH_CACHE_TIME {
         return Ok(cache.clone());

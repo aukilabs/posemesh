@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-domain-http"
-version = "0.1.7"
+version = "0.1.9"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
@@ -13,6 +13,7 @@ serde = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 tracing = { workspace = true }
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "stream", "rustls-tls"]}
+posemesh-utils = {workspace=true}
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }

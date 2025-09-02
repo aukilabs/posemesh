@@ -39,13 +39,10 @@ posemesh-networking = { path = "networking" }
 posemesh-runtime = { path = "runtime" }
 posemesh-domain = { path = "domain" }
 posemesh-utils = { path = "utils" }
-posemesh-domain-http = { path = "domain-http" }
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"
 wasm-bindgen-test = "0.3.50"
-hex = "0.4.3"
-uuid = "1.17.0"
 base64 = "0.22.1"
 
 [profile.release]

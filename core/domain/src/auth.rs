@@ -5,8 +5,9 @@ use posemesh_networking::{client::Client, libp2p::NetworkError, AsyncStream};
 use ring::{error, signature::{Ed25519KeyPair, KeyPair}};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation, Algorithm};
-use std::{sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{sync::Arc, time::Duration};
 use futures::{channel::oneshot, lock::Mutex, select, FutureExt, AsyncWriteExt};
+use posemesh_utils::now_unix_secs;
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -119,9 +120,9 @@ pub struct TaskTokenClaim {
 
 impl TokenClaim for TaskTokenClaim {
     fn add_ttl(&mut self, ttl: Duration) {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
-        self.exp = (now + ttl).as_secs() as usize;
-        self.iat = now.as_secs() as usize;
+        let now = now_unix_secs();
+        self.exp = (now + ttl.as_secs()) as usize;
+        self.iat = now as usize;
     }
 }
 pub trait TokenClaim: Serialize + DeserializeOwned {

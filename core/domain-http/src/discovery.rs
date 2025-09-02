@@ -1,8 +1,19 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::lock::Mutex;
 use reqwest::Client;
 use serde::Deserialize;
+
+#[cfg(not(target_family = "wasm"))]
+use tokio::spawn;
+#[cfg(target_family = "wasm")]
+use wasm_bindgen_futures::spawn_local as spawn;
+
+#[cfg(target_family = "wasm")]
+use posemesh_utils::sleep;
+#[cfg(not(target_family = "wasm"))]
+use tokio::time::sleep;
+use posemesh_utils::now_unix_secs;
 
 use crate::auth::{get_cached_or_fresh_token, parse_jwt, AuthClient, TokenCache};
 

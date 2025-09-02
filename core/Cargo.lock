@@ -3107,12 +3107,13 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
  "dotenvy",
  "futures",
+ "posemesh-utils",
  "reqwest",
  "serde",
  "serde-wasm-bindgen",
