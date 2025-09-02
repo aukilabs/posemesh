@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.81.0"
+rust-version = "1.85.0"
 
 [workspace.dependencies]
 libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
