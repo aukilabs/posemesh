@@ -99,6 +99,30 @@ struct ListDomainData {
     pub data: Vec<DomainData>,
 }
 
+pub async fn download_by_id(
+    url: &str,
+    client_id: &str,
+    access_token: &str,
+    domain_id: &str,
+    id: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let response = Client::new()
+        .get(&format!("{}/api/v1/domains/{}/data/{}?raw=true", url, domain_id, id))
+        .bearer_auth(access_token)
+        .header("posemesh-client-id", client_id)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        let data = response.bytes().await?;
+        Ok(data.to_vec())
+    } else {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("Failed to download data by id. Status: {} - {}", status, text).into())
+    }
+}
+
 pub async fn download_metadata_v1(
     url: &str,
     client_id: &str,

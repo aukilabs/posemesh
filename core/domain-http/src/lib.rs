@@ -65,6 +65,11 @@ impl DomainClient {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         download_metadata_v1(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, query).await
     }
+
+    pub async fn download_domain_data_by_id(&self, domain_id: &str, id: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        download_by_id(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, id).await
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -170,6 +175,22 @@ mod tests {
             count += 1;
         }
         assert!(count > 0);
+    }
+    
+    #[tokio::test]
+    async fn test_download_domain_data_by_id() {
+        let config = get_config();
+        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key.unwrap(), &config.0.app_secret.unwrap()).await.expect("Failed to create client");
+
+        // Now test download by id
+        let download_result = client.download_domain_data_by_id(
+            &config.1,
+            "a84a36e5-312b-4f80-974a-06f5d19c1e16",
+        ).await;
+
+        assert!(download_result.is_ok(), "download by id failed: {:?}", download_result.err());
+        let downloaded_bytes = download_result.unwrap();
+        assert_eq!(downloaded_bytes, b"{\"test\": \"test updated\"}".to_vec());
     }
 }
 
