@@ -1,18 +1,12 @@
 use std::time::Duration;
-use std::{error::Error, io};
-use futures::{self, Future, FutureExt};
+use std::io;
+use futures::{self, Future};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
 
 #[cfg(target_family = "wasm")]
-use wasm_bindgen_futures::JsFuture;
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::{closure::Closure, JsCast};
-#[cfg(target_family = "wasm")]
-use js_sys::Promise;
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::JsValue;
+use futures::FutureExt;
 
 #[cfg(target_family = "wasm")]
 pub async fn sleep(duration: Duration) {

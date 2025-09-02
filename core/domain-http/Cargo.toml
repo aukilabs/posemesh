@@ -13,7 +13,7 @@ serde = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 tracing = { workspace = true }
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "stream", "rustls-tls"]}
-posemesh-utils = {workspace=true}
+posemesh-utils = { workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }

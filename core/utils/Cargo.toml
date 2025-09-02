@@ -1,7 +1,10 @@
 [package]
 name = "posemesh-utils"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+repository = "https://github.com/aukilabs/posemesh/tree/main/core"
+description = "Utility functions and helpers for async operations, retries, and timeouts, supporting both native and WebAssembly targets."
+license = "MIT"
 rust-version.workspace = true
 
 [dependencies]
@@ -14,6 +17,4 @@ tokio = { workspace = true, features = ["full"] }
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { version = "0.3", features = ["Window"] }
-js-sys = "0.3"
 gloo-timers = { workspace = true, features = ["futures"] }
