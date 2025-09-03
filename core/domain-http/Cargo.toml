@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-domain-http"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
