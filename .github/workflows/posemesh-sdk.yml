@@ -58,6 +58,15 @@ jobs:
             rust-cache-test-
             
       - name: Run unit tests
+        env:
+          CLIENT_IDL: test-core-ci
+          POSEMESH_EMAIL: ${{ secrets.POSEMESH_EMAIL }}
+          POSEMESH_PASSWORD: ${{ secrets.POSEMESH_PASSWORD }}
+          API_URL: https://api.dev.aukiverse.com
+          DDS_URL: https://dds.dev.aukiverse.com
+          APP_KEY: ${{ secrets.APP_KEY }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          DOMAIN_ID: 23d60e61-6978-4f6b-a59d-9ffa027755fc
         run: make unit-tests
         
   build_apple_frameworks:
