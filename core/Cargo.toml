@@ -7,12 +7,12 @@ members = [
     "base",
     "examples/relay",
     "examples/test-concurrent",
-    "utils"
-]
+    "utils",
+    "domain-http"]
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.81.0"
+rust-version = "1.87.0"
 
 [workspace.dependencies]
 libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
@@ -38,11 +38,12 @@ console_error_panic_hook = "0.1.7"
 posemesh-networking = { path = "networking" }
 posemesh-runtime = { path = "runtime" }
 posemesh-domain = { path = "domain" }
-posemesh-utils = { path = "utils" }
+posemesh-utils = "0.1.2"
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"
 wasm-bindgen-test = "0.3.50"
+base64 = "0.22.1"
 
 [profile.release]
 strip = true

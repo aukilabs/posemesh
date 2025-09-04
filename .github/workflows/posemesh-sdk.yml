@@ -58,6 +58,15 @@ jobs:
             rust-cache-test-
             
       - name: Run unit tests
+        env:
+          CLIENT_ID: test-core-ci
+          POSEMESH_EMAIL: ${{ secrets.POSEMESH_EMAIL }}
+          POSEMESH_PASSWORD: ${{ secrets.POSEMESH_PASSWORD }}
+          API_URL: https://api.dev.aukiverse.com
+          DDS_URL: https://dds.dev.aukiverse.com
+          APP_KEY: ${{ secrets.APP_KEY }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          DOMAIN_ID: 23d60e61-6978-4f6b-a59d-9ffa027755fc
         run: make unit-tests
         
   build_apple_frameworks:
@@ -85,8 +94,8 @@ jobs:
           npm run generate
 
       - name: Install Rust
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      
+        uses: dtolnay/rust-toolchain@1.87.0
+
       - name: Switch to Xcode 16.4
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app
@@ -204,7 +213,7 @@ jobs:
           ./emsdk activate 3.1.69
 
       - name: Install Rust
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        uses: dtolnay/rust-toolchain@1.87.0
       
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4
@@ -278,7 +287,7 @@ jobs:
           sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu clang lld
 
       - name: Install Rust
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        uses: dtolnay/rust-toolchain@1.87.0
 
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4

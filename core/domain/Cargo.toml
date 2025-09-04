@@ -25,7 +25,7 @@ thiserror = { workspace = true }
 ring = "0.17.14"
 posemesh-utils = {workspace = true}
 async-timer = "0.7.4"
-base64 = "0.22.1"
+base64 = {workspace = true}
 
 [dev-dependencies]
 mockall = {workspace = true}
@@ -48,6 +48,10 @@ uuid = { version = "1.13.2", features = ["v4", "js"] }
 tracing-wasm = { workspace = true }
 console_error_panic_hook = { workspace = true }
 
+[target.'cfg(target_family="wasm")'.dependencies.getrandom]
+version = "0.3.3"
+features = ["wasm_js"]
+
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
@@ -58,3 +62,6 @@ fs = ["dep:tokio-postgres"]
 
 [profile.release]
 strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O', '--enable-bulk-memory']
