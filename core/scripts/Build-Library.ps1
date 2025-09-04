@@ -55,7 +55,7 @@ Switch($Platform) {
             Write-Error -Message "Parameter '-Architecture' is not specified for 'macOS' platform."
             Exit 1
         }
-        $RustToolchain = '1.81.0'
+        $RustToolchain = '1.87.0'
         Switch($Architecture) {
             'AMD64' { $RustTarget = 'x86_64-apple-darwin' }
             'ARM64' { $RustTarget = 'aarch64-apple-darwin' }
@@ -74,7 +74,7 @@ Switch($Platform) {
             Write-Error -Message "Parameter '-Architecture' is not specified for 'Mac-Catalyst' platform."
             Exit 1
         }
-        $RustToolchain = 'nightly-2024-10-06'
+        $RustToolchain = 'nightly'
         Switch($Architecture) {
             'AMD64' { $RustTarget = 'x86_64-apple-ios-macabi' }
             'ARM64' { $RustTarget = 'aarch64-apple-ios-macabi' }
@@ -96,7 +96,7 @@ Switch($Platform) {
             Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'iOS' platform."
             Exit 1
         }
-        $RustToolchain = '1.81.0'
+        $RustToolchain = '1.87.0'
         $RustTarget = 'aarch64-apple-ios'
     }
     'iOS-Simulator' {
@@ -108,7 +108,7 @@ Switch($Platform) {
             Write-Error -Message "Parameter '-Architecture' is not specified for 'iOS-Simulator' platform."
             Exit 1
         }
-        $RustToolchain = '1.81.0'
+        $RustToolchain = '1.87.0'
         Switch($Architecture) {
             'AMD64' { $RustTarget = 'x86_64-apple-ios' }
             'ARM64' { $RustTarget = 'aarch64-apple-ios-sim' }
@@ -126,7 +126,7 @@ Switch($Platform) {
             Write-Error -Message "Invalid or unsupported '$Architecture' architecture for 'Web' platform."
             Exit 1
         }
-        $RustToolchain = '1.81.0'
+        $RustToolchain = '1.87.0'
         $RustTarget = 'wasm32-unknown-unknown'
         $WASMTarget = 'bundler'
     }
@@ -153,7 +153,7 @@ Switch($Platform) {
             Write-Error -Message "Parameter '-Architecture' is not specified for 'Linux' platform."
             Exit 1
         }
-        $RustToolchain = '1.81.0'
+        $RustToolchain = '1.87.0'
         Switch($Architecture) {
             'AMD64' { $RustTarget = 'x86_64-unknown-linux-gnu' }
             'ARM64' {
@@ -343,7 +343,7 @@ Try {
             Exit 1
         }
     }
-    $RustTargetList = & $RustUpCommand "+$RustToolchain" target list --installed
+    $RustTargetList = & $RustUpCommand target list --toolchain "$RustToolchain" --installed
     $RustTargetInstalled = $False
     ForEach($RustTargetListItem In $RustTargetList) {
         If($RustTargetListItem -Match "^\s*$RustTarget\s*$") {
