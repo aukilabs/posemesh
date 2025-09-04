@@ -34,6 +34,10 @@ serde-wasm-bindgen = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
 console_error_panic_hook = { workspace = true }
 
+[target.'cfg(target_family="wasm")'.dependencies.getrandom]
+version = "0.3.3"
+features = ["wasm_js"]
+
 [features]
 default = []
 c = []
@@ -43,3 +47,6 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [build-dependencies]
 cbindgen = "0.28.0"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O', '--enable-bulk-memory']

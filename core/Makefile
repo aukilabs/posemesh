@@ -11,7 +11,7 @@ build-domain:
 ifeq ($(ARCH),WASM)
 	$(MAKE) build-domain-wasm
 else
-	./scripts/Build-Library.ps1 $(OS) $(ARCH) $(CONFIG) domain -InstallNecessaryRustToolchainsAndTargets
+	./scripts/Build-Library.ps1 $(OS) $(ARCH) $(CONFIG) posemesh-domain -InstallNecessaryRustToolchainsAndTargets
 endif
 
 build-domain-wasm:
