@@ -59,7 +59,7 @@ jobs:
             
       - name: Run unit tests
         env:
-          CLIENT_IDL: test-core-ci
+          CLIENT_ID: test-core-ci
           POSEMESH_EMAIL: ${{ secrets.POSEMESH_EMAIL }}
           POSEMESH_PASSWORD: ${{ secrets.POSEMESH_PASSWORD }}
           API_URL: https://api.dev.aukiverse.com
