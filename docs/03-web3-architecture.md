@@ -225,7 +225,7 @@ sequenceDiagram
 
 ## References
 
-* **Relay proofs:** Pocket Network’s claim/reveal sampling over Merkle roots; overview of relay proofs. [1]
+* **Relay proofs:** Pocket Network’s claim/reveal sampling over Merkle roots; overview of relay proofs. [1] / [2]
 * **Randomness:** Chainlink VRF; drand.
 * **Storage proofs:** Filecoin’s PoRep and WindowPoSt docs. [3]
 * **Compute (ZK):** RISC Zero zkVM (on‑chain verifiable receipts). [4]
