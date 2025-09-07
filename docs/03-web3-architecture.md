@@ -1,10 +1,10 @@
-# Auki Network - Web3 Architecture
+# Auki Network - Web3 Architecture Overview
 
 > How to **decentralize** what we built
 
 ## Background
 
-This document **proposes** an architecture to make the [current architecture](02-current-architecture.md) verifiable
+This document **proposes** an architecture to make the [current architecture](02-web2-architecture.md) verifiable
 on-chain:
 
 * Proof of Relay for Network Providers.

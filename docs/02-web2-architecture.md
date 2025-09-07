@@ -1,4 +1,4 @@
-# Posemesh $AUKI MVP - Technical Architecture Overview
+# Auki Network - Web2 Architecture Overview
 
 > How we built the posemesh first iteration
 
