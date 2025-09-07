@@ -1,4 +1,4 @@
-# Posemesh Protocol - Business-Logic Specification
+# Auki Network - Business-Logic Specification
 
 ## Why read this?
 
@@ -15,7 +15,7 @@ If you plan to:
 
 Posemesh got started as a closed-source web2 network using AR technology to solve real‑world problems. The technology
 proved itself in production, yet still depends on Auki's centralized infrastructure.
-For more background, see the [Current Architecture](02-current-architecture.md) document.
+For more background, see the [Current Architecture](02-web2-architecture.md) document.
 
 We are now transitioning Posemesh to be an open-source web3 protocol so that the ecosystem can grow in public. This
 document isolates the business logic of Posemesh.
@@ -227,5 +227,5 @@ Generally, the failure ratio would be `r / p`, where *r* is the reward and *p* i
 
 ## Further Reading
 
-- [Posemesh Current Architecture](./02-current-architecture.md)
+- [Posemesh Current Architecture](./02-web2-architecture.md)
 - [Posemesh Web3 Architecture](./03-web3-architecture.md)
