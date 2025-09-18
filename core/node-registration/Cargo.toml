@@ -2,6 +2,8 @@
 name = "posemesh-node-registration"
 version = "0.1.0"
 edition = "2021"
+description = "Posemesh node registration client and Axum handlers for DDS callbacks."
+license = "MIT"
 rust-version.workspace = true
 
 [dependencies]
