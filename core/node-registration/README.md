@@ -4,7 +4,7 @@ This crate packages the logic required for nodes to register with the discovery 
 
 ## Modules
 
-- `crypto`: helpers for secp256k1 key loading, signature generation, timestamp formatting, and base64 credential encoding.
+- `crypto`: helpers for secp256k1 key loading, signature generation, and timestamp formatting.
 - `http`: an `axum` router that handles DDS callbacks (e.g. `/internal/v1/registrations`) and the DDS health probe.
 - `persist`: in-memory storage used to cache the most recent node secret returned by DDS callbacks.
 - `state`: persistence primitives for registration status, last DDS health check, and a file-based advisory lock.

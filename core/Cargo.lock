@@ -3304,11 +3304,10 @@ dependencies = [
 
 [[package]]
 name = "posemesh-node-registration"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.22.1",
  "chrono",
  "hex",
  "parking_lot",

@@ -1,6 +1,6 @@
 use crate::crypto::{
-    format_timestamp_nanos, load_secp256k1_privhex, registration_credentials_b64,
-    secp256k1_pubkey_uncompressed_hex, sign_recoverable_keccak_hex,
+    format_timestamp_nanos, load_secp256k1_privhex, secp256k1_pubkey_uncompressed_hex,
+    sign_recoverable_keccak_hex,
 };
 use crate::state::{
     read_state, set_status, touch_healthcheck_now, LockGuard, RegistrationState,
@@ -42,7 +42,7 @@ fn build_registration_request(
     let msg = format!("{}{}", node_url, ts);
     let signature = sign_recoverable_keccak_hex(sk, msg.as_bytes());
     let public_key = secp256k1_pubkey_uncompressed_hex(sk);
-    let registration_credentials = registration_credentials_b64(reg_secret);
+    let registration_credentials = reg_secret.to_owned();
     NodeRegistrationRequest {
         url: node_url.to_owned(),
         version: node_version.to_owned(),

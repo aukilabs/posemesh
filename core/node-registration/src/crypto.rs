@@ -1,5 +1,3 @@
-use base64::engine::general_purpose::STANDARD as B64;
-use base64::Engine as _;
 use chrono::{DateTime, SecondsFormat, Utc};
 use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1, SecretKey};
 use sha2::{Digest as Sha2Digest, Sha256};
@@ -52,11 +50,6 @@ pub fn sign_recoverable_keccak_hex(sk: &SecretKey, msg: &[u8]) -> String {
     hex::encode(out)
 }
 
-/// Base64 helper for registration credentials (STANDARD alphabet, no wrap).
-pub fn registration_credentials_b64(input: &str) -> String {
-    B64.encode(input.as_bytes())
-}
-
 /// RFC3339 with nanoseconds and Z suffix.
 pub fn format_timestamp_nanos(ts: DateTime<Utc>) -> String {
     ts.to_rfc3339_opts(SecondsFormat::Nanos, true)
@@ -74,19 +67,6 @@ mod tests {
         let dt = DateTime::<Utc>::from_naive_utc_and_offset(date.and_time(time), Utc);
         let s = format_timestamp_nanos(dt);
         assert_eq!(s, "2024-01-02T03:04:05.006007008Z");
-    }
-
-    #[test]
-    fn base64_credentials() {
-        assert_eq!(
-            registration_credentials_b64("reg-secret"),
-            "cmVnLXNlY3JldA=="
-        );
-        assert_eq!(
-            registration_credentials_b64("my-reg-secret"),
-            "bXktcmVnLXNlY3JldA=="
-        );
-        assert_eq!(registration_credentials_b64("s3cr3t!"), "czNjcjN0IQ==");
     }
 
     #[test]
