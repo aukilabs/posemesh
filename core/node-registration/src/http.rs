@@ -1,5 +1,6 @@
-use crate::persist::{read_node_secret, write_node_secret};
-use crate::state::touch_healthcheck_now;
+#[cfg(test)]
+use crate::state::clear_node_secret;
+use crate::state::{read_node_secret, touch_healthcheck_now, write_node_secret};
 use axum::extract::State;
 use axum::http::{header::USER_AGENT, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -119,7 +120,6 @@ async fn callback_registration(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persist;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -160,7 +160,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(layer);
         let _guard = subscriber::set_default(subscriber);
 
-        persist::clear_node_secret().unwrap();
+        clear_node_secret().unwrap();
         let app = router_dds(DdsState);
 
         let secret = "my-very-secret";
@@ -197,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_ok() {
-        persist::clear_node_secret().unwrap();
+        clear_node_secret().unwrap();
         let app = router_dds(DdsState);
 
         let req = Request::builder()

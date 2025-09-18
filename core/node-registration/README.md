@@ -6,8 +6,7 @@ This crate packages the logic required for nodes to register with the discovery 
 
 - `crypto`: helpers for secp256k1 key loading, signature generation, and timestamp formatting.
 - `http`: an `axum` router that handles DDS callbacks (e.g. `/internal/v1/registrations`) and the DDS health probe.
-- `persist`: in-memory storage used to cache the most recent node secret returned by DDS callbacks.
-- `state`: persistence primitives for registration status, last DDS health check, and a file-based advisory lock.
+- `state`: in-memory secret cache plus persistence primitives for registration status, last DDS health check, and a lock.
 - `register`: async registration client that periodically signs and submits node metadata to DDS.
 
 ## Adding the Dependency
@@ -32,8 +31,8 @@ fn build_app() -> Router {
 }
 ```
 
-The callback handler automatically persists secrets in-memory via `persist::write_node_secret`. 
-Consumers that need to read the cached secret can call `persist::read_node_secret()`.
+The callback handler automatically persists secrets in-memory via `state::write_node_secret`. 
+Consumers that need to read the cached secret can call `state::read_node_secret()`.
 
 ## Example: Spawning the Registration Loop
 

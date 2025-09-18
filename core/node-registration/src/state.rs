@@ -1,13 +1,9 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io;
-use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
-
-pub const STATE_PATH: &str = "data/registration_state.json";
 
 pub const STATUS_REGISTERING: &str = "registering";
 pub const STATUS_REGISTERED: &str = "registered";
@@ -29,47 +25,71 @@ impl Default for RegistrationState {
     }
 }
 
-static STATE_STORE: OnceLock<Mutex<HashMap<PathBuf, RegistrationState>>> = OnceLock::new();
-
-fn state_store() -> &'static Mutex<HashMap<PathBuf, RegistrationState>> {
-    STATE_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+#[derive(Default)]
+struct InMemoryState {
+    registration: Option<RegistrationState>,
+    node_secret: Option<String>,
 }
 
-fn lock_state_store() -> Result<MutexGuard<'static, HashMap<PathBuf, RegistrationState>>> {
+static STATE_STORE: OnceLock<Mutex<InMemoryState>> = OnceLock::new();
+
+fn state_store() -> &'static Mutex<InMemoryState> {
+    STATE_STORE.get_or_init(|| Mutex::new(InMemoryState::default()))
+}
+
+fn lock_state_store() -> Result<MutexGuard<'static, InMemoryState>> {
     state_store()
         .lock()
         .map_err(|_| anyhow!("registration state store poisoned"))
 }
 
-pub fn read_state_from_path(path: &Path) -> Result<RegistrationState> {
-    let store = lock_state_store()?;
-    Ok(store.get(path).cloned().unwrap_or_default())
+/// Store node secret bytes in memory.
+pub fn write_node_secret(secret: &str) -> Result<()> {
+    let mut store = lock_state_store()?;
+    store.node_secret = Some(secret.to_owned());
+    Ok(())
 }
 
-pub fn write_state_to_path(path: &Path, st: &RegistrationState) -> Result<()> {
+/// Read secret contents. Returns Ok(None) if missing.
+pub fn read_node_secret() -> Result<Option<String>> {
+    let store = lock_state_store()?;
+    Ok(store.node_secret.clone())
+}
+
+/// Clear any stored secret. Intended for tests.
+pub fn clear_node_secret() -> Result<()> {
     let mut store = lock_state_store()?;
-    store.insert(path.to_path_buf(), st.clone());
+    store.node_secret = None;
     Ok(())
 }
 
 pub fn read_state() -> Result<RegistrationState> {
-    read_state_from_path(Path::new(STATE_PATH))
+    let store = lock_state_store()?;
+    Ok(store.registration.clone().unwrap_or_default())
 }
 
 pub fn write_state(st: &RegistrationState) -> Result<()> {
-    write_state_to_path(Path::new(STATE_PATH), st)
+    let mut store = lock_state_store()?;
+    store.registration = Some(st.clone());
+    Ok(())
 }
 
 pub fn set_status(new_status: &str) -> Result<()> {
-    let mut st = read_state()?;
+    let mut store = lock_state_store()?;
+    let st = store
+        .registration
+        .get_or_insert_with(RegistrationState::default);
     st.status = new_status.to_string();
-    write_state(&st)
+    Ok(())
 }
 
 pub fn touch_healthcheck_now() -> Result<()> {
-    let mut st = read_state()?;
+    let mut store = lock_state_store()?;
+    let st = store
+        .registration
+        .get_or_insert_with(RegistrationState::default);
     st.last_healthcheck = Some(Utc::now());
-    write_state(&st)
+    Ok(())
 }
 
 pub struct LockGuard;
@@ -128,5 +148,21 @@ mod tests {
         let st = RegistrationState::default();
         assert_eq!(st.status, STATUS_DISCONNECTED);
         assert!(st.last_healthcheck.is_none());
+    }
+
+    #[test]
+    fn write_and_read_secret_roundtrip() {
+        clear_node_secret().unwrap();
+
+        write_node_secret("first").unwrap();
+        let got = read_node_secret().unwrap();
+        assert_eq!(got.as_deref(), Some("first"));
+
+        write_node_secret("second").unwrap();
+        let got2 = read_node_secret().unwrap();
+        assert_eq!(got2.as_deref(), Some("second"));
+
+        clear_node_secret().unwrap();
+        assert!(read_node_secret().unwrap().is_none());
     }
 }
