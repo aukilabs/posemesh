@@ -1,4 +1,4 @@
-use crate::persist::{read_node_secret_from_path, write_node_secret_to_path};
+use crate::persist::{read_node_secret, write_node_secret};
 use crate::state::touch_healthcheck_now;
 use axum::extract::State;
 use axum::http::{header::USER_AGENT, HeaderMap, StatusCode};
@@ -6,13 +6,10 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 #[derive(Clone)]
-pub struct DdsState {
-    pub secret_path: PathBuf,
-}
+pub struct DdsState;
 
 #[derive(Debug, Deserialize)]
 pub struct RegistrationCallbackRequest {
@@ -80,7 +77,7 @@ async fn health(State(_state): State<DdsState>, headers: HeaderMap) -> impl Into
 }
 
 async fn callback_registration(
-    State(state): State<DdsState>,
+    State(_state): State<DdsState>,
     Json(payload): Json<RegistrationCallbackRequest>,
 ) -> Result<Json<OkResponse>, CallbackError> {
     // Basic shape validation
@@ -102,11 +99,10 @@ async fn callback_registration(
     info!(id = %payload.id, org = %org, secret_len = secret_len, "Received registration callback");
 
     // Persist atomically
-    write_node_secret_to_path(&state.secret_path, &payload.secret)
-        .map_err(|_| CallbackError::Conflict("persist failed"))?;
+    write_node_secret(&payload.secret).map_err(|_| CallbackError::Conflict("persist failed"))?;
 
     // Sanity read-back (optional; not exposing value)
-    match read_node_secret_from_path(&state.secret_path) {
+    match read_node_secret() {
         Ok(Some(_)) => {}
         Ok(None) => {
             warn!("persisted secret missing after write");
@@ -123,13 +119,13 @@ async fn callback_registration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persist;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
     use parking_lot::Mutex as PLMutex;
     use std::io;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use tower::ServiceExt;
     use tracing::subscriber;
@@ -164,10 +160,8 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(layer);
         let _guard = subscriber::set_default(subscriber);
 
-        let secret_path = PathBuf::from(format!("dds_http_test/{}", uuid::Uuid::new_v4()));
-        let app = router_dds(DdsState {
-            secret_path: secret_path.clone(),
-        });
+        persist::clear_node_secret().unwrap();
+        let app = router_dds(DdsState);
 
         let secret = "my-very-secret";
         let body = serde_json::json!({
@@ -189,7 +183,7 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let got = read_node_secret_from_path(&secret_path).unwrap();
+        let got = read_node_secret().unwrap();
         assert_eq!(got.as_deref(), Some(secret));
 
         let captured = String::from_utf8(buf.lock().clone()).unwrap_or_default();
@@ -203,8 +197,8 @@ mod tests {
 
     #[tokio::test]
     async fn health_ok() {
-        let secret_path = PathBuf::from(format!("dds_http_test/{}", uuid::Uuid::new_v4()));
-        let app = router_dds(DdsState { secret_path });
+        persist::clear_node_secret().unwrap();
+        let app = router_dds(DdsState);
 
         let req = Request::builder()
             .method("GET")

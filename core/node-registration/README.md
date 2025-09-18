@@ -23,19 +23,16 @@ posemesh-node-registration = "0.1.0"
 ```rust
 use axum::Router;
 use posemesh_node_registration::http::{router_dds, DdsState};
-use std::path::PathBuf;
 
 fn build_app() -> Router {
-    let dds_state = DdsState {
-        secret_path: PathBuf::from("data/node_secret"),
-    };
+    let dds_state = DdsState;
 
     // Merge with your existing routes as needed
     router_dds(dds_state)
 }
 ```
 
-The callback handler automatically persists secrets in-memory via `persist::write_node_secret_to_path`. 
+The callback handler automatically persists secrets in-memory via `persist::write_node_secret`. 
 Consumers that need to read the cached secret can call `persist::read_node_secret()`.
 
 ## Example: Spawning the Registration Loop

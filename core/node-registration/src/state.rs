@@ -1,10 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::Write;
+use std::collections::HashMap;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
 pub const STATE_PATH: &str = "data/registration_state.json";
 pub const LOCK_PATH: &str = "data/registration.lock";
@@ -29,55 +30,26 @@ impl Default for RegistrationState {
     }
 }
 
-fn tmp_path_for(path: &Path) -> PathBuf {
-    let mut p = PathBuf::from(path);
-    let base = p
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("registration_state.json");
-    let pid = std::process::id();
-    let nonce = uuid::Uuid::new_v4();
-    let tmp = format!("{}.tmp.{}.{}", base, pid, nonce);
-    p.set_file_name(tmp);
-    p
+static STATE_STORE: OnceLock<Mutex<HashMap<PathBuf, RegistrationState>>> = OnceLock::new();
+
+fn state_store() -> &'static Mutex<HashMap<PathBuf, RegistrationState>> {
+    STATE_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_state_store() -> Result<MutexGuard<'static, HashMap<PathBuf, RegistrationState>>> {
+    state_store()
+        .lock()
+        .map_err(|_| anyhow!("registration state store poisoned"))
 }
 
 pub fn read_state_from_path(path: &Path) -> Result<RegistrationState> {
-    match fs::read_to_string(path) {
-        Ok(s) => {
-            let st: RegistrationState =
-                serde_json::from_str(&s).with_context(|| format!("decode {}", path.display()))?;
-            Ok(st)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(RegistrationState::default()),
-        Err(e) => Err(e).with_context(|| format!("read {}", path.display())),
-    }
+    let store = lock_state_store()?;
+    Ok(store.get(path).cloned().unwrap_or_default())
 }
 
 pub fn write_state_to_path(path: &Path, st: &RegistrationState) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
-    }
-    let tmp = tmp_path_for(path);
-    let encoded = serde_json::to_vec_pretty(st).context("encode state json")?;
-    let mut f = File::create(&tmp).with_context(|| format!("create tmp {}", tmp.display()))?;
-    f.write_all(&encoded)
-        .with_context(|| format!("write tmp {}", tmp.display()))?;
-    f.sync_all().ok();
-    drop(f);
-    match fs::rename(&tmp, path) {
-        Ok(()) => {}
-        Err(_e) => {
-            let _ = fs::remove_file(path);
-            fs::rename(&tmp, path)
-                .with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
-        }
-    }
-    if let Some(parent) = path.parent() {
-        if let Ok(dir) = File::open(parent) {
-            let _ = dir.sync_all();
-        }
-    }
+    let mut store = lock_state_store()?;
+    store.insert(path.to_path_buf(), st.clone());
     Ok(())
 }
 
@@ -102,68 +74,57 @@ pub fn touch_healthcheck_now() -> Result<()> {
 }
 
 pub struct LockGuard {
-    path: std::path::PathBuf,
-    _file: fs::File,
+    path: PathBuf,
 }
 
 impl LockGuard {
     pub fn try_acquire(stale_after: Duration) -> std::io::Result<Option<Self>> {
-        let path = Path::new(LOCK_PATH);
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
+        let path = PathBuf::from(LOCK_PATH);
+        let mut locks = lock_lock_store()?;
+
+        let entry = locks.entry(path.clone()).or_default();
+        let now = Instant::now();
+
+        if let Some(acquired_at) = entry.acquired_at {
+            if now.duration_since(acquired_at) <= stale_after {
+                return Ok(None);
+            }
         }
 
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-        {
-            Ok(mut f) => {
-                let now = chrono::Utc::now().to_rfc3339();
-                let _ = writeln!(f, "created_at={}, pid={}", now, std::process::id());
-                Ok(Some(Self {
-                    path: path.to_path_buf(),
-                    _file: f,
-                }))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                if let Ok(meta) = fs::metadata(path) {
-                    if let Ok(modified) = meta.modified() {
-                        if let Ok(age) = modified.elapsed() {
-                            if age > stale_after {
-                                let _ = fs::remove_file(path);
-                                if let Ok(mut f2) = fs::OpenOptions::new()
-                                    .write(true)
-                                    .create_new(true)
-                                    .open(path)
-                                {
-                                    let now = chrono::Utc::now().to_rfc3339();
-                                    let _ = writeln!(
-                                        f2,
-                                        "created_at={}, pid={}",
-                                        now,
-                                        std::process::id()
-                                    );
-                                    return Ok(Some(Self {
-                                        path: path.to_path_buf(),
-                                        _file: f2,
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(None)
-            }
-            Err(e) => Err(e),
-        }
+        entry.acquired_at = Some(now);
+        entry.owner_pid = Some(std::process::id());
+
+        Ok(Some(Self { path }))
     }
 }
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        if let Ok(mut locks) = lock_lock_store() {
+            if let Some(entry) = locks.get_mut(&self.path) {
+                entry.acquired_at = None;
+                entry.owner_pid = None;
+            }
+        }
     }
+}
+
+#[derive(Default)]
+struct LockState {
+    acquired_at: Option<Instant>,
+    owner_pid: Option<u32>,
+}
+
+static LOCK_STORE: OnceLock<Mutex<HashMap<PathBuf, LockState>>> = OnceLock::new();
+
+fn lock_store() -> &'static Mutex<HashMap<PathBuf, LockState>> {
+    LOCK_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_lock_store() -> io::Result<MutexGuard<'static, HashMap<PathBuf, LockState>>> {
+    lock_store()
+        .lock()
+        .map_err(|_| io::Error::other("registration lock store poisoned"))
 }
 
 #[cfg(test)]
