@@ -8,7 +8,6 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 pub const STATE_PATH: &str = "data/registration_state.json";
-pub const LOCK_PATH: &str = "data/registration.lock";
 
 pub const STATUS_REGISTERING: &str = "registering";
 pub const STATUS_REGISTERED: &str = "registered";
@@ -73,38 +72,31 @@ pub fn touch_healthcheck_now() -> Result<()> {
     write_state(&st)
 }
 
-pub struct LockGuard {
-    path: PathBuf,
-}
+pub struct LockGuard;
 
 impl LockGuard {
     pub fn try_acquire(stale_after: Duration) -> std::io::Result<Option<Self>> {
-        let path = PathBuf::from(LOCK_PATH);
-        let mut locks = lock_lock_store()?;
-
-        let entry = locks.entry(path.clone()).or_default();
+        let mut state = lock_lock_store()?;
         let now = Instant::now();
 
-        if let Some(acquired_at) = entry.acquired_at {
+        if let Some(acquired_at) = state.acquired_at {
             if now.duration_since(acquired_at) <= stale_after {
                 return Ok(None);
             }
         }
 
-        entry.acquired_at = Some(now);
-        entry.owner_pid = Some(std::process::id());
+        state.acquired_at = Some(now);
+        state.owner_pid = Some(std::process::id());
 
-        Ok(Some(Self { path }))
+        Ok(Some(Self))
     }
 }
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        if let Ok(mut locks) = lock_lock_store() {
-            if let Some(entry) = locks.get_mut(&self.path) {
-                entry.acquired_at = None;
-                entry.owner_pid = None;
-            }
+        if let Ok(mut state) = lock_lock_store() {
+            state.acquired_at = None;
+            state.owner_pid = None;
         }
     }
 }
@@ -115,13 +107,13 @@ struct LockState {
     owner_pid: Option<u32>,
 }
 
-static LOCK_STORE: OnceLock<Mutex<HashMap<PathBuf, LockState>>> = OnceLock::new();
+static LOCK_STATE: OnceLock<Mutex<LockState>> = OnceLock::new();
 
-fn lock_store() -> &'static Mutex<HashMap<PathBuf, LockState>> {
-    LOCK_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+fn lock_store() -> &'static Mutex<LockState> {
+    LOCK_STATE.get_or_init(|| Mutex::new(LockState::default()))
 }
 
-fn lock_lock_store() -> io::Result<MutexGuard<'static, HashMap<PathBuf, LockState>>> {
+fn lock_lock_store() -> io::Result<MutexGuard<'static, LockState>> {
     lock_store()
         .lock()
         .map_err(|_| io::Error::other("registration lock store poisoned"))
