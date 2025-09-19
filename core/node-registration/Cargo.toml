@@ -1,0 +1,28 @@
+[package]
+name = "posemesh-node-registration"
+version = "0.1.3"
+edition = "2021"
+description = "Posemesh node registration client and Axum handlers for DDS callbacks."
+license = "MIT"
+rust-version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+secp256k1 = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sha3 = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+parking_lot = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+tracing-subscriber = { workspace = true }

@@ -8,7 +8,9 @@ members = [
     "examples/relay",
     "examples/test-concurrent",
     "utils",
-    "domain-http"]
+    "domain-http",
+    "node-registration",
+]
 resolver = "2"
 
 [workspace.package]
@@ -25,7 +27,6 @@ futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
 tokio = "1.44.2"
 tracing-wasm = "0.2.1"
 wasm-bindgen = "0.2.90"
@@ -44,6 +45,19 @@ thiserror = "2.0.12"
 mockall = "0.13.1"
 wasm-bindgen-test = "0.3.50"
 base64 = "0.22.1"
+anyhow = "1.0.95"
+axum = "0.7.5"
+chrono = { version = "0.4.38", features = ["serde"] }
+hex = "0.4.3"
+rand = "0.8.5"
+reqwest = { version = "0.12.8", default-features = false, features = ["json", "rustls-tls"] }
+secp256k1 = { version = "0.28.2", features = ["recovery"] }
+sha2 = "0.10.8"
+sha3 = "0.10.8"
+tower = "0.4.13"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
+uuid = { version = "1.10.1", features = ["v4"] }
+parking_lot = "0.12.3"
 
 [profile.release]
 strip = true
