@@ -1,6 +1,6 @@
+use base64::{Engine as _, engine::general_purpose};
 use futures::lock::Mutex;
 use reqwest::Client;
-use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 
 use posemesh_utils::now_unix_secs;
@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct AuthClient {
-    api_url: String,
+    pub api_url: String,
     client: Client,
     dds_token_cache: Arc<Mutex<Option<DdsTokenCache>>>,
     user_token_cache: Arc<Mutex<Option<UserTokenCache>>>,
-    client_id: String,
+    pub client_id: String,
     app_key: Option<String>,
     app_secret: Option<String>,
 }
@@ -115,14 +115,28 @@ impl AuthClient {
         Ok(parse_jwt(&token_cache.unwrap().refresh_token)?.exp)
     }
 
-    pub async fn set_app_credentials(&mut self, app_key: &str, app_secret: &str) {
+    pub async fn sign_in_with_app_credentials(
+        &mut self,
+        app_key: &str,
+        app_secret: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         self.app_key = Some(app_key.to_string());
         self.app_secret = Some(app_secret.to_string());
         *self.dds_token_cache.lock().await = None;
         *self.user_token_cache.lock().await = None;
+
+        self.get_dds_app_access_token().await
     }
 
-    pub async fn get_dds_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_dds_access_token(
+        &self,
+        zitadel_token: Option<&str>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        if zitadel_token.is_some() {
+            return self
+                .get_dds_access_token_with_zitadel_token(zitadel_token.unwrap())
+                .await;
+        }
         if self.app_key.is_some() {
             return self.get_dds_app_access_token().await;
         } else {
@@ -130,46 +144,97 @@ impl AuthClient {
         }
     }
 
-    async fn get_dds_app_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_dds_access_token_with_zitadel_token(
+        &self,
+        zitadel_token: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.client.clone();
+        let api_url = self.api_url.clone();
+        let client_id = self.client_id.clone();
+        let response = client
+            .post(&format!("{}/service/domains-access-token", api_url))
+            .header("Authorization", format!("Bearer {}", zitadel_token))
+            .header("Content-Type", "application/json")
+            .header("posemesh-client-id", client_id)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let token_response: DdsTokenResponse = response.json().await?;
+            Ok(token_response.access_token)
+        } else {
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(format!(
+                "Failed to get DDS access token. Status: {} - {}",
+                status, text
+            )
+            .into())
+        }
+    }
+
+    async fn get_dds_app_access_token(
+        &self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
             let cache = self.dds_token_cache.lock().await;
             cache.clone()
         };
 
-        let app_key = self.app_key.clone().ok_or("App key is not set".to_string())?;
-        let app_secret = self.app_secret.clone().ok_or("App secret is not set".to_string())?;
+        let app_key = self
+            .app_key
+            .clone()
+            .ok_or("App key is not set".to_string())?;
+        let app_secret = self
+            .app_secret
+            .clone()
+            .ok_or("App secret is not set".to_string())?;
 
-        let token_cache = get_cached_or_fresh_token(&token_cache.unwrap_or(DdsTokenCache {
-            access_token: "".to_string(),
-            expires_at: 0,
-        }), || {
-            let app_key = app_key.to_string();
-            let app_secret = app_secret.to_string();
-            let client = self.client.clone();
-            let api_url = self.api_url.clone();
-            let client_id = self.client_id.clone();
-            async move {
-                let response = client
-                    .post(&format!("{}/service/domains-access-token", api_url))
-                    .basic_auth(app_key, Some(app_secret))
-                    .header("Content-Type", "application/json")
-                    .header("posemesh-client-id", client_id)
-                    .send()
-                    .await?;
+        let token_cache = get_cached_or_fresh_token(
+            &token_cache.unwrap_or(DdsTokenCache {
+                access_token: "".to_string(),
+                expires_at: 0,
+            }),
+            || {
+                let app_key = app_key.to_string();
+                let app_secret = app_secret.to_string();
+                let client = self.client.clone();
+                let api_url = self.api_url.clone();
+                let client_id = self.client_id.clone();
+                async move {
+                    let response = client
+                        .post(&format!("{}/service/domains-access-token", api_url))
+                        .basic_auth(app_key, Some(app_secret))
+                        .header("Content-Type", "application/json")
+                        .header("posemesh-client-id", client_id)
+                        .send()
+                        .await?;
 
-                if response.status().is_success() {
-                    let token_response: DdsTokenResponse = response.json().await?;
-                    Ok(DdsTokenCache {
-                        access_token: token_response.access_token.clone(),
-                        expires_at: parse_jwt(&token_response.access_token)?.exp,
-                    })
-                } else {
-                    let status = response.status();
-                    let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    Err(format!("Failed to get access token. Status: {} - {}", status, text).into())
+                    if response.status().is_success() {
+                        let token_response: DdsTokenResponse = response.json().await?;
+                        Ok(DdsTokenCache {
+                            access_token: token_response.access_token.clone(),
+                            expires_at: parse_jwt(&token_response.access_token)?.exp,
+                        })
+                    } else {
+                        let status = response.status();
+                        let text = response
+                            .text()
+                            .await
+                            .unwrap_or_else(|_| "Unknown error".to_string());
+                        Err(format!(
+                            "Failed to get DDS access token. Status: {} - {}",
+                            status, text
+                        )
+                        .into())
+                    }
                 }
-            }
-        }).await?;
+            },
+        )
+        .await?;
 
         {
             let mut cache = self.dds_token_cache.lock().await;
@@ -179,7 +244,9 @@ impl AuthClient {
         Ok(token_cache.access_token)
     }
 
-    async fn get_dds_user_access_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_dds_user_access_token(
+        &self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let token_cache = {
             let cache = self.dds_token_cache.lock().await;
             cache.clone()
@@ -208,28 +275,32 @@ impl AuthClient {
                 let api_url_clone = api_url.clone();
                 let client_id_clone = client_id.clone();
                 let refresh_token = user_token_cache.clone().unwrap().refresh_token;
-                let user_token_cache = get_cached_or_fresh_token(&user_token_cache.unwrap(), || {
-                    async move {
+                let user_token_cache =
+                    get_cached_or_fresh_token(&user_token_cache.unwrap(), || async move {
                         let response = client_clone
                             .post(&format!("{}/user/refresh", api_url_clone))
                             .header("Content-Type", "application/json")
                             .header("posemesh-client-id", client_id_clone)
                             .header("Authorization", format!("Bearer {}", refresh_token))
                             .send()
-                            .await.expect("Failed to refresh token");
-                            
+                            .await
+                            .expect("Failed to refresh token");
+
                         if response.status().is_success() {
-                            let token_response: UserTokenResponse = response.json().await?; 
+                            let token_response: UserTokenResponse = response.json().await?;
                             Ok(UserTokenCache {
                                 refresh_token: token_response.refresh_token.clone(),
                                 access_token: token_response.access_token.clone(),
                                 expires_at: parse_jwt(&token_response.access_token)?.exp,
                             })
                         } else {
-                            Err(format!("Failed to refresh token. Status: {}", response.status()).into())
+                            Err(
+                                format!("Failed to refresh token. Status: {}", response.status())
+                                    .into(),
+                            )
                         }
-                    }
-                }).await?;
+                    })
+                    .await?;
 
                 {
                     let mut cache = self.user_token_cache.lock().await;
@@ -238,7 +309,10 @@ impl AuthClient {
 
                 let dds_response = client
                     .post(&format!("{}/service/domains-access-token", api_url))
-                    .header("Authorization", format!("Bearer {}", user_token_cache.access_token))
+                    .header(
+                        "Authorization",
+                        format!("Bearer {}", user_token_cache.access_token),
+                    )
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)
                     .send()
@@ -252,11 +326,19 @@ impl AuthClient {
                     })
                 } else {
                     let status = dds_response.status();
-                    let text = dds_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    Err(format!("Failed to get DDS access token. Status: {} - {}", status, text).into())
+                    let text = dds_response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    Err(format!(
+                        "Failed to get DDS access token. Status: {} - {}",
+                        status, text
+                    )
+                    .into())
                 }
             }
-        }).await?;
+        })
+        .await?;
 
         {
             let mut cache = self.dds_token_cache.lock().await;
@@ -266,7 +348,12 @@ impl AuthClient {
         Ok(token_cache.access_token)
     }
 
-    pub async fn user_login(&mut self, email: &str, password: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Login with user credentials, return DDS access token
+    pub async fn user_login(
+        &mut self,
+        email: &str,
+        password: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let email = email.to_string();
         let password = password.to_string();
         let client = self.client.clone();
@@ -277,11 +364,8 @@ impl AuthClient {
         *self.user_token_cache.lock().await = None;
         self.app_key = None;
         self.app_secret = None;
-        
-        let credentials = UserCredentials {
-            email,
-            password,
-        };
+
+        let credentials = UserCredentials { email, password };
 
         let response = client
             .post(&format!("{}/user/login", api_url))
@@ -304,7 +388,10 @@ impl AuthClient {
 
             let dds_response = client
                 .post(&format!("{}/service/domains-access-token", api_url))
-                .header("Authorization", format!("Bearer {}", token_response.access_token))
+                .header(
+                    "Authorization",
+                    format!("Bearer {}", token_response.access_token),
+                )
                 .header("Content-Type", "application/json")
                 .header("posemesh-client-id", client_id_2)
                 .send()
@@ -320,19 +407,28 @@ impl AuthClient {
                 Ok(dds_token_response.access_token)
             } else {
                 let status = dds_response.status();
-                let text = dds_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                Err(format!("Failed to get DDS access token. Status: {} - {}", status, text).into())
+                let text = dds_response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                Err(format!(
+                    "Failed to get DDS access token. Status: {} - {}",
+                    status, text
+                )
+                .into())
             }
         } else {
             Err(format!("Failed to login. Status: {}", response.status()).into())
         }
     }
-
 }
 
 const REFRESH_CACHE_TIME: u64 = 3;
 
-pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(cache: &R, token_fetcher: F) -> Result<R, Box<dyn std::error::Error + Send + Sync>>
+pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(
+    cache: &R,
+    token_fetcher: F,
+) -> Result<R, Box<dyn std::error::Error + Send + Sync>>
 where
     F: FnOnce() -> Fut,
     R: TokenCache + Clone,

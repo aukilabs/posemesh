@@ -23,6 +23,6 @@ build-domain-http-wasm:
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http ./build-wasm.sh
 
 unit-tests:
-	WASM_BINDGEN_USE_BROWSER=1 wasm-pack test --chrome --headless domain-http
-	wasm-pack test --node domain-http
-	cargo test --release --all-features
+	@make build-domain-http-wasm
+	@cd domain-http/js-tests && npm install && npm run test:all
+	@cargo test --release --all-features -- --test-threads=1

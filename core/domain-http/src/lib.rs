@@ -1,18 +1,21 @@
 use futures::channel::mpsc::Receiver;
 
+use crate::domain_data::{
+    DomainData, DomainDataMetadata, DownloadQuery, delete_by_id, download_by_id,
+    download_metadata_v1, download_v1_stream,
+};
 #[cfg(target_family = "wasm")]
 use crate::domain_data::{UploadDomainData, upload_v1};
-use crate::domain_data::{download_by_id, download_metadata_v1, download_v1_stream, DomainData, DownloadQuery};
 
 mod auth;
 pub mod config;
-pub mod domain_data;
 pub mod discovery;
+pub mod domain_data;
 #[cfg(target_family = "wasm")]
 pub mod wasm;
 
+use crate::auth::TokenCache;
 use crate::discovery::DiscoveryService;
-
 #[derive(Debug, Clone)]
 pub struct DomainClient {
     discovery_client: DiscoveryService,
@@ -20,7 +23,7 @@ pub struct DomainClient {
 }
 
 impl DomainClient {
-    fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
+    pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         if client_id.is_empty() {
             panic!("client_id is empty");
         }
@@ -29,46 +32,143 @@ impl DomainClient {
             client_id: client_id.to_string(),
         }
     }
-    
-    pub async fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+
+    pub async fn new_with_app_credential(
+        api_url: &str,
+        dds_url: &str,
+        client_id: &str,
+        app_key: &str,
+        app_secret: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
-        let _ = dc.discovery_client.sign_in_as_auki_app(app_key, app_secret).await?;
+        let _ = dc
+            .discovery_client
+            .sign_in_as_auki_app(app_key, app_secret)
+            .await?;
         Ok(dc)
     }
 
-    pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str, logout: bool) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new_with_user_credential(
+        api_url: &str,
+        dds_url: &str,
+        client_id: &str,
+        email: &str,
+        password: &str,
+        remember_password: bool,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
-        let _ = dc.discovery_client.sign_in_with_auki_account(email, password, logout).await?;
+        let _ = dc
+            .discovery_client
+            .sign_in_with_auki_account(email, password, remember_password)
+            .await?;
         Ok(dc)
     }
 
-    pub async fn download_domain_data(&self, domain_id: &str, query: &DownloadQuery) -> Result<Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn with_zitadel_token(&self, token: &str) -> Self {
+        Self {
+            discovery_client: self.discovery_client.with_zitadel_token(token),
+            client_id: self.client_id.clone(),
+        }
+    }
+
+    pub async fn download_domain_data(
+        &self,
+        domain_id: &str,
+        query: &DownloadQuery,
+    ) -> Result<
+        Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        let rx = download_v1_stream(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, query).await?;
+        let rx = download_v1_stream(
+            &domain.domain.domain_server.url,
+            &self.client_id,
+            &domain.get_access_token(),
+            domain_id,
+            query,
+        )
+        .await?;
         Ok(rx)
     }
 
     #[cfg(not(target_family = "wasm"))]
-    pub async fn upload_domain_data(&self, domain_id: &str, data: Receiver<domain_data::UploadDomainData>) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
-        use crate::domain_data::upload_v1_stream;
+    pub async fn upload_domain_data(
+        &self,
+        domain_id: &str,
+        data: Receiver<domain_data::UploadDomainData>,
+    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+        use crate::{auth::TokenCache, domain_data::upload_v1_stream};
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        upload_v1_stream(&domain.domain.domain_server.url, &domain.access_token, domain_id, data).await
+        upload_v1_stream(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            domain_id,
+            data,
+        )
+        .await
     }
 
     #[cfg(target_family = "wasm")]
-    pub async fn upload_domain_data(&self, domain_id: &str, data: Vec<UploadDomainData>) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn upload_domain_data(
+        &self,
+        domain_id: &str,
+        data: Vec<UploadDomainData>,
+    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        upload_v1(&domain.domain.domain_server.url, &domain.access_token, domain_id, data).await
+        upload_v1(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            domain_id,
+            data,
+        )
+        .await
     }
 
-    pub async fn download_metadata(&self, domain_id: &str, query: &DownloadQuery) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn download_metadata(
+        &self,
+        domain_id: &str,
+        query: &DownloadQuery,
+    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        download_metadata_v1(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, query).await
+        download_metadata_v1(
+            &domain.domain.domain_server.url,
+            &self.client_id,
+            &domain.get_access_token(),
+            domain_id,
+            query,
+        )
+        .await
     }
 
-    pub async fn download_domain_data_by_id(&self, domain_id: &str, id: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn download_domain_data_by_id(
+        &self,
+        domain_id: &str,
+        id: &str,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        download_by_id(&domain.domain.domain_server.url, &self.client_id, &domain.access_token, domain_id, id).await
+        download_by_id(
+            &domain.domain.domain_server.url,
+            &self.client_id,
+            &domain.get_access_token(),
+            domain_id,
+            id,
+        )
+        .await
+    }
+
+    pub async fn delete_domain_data_by_id(
+        &self,
+        domain_id: &str,
+        id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        delete_by_id(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            domain_id,
+            id,
+        )
+        .await
     }
 }
 
@@ -77,10 +177,10 @@ impl DomainClient {
 mod tests {
     use std::time::Duration;
 
-    use crate::domain_data::{UpdateDomainData, UploadDomainData};
+    use crate::domain_data::{CreateDomainData, DomainAction, UpdateDomainData, UploadDomainData};
 
     use super::*;
-    use futures::{channel::mpsc, StreamExt};
+    use futures::{StreamExt, channel::mpsc};
     use tokio::{spawn, time::sleep};
 
     fn get_config() -> (config::Config, String) {
@@ -96,8 +196,16 @@ mod tests {
     async fn test_download_domain_data_with_app_credential() {
         // Create a test client
         let config = get_config();
-        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key.unwrap(), &config.0.app_secret.unwrap()).await.expect("Failed to create client");
-        
+        let client = DomainClient::new_with_app_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.app_key.unwrap(),
+            &config.0.app_secret.unwrap(),
+        )
+        .await
+        .expect("Failed to create client");
+
         // Create a test query
         let query = DownloadQuery {
             ids: vec![],
@@ -106,17 +214,15 @@ mod tests {
         };
 
         // Test the download function
-        let result = client.download_domain_data(
-            &config.1,
-            &query
-        ).await;
+        let result = client.download_domain_data(&config.1, &query).await;
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
 
-        let mut count = 0;
         let mut rx = result.unwrap();
-        while let Some(Ok(_)) = rx.next().await {
+        let mut count = 0;
+        while let Some(Ok(data)) = rx.next().await {
             count += 1;
+            assert_eq!(data.metadata.data_type, "dmt_accel_csv");
         }
         assert!(count > 0);
     }
@@ -125,21 +231,32 @@ mod tests {
     async fn test_upload_domain_data_with_user_credential() {
         use futures::SinkExt;
         let config = get_config();
-        let client = DomainClient::new_with_user_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.email.unwrap(), &config.0.password.unwrap(), true).await.expect("Failed to create client");
+        let client = DomainClient::new_with_user_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.email.unwrap(),
+            &config.0.password.unwrap(),
+            true,
+        )
+        .await
+        .expect("Failed to create client");
 
-        let data = vec![UploadDomainData {
-            create: None,
-            update: Some(UpdateDomainData {
-                id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
-            }),
-            data: "{\"test\": \"test updated\"}".as_bytes().to_vec(),
-        }, UploadDomainData {
-            create: None,
-            update: Some(UpdateDomainData {
-                id: "a08dc12f-c79e-4f5e-b388-c09ad6d8cfd8".to_string(),
-            }),
-            data: "{\"test\": \"test updated\"}".as_bytes().to_vec(),
-        }];
+        let data = vec![
+            UploadDomainData {
+                action: DomainAction::Create(CreateDomainData {
+                    name: "to be deleted".to_string(),
+                    data_type: "test".to_string(),
+                }),
+                data: "{\"test\": \"test\"}".as_bytes().to_vec(),
+            },
+            UploadDomainData {
+                action: DomainAction::Update(UpdateDomainData {
+                    id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
+                }),
+                data: "{\"test\": \"test updated\"}".as_bytes().to_vec(),
+            },
+        ];
         let (mut tx, rx) = mpsc::channel(10);
         spawn(async move {
             for d in data {
@@ -150,47 +267,133 @@ mod tests {
         let result = client.upload_domain_data(&config.1, rx).await;
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
-        assert_eq!(result.unwrap().len(), 2);
 
         sleep(Duration::from_secs(5)).await;
+        let result = result.unwrap();
+        assert_eq!(result.len(), 2);
 
+        let ids = result.iter().map(|d| d.id.clone()).collect::<Vec<String>>();
+        assert_eq!(ids.len(), 2);
         // Create a test query
         let query = DownloadQuery {
-            ids: vec![],
+            ids: ids,
             name: None,
-            data_type: Some("dmt_accel_csv".to_string()),
+            data_type: None,
         };
 
         // Test the download function
-        let result = client.download_domain_data(
-            &config.1,
-            &query
-        ).await;
+        let result = client.download_domain_data(&config.1, &query).await;
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
 
+        let mut to_delete = None;
         let mut count = 0;
         let mut rx = result.unwrap();
-        while let Some(Ok(_)) = rx.next().await {
+        while let Some(Ok(data)) = rx.next().await {
             count += 1;
+            if data.metadata.id == "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
+                assert_eq!(data.data, b"{\"test\": \"test updated\"}");
+                continue;
+            } else {
+                assert_eq!(data.data, b"{\"test\": \"test\"}");
+            }
+            to_delete = Some(data.metadata.id.clone());
         }
-        assert!(count > 0);
+        assert_eq!(count, 2);
+        assert_eq!(to_delete.is_some(), true);
+
+        // Delete the one whose id is not "a8"
+        let delete_result = client
+            .delete_domain_data_by_id(&config.1, &to_delete.unwrap())
+            .await;
+        assert!(
+            delete_result.is_ok(),
+            "Failed to delete data by id: {:?}",
+            delete_result.err()
+        );
     }
-    
+
     #[tokio::test]
     async fn test_download_domain_data_by_id() {
         let config = get_config();
-        let client = DomainClient::new_with_app_credential(&config.0.api_url, &config.0.dds_url, &config.0.client_id, &config.0.app_key.unwrap(), &config.0.app_secret.unwrap()).await.expect("Failed to create client");
+        let client = DomainClient::new_with_app_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.app_key.unwrap(),
+            &config.0.app_secret.unwrap(),
+        )
+        .await
+        .expect("Failed to create client");
 
         // Now test download by id
-        let download_result = client.download_domain_data_by_id(
-            &config.1,
-            "a84a36e5-312b-4f80-974a-06f5d19c1e16",
-        ).await;
+        let download_result = client
+            .download_domain_data_by_id(&config.1, "a84a36e5-312b-4f80-974a-06f5d19c1e16")
+            .await;
 
-        assert!(download_result.is_ok(), "download by id failed: {:?}", download_result.err());
+        assert!(
+            download_result.is_ok(),
+            "download by id failed: {:?}",
+            download_result.err()
+        );
         let downloaded_bytes = download_result.unwrap();
         assert_eq!(downloaded_bytes, b"{\"test\": \"test updated\"}".to_vec());
     }
-}
 
+    #[tokio::test]
+    async fn test_download_domain_metadata() {
+        let config = get_config();
+        let client = DomainClient::new_with_app_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.app_key.clone().unwrap(),
+            &config.0.app_secret.clone().unwrap(),
+        )
+        .await
+        .expect("Failed to create client");
+
+        // Download all metadata for the domain
+        let result = client
+            .download_metadata(
+                &config.1,
+                &DownloadQuery {
+                    ids: vec![],
+                    name: None,
+                    data_type: Some("test".to_string()),
+                },
+            )
+            .await;
+        assert!(
+            result.is_ok(),
+            "Failed to download domain metadata: {:?}",
+            result.err()
+        );
+        let result = result.unwrap();
+        assert!(result.len() > 0);
+        for meta in result {
+            assert!(!meta.id.is_empty());
+            assert_eq!(meta.domain_id, config.1);
+            assert!(!meta.name.is_empty());
+            assert_eq!(meta.data_type, "test");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_load_domain_with_zitadel_token() {
+        let config = get_config();
+        // Assume we have a function to get a valid zitadel token for testing
+        let zitadel_token =
+            std::env::var("AUTH_TEST_TOKEN").expect("AUTH_TEST_TOKEN env var not set");
+
+        let client =
+            DiscoveryService::new(&config.0.api_url, &config.0.dds_url, &config.0.client_id);
+
+        let domain = client
+            .with_zitadel_token(&zitadel_token)
+            .auth_domain(&config.1)
+            .await;
+        assert!(domain.is_ok(), "Failed to get domain: {:?}", domain.err());
+        assert_eq!(domain.unwrap().domain.domain.id, config.1);
+    }
+}

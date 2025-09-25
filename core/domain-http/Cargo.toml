@@ -13,7 +13,8 @@ serde = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 tracing = { workspace = true }
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "stream", "rustls-tls"]}
-posemesh-utils = { workspace = true } 
+posemesh-utils = { workspace = true }
+bytes = "1.10.1"
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
@@ -24,9 +25,11 @@ wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 serde-wasm-bindgen.workspace = true
 console_error_panic_hook = { workspace = true }
+wasm-streams = "0.4.2"
 
 [dev-dependencies]
 dotenvy = "0.15.7"
+tokio-stream = "0.1.17"
 wasm-bindgen-test.workspace = true
 
 [lib]
@@ -36,4 +39,4 @@ crate-type = ["cdylib", "rlib"]
 strip = true
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ['-O', '--enable-bulk-memory']
+wasm-opt = false # disable it for using serde-wasm-bindgen
