@@ -119,16 +119,16 @@ impl AuthClient {
         self.get_dds_app_access_token().await
     }
 
-    // Get DDS access token with either app credentials or user access token or zitadel token, it checks the cache first, if found and not about to expire, return the cached token
-    // if not found or about to expire, it fetches a new token with app credentials or user access token or zitadel token and sets the cache.
+    // Get DDS access token with either app credentials or user access token or oidc_access_token, it checks the cache first, if found and not about to expire, return the cached token
+    // if not found or about to expire, it fetches a new token with app credentials or user access token or oidc_access_token and sets the cache.
     // If user access token is about to expire, it refreshes the user access token with refresh token first and sets the cache.
     // It clears all caches if there is an error.
     pub async fn get_dds_access_token(
         &self,
-        zitadel_token: Option<&str>,
+        oidc_access_token: Option<&str>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let result = if let Some(zitadel_token) = zitadel_token {
-            self.get_dds_access_token_with_zitadel_token(zitadel_token).await
+        let result = if let Some(oidc_access_token) = oidc_access_token {
+            self.get_dds_access_token_with_oidc_access_token(oidc_access_token).await
         } else if self.app_key.is_some() {
             self.get_dds_app_access_token().await
         } else {
@@ -143,16 +143,16 @@ impl AuthClient {
         result
     }
 
-    // Get DDS access token with Zitadel token, doesn't cache
-    async fn get_dds_access_token_with_zitadel_token(
+    // Get DDS access token with OIDC access token, doesn't cache
+    async fn get_dds_access_token_with_oidc_access_token(
         &self,
-        zitadel_token: &str,
+        oidc_access_token: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Clear all caches before proceeding
         *self.dds_token_cache.lock().await = None;
         *self.user_token_cache.lock().await = None;
         
-        let response = self.get_dds_token_by_token(zitadel_token).await?;
+        let response = self.get_dds_token_by_token(oidc_access_token).await?;
         {
             let mut cache = self.dds_token_cache.lock().await;
             *cache = Some(DdsTokenCache {
@@ -367,7 +367,7 @@ impl AuthClient {
         }
     }
 
-    // Get DDS access token with either user access token or zitadel token, doesn't cache
+    // Get DDS access token with either user access token or oidc_access_token, doesn't cache
     async fn get_dds_token_by_token(
         &self,
         token: &str,

@@ -67,7 +67,7 @@ pub struct DiscoveryService {
     client: Client,
     cache: Arc<Mutex<HashMap<String, DomainWithToken>>>,
     api_client: AuthClient,
-    zitadel_token: Option<String>,
+    oidc_access_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,7 +84,7 @@ impl DiscoveryService {
             client: Client::new(),
             cache: Arc::new(Mutex::new(HashMap::new())),
             api_client,
-            zitadel_token: None,
+            oidc_access_token: None,
         }
     }
 
@@ -95,7 +95,7 @@ impl DiscoveryService {
     ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
         let access_token = self
             .api_client
-            .get_dds_access_token(self.zitadel_token.as_deref())
+            .get_dds_access_token(self.oidc_access_token.as_deref())
             .await?;
         let response = self
             .client
@@ -124,7 +124,7 @@ impl DiscoveryService {
         remember_password: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.cache.lock().await.clear();
-        self.zitadel_token = None;
+        self.oidc_access_token = None;
         let _ = self.api_client.user_login(email, password).await?;
         if remember_password {
             let mut api_client = self.api_client.clone();
@@ -169,7 +169,7 @@ impl DiscoveryService {
         app_secret: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.cache.lock().await.clear();
-        self.zitadel_token = None;
+        self.oidc_access_token = None;
         let _ = self
             .api_client
             .sign_in_with_app_credentials(app_key, app_secret)
@@ -177,9 +177,9 @@ impl DiscoveryService {
         Ok(())
     }
 
-    pub fn with_zitadel_token(&self, zitadel_token: &str) -> Self {
-        if let Some(cached_zitadel_token) = self.zitadel_token.as_deref() {
-            if cached_zitadel_token == zitadel_token {
+    pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {
+        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref() {
+            if cached_oidc_access_token == oidc_access_token {
                 return self.clone();
             }
         }
@@ -188,7 +188,7 @@ impl DiscoveryService {
             client: self.client.clone(),
             cache: Arc::new(Mutex::new(HashMap::new())),
             api_client: AuthClient::new(&self.api_client.api_url, &self.api_client.client_id),
-            zitadel_token: Some(zitadel_token.to_string()),
+            oidc_access_token: Some(oidc_access_token.to_string()),
         }
     }
 
@@ -198,7 +198,7 @@ impl DiscoveryService {
     ) -> Result<DomainWithToken, Box<dyn std::error::Error + Send + Sync>> {
         let access_token = self
             .api_client
-            .get_dds_access_token(self.zitadel_token.as_deref())
+            .get_dds_access_token(self.oidc_access_token.as_deref())
             .await?;
         // Check cache first
         let cache = if let Some(cached_domain) = self.cache.lock().await.get(domain_id) {

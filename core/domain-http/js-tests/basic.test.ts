@@ -225,21 +225,21 @@ describe('Posemesh Domain HTTP', () => {
         });
     });
 
-    describe('zitadel token', () => {
-        const zitadelToken = config.AUTH_TEST_TOKEN;
+    describe('oidc_access_token', () => {
+        const oidcAccessToken = config.AUTH_TEST_TOKEN;
         let client: DomainClient;
-        let clientWithZitadelToken: DomainClient;
+        let clientWithOIDCAccessToken: DomainClient;
         beforeAll(() => {
             client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
-            clientWithZitadelToken = client.withZitadelToken(zitadelToken);
+            clientWithOIDCAccessToken = client.withOIDCAccessToken(oidcAccessToken);
         });
         afterAll(() => {
-            clientWithZitadelToken.free();
+            clientWithOIDCAccessToken.free();
             client.free();
         });
         
         it('should download domain data', async () => {
-            const data: DomainData[] = await clientWithZitadelToken.downloadDomainData(config.DOMAIN_ID, {
+            const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(config.DOMAIN_ID, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -256,7 +256,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download domain data metadata', async () => {
-            const metadata: DomainDataMetadata[] = await clientWithZitadelToken.downloadDomainDataMetadata(config.DOMAIN_ID, {
+            const metadata: DomainDataMetadata[] = await clientWithOIDCAccessToken.downloadDomainDataMetadata(config.DOMAIN_ID, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -271,7 +271,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download domain data stream', async () => {
-            const data: ReadableStream<DomainData> = await clientWithZitadelToken.downloadDomainDataStream(config.DOMAIN_ID, {
+            const data: ReadableStream<DomainData> = await clientWithOIDCAccessToken.downloadDomainDataStream(config.DOMAIN_ID, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -290,33 +290,33 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should upload domain data', async () => {
-            const data = `{"zitadel": "token test"}`;
+            const data = `{"oidc": "token test"}`;
             const dataBytes = new TextEncoder().encode(data);
-            let res: DomainDataMetadata[] = await clientWithZitadelToken.uploadDomainData(config.DOMAIN_ID, [{
-                name: "zitadel token test",
+            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
+                name: "oidc_access_token test",
                 data_type: "test",
                 data: dataBytes,
             } as UploadDomainData]);
 
             expect(res.length).toBe(1);
-            expect(res[0].name).toBe("zitadel token test");
+            expect(res[0].name).toBe("oidc_access_token test");
             expect(res[0].data_type).toBe("test");
             expect(res[0].size).toBe(dataBytes.length);
             expect(res[0].created_at).toBeDefined();
             expect(res[0].updated_at).toBeDefined();
 
-            await clientWithZitadelToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
+            await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
         });
 
-        it('should throw error if zitadel token is not valid', async () => {
-            const invalidClient = client.withZitadelToken("ddddd");
+        it('should throw error if oidc_access_token is not valid', async () => {
+            const invalidClient = client.withOIDCAccessToken("ddddd");
 
-            const data = `{"zitadel": "token test"}`;
+            const data = `{"oidc": "token test"}`;
             const dataBytes = new TextEncoder().encode(data);
 
             await expect(async () => {
                 await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
-                    name: "zitadel token test",
+                    name: "oidc_access_token test",
                     data_type: "test",
                     data: dataBytes,
                 } as UploadDomainData]);

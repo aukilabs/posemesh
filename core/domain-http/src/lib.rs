@@ -64,9 +64,9 @@ impl DomainClient {
         Ok(dc)
     }
 
-    pub fn with_zitadel_token(&self, token: &str) -> Self {
+    pub fn with_oidc_access_token(&self, token: &str) -> Self {
         Self {
-            discovery_client: self.discovery_client.with_zitadel_token(token),
+            discovery_client: self.discovery_client.with_oidc_access_token(token),
             client_id: self.client_id.clone(),
         }
     }
@@ -380,17 +380,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_domain_with_zitadel_token() {
+    async fn test_load_domain_with_oidc_access_token() {
         let config = get_config();
-        // Assume we have a function to get a valid zitadel token for testing
-        let zitadel_token =
+        // Assume we have a function to get a valid oidc_access_token for testing
+        let oidc_access_token =
             std::env::var("AUTH_TEST_TOKEN").expect("AUTH_TEST_TOKEN env var not set");
 
         let client =
             DiscoveryService::new(&config.0.api_url, &config.0.dds_url, &config.0.client_id);
 
         let domain = client
-            .with_zitadel_token(&zitadel_token)
+            .with_oidc_access_token(&oidc_access_token)
             .auth_domain(&config.1)
             .await;
         assert!(domain.is_ok(), "Failed to get domain: {:?}", domain.err());

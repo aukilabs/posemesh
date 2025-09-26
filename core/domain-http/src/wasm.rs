@@ -186,25 +186,25 @@ impl DomainClient {
         }
     }
 
-    /// Returns a new DomainClient instance with the given Zitadel token for authentication. Make sure to call .free() to free the memory when you are done with the client.
+    /// Returns a new DomainClient instance with the given OIDC access token for authentication. Make sure to call .free() to free the memory when you are done with the client.
     ///
     /// # Arguments
-    /// * `zitadel_token` - The Zitadel access token.
+    /// * `oidc_access_token` - The OIDC access access token.
     ///
     /// # Returns
     /// * `Self` - A new DomainClient instance with the token applied.
     ///
     /// # Example
     /// ```javascript
-    /// const client_with_token = client.withZitadelToken("your-zitadel-token");
+    /// const client_with_token = client.withOIDCAccessToken("your-oidc-token");
     /// 
     /// // free the memory when you are done with the client
     /// client_with_token.free();
     /// ```
-    #[wasm_bindgen(js_name = "withZitadelToken")]
-    pub fn with_zitadel_token(&self, zitadel_token: String) -> Self {
+    #[wasm_bindgen(js_name = "withOIDCAccessToken")]
+    pub fn with_oidc_access_token(&self, oidc_access_token: String) -> Self {
         Self {
-            domain_client: self.domain_client.with_zitadel_token(&zitadel_token),
+            domain_client: self.domain_client.with_oidc_access_token(&oidc_access_token),
         }
     }
 
