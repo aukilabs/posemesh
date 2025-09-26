@@ -52,10 +52,6 @@ impl TokenCache for DomainWithToken {
     fn get_expires_at(&self) -> u64 {
         self.expires_at
     }
-
-    fn set_expires_at(&mut self, expires_at: u64) {
-        self.expires_at = expires_at;
-    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -182,6 +178,11 @@ impl DiscoveryService {
     }
 
     pub fn with_zitadel_token(&self, zitadel_token: &str) -> Self {
+        if let Some(cached_zitadel_token) = self.zitadel_token.as_deref() {
+            if cached_zitadel_token == zitadel_token {
+                return self.clone();
+            }
+        }
         Self {
             dds_url: self.dds_url.clone(),
             client: self.client.clone(),
