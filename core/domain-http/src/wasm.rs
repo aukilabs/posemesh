@@ -29,7 +29,7 @@ export type DomainDataMetadata = { id: string, name: string, data_type: string, 
 export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
 
 /**
- * Signs in with application credentials to obtain a DomainClient instance.
+ * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
  * 
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
@@ -46,6 +46,7 @@ export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
  *   "app-key-123",
  *   "app-secret-456"
  * );
+ * client.free(); // free the memory when you are done with the client
  */
 export function signInWithAppCredential(
     api_url: string,
@@ -56,7 +57,7 @@ export function signInWithAppCredential(
 ): Promise<DomainClient>;
 
 /**
- * Signs in with user credentials to obtain a DomainClient instance.
+ * Signs in with user credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
  * 
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
@@ -75,6 +76,7 @@ export function signInWithAppCredential(
  *   "password123",
  *   false
  * );
+ * client.free(); // free the memory when you are done with the client
  */
 export function signInWithUserCredential(
     api_url: string,
@@ -155,7 +157,7 @@ pub fn sign_in_with_user_credential(
 
 #[wasm_bindgen]
 impl DomainClient {
-    /// Constructs a new DomainClient instance.
+    /// Constructs a new DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
     ///
     /// # Arguments
     /// * `api_url` - The base URL for the API service.
@@ -172,7 +174,11 @@ impl DomainClient {
     ///     "https://dds.example.com".to_string(),
     ///     "my-client-id".to_string()
     /// );
+    /// 
+    /// // free the memory when you are done with the client
+    /// client.free();
     /// ```
+    /// 
     #[wasm_bindgen(constructor)]
     pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
         Self {
@@ -180,7 +186,7 @@ impl DomainClient {
         }
     }
 
-    /// Returns a new DomainClient instance with the given Zitadel token for authentication.
+    /// Returns a new DomainClient instance with the given Zitadel token for authentication. Make sure to call .free() to free the memory when you are done with the client.
     ///
     /// # Arguments
     /// * `zitadel_token` - The Zitadel access token.
@@ -191,6 +197,9 @@ impl DomainClient {
     /// # Example
     /// ```javascript
     /// const client_with_token = client.withZitadelToken("your-zitadel-token");
+    /// 
+    /// // free the memory when you are done with the client
+    /// client_with_token.free();
     /// ```
     #[wasm_bindgen(js_name = "withZitadelToken")]
     pub fn with_zitadel_token(&self, zitadel_token: String) -> Self {

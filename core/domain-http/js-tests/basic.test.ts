@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata } from 'posemesh-domain-http';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
     if (typeof process == 'undefined') {
@@ -15,13 +15,19 @@ const config = loadConfig();
 
 describe('Posemesh Domain HTTP', () => {
     describe('App Credential', async () => {
-        const client = await signInWithAppCredential(
-            config.API_URL,
-            config.DDS_URL,
-            config.CLIENT_ID,
-            config.APP_KEY,
-            config.APP_SECRET
-        ) as DomainClient;
+        let client: DomainClient;
+        beforeAll(async () => {
+            client = await signInWithAppCredential(
+                config.API_URL,
+                config.DDS_URL,
+                config.CLIENT_ID,
+                config.APP_KEY,
+                config.APP_SECRET
+            ) as DomainClient;
+        });
+        afterAll(() => {
+            client.free();
+        });
 
         it('should return error if app credential is invalid', async () => {
             await expect(async () => {
@@ -124,14 +130,21 @@ describe('Posemesh Domain HTTP', () => {
     });
 
     describe('user credential', async () => {
-        const client = await signInWithUserCredential(
-            config.API_URL,
-            config.DDS_URL,
-            config.CLIENT_ID,
-            config.POSEMESH_EMAIL,
-            config.POSEMESH_PASSWORD,
-            false
-        ) as DomainClient;
+        let client: DomainClient;
+        beforeAll(async () => {
+            client = await signInWithUserCredential(
+                config.API_URL,
+                config.DDS_URL,
+                config.CLIENT_ID,
+                config.POSEMESH_EMAIL,
+                config.POSEMESH_PASSWORD,
+                false
+            );
+        });
+        afterAll(() => {
+            client.free();
+        });
+
         it('should sign in with user credential and download domain data', async () => {
             const dataList: DomainData[] = await client.downloadDomainData(config.DOMAIN_ID, {
                 ids: [],
@@ -214,8 +227,16 @@ describe('Posemesh Domain HTTP', () => {
 
     describe('zitadel token', () => {
         const zitadelToken = config.AUTH_TEST_TOKEN;
-        const client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
-        const clientWithZitadelToken = client.withZitadelToken(zitadelToken);
+        let client: DomainClient;
+        let clientWithZitadelToken: DomainClient;
+        beforeAll(() => {
+            client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
+            clientWithZitadelToken = client.withZitadelToken(zitadelToken);
+        });
+        afterAll(() => {
+            clientWithZitadelToken.free();
+            client.free();
+        });
         
         it('should download domain data', async () => {
             const data: DomainData[] = await clientWithZitadelToken.downloadDomainData(config.DOMAIN_ID, {
@@ -287,20 +308,22 @@ describe('Posemesh Domain HTTP', () => {
             await clientWithZitadelToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
         });
 
-    it('should throw error if zitadel token is not valid', async () => {
-        const invalidClient = client.withZitadelToken("ddddd");
+        it('should throw error if zitadel token is not valid', async () => {
+            const invalidClient = client.withZitadelToken("ddddd");
 
-        const data = `{"zitadel": "token test"}`;
-        const dataBytes = new TextEncoder().encode(data);
+            const data = `{"zitadel": "token test"}`;
+            const dataBytes = new TextEncoder().encode(data);
 
-        await expect(async () => {
-            await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
-                name: "zitadel token test",
-                data_type: "test",
-                data: dataBytes,
-            } as UploadDomainData]);
-        }).rejects.toThrow();
-    });
+            await expect(async () => {
+                await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
+                    name: "zitadel token test",
+                    data_type: "test",
+                    data: dataBytes,
+                } as UploadDomainData]);
+            }).rejects.toThrow();
+
+            invalidClient.free();
+        });
     });
 
 });
