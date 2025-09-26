@@ -917,7 +917,7 @@ Content-Type: application/octet-stream
                 action: DomainAction::Update(UpdateDomainData {
                     id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
                 }),
-                data: b"hello world updated".to_vec(),
+                data: b"{\"test\": \"test updated\"}".to_vec(),
             },
         ];
 
@@ -932,16 +932,18 @@ Content-Type: application/octet-stream
         .expect("upload_v1 failed");
 
         assert_eq!(result.len(), 2, "No metadata returned from upload_v1");
-        if result[0].id != "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
-            assert_eq!(result[0].name, "test_upload");
-            delete_by_id(
-                &domain.domain.domain_server.url,
-                &domain.get_access_token(),
-                &domain_id,
-                &result[0].id,
-            )
-            .await
-            .expect("delete_by_id failed");
+        for data in result {
+            if data.id != "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
+                assert_eq!(data.name, "test_upload");
+                delete_by_id(
+                    &domain.domain.domain_server.url,
+                    &domain.get_access_token(),
+                    &domain_id,
+                    &data.id,
+                )
+                .await
+                .expect("delete_by_id failed");
+            }
         }
     }
 }
