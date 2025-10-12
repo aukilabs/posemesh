@@ -16,6 +16,7 @@ const Config &defaultConfig()
     s_defaultConfig.minClusterSideLengthTiles = 2;
     s_defaultConfig.minClusterValidTilesCount = 4;
 
+    s_defaultConfig.cornerNetWeightsPath = "cornernet.bin";
     s_defaultConfig.confidenceThreshold = 0.80f;
     s_defaultConfig.angleHistBins = 30;
     s_defaultConfig.angleKeepDegLoose = 20.0f;

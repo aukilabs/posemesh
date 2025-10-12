@@ -24,9 +24,7 @@ int main(int argc, char *argv[])
     using namespace psm::BitMatrixTracker;
 
     Config cfg = defaultConfig();
-    //cfg.validateSubtiles = false;
-    cfg.peakThreshold = 0.25f; 
-    //cfg.minContrast = 0.1f;
+    cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
 
     Estimator estimator(cfg);
 

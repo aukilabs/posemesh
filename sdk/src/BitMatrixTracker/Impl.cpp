@@ -5,6 +5,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include "Posemesh/BitMatrixTracker/Estimator.hpp"
+#include "Posemesh/BitMatrixTracker/CornerNet.hpp"
 
 namespace psm {
 namespace BitMatrixTracker {
@@ -25,10 +26,21 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                                int minSideLengthTiles,
                                int minValidTilesCount);
 
+bool detectCornersPerCluster(const cv::Mat& normalizedU8,
+                             const Config& cfg,
+                             const Cluster& cluster,
+                             const CornerNetWeights& weights,
+                             Detections& outRaw,
+                             int* rawCountOut);
+
 struct Estimator::Impl {
     explicit Impl(const Config &config)
         : m_config(config)
     {
+        bool loaded = loadCornerNetWeightsFromFile(config.cornerNetWeightsPath, m_weights);
+        if (!loaded) {
+            std::cerr << "Estimator: failed to load CornerNet weights: " << config.cornerNetWeightsPath << std::endl;
+        }
     }
 
     Config m_config;
@@ -36,6 +48,9 @@ struct Estimator::Impl {
     // Reusable buffers
     cv::Mat m_normalized;   // normalized copy after tile stretching
     cv::Mat1b m_tileMask;   // valid tiles mask
+
+    // CornerNet weights (must be loaded by caller before detection)
+    CornerNetWeights m_weights;
 };
 
 Estimator::Estimator(const Config &config)
@@ -93,9 +108,9 @@ bool Estimator::computeTileClusters(const cv::Mat &gray,
         // Clamp pixel bounds to image size
         std::cout << "Found " << outClusters.size() << " clusters" << std::endl;
         for (auto &c : outClusters) {
-            std::cout << "cluster pixel bounds: " << c.pixelBounds << std::endl;
-            c.pixelBounds.width = std::min(c.pixelBounds.width, gray.cols - c.pixelBounds.x);
-            c.pixelBounds.height = std::min(c.pixelBounds.height, gray.rows - c.pixelBounds.y);
+            c.pixelBounds.width = std::min(c.pixelBounds.width, std::max(0, gray.cols - c.pixelBounds.x));
+            c.pixelBounds.height = std::min(c.pixelBounds.height, std::max(0, gray.rows - c.pixelBounds.y));
+            std::cout << "cluster pixel bounds (clamped): " << c.pixelBounds << std::endl;
         }
 
         return true;
@@ -120,13 +135,39 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
             std::cerr << "detectCornersInCluster: empty image" << std::endl;
             return false;
         }
+        if (!m_impl->m_weights.isValid()) {
+            std::cerr << "detectCornersInCluster: CornerNet weights not loaded" << std::endl;
+            return false;
+        }
+        
+        // Raw detections before angle grouping/collapse
+        Detections raw;
+        int rawCount = 0;
 
-        // TODO(next): use m_impl->m_normalized within cluster.pixelBounds
-        // iterate per valid tile in cluster.tileMask and slide 5x5 -> CornerNet
-        // then global angle grouping across the cluster
+        // Use normalized per-tile image within cluster bounds; Detect.cpp handles tile loop.
+        if (!detectCornersPerCluster(m_impl->m_normalized, m_impl->m_config, cluster,
+                                     m_impl->m_weights, raw, &rawCount)) {
+            std::cerr << "detectCornersInCluster: detectCornersPerCluster failed" << std::endl;
+            return false;
+        }
 
-        (void)cluster; (void)diag;
-        return true; // placeholder
+        if (diag) {
+            diag->rawCorners = rawCount;
+
+            cv::Mat plot;
+            cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
+            for (size_t i = 0; i < raw.points.size(); ++i) {
+                cv::circle(plot, raw.points[i], 2, cv::Scalar(0, 255, 0), -1);
+            }
+            cv::imwrite("rawCornersPlot.jpg", plot);
+        }
+        std::cout << "[BitMatrixTracker] Raw detections in cluster: " << rawCount << std::endl;
+
+        // TODO(next): angle grouping and split into outDiag1/outDiag2
+        // For now, just mirror raw into outDiag1 so the pipeline can move forward.
+        outDiag1 = std::move(raw);
+
+        return true;
     } catch (const std::exception &e) {
         std::cerr << "detectCornersInCluster exception: " << e.what() << std::endl;
         return false;
