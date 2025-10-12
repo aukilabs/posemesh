@@ -49,7 +49,7 @@ static inline void scanTileROI(const cv::Mat &normU8,
             if (confidence >= confidenceThreshold) {
                 outPts.emplace_back(static_cast<float>(x), static_cast<float>(y));
                 // Map angle to [0,90) is already done in runCornerNet*; just store
-                outAngles.emplace_back(angle);
+                outAngles.emplace_back(std::fmod(angle + 180.0f, 180.0f));
             }
         }
     }

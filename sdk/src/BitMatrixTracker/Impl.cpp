@@ -33,6 +33,14 @@ bool detectCornersPerCluster(const cv::Mat& normalizedU8,
                              Detections& outRaw,
                              int* rawCountOut);
 
+bool groupSplitAndCollapse(const Detections& raw,
+                           const Config& cfg,
+                           Detections& outDiag1,
+                           Detections& outDiag2,
+                           int* keptLoose,
+                           int* keptStrict);
+     
+
 struct Estimator::Impl {
     explicit Impl(const Config &config)
         : m_config(config)
@@ -162,10 +170,36 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
             cv::imwrite("rawCornersPlot.jpg", plot);
         }
         std::cout << "[BitMatrixTracker] Raw detections in cluster: " << rawCount << std::endl;
+        for (size_t i = 0; i < raw.anglesDeg.size(); ++i) {
+            std::cout << "angle " << i << ": " << raw.anglesDeg[i] << std::endl;
+        }
 
-        // TODO(next): angle grouping and split into outDiag1/outDiag2
-        // For now, just mirror raw into outDiag1 so the pipeline can move forward.
-        outDiag1 = std::move(raw);
+
+        int nLoose = 0, nStrict = 0;
+        if (!groupSplitAndCollapse(raw, m_impl->m_config, outDiag1, outDiag2, &nLoose, &nStrict)) {
+            std::cerr << "detectCornersInCluster: groupSplitAndCollapse failed\n";
+            return false;
+        }
+        if (diag) {
+            diag->keptCornersLoose  = nLoose;
+            diag->keptCornersStrict = nStrict;
+
+            cv::Mat plot;
+            cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
+            for (size_t i = 0; i < outDiag1.points.size(); ++i) {
+                cv::circle(plot, outDiag1.points[i], 2, cv::Scalar(255, 255, 0), -1);
+            }
+            for (size_t i = 0; i < outDiag2.points.size(); ++i) {
+                cv::circle(plot, outDiag2.points[i], 2, cv::Scalar(255, 0, 255), -1);
+            }
+            cv::imwrite("groupedCornersPlot.jpg", plot);
+        }
+
+        std::cout << "keptCornersLoose: " << nLoose << std::endl;
+        std::cout << "keptCornersStrict: " << nStrict << std::endl;
+        
+        std::cout << "[BitMatrixTracker] After grouping: d1=" << outDiag1.points.size()
+                << ", d2=" << outDiag2.points.size() << std::endl;
 
         return true;
     } catch (const std::exception &e) {

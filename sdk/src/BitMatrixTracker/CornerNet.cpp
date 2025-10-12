@@ -119,10 +119,10 @@ void runCornerNet5x5F32(const float *patch5x5, const CornerNetWeights &w, float 
 {
     float rot;
     forward25(patch5x5, w, conf, rot);
-    // Map to [0, 90)
-    float angle = rot * 90.0f; // rot in [-1,1]
-    // wrap to [0,90)
-    angle = std::fmod(std::fmod(angle, 90.0f) + 90.0f, 90.0f);
+    // Remap output from -1..1 to -90..90
+    float angle = rot * 90.0f;
+    angle = std::max(angle, -90.0f);
+    angle = std::min(angle, 90.0f);
     angleDeg = angle;
 }
 
