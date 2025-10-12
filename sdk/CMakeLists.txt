@@ -73,6 +73,10 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseFactory.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/PoseTools.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/CalibrationHelpers.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/BitMatrixTracker/Config.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/BitMatrixTracker/Estimator.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/BitMatrixTracker/Precompute.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/BitMatrixTracker/Types.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/Portals.hpp"
         "${POSEMESH_GENERATED_CXX_HEADERS}"
     CXX_SOURCES
@@ -100,6 +104,17 @@ add_platform_library(
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseFactory.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/PoseTools.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/src/CalibrationHelpers.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Angles.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Cluster.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Config.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/CornerNet.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Detect.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Geometry.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Impl.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/NearbyMask.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Precompute.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Preprocess.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Ransac.cpp"
         "${POSEMESH_GENERATED_CXX_SOURCES}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_HEADERS}"
         "${POSEMESH_GENERATED_PROTOBUF_CXX_SOURCES}"
@@ -260,3 +275,27 @@ endif()
 if(CLANG_FORMAT_FOUND)
     add_clang_format_target(PosemeshCodeFormat Posemesh)
 endif()
+
+# Standalone example binary for BitMatrixTracker
+add_executable(
+    BitMatrixTrackerExample
+    "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/example_detect.cpp"
+)
+target_include_directories(
+    BitMatrixTrackerExample
+    PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/include/Posemesh/BitMatrixTracker"
+)
+target_link_libraries(
+    BitMatrixTrackerExample
+    PRIVATE
+        Posemesh
+)
+link_opencv_library(BitMatrixTrackerExample)
+set_target_properties(
+    BitMatrixTrackerExample
+    PROPERTIES
+        MACOSX_BUNDLE OFF
+)
+target_compile_options(BitMatrixTrackerExample PRIVATE -g -O0 -fno-omit-frame-pointer)
+
