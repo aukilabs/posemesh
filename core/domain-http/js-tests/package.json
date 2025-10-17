@@ -1,0 +1,32 @@
+{
+  "name": "posemesh-domain-http-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Test suite for posemesh-domain-http",
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest --watch",
+    "test:browser": "vitest --config=vitest.browser.config.js",
+    "test:browser:run": "vitest run --config vitest.browser.config.js",
+    "test:browser:ui": "vitest --ui --config vitest.browser.config.js",
+    "test:browser:watch": "vitest --watch --config vitest.browser.config.js",
+    "test:all": "npm run test:run && npm run test:browser:run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@vitest/browser": "^3.2.4",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "dotenv": "^17.2.2",
+    "jsdom": "^27.0.0",
+    "playwright": "^1.40.0",
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "posemesh-domain-http": "file:../pkg"
+  }
+}

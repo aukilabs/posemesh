@@ -1,11 +1,96 @@
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::{JsValue, JsError};
-use crate::domain_data::{DownloadQuery as r_DownloadQuery, UploadDomainData};
-use wasm_bindgen_futures::{future_to_promise, js_sys::{Promise, Function, Uint8Array}};
 use crate::DomainClient as r_DomainClient;
+use crate::domain_data::{
+    DomainData, DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
+};
+use serde_wasm_bindgen::{from_value, to_value};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::{JsError, JsValue};
+use wasm_bindgen_futures::{
+    future_to_promise,
+    js_sys::{Promise, Uint8Array},
+};
+use wasm_streams::readable::sys;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_APPEND_CONTENT: &'static str = r#"
+
+export type DownloadQuery = { ids: string[], name: string | null, data_type: string | null };
+/**
+ * UploadDomainData is a union of CreateDomainData and UpdateDomainData
+ * CreateDomainData is an object with the following fields:
+ * - name: string
+ * - data_type: string
+ * - data: Uint8Array
+ * UpdateDomainData is an object with the following fields:
+ * - id: string
+ */
+export type UploadDomainData = { id?: string, name?: string, data_type?: string, data: Uint8Array };
+export type DomainDataMetadata = { id: string, name: string, data_type: string, size: number, created_at: string, updated_at: string };
+export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
+
+/**
+ * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
+ * 
+ * @param api_url - The base URL for the API service.
+ * @param dds_url - The URL for the Domain Discovery Service.
+ * @param client_id - Unique identifier for this client.
+ * @param app_key - Application key for authentication.
+ * @param app_secret - Application secret for authentication.
+ * @returns Promise that resolves to a DomainClient instance.
+ * 
+ * @example
+ * const client = await signInWithAppCredential(
+ *   "https://api.auki.network",
+ *   "https://dds.auki.network",
+ *   "my-client-id",
+ *   "app-key-123",
+ *   "app-secret-456"
+ * );
+ * client.free(); // free the memory when you are done with the client
+ */
+export function signInWithAppCredential(
+    api_url: string,
+    dds_url: string,
+    client_id: string,
+    app_key: string,
+    app_secret: string
+): Promise<DomainClient>;
+
+/**
+ * Signs in with user credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
+ * 
+ * @param api_url - The base URL for the API service.
+ * @param dds_url - The URL for the Domain Discovery Service.
+ * @param client_id - Unique identifier for this client.
+ * @param email - User's email address.
+ * @param password - User's password.
+ * @param remember_password - Set to `true` if you want to automatically relogin with the same credentials after refreshtoken expires, it is NOT recommended to set to `true` in client side as storing credentials in the browser increases security risks (e.g., XSS attacks).
+ * @returns Promise that resolves to a DomainClient instance.
+ * 
+ * @example
+ * const client = await signInWithUserCredential(
+ *   "https://api.auki.network",
+ *   "https://dds.auki.network",
+ *   "my-client-id",
+ *   "user@example.com",
+ *   "password123",
+ *   false
+ * );
+ * client.free(); // free the memory when you are done with the client
+ */
+export function signInWithUserCredential(
+    api_url: string,
+    dds_url: string,
+    client_id: string,
+    email: string,
+    password: string,
+    logout: boolean
+): Promise<DomainClient>;
+
+"#;
 
 /// WASM wrapper for DomainClient that provides JavaScript bindings
-/// 
+///
 /// This struct wraps the Rust DomainClient and exposes its functionality
 /// to JavaScript through WASM bindings. It handles authentication,
 /// domain data upload/download, and metadata operations.
@@ -14,122 +99,56 @@ pub struct DomainClient {
     domain_client: r_DomainClient,
 }
 
-/// WASM wrapper for DownloadQuery that provides JavaScript bindings
-/// 
-/// Represents a query for downloading domain data with optional filters
-/// for specific IDs, names, or data types.
-#[wasm_bindgen(getter_with_clone)]
-pub struct DownloadQuery {
-    inner: r_DownloadQuery,
-}
-
-#[wasm_bindgen]
-impl DownloadQuery {
-    /// Creates a new DownloadQuery with optional filters
-    /// 
-    /// # Arguments
-    /// * `ids` - Vector of specific data IDs to download (empty for all)
-    /// * `name` - Optional name filter for the data
-    /// * `data_type` - Optional data type filter
-    /// 
-    /// # Example
-    /// ```javascript
-    /// // Download all data
-    /// const query = new DownloadQuery([], null, null);
-    /// 
-    /// // Download specific data by IDs
-    /// const query = new DownloadQuery(["id1", "id2"], null, null);
-    /// 
-    /// // Download data with name filter
-    /// const query = new DownloadQuery([], "my-data", null);
-    /// 
-    /// // Download data with type filter
-    /// const query = new DownloadQuery([], null, "image");
-    /// ```
-    #[wasm_bindgen(constructor)]
-    pub fn new(ids: Vec<String>, name: Option<String>, data_type: Option<String>) -> Self {
-        Self { inner: r_DownloadQuery { ids, name, data_type } }
-    }
-}
-
-/// Signs in with app credentials to have read access to all domains in the app organization
-/// 
-/// Authenticates with the Auki Network using application-level credentials
-/// (app key and secret). This is typically used for server-to-server communication
-/// or automated processes.
-/// 
-/// # Arguments
-/// * `api_url` - Base URL for the API service
-/// * `dds_url` - URL for the Domain Discovery Service
-/// * `client_id` - Unique identifier for this client
-/// * `app_key` - Application key for authentication
-/// * `app_secret` - Application secret for authentication
-/// 
-/// # Returns
-/// Promise that resolves to a DomainClient instance
-/// 
-/// # Example
-/// ```javascript
-/// const client = await signInWithAppCredential(
-///     "https://api.example.com",
-///     "https://dds.example.com", 
-///     "my-client-id",
-///     "app-key-123",
-///     "app-secret-456"
-/// );
-/// 
-/// // Use the client for operations
-/// const metadata = await client.downloadDomainDataMetadata("domain-123", query);
-/// ```
 #[wasm_bindgen(js_name = "signInWithAppCredential")]
-pub fn sign_in_with_app_credential(api_url: String, dds_url: String, client_id: String, app_key: String, app_secret: String) -> Promise {
+pub fn sign_in_with_app_credential(
+    api_url: String,
+    dds_url: String,
+    client_id: String,
+    app_key: String,
+    app_secret: String,
+) -> Promise {
     let future = async move {
-        let res = r_DomainClient::new_with_app_credential(&api_url, &dds_url, &client_id, &app_key, &app_secret).await;
+        let res = r_DomainClient::new_with_app_credential(
+            &api_url,
+            &dds_url,
+            &client_id,
+            &app_key,
+            &app_secret,
+        )
+        .await;
         match res {
-            Ok(domain_client) => Ok(JsValue::from(DomainClient { domain_client: domain_client })),
+            Ok(domain_client) => Ok(JsValue::from(DomainClient {
+                domain_client: domain_client,
+            })),
             Err(e) => Err(JsError::new(&e.to_string()).into()),
         }
     };
     future_to_promise(future)
 }
 
-/// Signs in with user credentials to have read and write access to all domains in the user organization
-/// 
-/// Authenticates with the Auki Network using user-level credentials
-/// (email and password). This is typically used for end-user applications.
-/// It is not RECOMMENDED to use this method with logout set to false when this is used in a browser environment.
-/// 
-/// # Arguments
-/// * `api_url` - Base URL for the API service
-/// * `dds_url` - URL for the Domain Discovery Service
-/// * `client_id` - Unique identifier for this client
-/// * `email` - User's email address
-/// * `password` - User's password
-/// * `logout` - Whether to logout when the token is expired, true to logout, false to not logout and start a periodic login with the same credentials to refresh the token
-/// 
-/// # Returns
-/// Promise that resolves to a DomainClient instance
-/// 
-/// # Example
-/// ```javascript
-/// const client = await signInWithUserCredential(
-///     "https://api.example.com",
-///     "https://dds.example.com",
-///     "my-client-id", 
-///     "user@example.com",
-///     "password123",
-///     false
-/// );
-/// 
-/// // Use the client for operations
-/// const metadata = await client.downloadDomainDataMetadata("domain-123", query);
-/// ```
 #[wasm_bindgen(js_name = "signInWithUserCredential")]
-pub fn sign_in_with_user_credential(api_url: String, dds_url: String, client_id: String, email: String, password: String, logout: bool) -> Promise {    
+pub fn sign_in_with_user_credential(
+    api_url: String,
+    dds_url: String,
+    client_id: String,
+    email: String,
+    password: String,
+    remember_password: bool,
+) -> Promise {
     let future = async move {
-        let res = r_DomainClient::new_with_user_credential(&api_url, &dds_url, &client_id, &email, &password, logout).await;
+        let res = r_DomainClient::new_with_user_credential(
+            &api_url,
+            &dds_url,
+            &client_id,
+            &email,
+            &password,
+            remember_password,
+        )
+        .await;
         match res {
-            Ok(domain_client) => Ok(JsValue::from(DomainClient { domain_client: domain_client })),
+            Ok(domain_client) => Ok(JsValue::from(DomainClient {
+                domain_client: domain_client,
+            })),
             Err(e) => Err(JsError::new(&e.to_string()).into()),
         }
     };
@@ -138,206 +157,302 @@ pub fn sign_in_with_user_credential(api_url: String, dds_url: String, client_id:
 
 #[wasm_bindgen]
 impl DomainClient {
-    /// Downloads metadata for domain data without downloading the actual content
-    /// 
-    /// Retrieves metadata information (name, type, size, properties, etc.) for
-    /// domain data that matches the specified query. This is useful for listing
-    /// available data or getting information before downloading.
-    /// 
+    /// Constructs a new DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
+    ///
     /// # Arguments
-    /// * `domain_id` - The domain identifier
-    /// * `query` - DownloadQuery object specifying what data to query
-    /// 
+    /// * `api_url` - The base URL for the API service.
+    /// * `dds_url` - The URL for the Domain Discovery Service.
+    /// * `client_id` - Unique identifier for this client.
+    ///
     /// # Returns
-    /// Promise that resolves to an array of metadata objects
-    /// 
+    /// * `Self` - A new DomainClient instance.
+    ///
     /// # Example
     /// ```javascript
-    /// const query = new DownloadQuery([], "my-data", "image");
-    /// const metadata = await client.downloadDomainDataMetadata("domain-123", query);
+    /// const client = new DomainClient(
+    ///     "https://api.example.com".to_string(),
+    ///     "https://dds.example.com".to_string(),
+    ///     "my-client-id".to_string()
+    /// );
     /// 
-    /// // metadata contains array of objects with:
-    /// // { id, name, data_type, size }
-    /// console.log(`Found ${metadata.length} items`);
-    /// metadata.forEach(item => {
-    ///     console.log(`${item.name}: ${item.size} bytes`);
-    /// });
+    /// // free the memory when you are done with the client
+    /// client.free();
+    /// ```
+    /// 
+    #[wasm_bindgen(constructor)]
+    pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
+        Self {
+            domain_client: r_DomainClient::new(&api_url, &dds_url, &client_id),
+        }
+    }
+
+    /// Returns a new DomainClient instance with the given OIDC access token for authentication. Make sure to call .free() to free the memory when you are done with the client.
+    ///
+    /// # Arguments
+    /// * `oidc_access_token` - The OIDC access access token.
+    ///
+    /// # Returns
+    /// * `Self` - A new DomainClient instance with the token applied.
+    ///
+    /// # Example
+    /// ```javascript
+    /// const client_with_token = client.withOIDCAccessToken("your-oidc-token");
+    /// 
+    /// // free the memory when you are done with the client
+    /// client_with_token.free();
+    /// ```
+    #[wasm_bindgen(js_name = "withOIDCAccessToken")]
+    pub fn with_oidc_access_token(&self, oidc_access_token: String) -> Self {
+        Self {
+            domain_client: self.domain_client.with_oidc_access_token(&oidc_access_token),
+        }
+    }
+
+    /// Downloads metadata for domain data matching the query.
+    ///
+    /// # Arguments
+    /// * `domain_id` - The ID of the domain.
+    /// * `query` - The query `DownloadQuery` parameters for filtering data.
+    ///
+    /// # Returns
+    /// * `Promise<DomainDataMetadata[]>` - Resolves to an array of DomainDataMetadata.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(
+    ///     "domain-123",
+    ///     { ids: [], name: null, data_type: "data type" }
+    /// );
     /// ```
     #[wasm_bindgen(js_name = "downloadDomainDataMetadata")]
-    pub fn download_domain_data_metadata(
-        &self,
-        domain_id: String,
-        query: DownloadQuery,
-    ) -> Promise {
-        tracing::info!("download_domain_data_metadata: {:?}, {:?}", query.inner, self.domain_client.clone());
+    pub fn download_domain_data_metadata(&self, domain_id: String, query: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.download_metadata(&domain_id, &query.inner).await;
+            let parse = from_value::<r_DownloadQuery>(query);
+            if let Err(e) = parse {
+                return Err(JsError::new(&e.to_string()).into());
+            }
+            let query = parse.unwrap();
+            let res = domain_client.download_metadata(&domain_id, &query).await;
             match res {
-                Ok(data) => Ok(JsValue::from(data)),
+                Ok(data) => match to_value(&data) {
+                    Ok(value) => Ok(value),
+                    Err(e) => Err(JsError::new(&e.to_string()).into()),
+                },
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };
         future_to_promise(future)
     }
 
-    /// Downloads domain data with streaming support
-    /// 
-    /// Downloads the actual domain data content in chunks, calling the provided
-    /// callback function for each chunk received. This method supports large
-    /// file downloads by streaming data instead of loading everything into memory.
-    /// 
+    /// Downloads domain data matching the query, including the data bytes.
+    ///
     /// # Arguments
-    /// * `domain_id` - The domain identifier
-    /// * `query` - DownloadQuery object specifying what data to download
-    /// * `callback` - Function called for each data chunk received
-    /// 
+    /// * `domain_id` - The ID of the domain.
+    /// * `query` - The query `DownloadQuery` parameters for filtering data.
+    ///
     /// # Returns
-    /// Promise that resolves when download is complete
-    /// 
+    /// * `Promise<DomainData[]>` - Resolves to an array of DomainData.
+    ///
     /// # Example
     /// ```javascript
-    /// const query = new DownloadQuery(["data-id-123"], null, null);
-    /// 
-    /// await client.downloadDomainData("domain-123", query, (datum) => {
-    ///     // datum is a { id, name, data_type, size }
-    ///     const chunk = datum.get_data_bytes();
-    ///     // chunk is a Uint8Array containing the data
-    ///     console.log(`Received chunk of ${chunk.length} bytes`);
-    ///     
-    ///     // Process the chunk (e.g., append to file, display, etc.)
-    ///     processChunk(chunk);
-    /// });
-    /// 
-    /// console.log("Download complete!");
+    /// let data: DomainData[] = await client.downloadDomainData(
+    ///     "domain-123",
+    ///     { ids: [], name: null, data_type: "data type" }
+    /// );
     /// ```
     #[wasm_bindgen(js_name = "downloadDomainData")]
-    pub fn download_domain_data(
-        &self,
-        domain_id: String,
-        query: DownloadQuery,
-        callback: Function,
-    ) -> Promise {
+    pub fn download_domain_data(&self, domain_id: String, query: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
             use futures::StreamExt;
-            let res = domain_client.download_domain_data(&domain_id, &query.inner).await;
-            match res {
-                Ok(mut rx) => {
-                    while let Some(result) = rx.next().await {
-                        match result {
-                            Ok(data) => {
-                                match callback.call1(&JsValue::NULL, &JsValue::from(data)) {
-                                    Ok(_) => {
-                                        continue;
-                                    }
-                                    Err(e) => {
-                                        return Err(e);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                return Err(JsError::new(&e.to_string()).into());
-                            }
-                        }
+            let parse = from_value::<r_DownloadQuery>(query);
+            if let Err(e) = parse {
+                return Err(JsError::new(&e.to_string()).into());
+            }
+            let query = parse.unwrap();
+            let res = domain_client.download_domain_data(&domain_id, &query).await;
+            if let Err(e) = res {
+                return Err(JsError::new(&e.to_string()).into());
+            }
+            let mut rx = res.unwrap();
+            let mut response: Vec<DomainData> = vec![];
+            while let Some(result) = rx.next().await {
+                match result {
+                    Ok(data) => {
+                        response.push(data);
+                    }
+                    Err(e) => {
+                        return Err(JsError::new(&e.to_string()).into());
                     }
                 }
-                Err(e) => {
-                    return Err(JsError::new(&e.to_string()).into());
-                }
             }
-            Ok(JsValue::NULL)
+
+            to_value(&response).map_err(|e| JsError::new(&e.to_string()).into())
         };
         future_to_promise(future)
     }
 
-    /// Uploads domain data to the specified domain
-    /// 
-    /// Uploads one or more pieces of domain data to the specified domain.
-    /// The data is processed and stored according to the domain's configuration.
-    /// 
+    /// Downloads domain data as a readable stream, matching the query.
+    ///
     /// # Arguments
-    /// * `domain_id` - The domain identifier where data will be uploaded
-    /// * `data` - Array of UploadDomainData objects containing the data to upload
-    /// 
+    /// * `domain_id` - The ID of the domain.
+    /// * `query` - The query `DownloadQuery` parameters for filtering data.
+    ///
     /// # Returns
-    /// Promise that resolves to upload result information
-    /// 
+    /// * `ReadableStream<DomainData>` - A JavaScript ReadableStream of DomainData objects.
+    ///
     /// # Example
     /// ```javascript
-    /// // Create data
-    /// const createData = new CreateDomainData("my-image.jpg", "image/jpeg");
-    /// const uploadData = new UploadDomainData(createData, null, new Uint8Array(data));
-    /// 
-    /// // Update data
-    /// const updateData = new UpdateDomainData("id");
-    /// const uploadData2 = new UploadDomainData(null, updateData, new Uint8Array(data));
-    /// 
-    /// const result = await client.uploadDomainData("domain-123", [uploadData, uploadData2]);
-    /// console.log(`Uploaded ${result.length} items successfully`);
-    /// // result is an array of objects with:
-    /// // { id, name, data_type, size }
+    /// let stream: ReadableStream<DomainData> = client.downloadDomainDataStream(
+    ///     "domain-123",
+    ///     query_js_value
+    /// );
     /// ```
-    #[wasm_bindgen(js_name = "uploadDomainData")]
-    pub fn upload_domain_data(
+    #[wasm_bindgen(js_name = "downloadDomainDataStream")]
+    pub fn download_domain_data_stream(
         &self,
         domain_id: String,
-        data: Vec<UploadDomainData>,
-    ) -> Promise {
+        query: JsValue,
+    ) -> sys::ReadableStream {
+        use futures::{SinkExt, StreamExt};
+        use wasm_bindgen_futures::spawn_local;
+        // We'll use a futures channel to push items into JS
+        let (mut tx, rx) = futures::channel::mpsc::unbounded::<Result<JsValue, JsValue>>();
+        let domain_client = self.domain_client.clone();
+        // Spawn a Rust async task that sends data
+        spawn_local(async move {
+            let query = match from_value::<r_DownloadQuery>(query) {
+                Ok(q) => q,
+                Err(e) => {
+                    tx.send(Err(JsError::new(&e.to_string()).into())).await.ok();
+                    return;
+                }
+            };
+            let res = domain_client.download_domain_data(&domain_id, &query).await;
+            if let Ok(mut download_rx) = res {
+                while let Some(result) = download_rx.next().await {
+                    match result {
+                        Ok(data) => match to_value(&data) {
+                            Ok(value) => {
+                                tx.send(Ok(value)).await.ok();
+                            }
+                            Err(e) => {
+                                tx.send(Err(JsError::new(&e.to_string()).into())).await.ok();
+                            }
+                        },
+                        Err(e) => {
+                            tx.send(Err(JsError::new(&e.to_string()).into())).await.ok();
+                        }
+                    }
+                }
+            }
+        });
+
+        wasm_streams::ReadableStream::into_raw(wasm_streams::ReadableStream::from_stream(rx))
+    }
+
+    /// Uploads domain data (create or update):
+    ///
+    /// # Arguments
+    /// * `domain_id` - The ID of the domain.
+    /// * `data`: `UploadDomainData[]` - The array of UploadDomainData objects.
+    ///
+    /// # Returns
+    /// * `Promise<DomainDataMetadata[]>` - Resolves to an array of DomainDataMetadata.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let result: DomainDataMetadata[] = await client.uploadDomainData(
+    ///     "domain-123",
+    ///     [{
+    ///         name: "test",
+    ///         data_type: "test",
+    ///         data: new Uint8Array([1, 2, 3])
+    ///     }, {
+    ///         id: "data-id-456",
+    ///         data: new Uint8Array([1, 2, 3])
+    ///     }]
+    /// ] as UploadDomainData[]
+    /// );
+    /// ```
+    #[wasm_bindgen(js_name = "uploadDomainData")]
+    pub fn upload_domain_data(&self, domain_id: String, data: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.upload_domain_data(&domain_id, data).await;
-            match res {
-                Ok(data) => Ok(JsValue::from(data)),
+            match from_value::<Vec<r_UploadDomainData>>(data) {
+                Ok(upload) => {
+                    let res = domain_client.upload_domain_data(&domain_id, upload).await;
+                    match res {
+                        Ok(data) => match to_value(&data) {
+                            Ok(value) => Ok(value),
+                            Err(e) => Err(JsError::new(&e.to_string()).into()),
+                        },
+                        Err(e) => Err(JsError::new(&e.to_string()).into()),
+                    }
+                }
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };
         future_to_promise(future)
     }
 
-    /// Downloads a specific piece of domain data by its ID
-    /// 
-    /// Downloads the complete content of a specific piece of domain data
-    /// identified by its unique ID. This method loads the entire data into memory
-    /// and returns it as a Uint8Array.
-    /// 
+    /// Downloads the raw data bytes for a specific domain data object by its ID.
+    ///
     /// # Arguments
-    /// * `domain_id` - The domain identifier
-    /// * `id` - The unique identifier of the specific data to download
-    /// 
+    /// * `domain_id` - The ID of the domain.
+    /// * `id` - The ID of the data object to download.
+    ///
     /// # Returns
-    /// Promise that resolves to a Uint8Array containing the data
-    /// 
+    /// * `Promise<Uint8Array>` - Resolves to a Uint8Array containing the data bytes.
+    ///
     /// # Example
     /// ```javascript
-    /// const data = await client.downloadDomainDataById("domain-123", "data-id-456");
-    /// 
-    /// // data is a Uint8Array containing the complete file content
-    /// console.log(`Downloaded ${data.length} bytes`);
-    /// 
-    /// // Convert to string if it's text data
-    /// const text = new TextDecoder().decode(data);
-    /// console.log("File content:", text);
-    /// 
-    /// // Or save to file
-    /// const blob = new Blob([data]);
-    /// const url = URL.createObjectURL(blob);
-    /// const a = document.createElement('a');
-    /// a.href = url;
-    /// a.download = "downloaded-file";
-    /// a.click();
+    /// let bytes: Uint8Array = await client.downloadDomainDataById(
+    ///     "domain-123",
+    ///     "data-id-456"
+    /// );
     /// ```
     #[wasm_bindgen(js_name = "downloadDomainDataById")]
-    pub fn download_domain_data_by_id(
-        &self,
-        domain_id: String,
-        id: String,
-    ) -> Promise {
+    pub fn download_domain_data_by_id(&self, domain_id: String, id: String) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.download_domain_data_by_id(&domain_id, &id).await;
+            let res = domain_client
+                .download_domain_data_by_id(&domain_id, &id)
+                .await;
             match res {
                 Ok(data) => Ok(JsValue::from(Uint8Array::from(data.as_slice()))),
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+
+    /// Deletes a domain data object by ID.
+    ///
+    /// # Arguments
+    /// * `domain_id` - The ID of the domain.
+    /// * `id` - The ID of the data object to delete.
+    ///
+    /// # Returns
+    /// * `Promise<void>` - Resolves when the deletion is complete.
+    ///
+    /// # Example
+    /// ```javascript
+    /// await client.deleteDomainDataById(
+    ///     "domain-123",
+    ///     "data-id-456"
+    /// );
+    /// ```
+    #[wasm_bindgen(js_name = "deleteDomainDataById")]
+    pub fn delete_domain_data_by_id(&self, domain_id: String, id: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            let res = domain_client
+                .delete_domain_data_by_id(&domain_id, &id)
+                .await;
+            match res {
+                Ok(()) => Ok(JsValue::undefined()),
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };
@@ -346,11 +461,11 @@ impl DomainClient {
 }
 
 /// Initializes the WASM module with logging and error handling
-/// 
+///
 /// This function is automatically called when the WASM module is loaded.
 /// It sets up console error handling for panics and configures tracing
 /// for comprehensive logging in the browser environment.
-/// 
+///
 /// # Example
 /// ```javascript
 /// // This is automatically called when the WASM module loads
@@ -366,7 +481,7 @@ pub fn start() -> Result<(), JsValue> {
     let config = tracing_wasm::WASMLayerConfigBuilder::new()
         .set_max_level(tracing::Level::DEBUG)
         .build();
-    
+
     tracing_wasm::set_as_global_default_with_config(config);
 
     // Ensure tracing is properly initialized

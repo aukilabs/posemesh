@@ -1,24 +1,20 @@
-use futures::{channel::mpsc, stream::StreamExt, SinkExt};
-use reqwest::{Client, Response, Body};
+use bytes::Bytes;
+use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
+use reqwest::{Body, Client, Response};
 use serde::{Deserialize, Serialize};
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_futures::js_sys::Uint8Array;
 use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct DomainServer {
     pub url: String,
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DomainData {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainDataMetadata {
     pub id: String,
     pub domain_id: String,
     pub name: String,
@@ -26,65 +22,38 @@ pub struct DomainData {
     pub size: u64,
     pub created_at: String,
     pub updated_at: String,
-    #[serde(skip_serializing_if = "Vec::is_empty", skip_deserializing)]
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DomainData {
+    // #[serde(flatten)] This doesn't work in serde_wasm_bindgen, it generates Map instead of a plain object
+    pub metadata: DomainDataMetadata,
     pub data: Vec<u8>,
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen)]
-impl DomainData {
-    #[cfg(target_family = "wasm")]
-    #[wasm_bindgen]
-    pub fn get_data_bytes(&self) -> Uint8Array {
-        Uint8Array::from(self.data.as_slice())
-    }
-}
-
-#[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct UpdateDomainData {
     pub id: String,
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen)]
-impl UpdateDomainData {
-    #[cfg(target_family = "wasm")]
-    #[wasm_bindgen(constructor)]
-    pub fn new(id: String) -> Self {
-        Self { id }
-    }
-}
-#[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct CreateDomainData {
     pub name: String,
     pub data_type: String,
 }
-#[cfg_attr(target_family = "wasm", wasm_bindgen)]
-impl CreateDomainData {
-    #[cfg(target_family = "wasm")]
-    #[wasm_bindgen(constructor)]
-    pub fn new(name: String, data_type: String) -> Self {
-        Self { name, data_type }
-    }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DomainAction {
+    Create(CreateDomainData),
+    Update(UpdateDomainData),
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen(getter_with_clone))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UploadDomainData {
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub create: Option<CreateDomainData>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub update: Option<UpdateDomainData>,
+    #[serde(flatten)]
+    pub action: DomainAction,
     pub data: Vec<u8>,
-}
-
-#[cfg_attr(target_family = "wasm", wasm_bindgen)]
-impl UploadDomainData {
-    #[cfg(target_family = "wasm")]
-    #[wasm_bindgen(constructor)]
-    pub fn new(create: Option<CreateDomainData>, update: Option<UpdateDomainData>, data: Uint8Array) -> Self {
-        Self { create, update, data: data.to_vec() }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,8 +64,8 @@ pub struct DownloadQuery {
 }
 
 #[derive(Debug, Deserialize)]
-struct ListDomainData {
-    pub data: Vec<DomainData>,
+struct ListDomainDataMetadata {
+    pub data: Vec<DomainDataMetadata>,
 }
 
 pub async fn download_by_id(
@@ -107,7 +76,10 @@ pub async fn download_by_id(
     id: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data/{}?raw=true", url, domain_id, id))
+        .get(&format!(
+            "{}/api/v1/domains/{}/data/{}?raw=true",
+            url, domain_id, id
+        ))
         .bearer_auth(access_token)
         .header("posemesh-client-id", client_id)
         .send()
@@ -118,8 +90,15 @@ pub async fn download_by_id(
         Ok(data.to_vec())
     } else {
         let status = response.status();
-        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(format!("Failed to download data by id. Status: {} - {}", status, text).into())
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!(
+            "Failed to download data by id. Status: {} - {}",
+            status, text
+        )
+        .into())
     }
 }
 
@@ -129,34 +108,17 @@ pub async fn download_metadata_v1(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut params = HashMap::new();
-    
-    if !query.ids.is_empty() {
-        params.insert("ids", query.ids.join(","));
-    }
-    if let Some(name) = &query.name {
-        params.insert("name", name.clone());
-    }
-    if let Some(data_type) = &query.data_type {
-        params.insert("data_type", data_type.clone());
-    }
-
-    let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data", url, domain_id))
-        .bearer_auth(access_token)
-        .header("Accept", "application/json")
-        .header("posemesh-client-id", client_id)
-        .query(&params)
-        .send()
-        .await?;
-
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    let response = download_v1(url, client_id, access_token, domain_id, query, false).await?;
     if response.status().is_success() {
-        let data = response.json::<ListDomainData>().await?;
+        let data = response.json::<ListDomainDataMetadata>().await?;
         Ok(data.data)
     } else {
         let status = response.status();
-        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         Err(format!("Failed to download data. Status: {} - {}", status, text).into())
     }
 }
@@ -167,23 +129,40 @@ pub async fn download_v1(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
+    with_data: bool,
 ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
     let mut params = HashMap::new();
-    
-    if !query.ids.is_empty() {
-        params.insert("ids", query.ids.join(","));
-    }
+
     if let Some(name) = &query.name {
         params.insert("name", name.clone());
     }
     if let Some(data_type) = &query.data_type {
         params.insert("data_type", data_type.clone());
     }
+    let ids = {
+        if !query.ids.is_empty() {
+            let ids = query.ids.join(",");
+            if params.is_empty() {
+                &format!("?ids={}", ids)
+            } else {
+                &format!("?ids={}", ids)
+            }
+        } else {
+            ""
+        }
+    };
 
     let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .get(&format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
         .bearer_auth(access_token)
-        .header("Accept", "multipart/form-data")
+        .header(
+            "Accept",
+            if with_data {
+                "multipart/form-data"
+            } else {
+                "application/json"
+            },
+        )
         .header("posemesh-client-id", client_id)
         .query(&params)
         .send()
@@ -193,7 +172,10 @@ pub async fn download_v1(
         Ok(response)
     } else {
         let status = response.status();
-        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         Err(format!("Failed to download data. Status: {} - {}", status, text).into())
     }
 }
@@ -204,9 +186,14 @@ pub async fn download_v1_stream(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error + Send + Sync>> {
-    let response = download_v1(url, client_id, access_token, domain_id, query).await?;
-    let (mut tx, rx) = mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
+) -> Result<
+    mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
+    let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
+
+    let (mut tx, rx) =
+        mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
 
     let boundary = match response
         .headers()
@@ -228,66 +215,36 @@ pub async fn download_v1_stream(
     };
 
     spawn(async move {
-        let mut stream = response.bytes_stream();
-        let mut buffer = Vec::new();
-        let mut current_domain_data: Option<DomainData> = None;
-
-        let boundary_bytes = format!("--{}", boundary).as_bytes().to_vec();
-
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = match chunk_result {
-                Ok(c) if c.is_empty() => {
-                    tx.close().await.ok();
-                    return;
-                },
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = tx.send(Err(e.into())).await;
-                    return;
-                }
-            };
-
-            buffer.extend_from_slice(&chunk);
-
-            if let Some(mut domain_data) = current_domain_data.take() {
-                let expected_size = domain_data.size as usize;
-                if buffer.len() >= expected_size {
-                    domain_data.data.extend_from_slice(&buffer[..expected_size]);
-                    buffer.drain(..expected_size);
-                    if tx.send(Ok(domain_data)).await.is_err() {
-                        return;
-                    }
-                } else {
-                    current_domain_data = Some(domain_data);
-                    continue;
-                }
-            }
-
-            // Find boundary
-            if let Some(boundary_pos) = find_boundary(&buffer, &boundary_bytes) {
-                // Look for header end after boundary
-                if let Some(header_end) = find_headers_end(&buffer[boundary_pos..]) {
-                    let headers_slice = &buffer[boundary_pos..boundary_pos + header_end];
-                    let part_headers = parse_headers(headers_slice);
-                    if let Ok(domain_data) = part_headers {
-                        current_domain_data = Some(domain_data);
-                    } else {
-                        tracing::error!("Failed to parse headers: {:?}", part_headers.err());
-                        return;
-                    }
-
-                    // Remove processed data from buffer
-                    buffer.drain(..boundary_pos + header_end);
-                    continue;
-                } else {
-                    // Incomplete headers, wait for more chunks
-                    continue;
-                }
-            }
-        }
+        let stream = response.bytes_stream();
+        handle_domain_data_stream(tx, stream, &boundary).await;
     });
 
     Ok(rx)
+}
+
+pub async fn delete_by_id(
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let endpoint = format!("{}/api/v1/domains/{}/data/{}", url, domain_id, id);
+    let client = Client::new();
+    let resp = client
+        .delete(&endpoint)
+        .bearer_auth(access_token)
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let err = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("Delete failed with status: {}", err).into())
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -296,7 +253,7 @@ pub async fn upload_v1_stream(
     access_token: &str,
     domain_id: &str,
     mut rx: mpsc::Receiver<UploadDomainData>,
-) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     use futures::channel::oneshot;
 
     let boundary = "boundary";
@@ -314,99 +271,60 @@ pub async fn upload_v1_stream(
     let access_token_2 = access_token.clone();
     let domain_id_2 = domain_id.clone();
 
-    let (create_signal, create_signal_rx) = oneshot::channel::<Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>>>();
-    let (update_signal, update_signal_rx) = oneshot::channel::<Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>>>();
+    let (create_signal, create_signal_rx) = oneshot::channel::<
+        Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>>,
+    >();
+    let (update_signal, update_signal_rx) = oneshot::channel::<
+        Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>>,
+    >();
 
     spawn(async move {
-        let create_response = Client::new()
-            .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
-            .bearer_auth(access_token)
-            .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
-            .body(create_body)
-            .send()
-            .await;
-
-        if let Err(e) = create_response {
-            tracing::error!("Create failed with error: {}", e);
-            create_signal.send(Err(e.into())).unwrap();
-            return;
-        }
-
-        let create_response = create_response.unwrap();
-        if create_response.status().is_success() {
-            let data = create_response.json::<ListDomainData>().await.unwrap();
-            create_signal.send(Ok(data.data)).unwrap();
-        } else {
-            let err = create_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            create_signal.send(Err(format!("Create failed with status: {}", err).into())).unwrap();
+        let create_response =
+            create_v1(&url, &access_token, &domain_id, boundary, create_body).await;
+        if let Err(Err(e)) = create_signal.send(create_response) {
+            tracing::error!("Failed to send create response: {}", e);
         }
     });
 
     spawn(async move {
-        let update_response = Client::new()
-            .put(&format!("{}/api/v1/domains/{}/data", url_2, domain_id_2))
-            .bearer_auth(access_token_2)
-            .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
-            .body(update_body)
-            .send()
-            .await;
-
-        if let Err(e) = update_response {
-            tracing::error!("Update failed with error: {}", e);
-            update_signal.send(Err(e.into())).unwrap();
-            return;
-        }
-        let update_response = update_response.unwrap();
-        if update_response.status().is_success() {
-            let data = update_response.json::<ListDomainData>().await.unwrap();
-            update_signal.send(Ok(data.data)).unwrap();
-        } else {
-            let err = update_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            update_signal.send(Err(format!("Update failed with status: {}", err).into())).unwrap();
+        let update_response =
+            update_v1(&url_2, &access_token_2, &domain_id_2, boundary, update_body).await;
+        if let Err(Err(e)) = update_signal.send(update_response) {
+            tracing::error!("Failed to send update response: {}", e);
         }
     });
 
     while let Some(datum) = rx.next().await {
-        // Process the first item based on whether it's create or update
-        if let Some(update) = &datum.update {
-            // Create update bytes with boundary format
-            let update_bytes = format!(
-                "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; id=\"{}\"\r\n\r\n",
-                boundary, update.id, update.id
-            );
-            let mut update_data = update_bytes.into_bytes();
-            update_data.extend_from_slice(&datum.data);
-            update_data.extend_from_slice("\r\n".as_bytes());
-            
-            update_tx.send(update_data).await?;
-        } else if let Some(create) = &datum.create {
-            // Create create bytes with boundary format
-            let create_bytes = format!(
-                "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
-                boundary, create.name, create.data_type
-            );
-            let mut create_data = create_bytes.into_bytes();
-            create_data.extend_from_slice(&datum.data);
-            create_data.extend_from_slice("\r\n".as_bytes());
-            
-            create_tx.clone().send(create_data).await?;
+        match datum.action {
+            DomainAction::Create(create) => {
+                let create_data = write_create_body(boundary, &create, &datum.data);
+                create_tx.clone().send(create_data).await?;
+            }
+            DomainAction::Update(update) => {
+                let update_data = write_update_body(boundary, &update, &datum.data);
+                update_tx.send(update_data).await?;
+            }
         }
     }
-    update_tx.send(format!("--{}--\r\n", boundary).as_bytes().to_vec()).await?;
-    create_tx.send(format!("--{}--\r\n", boundary).as_bytes().to_vec()).await?;
+    update_tx
+        .send(format!("--{}--\r\n", boundary).as_bytes().to_vec())
+        .await?;
+    create_tx
+        .send(format!("--{}--\r\n", boundary).as_bytes().to_vec())
+        .await?;
     update_tx.close().await?;
     create_tx.close().await?;
 
-    let mut data = Vec::new();
-
-    if let Ok(res) = create_signal_rx.await {
-        match res {
-            Ok(d) => data = d,
-            Err(e) => return Err(e),
+    let mut data = {
+        if let Ok(res) = create_signal_rx.await {
+            match res {
+                Ok(d) => d,
+                Err(e) => return Err(e),
+            }
+        } else {
+            return Err("create cancelled".into());
         }
-    } else {
-        return Err("create cancelled".into());
-    }
+    };
 
     if let Ok(res) = update_signal_rx.await {
         match res {
@@ -420,49 +338,120 @@ pub async fn upload_v1_stream(
     Ok(data)
 }
 
+async fn update_v1(
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    boundary: &str,
+    body: Body,
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    let update_response = Client::new()
+        .put(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .bearer_auth(access_token)
+        .header(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(body)
+        .send()
+        .await?;
+
+    if update_response.status().is_success() {
+        let data = update_response
+            .json::<ListDomainDataMetadata>()
+            .await
+            .unwrap();
+        Ok(data.data)
+    } else {
+        let err = update_response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("Update failed with status: {}", err).into())
+    }
+}
+
+async fn create_v1(
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    boundary: &str,
+    body: Body,
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    let create_response = Client::new()
+        .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .bearer_auth(access_token)
+        .header(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(body)
+        .send()
+        .await?;
+
+    if create_response.status().is_success() {
+        let data = create_response
+            .json::<ListDomainDataMetadata>()
+            .await
+            .unwrap();
+        Ok(data.data)
+    } else {
+        let err = create_response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("Create failed with status: {}", err).into())
+    }
+}
+
+fn write_create_body(boundary: &str, data: &CreateDomainData, data_bytes: &[u8]) -> Vec<u8> {
+    let create_bytes = format!(
+        "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
+        boundary, data.name, data.data_type
+    );
+    let mut create_data = create_bytes.into_bytes();
+    create_data.extend_from_slice(data_bytes);
+    create_data.extend_from_slice("\r\n".as_bytes());
+    create_data
+}
+
+fn write_update_body(boundary: &str, data: &UpdateDomainData, data_bytes: &[u8]) -> Vec<u8> {
+    let update_bytes = format!(
+        "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
+        boundary, data.id
+    );
+    let mut update_data = update_bytes.into_bytes();
+    update_data.extend_from_slice(data_bytes);
+    update_data.extend_from_slice("\r\n".as_bytes());
+    update_data
+}
+
 pub async fn upload_v1(
     url: &str,
     access_token: &str,
     domain_id: &str,
     data: Vec<UploadDomainData>,
-) -> Result<Vec<DomainData>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let boundary = "boundary";
 
     let mut create_body = Vec::new();
     let mut update_body = Vec::new();
-
-    let url = url.to_string();
-    let url_2 = url.clone();
-    let access_token = access_token.to_string();
-    let domain_id = domain_id.to_string();
-    let access_token_2 = access_token.clone();
-    let domain_id_2 = domain_id.clone();
+    let mut to_update = false;
+    let mut to_create = false;
 
     // Process the first item to get metadata for the form
-    for datun in data {
-    // Process the first item based on whether it's create or update
-        if let Some(update) = &datun.update {
-            // Create update bytes with boundary format
-            let update_bytes = format!(
-                "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; id=\"{}\"\r\n\r\n",
-                boundary, update.id, update.id
-            );
-            let mut update_data = update_bytes.into_bytes();
-            update_data.extend_from_slice(&datun.data);
-            update_data.extend_from_slice("\r\n".as_bytes());
-            
-            update_body.extend_from_slice(&update_data);
-        } else if let Some(create) = &datun.create {
-            // Create create bytes with boundary format
-            let create_bytes = format!(
-                "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
-                boundary, create.name, create.data_type
-            );
-            let mut create_data = create_bytes.into_bytes();
-            create_data.extend_from_slice(&datun.data);
-            create_data.extend_from_slice("\r\n".as_bytes());
-            
-            create_body.extend_from_slice(&create_data);
+    for datum in data {
+        match datum.action {
+            DomainAction::Create(create) => {
+                to_create = true;
+                let create_data = write_create_body(boundary, &create, &datum.data);
+                create_body.extend_from_slice(&create_data);
+            }
+            DomainAction::Update(update) => {
+                to_update = true;
+                let update_data = write_update_body(boundary, &update, &datum.data);
+                update_body.extend_from_slice(&update_data);
+            }
         }
     }
 
@@ -471,47 +460,28 @@ pub async fn upload_v1(
 
     let create_body = Body::from(create_body);
     let update_body = Body::from(update_body);
-
-    let create_response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
-        .bearer_auth(access_token)
-        .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
-        .body(create_body)
-        .send()
-        .await?;
-
     let mut res = Vec::new();
-    if create_response.status().is_success() {
-        let data = create_response.json::<ListDomainData>().await.unwrap();
-        res = data.data;
-    } else {
-        let err = create_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("Create failed with status: {}", err).into());
+
+    if to_create {
+        res = create_v1(url, access_token, domain_id, boundary, create_body).await?;
     }
-
-    let update_response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/data", url_2, domain_id_2))
-        .bearer_auth(access_token_2)
-        .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
-        .body(update_body)
-        .send()
-        .await.unwrap();
-
-    if update_response.status().is_success() {
-        let data = update_response.json::<ListDomainData>().await.unwrap();
-        res.extend(data.data);
-    } else {
-        let err = update_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("Update failed with status: {}", err).into());
+    if to_update {
+        let update_response =
+            update_v1(url, access_token, domain_id, boundary, update_body).await?;
+        if !update_response.is_empty() {
+            res.extend(update_response);
+        }
     }
 
     Ok(res)
-} 
-    
-fn parse_headers(headers_slice: &[u8]) -> Result<DomainData, Box<dyn std::error::Error + Send + Sync>> {
+}
+
+fn parse_headers(
+    headers_slice: &[u8],
+) -> Result<DomainData, Box<dyn std::error::Error + Send + Sync>> {
     let headers_str = String::from_utf8_lossy(headers_slice);
     let mut domain_data = None;
-    
+
     for line in headers_str.lines() {
         if line.trim().is_empty() {
             break;
@@ -520,13 +490,15 @@ fn parse_headers(headers_slice: &[u8]) -> Result<DomainData, Box<dyn std::error:
             let key = key.trim().to_lowercase();
             if key == "content-disposition" {
                 let mut parsed_domain_data = DomainData {
-                    id: String::new(),
-                    domain_id: String::new(),
-                    name: String::new(),
-                    data_type: String::new(),
-                    size: 0,
-                    created_at: String::new(),
-                    updated_at: String::new(),
+                    metadata: DomainDataMetadata {
+                        id: String::new(),
+                        domain_id: String::new(),
+                        name: String::new(),
+                        data_type: String::new(),
+                        size: 0,
+                        created_at: String::new(),
+                        updated_at: String::new(),
+                    },
                     data: Vec::new(),
                 };
                 for part in value.split(';') {
@@ -535,17 +507,25 @@ fn parse_headers(headers_slice: &[u8]) -> Result<DomainData, Box<dyn std::error:
                         let key = key.trim();
                         let value = value.trim().trim_matches('"');
                         match key {
-                            "id" => parsed_domain_data.id = value.to_string(),
-                            "domain-id" => parsed_domain_data.domain_id = value.to_string(),
-                            "name" => parsed_domain_data.name = value.to_string(),
-                            "data-type" => parsed_domain_data.data_type = value.to_string(),
-                            "size" => parsed_domain_data.size = value.parse()?,
-                            "created-at" => parsed_domain_data.created_at = value.to_string(),
-                            "updated-at" => parsed_domain_data.updated_at = value.to_string(),
+                            "id" => parsed_domain_data.metadata.id = value.to_string(),
+                            "domain-id" => {
+                                parsed_domain_data.metadata.domain_id = value.to_string()
+                            }
+                            "name" => parsed_domain_data.metadata.name = value.to_string(),
+                            "data-type" => {
+                                parsed_domain_data.metadata.data_type = value.to_string()
+                            }
+                            "size" => parsed_domain_data.metadata.size = value.parse()?,
+                            "created-at" => {
+                                parsed_domain_data.metadata.created_at = value.to_string()
+                            }
+                            "updated-at" => {
+                                parsed_domain_data.metadata.updated_at = value.to_string()
+                            }
                             _ => {}
                         }
                     }
-                } 
+                }
                 domain_data = Some(parsed_domain_data);
             }
         }
@@ -561,7 +541,8 @@ fn parse_headers(headers_slice: &[u8]) -> Result<DomainData, Box<dyn std::error:
 fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
     let _data = String::from_utf8_lossy(data);
     let _boundary = String::from_utf8_lossy(boundary);
-    data.windows(boundary.len()).position(|window| window == boundary)
+    data.windows(boundary.len())
+        .position(|window| window == boundary)
 }
 
 fn find_headers_end(data: &[u8]) -> Option<usize> {
@@ -571,5 +552,398 @@ fn find_headers_end(data: &[u8]) -> Option<usize> {
         Some(i + 2) // body starts after \n\n
     } else {
         None
+    }
+}
+
+async fn handle_domain_data_stream(
+    mut tx: mpsc::Sender<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+    stream: impl Stream<Item = Result<Bytes, reqwest::Error>>,
+    boundary: &str,
+) {
+    use futures::pin_mut;
+
+    let mut buffer = Vec::new();
+    let mut current_domain_data: Option<DomainData> = None;
+    let boundary_bytes = format!("--{}", boundary).as_bytes().to_vec();
+
+    pin_mut!(stream);
+
+    while let Some(chunk_result) = stream.next().await {
+        // Handle chunk result
+        let chunk = match chunk_result {
+            Ok(c) if c.is_empty() => {
+                tx.close().await.ok();
+                return;
+            }
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(Err(e.into())).await;
+                return;
+            }
+        };
+
+        buffer.extend_from_slice(&chunk);
+
+        // If we are in the middle of reading a domain_data part, continue filling it
+        if let Some(mut domain_data) = current_domain_data.take() {
+            let expected_size = domain_data.metadata.size as usize - domain_data.data.len();
+            if buffer.len() >= expected_size {
+                domain_data.data.extend_from_slice(&buffer[..expected_size]);
+                buffer.drain(..expected_size);
+                if tx.send(Ok(domain_data)).await.is_err() {
+                    return;
+                }
+            } else {
+                domain_data.data.extend_from_slice(&buffer);
+                buffer.clear();
+                current_domain_data = Some(domain_data);
+                continue;
+            }
+        }
+
+        // Process all boundaries in the current buffer
+        loop {
+            // Find the next boundary in the buffer
+            let boundary_pos = match find_boundary(&buffer, &boundary_bytes) {
+                Some(pos) => pos,
+                None => break, // No more boundaries found in current buffer
+            };
+
+            // Look for header end after boundary
+            let header_end = match find_headers_end(&buffer[boundary_pos..]) {
+                Some(end) => end,
+                None => break, // Incomplete headers, wait for more chunks
+            };
+
+            let headers_slice = &buffer[boundary_pos..boundary_pos + header_end];
+            let part_headers = parse_headers(headers_slice);
+
+            let mut domain_data = match part_headers {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::error!("Failed to parse headers: {:?}", e);
+                    return;
+                }
+            };
+
+            // Remove processed data (boundary + headers) from buffer
+            buffer.drain(..boundary_pos + header_end);
+
+            let expected_size = domain_data.metadata.size as usize - domain_data.data.len();
+            if buffer.len() >= expected_size {
+                domain_data.data.extend_from_slice(&buffer[..expected_size]);
+                buffer.drain(..expected_size);
+                if tx.send(Ok(domain_data)).await.is_err() {
+                    return;
+                }
+            } else {
+                domain_data.data.extend_from_slice(&buffer);
+                buffer.clear();
+                current_domain_data = Some(domain_data);
+                break;
+            }
+
+            // Continue to process the next boundary in the same buffer
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+
+    use crate::{auth::TokenCache, config::Config, discovery::DiscoveryService};
+
+    use super::*;
+
+    fn get_config() -> (Config, String) {
+        if std::path::Path::new("../.env.local").exists() {
+            dotenvy::from_filename("../.env.local").ok();
+            dotenvy::dotenv().ok();
+        }
+        let config = Config::from_env().unwrap();
+        (config, std::env::var("DOMAIN_ID").unwrap())
+    }
+
+    #[test]
+    fn test_find_boundary_found() {
+        let data = b"random--boundary--data";
+        let boundary = b"--boundary";
+        assert_eq!(find_boundary(data, boundary), Some(6));
+    }
+
+    #[test]
+    fn test_find_boundary_not_found() {
+        let data = b"random-data";
+        let boundary = b"--boundary";
+        assert_eq!(find_boundary(data, boundary), None);
+    }
+
+    #[test]
+    fn test_find_headers_end_crlf() {
+        let data = b"header1: value1\r\nheader2: value2\r\n\r\nbody";
+        assert_eq!(find_headers_end(data), Some(36));
+    }
+
+    #[test]
+    fn test_find_headers_end_lf() {
+        let data = b"header1: value1\nheader2: value2\n\nbody";
+        assert_eq!(find_headers_end(data), Some(33));
+    }
+
+    #[test]
+    fn test_find_headers_end_none() {
+        let data = b"header1: value1\nheader2: value2\nbody";
+        assert_eq!(find_headers_end(data), None);
+    }
+
+    #[test]
+    fn test_parse_headers_success() {
+        let headers = b"content-disposition: form-data; id=\"123\"; domain-id=\"abc\"; name=\"test\"; data-type=\"type\"; size=\"42\"; created-at=\"2024-01-01T00:00:00Z\"; updated-at=\"2024-01-02T00:00:00Z\"\r\n\r\n";
+        let parsed = super::parse_headers(headers);
+        assert!(parsed.is_ok());
+        let domain_data = parsed.unwrap();
+        assert_eq!(domain_data.metadata.id, "123");
+        assert_eq!(domain_data.metadata.domain_id, "abc");
+        assert_eq!(domain_data.metadata.name, "test");
+        assert_eq!(domain_data.metadata.data_type, "type");
+        assert_eq!(domain_data.metadata.size, 42);
+        assert_eq!(domain_data.metadata.created_at, "2024-01-01T00:00:00Z");
+        assert_eq!(domain_data.metadata.updated_at, "2024-01-02T00:00:00Z");
+    }
+
+    #[test]
+    fn test_parse_headers_missing_content_disposition() {
+        let headers = b"content-type: application/octet-stream\r\n\r\n";
+        let parsed = super::parse_headers(headers);
+        assert!(parsed.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_a_chunk_contains_multiple_data() {
+        let (tx, rx) = mpsc::channel(10);
+
+        let payload = br#"
+        --0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="to be deleted"; data-type="test"; id="3c5bbdbc-65b9-4f11-93b6-a3e535d63990"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="16"; created-at="2025-09-25T02:54:26.124336Z"; updated-at="2025-09-25T02:54:26.124336Z"
+Content-Type: application/octet-stream
+
+{"test": "test"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="test"; data-type="test"; id="a84a36e5-312b-4f80-974a-06f5d19c1e16"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="24"; created-at="2025-08-05T10:29:56.448595Z"; updated-at="2025-09-25T02:54:26.154224Z"
+Content-Type: application/octet-stream
+
+{"test": "test updated"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda--
+        "#;
+        let stream = tokio_stream::iter(vec![Ok(Bytes::from_static(payload))]);
+
+        handle_domain_data_stream(
+            tx,
+            stream,
+            "0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda",
+        )
+        .await;
+
+        let output: Vec<DomainData> = rx
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[1].data, b"{\"test\": \"test updated\"}");
+        assert_eq!(output[0].data, b"{\"test\": \"test\"}");
+    }
+
+    #[tokio::test]
+    async fn test_chunk_size_is_smaller_than_part() {
+        let (tx, rx) = mpsc::channel(10);
+
+        let payload = br#"
+        --0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="to be deleted"; data-type="test"; id="3c5bbdbc-65b9-4f11-93b6-a3e535d63990"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="16"; created-at="2025-09-25T02:54:26.124336Z"; updated-at="2025-09-25T02:54:26.124336Z"
+Content-Type: application/octet-stream
+        "#;
+        let payload2 = br#"
+
+{"test": "test"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="test"; data-type="test"; id="a84a36e5-312b-4f80-974a-06f5d19c1e16"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="24"; created-at="2025-08-05T10:29:56.448595Z"; updated-at="2025-09-25T02:54:26.154224Z"
+Content-Type: application/octet-stream
+
+{"test": "test updated"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda--
+"#;
+        let stream = tokio_stream::iter(vec![
+            Ok(Bytes::from_static(payload)),
+            Ok(Bytes::from_static(payload2)),
+        ]);
+
+        handle_domain_data_stream(
+            tx,
+            stream,
+            "0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda",
+        )
+        .await;
+
+        let output: Vec<DomainData> = rx
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[1].data, b"{\"test\": \"test updated\"}");
+        assert_eq!(output[0].data, b"{\"test\": \"test\"}");
+    }
+
+    #[tokio::test]
+    async fn test_chunk_size_is_smaller_than_header() {
+        let (tx, rx) = mpsc::channel(10);
+
+        let payload = br#"
+        --0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="to be deleted"; data-type="test"; id="3c5bbdbc-65b9-4f11-93b6-a3e535d63990"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="16"; created-at="2025-09-25T02:54:26.124336Z"; updated-at="2025-09-25T02:54:26.124336Z"
+Content-Type: application/octet-stream
+        "#;
+        let payload2 = br#"
+e: application/octet-stream
+
+{"test": "test"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="test"; data-type="test"; id="a84a36e5-312b-4f80-974a-06f5d19c1e16"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="24"; created-at="2025-08-05T10:29:56.448595Z"; updated-at="2025-09-25T02:54:26.154224Z"
+Content-Type: application/octet-stream
+
+{"test": "test updated"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda--
+"#;
+        let stream = tokio_stream::iter(vec![
+            Ok(Bytes::from_static(payload)),
+            Ok(Bytes::from_static(payload2)),
+        ]);
+
+        handle_domain_data_stream(
+            tx,
+            stream,
+            "0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda",
+        )
+        .await;
+
+        let output: Vec<DomainData> = rx
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[1].data, b"{\"test\": \"test updated\"}");
+        assert_eq!(output[0].data, b"{\"test\": \"test\"}");
+    }
+
+    #[tokio::test]
+    async fn test_chunk_size_doesnt_cover_the_whole_data() {
+        let (tx, rx) = mpsc::channel(10);
+
+        let payload = br#"
+        --0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="to be deleted"; data-type="test"; id="3c5bbdbc-65b9-4f11-93b6-a3e535d63990"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="16"; created-at="2025-09-25T02:54:26.124336Z"; updated-at="2025-09-25T02:54:26.124336Z"
+Content-Type: application/octet-stream
+
+{"test": "test"#;
+        let payload2 = br#""}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda
+Content-Disposition: form-data; name="test"; data-type="test"; id="a84a36e5-312b-4f80-974a-06f5d19c1e16"; domain-id="23d60e61-6978-4f6b-a59d-9ffa027755fc"; size="24"; created-at="2025-08-05T10:29:56.448595Z"; updated-at="2025-09-25T02:54:26.154224Z"
+Content-Type: application/octet-stream
+
+{"test": "test updated"}
+--0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda--
+"#;
+        let stream = tokio_stream::iter(vec![
+            Ok(Bytes::from_static(payload)),
+            Ok(Bytes::from_static(payload2)),
+        ]);
+
+        handle_domain_data_stream(
+            tx,
+            stream,
+            "0f336dec6f61e466706eb557cda40d8caa86c28df397bd7348766b5b5eda",
+        )
+        .await;
+
+        let output: Vec<DomainData> = rx
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(
+            std::str::from_utf8(&output[1].data).unwrap(),
+            "{\"test\": \"test updated\"}"
+        );
+        assert_eq!(
+            std::str::from_utf8(&output[0].data).unwrap(),
+            "{\"test\": \"test\"}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_upload_v1_with_user_dds_access_token() {
+        use crate::domain_data::{CreateDomainData, DomainAction, UploadDomainData};
+
+        let (config, domain_id) = get_config();
+
+        let mut discovery =
+            DiscoveryService::new(&config.api_url, &config.dds_url, &config.client_id);
+        discovery
+            .sign_in_with_auki_account(&config.email.unwrap(), &config.password.unwrap(), false)
+            .await
+            .expect("sign_in_with_auki_account failed");
+        let domain = discovery
+            .auth_domain(&domain_id)
+            .await
+            .expect("get_domain failed");
+        // 4. Prepare upload data
+        let upload_data = vec![
+            UploadDomainData {
+                action: DomainAction::Create(CreateDomainData {
+                    name: "test_upload".to_string(),
+                    data_type: "test".to_string(),
+                }),
+                data: b"hello world".to_vec(),
+            },
+            UploadDomainData {
+                action: DomainAction::Update(UpdateDomainData {
+                    id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
+                }),
+                data: b"{\"test\": \"test updated\"}".to_vec(),
+            },
+        ];
+
+        // 5. Call upload_v1
+        let result = upload_v1(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            &domain_id,
+            upload_data,
+        )
+        .await
+        .expect("upload_v1 failed");
+
+        assert_eq!(result.len(), 2, "No metadata returned from upload_v1");
+        for data in result {
+            if data.id != "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
+                assert_eq!(data.name, "test_upload");
+                delete_by_id(
+                    &domain.domain.domain_server.url,
+                    &domain.get_access_token(),
+                    &domain_id,
+                    &data.id,
+                )
+                .await
+                .expect("delete_by_id failed");
+            }
+        }
     }
 }

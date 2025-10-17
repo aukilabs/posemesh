@@ -2,6 +2,6 @@
 # picked up by the `cc` crate only when TARGET == aarch64-apple-ios-macabi
 CFLAGS_aarch64_apple_ios_macabi = "--target=arm64-apple-ios-macabi"
 CFLAGS_x86_64_apple_ios_macabi = "--target=x86_64-apple-ios-macabi"
+
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
-
