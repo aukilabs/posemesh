@@ -10,6 +10,8 @@ members = [
     "utils",
     "domain-http",
     "node-registration",
+    "compute-node-runner-api",
+    "compute-node",
 ]
 resolver = "2"
 
@@ -24,10 +26,11 @@ libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", br
 libp2p-websocket = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 libp2p-websocket-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
 futures = "0.3.30"
-serde = "1.0.210"
+serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 tracing = "0.1.40"
 tokio = "1.44.2"
+tokio-util = { version = "0.7.12", features = ["rt"] }
 tracing-wasm = "0.2.1"
 wasm-bindgen = "0.2.90"
 wasm-bindgen-futures = "0.4.42"
@@ -40,6 +43,7 @@ posemesh-networking = { path = "networking" }
 posemesh-runtime = { path = "runtime" }
 posemesh-domain = { path = "domain" }
 posemesh-utils = "0.1.2"
+posemesh-node-registration = { version = "0.1.3", path = "node-registration" }
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"
@@ -54,10 +58,19 @@ reqwest = { version = "0.12.8", default-features = false, features = ["json", "r
 secp256k1 = { version = "0.28.2", features = ["recovery"] }
 sha2 = "0.10.8"
 sha3 = "0.10.8"
+semver = "1.0.23"
+regex = "1.11.1"
+multer = "2.1.0"
 tower = "0.4.13"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
-uuid = { version = "1.10.1", features = ["v4"] }
+uuid = { version = "1.10.1", features = ["serde", "v4"] }
 parking_lot = "0.12.3"
+url = { version = "2.5.4", features = ["serde"] }
+k256 = { version = "0.13.3", default-features = false, features = ["ecdsa"] }
+zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
+httpmock = "0.7.0"
+once_cell = "1.19.0"
+tempfile = "3.12.0"
 
 [profile.release]
 strip = true
