@@ -7,7 +7,9 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     StatusCode,
 };
+use serde::Serialize;
 use std::time::Duration;
+use tracing::Level;
 use url::Url;
 use uuid::Uuid;
 
@@ -48,6 +50,13 @@ impl DmsClient {
             let mut qp = url.query_pairs_mut();
             qp.append_pair("capability", capability);
         }
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!(
+                endpoint = %url,
+                capability,
+                "Sending DMS lease request"
+            );
+        }
         let res = self
             .http
             .get(url)
@@ -81,10 +90,13 @@ impl DmsClient {
             })
             .context("decode lease")?;
 
-        tracing::debug!(
-            body = %body_preview,
-            "Decoded DMS lease response"
-        );
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!(
+                status = %status,
+                body = %body_preview,
+                "Decoded DMS lease response"
+            );
+        }
 
         Ok(Some(lease))
     }
@@ -97,6 +109,14 @@ impl DmsClient {
             .context("join /complete")?;
         let mut headers = self.auth_headers();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(preview) = json_debug_preview(body) {
+            tracing::debug!(
+                endpoint = %url,
+                task_id = %task_id,
+                body = %preview,
+                "Sending DMS complete request"
+            );
+        }
         let res = self
             .http
             .post(url)
@@ -106,12 +126,20 @@ impl DmsClient {
             .await
             .context("send POST /complete")?;
         let status = res.status();
+        let body_text = res
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        let preview = truncate_preview(&body_text);
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS complete response"
+            );
+        }
         if !status.is_success() {
-            let body_text = res
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
-            let preview = truncate_preview(&body_text);
             tracing::error!(
                 status = %status,
                 body = %preview,
@@ -133,6 +161,14 @@ impl DmsClient {
             .context("join /fail")?;
         let mut headers = self.auth_headers();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(preview) = json_debug_preview(body) {
+            tracing::debug!(
+                endpoint = %url,
+                task_id = %task_id,
+                body = %preview,
+                "Sending DMS fail request"
+            );
+        }
         let res = self
             .http
             .post(url)
@@ -142,12 +178,20 @@ impl DmsClient {
             .await
             .context("send POST /fail")?;
         let status = res.status();
+        let body_text = res
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        let preview = truncate_preview(&body_text);
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS fail response"
+            );
+        }
         if !status.is_success() {
-            let body_text = res
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
-            let preview = truncate_preview(&body_text);
             tracing::error!(
                 status = %status,
                 body = %preview,
@@ -175,6 +219,14 @@ impl DmsClient {
             .context("join /heartbeat")?;
         let mut headers = self.auth_headers();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(preview) = json_debug_preview(body) {
+            tracing::debug!(
+                endpoint = %url,
+                task_id = %task_id,
+                body = %preview,
+                "Sending DMS heartbeat request"
+            );
+        }
         let res = self
             .http
             .post(url)
@@ -183,10 +235,23 @@ impl DmsClient {
             .send()
             .await
             .context("send POST /heartbeat")?;
-        let res = res.error_for_status().context("/heartbeat status")?;
-        let hb = res
-            .json::<HeartbeatResponse>()
-            .await
+        let status = res.status();
+        let bytes = res.bytes().await.context("read heartbeat response body")?;
+        let preview = truncate_preview(&String::from_utf8_lossy(&bytes));
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS heartbeat response"
+            );
+        }
+        if !status.is_success() {
+            return Err(anyhow!(
+                "POST /tasks/{task_id}/heartbeat status {status}; body: {preview}"
+            ));
+        }
+        let hb = serde_json::from_slice::<HeartbeatResponse>(&bytes)
             .context("decode heartbeat response")?;
         Ok(hb)
     }
@@ -201,4 +266,13 @@ fn truncate_preview(body: &str) -> String {
         preview.push_str("… (truncated)");
         preview
     }
+}
+
+fn json_debug_preview<T: Serialize>(value: &T) -> Option<String> {
+    if !tracing::enabled!(Level::DEBUG) {
+        return None;
+    }
+    serde_json::to_string(value)
+        .map(|s| truncate_preview(&s))
+        .ok()
 }
