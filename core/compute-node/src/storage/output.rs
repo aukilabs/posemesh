@@ -29,7 +29,6 @@ pub struct DomainOutput {
     client: DomainClient,
     domain_id: String,
     outputs_prefix: Option<String>,
-    job_id: Option<String>,
     task_id: String,
     uploads: Arc<Mutex<HashMap<String, UploadedArtifact>>>,
 }
@@ -39,14 +38,12 @@ impl DomainOutput {
         client: DomainClient,
         domain_id: String,
         outputs_prefix: Option<String>,
-        job_id: Option<String>,
         task_id: String,
     ) -> Self {
         Self::with_store(
             client,
             domain_id,
             outputs_prefix,
-            job_id,
             task_id,
             Arc::new(Mutex::new(HashMap::new())),
         )
@@ -56,7 +53,6 @@ impl DomainOutput {
         client: DomainClient,
         domain_id: String,
         outputs_prefix: Option<String>,
-        job_id: Option<String>,
         task_id: String,
         uploads: Arc<Mutex<HashMap<String, UploadedArtifact>>>,
     ) -> Self {
@@ -64,14 +60,13 @@ impl DomainOutput {
             client,
             domain_id,
             outputs_prefix,
-            job_id,
             task_id,
             uploads,
         }
     }
 
     fn name_suffix(&self) -> String {
-        self.job_id.clone().unwrap_or_else(|| self.task_id.clone())
+        self.task_id.clone()
     }
 
     fn apply_outputs_prefix(&self, rel_path: &str) -> String {
@@ -194,10 +189,17 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
     async fn put_bytes(&self, rel_path: &str, bytes: &[u8]) -> Result<()> {
         let descriptor = self.descriptor_for(rel_path);
         let key = descriptor.logical_path.clone();
-        let existing_id = {
+        let mut existing_id = {
             let uploads = self.uploads.lock();
             uploads.get(&key).and_then(|record| record.id.clone())
         };
+        if existing_id.is_none() {
+            existing_id = self
+                .client
+                .find_artifact_id(&self.domain_id, &descriptor.name, &descriptor.data_type)
+                .await
+                .map_err(|e| anyhow!(e))?;
+        }
 
         let upload_req = UploadRequest {
             domain_id: &self.domain_id,

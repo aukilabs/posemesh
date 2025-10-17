@@ -48,6 +48,18 @@ async fn download_cid_and_upload_bytes() {
             .body(body.clone());
     });
 
+    let lookup_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/v1/domains/dom1/data")
+            .query_param("name", "job_manifest_task-456")
+            .query_param("data_type", "job_manifest_json")
+            .header("authorization", "Bearer tkn")
+            .header("accept", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"data":[]}"#);
+    });
+
     let post_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/v1/domains/dom1/data")
@@ -56,7 +68,7 @@ async fn download_cid_and_upload_bytes() {
         then.status(200)
             .header("content-type", "application/json")
             .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_job-123","data_type":"job_manifest_json"}]}"#,
+                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
             );
     });
 
@@ -68,7 +80,7 @@ async fn download_cid_and_upload_bytes() {
         then.status(200)
             .header("content-type", "application/json")
             .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_job-123","data_type":"job_manifest_json"}]}"#,
+                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
             );
     });
 
@@ -113,13 +125,7 @@ async fn download_cid_and_upload_bytes() {
     assert_eq!(manifest_saved, manifest_bytes);
 
     // ArtifactSink
-    let output = DomainOutput::new(
-        client,
-        "dom1".into(),
-        Some("out".into()),
-        Some("job-123".into()),
-        "task-456".into(),
-    );
+    let output = DomainOutput::new(client, "dom1".into(), Some("out".into()), "task-456".into());
     output.put_bytes("job_manifest.json", b"bin").await.unwrap();
     output
         .put_bytes("job_manifest.json", b"updated")
@@ -127,6 +133,7 @@ async fn download_cid_and_upload_bytes() {
         .unwrap();
     post_mock.assert();
     put_mock.assert();
+    lookup_mock.assert();
 
     let artifacts = output.uploaded_artifacts();
     let manifest_record = artifacts
@@ -137,8 +144,63 @@ async fn download_cid_and_upload_bytes() {
 }
 
 #[tokio::test]
+async fn upload_manifest_with_existing_id_uses_put_via_lookup() {
+    let server = MockServer::start();
+
+    let lookup_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/v1/domains/dom1/data")
+            .query_param("name", "job_manifest_task-456")
+            .query_param("data_type", "job_manifest_json")
+            .header("authorization", "Bearer tkn")
+            .header("accept", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(
+                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
+            );
+    });
+
+    let put_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/api/v1/domains/dom1/data")
+            .header("authorization", "Bearer tkn")
+            .body_contains("id=\"data-123\"");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(
+                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
+            );
+    });
+
+    let token = TokenRef::new("tkn".into());
+    let base: url::Url = server.base_url().parse().unwrap();
+    let client = DomainClient::new(base, token).unwrap();
+    let output = DomainOutput::new(client, "dom1".into(), Some("out".into()), "task-456".into());
+
+    output
+        .put_bytes("job_manifest.json", b"payload")
+        .await
+        .unwrap();
+
+    lookup_mock.assert();
+    put_mock.assert();
+}
+
+#[tokio::test]
 async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
     let server = MockServer::start();
+    let lookup = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/v1/domains/dom1/data")
+            .query_param("name", "refined_scan_scan_a_task-456")
+            .query_param("data_type", "refined_scan_zip")
+            .header("authorization", "Bearer tkn")
+            .header("accept", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"data":[]}"#);
+    });
     let upload = server.mock(|when, then| {
         when.method(POST)
             .path("/api/v1/domains/dom1/data")
@@ -153,13 +215,7 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
     let token = TokenRef::new("tkn".into());
     let base: url::Url = server.base_url().parse().unwrap();
     let client = DomainClient::new(base, token).unwrap();
-    let output = DomainOutput::new(
-        client,
-        "dom1".into(),
-        Some("out".into()),
-        Some("job-123".into()),
-        "task-456".into(),
-    );
+    let output = DomainOutput::new(client, "dom1".into(), Some("out".into()), "task-456".into());
 
     let mut tmp = NamedTempFile::new().unwrap();
     tmp.write_all(b"zipdata").unwrap();
@@ -169,6 +225,7 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
         .await
         .unwrap();
     upload.assert();
+    lookup.assert();
 
     let artifacts = output.uploaded_artifacts();
     let refined_record = artifacts

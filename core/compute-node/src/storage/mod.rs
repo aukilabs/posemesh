@@ -44,15 +44,6 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
         .domain_id
         .map(|id| id.to_string())
         .ok_or_else(|| anyhow!("lease missing domain_id"))?;
-    let override_job_name = lease
-        .task
-        .meta
-        .get("legacy")
-        .and_then(|value| value.get("override_job_name"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from);
     let override_manifest_id = lease
         .task
         .meta
@@ -63,11 +54,6 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
         .filter(|s| !s.is_empty())
         .map(String::from);
 
-    let job_id = lease
-        .task
-        .job_id
-        .map(|id| id.to_string())
-        .or_else(|| override_job_name.clone());
     let task_id = lease.task.id.to_string();
 
     let client = client::DomainClient::new(base, token)?;
@@ -76,7 +62,6 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
         client.clone(),
         domain_id,
         outputs_prefix,
-        job_id,
         task_id,
         Arc::clone(&uploads),
     );
