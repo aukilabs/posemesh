@@ -205,15 +205,15 @@ bool groupSplitAndCollapse(const Detections &raw,
 
                 // Separate into two perpendicular groups, one for each diagonal for chess markers.
                 if (dist180 < 45) {
-                    std::cout << "TYPE 1! dist180 = " << dist180 << std::endl;
                     // First 'quadrant' near the peak (peak is always in 0-90° range)
                     pts1.push_back(raw.points[i]);
                     ang1.push_back(a);
+                    //std::cout << "TYPE 1! dist180 = " << dist180 << std::endl;
                 } else {
                     // Second 'quadrant', approx 90 deg away from peak
-                    std::cout << "TYPE 2! dist180 = " << dist180 << std::endl;
                     pts2.push_back(raw.points[i]);
                     ang2.push_back(a);
+                    //std::cout << "TYPE 2! dist180 = " << dist180 << std::endl;
                 }
             }
         }

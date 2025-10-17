@@ -59,11 +59,11 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                 int widthTiles = maxx - minx + 1;
                 int heightTiles = maxy - miny + 1;
                 if (widthTiles < minSideLengthTiles || heightTiles < minSideLengthTiles) {
-                    std::cout << "Skip too small cluster (width or height < " << minValidTilesCount << ")" << std::endl;
+                    //std::cout << "Skip too small cluster (width or height < " << minSideLengthTiles << ")" << std::endl;
                     continue;
                 }
                 if (pts.size() < minValidTilesCount) {
-                    std::cout << "Skip too small cluster (pts.size() < " << minValidTilesCount << ")" << std::endl;
+                    //std::cout << "Skip too small cluster (pts.size() < " << minValidTilesCount << ")" << std::endl;
                     continue;
                 }
                 

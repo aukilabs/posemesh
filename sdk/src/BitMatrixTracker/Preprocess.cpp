@@ -26,12 +26,12 @@ static inline bool calcValidPeaks(
         sum += histogram[i];
         if (static_cast<float>(sum) / totalPixels >= peakThreshold) {
             blackPeakBin = i;
-            std::cout << "blackPeakBin: " << blackPeakBin << std::endl;
+            //std::cout << "blackPeakBin: " << blackPeakBin << std::endl;
             break;
         }
     }
     if (blackPeakBin == -1) {
-        std::cout << "NO black peak" << std::endl;
+        //std::cout << "NO black peak" << std::endl;
         return false;
     }
 
@@ -41,17 +41,17 @@ static inline bool calcValidPeaks(
         sum += histogram[i];
         if (static_cast<float>(sum) / totalPixels >= peakThreshold) {
             whitePeakBin = i;
-            std::cout << "whitePeakBin: " << whitePeakBin << std::endl;
+            //std::cout << "whitePeakBin: " << whitePeakBin << std::endl;
             break;
         }
     }
     if (whitePeakBin == -1) {
-        std::cout << "NO white peak, sum = " << sum << std::endl;
+        //std::cout << "NO white peak, sum = " << sum << std::endl;
         return false;
     }
     
     bool valid = whitePeakBin - blackPeakBin >= minBinsApart;
-    std::cout << "valid: " << valid << std::endl;
+    //std::cout << "valid: " << valid << std::endl;
     return valid;
 }
 
@@ -94,7 +94,7 @@ bool normalizeTile(cv::Mat &grayTile, float peakThreshold, float minContrast, in
             break;
         }
     }
-    std::cout << "minBinIndex: " << minBinIndex << ", maxBinIndex: " << maxBinIndex << std::endl;
+    //std::cout << "minBinIndex: " << minBinIndex << ", maxBinIndex: " << maxBinIndex << std::endl;
 
     int minBinsApart = (minContrast * numBins);
     int blackPeakBin, whitePeakBin;
@@ -121,14 +121,14 @@ bool normalizeTile(cv::Mat &grayTile, float peakThreshold, float minContrast, in
         };
         for (int i = 0; i < 4; i++) {
             std::vector<int> subHistogram(numBins, 0);
-            std::cout << "subRect: " << subRects[i].x << ", " << subRects[i].y << ", " << subRects[i].width << ", " << subRects[i].height << std::endl;
+            //std::cout << "subRect: " << subRects[i].x << ", " << subRects[i].y << ", " << subRects[i].width << ", " << subRects[i].height << std::endl;
             int subHistogramSum = computeTileHistogram(grayTile, subHistogram, numBins, subRects[i], pixelStep);
             int subWhitePeakBin, subBlackPeakBin;
             bool subValid = calcValidPeaks(
                 subHistogram, subHistogramSum, totalPixels / 4,
                 peakThreshold, minBinsApart,
                 subBlackPeakBin, subWhitePeakBin);
-            std::cout << "subValid: " << subValid << std::endl;
+            //std::cout << "subValid: " << subValid << std::endl;
             if (!subValid) {
                 badSubCount++;
                 if (badSubCount >= 3) {
@@ -139,7 +139,7 @@ bool normalizeTile(cv::Mat &grayTile, float peakThreshold, float minContrast, in
     }
 
     float contrast = (whitePeakBin - blackPeakBin) / static_cast<float>(numBins);
-    std::cout << "contrast: " << contrast << std::endl;
+    //std::cout << "contrast: " << contrast << std::endl;
     if (contrast < minContrast) {
         // Also already checked inside calcValidPeak
         return false;
@@ -197,7 +197,7 @@ bool computeTileValidityAndNormalized(const cv::Mat &grayTile,
                 const cv::Rect R = tileRect(ty, tx);
                 cv::Mat tile = gray8(R).clone();
                 bool valid = normalizeTile(tile, peakThreshold, minContrast, tileHistogramBins, validateSubtiles);
-                std::cout << "normalizeTile tx=" << tx << ", ty=" << ty << ", valid=" << valid << std::endl;
+                //std::cout << "normalizeTile tx=" << tx << ", ty=" << ty << ", valid=" << valid << std::endl;
                 outTileMask(ty, tx) = valid;
                 tile.copyTo(outNormalized(R));
             }

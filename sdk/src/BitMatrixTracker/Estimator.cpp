@@ -4,8 +4,10 @@
 #include <numeric>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d.hpp>
 #include "Posemesh/BitMatrixTracker/Estimator.hpp"
 #include "Posemesh/BitMatrixTracker/CornerNet.hpp"
+#include "Posemesh/BitMatrixTracker/Geometry.hpp"
 
 namespace psm {
 namespace BitMatrixTracker {
@@ -39,7 +41,19 @@ bool groupSplitAndCollapse(const Detections& raw,
                            Detections& outDiag2,
                            int* keptLoose,
                            int* keptStrict);
-     
+
+                           
+bool estimateWithRansac(const cv::Mat &gray,
+    const Config &cfg,
+    const Target &target,
+    const Detections &diag1,
+    const Detections &diag2,
+    const cv::Matx33d &cameraIntrinsics,
+    cv::Matx33d &outH,
+    bool &outFlipDiags,
+    int &outInliers,
+    int &outIterations);
+
 
 struct Estimator::Impl {
     explicit Impl(const Config &config)
@@ -170,9 +184,9 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
             cv::imwrite("rawCornersPlot.jpg", plot);
         }
         std::cout << "[BitMatrixTracker] Raw detections in cluster: " << rawCount << std::endl;
-        for (size_t i = 0; i < raw.anglesDeg.size(); ++i) {
-            std::cout << "angle " << i << ": " << raw.anglesDeg[i] << std::endl;
-        }
+        //for (size_t i = 0; i < raw.anglesDeg.size(); ++i) {
+        //    std::cout << "angle " << i << ": " << raw.anglesDeg[i] << std::endl;
+        //}
 
 
         int nLoose = 0, nStrict = 0;
@@ -209,7 +223,7 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
 }
 
 bool Estimator::estimatePose(const cv::Mat &gray,
-                             const cv::Matx33d &K,
+                             const cv::Matx33d &cameraIntrinsics,
                              const Target &target,
                              const Detections &diag1,
                              const Detections &diag2,
@@ -218,19 +232,68 @@ bool Estimator::estimatePose(const cv::Mat &gray,
                              Diagnostics *diag) const
 {
     try {
-        (void)gray;
-        (void)K;
-        (void)target;
-        (void)diag1;
-        (void)diag2;
-        (void)diag;
+        int inliers = 0;
+        int iterations = 0;
+        bool outFlipDiags = false;
+        bool foundHomography = estimateWithRansac(gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, outH, outFlipDiags, inliers, iterations);
 
-        // TODO(next): collapse -> NearbyMask -> RANSAC -> PnP
+        if (!foundHomography) {
+            std::cout << "estimatePose: no homography found" << std::endl;
+            return false;
+        }
 
-        outH = cv::Matx33d::eye();
-        outPose.rvec = cv::Vec3d(0, 0, 0);
-        outPose.tvec = cv::Vec3d(0, 0, 0);
-        return true; // placeholder
+        std::cout << "FOUND Homography:" << std::endl << outH << std::endl;
+        std::cout << "Inliers = " << inliers << std::endl;
+        std::cout << "Iterations = " << iterations << std::endl;
+
+        if (diag) {
+            diag->inliersBest = inliers;
+            diag->ransacIterations = iterations;
+        }
+
+        std::vector<cv::Point2f> markerCorners = {
+            {0.0, 0.0},
+            {21.0, 0.0},
+            {21.0, 21.0},
+            {0.0, 21.0}
+        };
+
+        std::vector<cv::Point2i> projectedCornersInt;
+        projectWithH(markerCorners, outH, projectedCornersInt);
+        std::vector<cv::Point2d> projectedCorners;
+        for (const auto &p : projectedCornersInt) {
+            projectedCorners.push_back(cv::Point2d(p.x, p.y));
+        }
+
+        const double halfSide = target.sideLengthMeters / 2.0;
+        std::vector<cv::Point3d> objectCorners = {
+            {-halfSide, halfSide, 0.0},
+            {halfSide, halfSide, 0.0},
+            {halfSide, -halfSide, 0.0},
+            {-halfSide, -halfSide, 0.0}
+        };
+
+        std::cout << "num projected corners = " << projectedCorners.size() << std::endl;
+        std::cout << "num object corners = " << objectCorners.size() << std::endl;
+        std::cout << "projected corners = " << projectedCorners << std::endl;
+        std::cout << "object corners = " << objectCorners << std::endl;
+
+        cv::Mat rvec, tvec;
+        bool gotPose = cv::solvePnP(objectCorners, projectedCorners, cameraIntrinsics, cv::noArray(), rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
+        if (!gotPose) {
+            std::cout << "estimatePose: solvePnP found no pose" << std::endl;
+            return false;
+        }
+
+        // TODO: final refinement with ALL inliers (if needed, but maybe doing it inside ransac loop is enough)
+        outPose.rvec = rvec;
+        outPose.tvec = tvec;
+
+        std::cout << "solvePnP: rvec = " << rvec.t() << std::endl;
+        std::cout << "solvePnP: tvec = " << tvec.t() << std::endl;
+
+        return true;
+
     } catch (const std::exception &e) {
         std::cerr << "estimatePose exception: " << e.what() << std::endl;
         return false;
@@ -264,9 +327,14 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         diag->bestClusterIndex = static_cast<int>(bestIndex);
     }
     Detections d1, d2;
-    if (!detectCornersInCluster(gray, clusters[bestIndex], d1, d2, diag))
+    if (!detectCornersInCluster(gray, clusters[bestIndex], d1, d2, diag)) {
+        std::cout << "detectCornersInCluster returned false" << std::endl;
         return false;
-    return estimatePose(gray, K, target, d1, d2, outPose, outH, diag);
+    }
+    
+    bool foundPose = estimatePose(gray, K, target, d1, d2, outPose, outH, diag);
+    std::cout << "Found pose? = " << foundPose << std::endl;
+    return foundPose;
 }
 
 } // namespace BitMatrixTracker

@@ -3,10 +3,11 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/objdetect.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d.hpp>
 #include "Posemesh/Vector2.hpp"
 #include "Posemesh/QRDetection.hpp"
-#include "Estimator.hpp"
-#include "Precompute.hpp"
+#include "Posemesh/BitMatrixTracker/Estimator.hpp"
+#include "Posemesh/BitMatrixTracker/Precompute.hpp"
 
 void drawPoseOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point> &corners)
 {
@@ -51,7 +52,7 @@ int main(int argc, char *argv[])
 
     Target target;
     // Detect QR code in the image using OpenCV, extract its bit matrix, and build the Target.
-    std::vector<cv::Point> corners;
+    std::vector<cv::Point2i> corners;
     std::string decoded_info;
     cv::Mat qr_straight;
     cv::QRCodeDetector qrDecoder;
@@ -107,6 +108,28 @@ int main(int argc, char *argv[])
                   0.0, 0.0, 1.0);
     std::cout << "K: " << K << std::endl;
 
+    // Compare with pose from openCV corners, for reference. In real use we won't run this.
+    const double halfSide = physicalSizeMeters / 2.0;
+    std::vector<cv::Point3d> objectCornersPoint3d = {
+        cv::Point3d(-halfSide, halfSide, 0.0),
+        cv::Point3d(halfSide, halfSide, 0.0),
+        cv::Point3d(halfSide, -halfSide, 0.0),
+        cv::Point3d(-halfSide, -halfSide, 0.0)
+    };
+    std::vector<cv::Point2d> cornersPoint2d;
+    for (const auto &corner : corners) {
+        cornersPoint2d.push_back(cv::Point2d(corner.x, corner.y));
+    }
+    cv::Vec3d rvecTruth, tvecTruth;
+    bool gotPoseTruth = cv::solvePnP(objectCornersPoint3d, cornersPoint2d, K, cv::noArray(), rvecTruth, tvecTruth, false, cv::SOLVEPNP_ITERATIVE);
+    if (gotPoseTruth) {
+        std::cout << "rvecTruth: " << rvecTruth.t() << std::endl;
+        std::cout << "tvecTruth: " << tvecTruth.t() << std::endl;
+    }
+    else {
+        std::cout << "solvePnP failed for truth pose comparison" << std::endl;
+    }
+
     Pose pose;
     cv::Matx33d H;
     Diagnostics diag;
@@ -121,8 +144,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    std::cout << "truth rvec: " << rvecTruth.t() << "\n";
+    std::cout << "truth tvec: " << tvecTruth.t() << "\n";
     std::cout << "rvec: " << pose.rvec.t() << "\n";
     std::cout << "tvec: " << pose.tvec.t() << "\n";
+    double tvecError = cv::norm(pose.tvec - tvecTruth);
+    std::cout << "tvec error: " << tvecError << "\n";
+    double rvecError = cv::norm(pose.rvec - rvecTruth);
+    std::cout << "rvec error: " << rvecError << "\n";
+
     std::cout << "inliers: " << diag.inliersBest << ", iters: " << diag.ransacIterations << "\n";
 
     return 0;
