@@ -80,11 +80,9 @@ async fn happy_path_poll_run_complete_with_heartbeat_token_rotation() {
             "lease_expires_at": null
         }
     });
-    let lease_cap = cap.clone();
     let lease_mock = server.mock(move |when, then| {
         when.method(GET)
             .path("/tasks")
-            .query_param("capability", lease_cap.as_str())
             .header("authorization", format!("Bearer {}", node_token));
         then.status(200)
             .header("content-type", "application/json")
@@ -243,11 +241,9 @@ async fn error_path_calls_fail() {
             "lease_expires_at": null
         }
     });
-    let lease_cap = err_cap.clone();
     let lease_mock = server.mock(move |when, then| {
         when.method(GET)
             .path("/tasks")
-            .query_param("capability", lease_cap.as_str())
             .header("authorization", format!("Bearer {}", node_token));
         then.status(200)
             .header("content-type", "application/json")
@@ -383,7 +379,6 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         move |when, then| {
             when.method(GET)
                 .path("/tasks")
-                .query_param("capability", cap.as_str())
                 .header("authorization", format!("Bearer {}", siwe_token));
             then.status(200)
                 .header("content-type", "application/json")

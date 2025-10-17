@@ -56,7 +56,6 @@ async fn lease_by_capability_and_complete_fail() {
     let lease_mock = server.mock(|when, then| {
         when.method(GET)
             .path("/tasks")
-            .query_param("capability", cap)
             .header("authorization", format!("Bearer {}", node_token));
         then.status(200)
             .header("content-type", "application/json")

@@ -43,17 +43,14 @@ impl DmsClient {
         h
     }
 
-    /// Lease a task by capability: GET /tasks?capability=...
-    pub async fn lease_by_capability(&self, capability: &str) -> Result<Option<LeaseResponse>> {
-        let mut url = self.base.join("tasks").context("join /tasks")?;
-        {
-            let mut qp = url.query_pairs_mut();
-            qp.append_pair("capability", capability);
-        }
+    /// Lease a task: GET /tasks
+    ///
+    /// `capability` is accepted for optional filter but not implemented yet.
+    pub async fn lease_by_capability(&self, _capability: &str) -> Result<Option<LeaseResponse>> {
+        let url = self.base.join("tasks").context("join /tasks")?;
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 endpoint = %url,
-                capability,
                 "Sending DMS lease request"
             );
         }
