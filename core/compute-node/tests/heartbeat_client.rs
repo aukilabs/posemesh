@@ -26,32 +26,11 @@ async fn heartbeat_returns_new_token_and_engine_applies_swap() {
                 "access_token_expires_at": now,
                 "lease_expires_at": now + chrono::Duration::seconds(30),
                 "cancel": false,
-                "status": null,
-                "domain_id": null,
+                "status": "running",
                 "domain_server_url": "https://example.com",
-                "task": {
-                    "id": task_id,
-                    "job_id": null,
-                    "capability": "/capability/test",
-                    "capability_filters": {},
-                    "inputs_cids": [],
-                    "outputs_prefix": null,
-                    "label": null,
-                    "stage": null,
-                    "meta": {},
-                    "priority": null,
-                    "attempts": null,
-                    "max_attempts": null,
-                    "deps_remaining": null,
-                    "status": null,
-                    "mode": null,
-                    "organization_filter": null,
-                    "billing_units": null,
-                    "estimated_credit_cost": null,
-                    "debited_amount": null,
-                    "debited_at": null,
-                    "lease_expires_at": null
-                }
+                "task_id": task_id,
+                "job_id": null,
+                "attempts": 1
             }));
     });
 
