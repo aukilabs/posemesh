@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use multer::Multipart;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, StatusCode};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
@@ -299,6 +299,67 @@ impl DomainClient {
             }
         }
     }
+
+    pub async fn find_artifact_id(
+        &self,
+        domain_id: &str,
+        name: &str,
+        data_type: &str,
+    ) -> std::result::Result<Option<String>, StorageError> {
+        let domain_id = domain_id.trim();
+        if domain_id.is_empty() {
+            return Err(StorageError::Other(
+                "missing domain_id for artifact lookup".into(),
+            ));
+        }
+        let path = format!("api/v1/domains/{}/data", domain_id);
+        let url = self
+            .base
+            .join(&path)
+            .map_err(|e| StorageError::Other(format!("join lookup path: {}", e)))?;
+        let mut headers = self.auth_headers();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        tracing::debug!(
+            target: "posemesh_compute_node::storage::client",
+            method = "GET",
+            %url,
+            artifact_name = name,
+            artifact_type = data_type,
+            "Looking up existing domain artifact"
+        );
+        let res = self
+            .http
+            .get(url.clone())
+            .headers(headers)
+            .query(&[("name", name), ("data_type", data_type)])
+            .send()
+            .await
+            .map_err(|e| StorageError::Network(e.to_string()))?;
+        let status = res.status();
+        if status == StatusCode::NOT_FOUND {
+            tracing::debug!(
+                target: "posemesh_compute_node::storage::client",
+                method = "GET",
+                %url,
+                artifact_name = name,
+                artifact_type = data_type,
+                "Artifact lookup returned 404"
+            );
+            return Ok(None);
+        }
+        if !status.is_success() {
+            return Err(map_status(status));
+        }
+        let payload = res
+            .json::<ListDomainDataResponse>()
+            .await
+            .map_err(|e| StorageError::Network(e.to_string()))?;
+        let found = payload
+            .data
+            .into_iter()
+            .find(|item| item.name == name && item.data_type == data_type);
+        Ok(found.map(|item| item.id))
+    }
 }
 
 fn build_multipart_body(
@@ -343,6 +404,22 @@ struct PostDomainDataResponse {
 struct PostDomainDataItem {
     #[serde(default)]
     id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListDomainDataResponse {
+    #[serde(default)]
+    data: Vec<DomainDataSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DomainDataSummary {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    data_type: String,
 }
 
 fn map_status(status: reqwest::StatusCode) -> StorageError {
