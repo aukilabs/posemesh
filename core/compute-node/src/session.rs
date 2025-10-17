@@ -8,6 +8,8 @@ use tokio::sync::Mutex;
 use url::Url;
 use uuid::Uuid;
 
+use crate::dms::types::HeartbeatResponse;
+
 /// Session lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionStatus {
@@ -221,7 +223,7 @@ impl SessionManager {
 
     pub async fn apply_heartbeat<R: Rng>(
         &self,
-        lease: &LeaseEnvelope,
+        update: &HeartbeatResponse,
         progress: Option<Value>,
         now: Instant,
         policy: &HeartbeatPolicy,
@@ -230,33 +232,50 @@ impl SessionManager {
         let mut guard = self.state.lock().await;
         let state = guard.as_mut().ok_or(SessionError::NoActiveSession)?;
 
-        let task = lease.task.clone();
-        state.task_id = task.id;
-        state.job_id = task.job_id;
-        state.capability = task.capability;
-        state.meta = task.meta;
-        state.inputs_cids = task.inputs_cids;
+        if let Some(task) = &update.task {
+            state.task_id = task.id;
+            state.job_id = task.job_id;
+            state.capability = task.capability.clone();
+            state.meta = task.meta.clone();
+            state.inputs_cids = task.inputs_cids.clone();
+        } else {
+            if let Some(task_id) = update.task_id {
+                state.task_id = task_id;
+            }
+            if let Some(job_id) = update.job_id {
+                state.job_id = Some(job_id);
+            }
+        }
 
-        if let Some(domain_id) = lease.domain_id {
+        if let Some(domain_id) = update.domain_id {
             state.domain_id = Some(domain_id);
         }
-        if let Some(url) = extract_domain_server_url(lease) {
+
+        let mut domain_url = update.domain_server_url.clone();
+        if domain_url.is_none() {
+            if let Some(task) = &update.task {
+                domain_url = lookup_domain_url_from_meta(&task.meta);
+            }
+        }
+        if let Some(url) = domain_url {
             state.domain_server_url = Some(url);
         }
 
-        if let Some(token) = &lease.access_token {
+        if let Some(token) = &update.access_token {
             state.access_token = Some(token.clone());
         }
-        if let Some(expiry) = lease.access_token_expires_at {
+        if let Some(expiry) = update.access_token_expires_at {
             state.access_token_expires_at = Some(expiry);
         }
-        if let Some(lease_expiry) = lease.lease_expires_at {
+        if let Some(lease_expiry) = update.lease_expires_at {
             state.lease_expires_at = Some(lease_expiry);
         }
 
         state.last_progress = progress;
         state.status = SessionStatus::Running;
-        state.cancel = lease.cancel;
+        if let Some(cancel) = update.cancel {
+            state.cancel = cancel;
+        }
         state.next_heartbeat_due = compute_next_heartbeat(now, state.lease_expires_at, policy, rng);
 
         Ok(SessionSnapshot(state.clone()))
@@ -358,6 +377,24 @@ mod tests {
         }
     }
 
+    fn heartbeat_from_lease(lease: &LeaseEnvelope) -> HeartbeatResponse {
+        HeartbeatResponse {
+            access_token: lease.access_token.clone(),
+            access_token_expires_at: lease.access_token_expires_at,
+            lease_expires_at: lease.lease_expires_at,
+            cancel: Some(lease.cancel),
+            status: lease.status.clone(),
+            domain_id: lease.domain_id,
+            domain_server_url: lease.domain_server_url.clone(),
+            task: Some(lease.task.clone()),
+            task_id: Some(lease.task.id),
+            job_id: lease.task.job_id,
+            attempts: lease.task.attempts,
+            max_attempts: lease.task.max_attempts,
+            deps_remaining: lease.task.deps_remaining,
+        }
+    }
+
     #[test]
     fn capability_selector_choose() {
         let selector = selector();
@@ -409,9 +446,10 @@ mod tests {
 
         lease.cancel = true;
         lease.access_token = Some("new-token".into());
+        let update = heartbeat_from_lease(&lease);
         let snapshot = manager
             .apply_heartbeat(
-                &lease,
+                &update,
                 Some(json!({"pct": 42})),
                 Instant::now(),
                 &policy(),

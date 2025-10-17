@@ -90,7 +90,6 @@ async fn happy_path_poll_run_complete_with_heartbeat_token_rotation() {
     });
 
     // Heartbeat rotates token to B
-    let hb_cap = cap.clone();
     let hb_base_url = base_url.clone();
     let hb_mock = server.mock(move |when, then| {
         when.method(POST)
@@ -107,29 +106,11 @@ async fn happy_path_poll_run_complete_with_heartbeat_token_rotation() {
                 "status": "leased",
                 "domain_id": domain_id,
                 "domain_server_url": hb_base_url.clone(),
-                "task": {
-                    "id": task_id,
-                    "job_id": job_id,
-                    "capability": hb_cap,
-                    "capability_filters": {},
-                    "inputs_cids": [],
-                    "outputs_prefix": "out",
-                    "label": null,
-                    "stage": null,
-                    "meta": {},
-                    "priority": null,
-                    "attempts": null,
-                    "max_attempts": null,
-                    "deps_remaining": null,
-                    "status": "leased",
-                    "mode": null,
-                    "organization_filter": null,
-                    "billing_units": null,
-                    "estimated_credit_cost": null,
-                    "debited_amount": null,
-                    "debited_at": null,
-                    "lease_expires_at": null
-                }
+                "task_id": task_id,
+                "job_id": job_id,
+                "attempts": 1,
+                "max_attempts": 5,
+                "deps_remaining": 0
             }));
     });
 
@@ -250,7 +231,6 @@ async fn error_path_calls_fail() {
             .json_body(lease_body.clone());
     });
 
-    let hb_cap = err_cap.clone();
     let hb_base_url = base_url.clone();
     let hb_mock = server.mock(move |when, then| {
         when.method(POST)
@@ -267,29 +247,11 @@ async fn error_path_calls_fail() {
                 "status": "leased",
                 "domain_id": domain_id,
                 "domain_server_url": hb_base_url.clone(),
-                "task": {
-                    "id": task_id,
-                    "job_id": job_id,
-                    "capability": hb_cap,
-                    "capability_filters": {},
-                    "inputs_cids": [],
-                    "outputs_prefix": "out",
-                    "label": null,
-                    "stage": null,
-                    "meta": {},
-                    "priority": null,
-                    "attempts": null,
-                    "max_attempts": null,
-                    "deps_remaining": null,
-                    "status": "leased",
-                    "mode": null,
-                    "organization_filter": null,
-                    "billing_units": null,
-                    "estimated_credit_cost": null,
-                    "debited_amount": null,
-                    "debited_at": null,
-                    "lease_expires_at": null
-                }
+                "task_id": task_id,
+                "job_id": job_id,
+                "attempts": 1,
+                "max_attempts": 5,
+                "deps_remaining": 0
             }));
     });
 
@@ -421,7 +383,6 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         let siwe_token = siwe_token.to_string();
         let lease_now = lease_now_iso.clone();
         let base_url = base_url.clone();
-        let cap = cap.to_string();
         move |when, then| {
             when.method(POST)
                 .path(format!("/tasks/{}/heartbeat", task_id))
@@ -437,29 +398,11 @@ async fn run_node_uses_siwe_token_and_completes_task() {
                     "status": "leased",
                     "domain_id": domain_id,
                     "domain_server_url": base_url.clone(),
-                    "task": {
-                        "id": task_id,
-                        "job_id": job_id,
-                        "capability": cap,
-                        "capability_filters": {},
-                        "inputs_cids": [],
-                        "outputs_prefix": "out",
-                        "label": null,
-                        "stage": null,
-                        "meta": {},
-                        "priority": null,
-                        "attempts": null,
-                        "max_attempts": null,
-                        "deps_remaining": null,
-                        "status": "leased",
-                        "mode": null,
-                        "organization_filter": null,
-                        "billing_units": null,
-                        "estimated_credit_cost": null,
-                        "debited_amount": null,
-                        "debited_at": null,
-                        "lease_expires_at": null
-                    }
+                    "task_id": task_id,
+                    "job_id": job_id,
+                    "attempts": 2,
+                    "max_attempts": 5,
+                    "deps_remaining": 0
                 }));
         }
     });

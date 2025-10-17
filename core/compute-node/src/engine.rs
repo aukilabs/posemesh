@@ -193,6 +193,53 @@ pub fn apply_heartbeat_token_update(
     }
 }
 
+/// Merge fields from a heartbeat response into the cached lease.
+pub fn merge_heartbeat_into_lease(
+    lease: &mut LeaseEnvelope,
+    hb: &crate::dms::types::HeartbeatResponse,
+) {
+    if let Some(token) = hb.access_token.clone() {
+        lease.access_token = Some(token);
+    }
+    if let Some(expiry) = hb.access_token_expires_at {
+        lease.access_token_expires_at = Some(expiry);
+    }
+    if let Some(expiry) = hb.lease_expires_at {
+        lease.lease_expires_at = Some(expiry);
+    }
+    if let Some(cancel) = hb.cancel {
+        lease.cancel = cancel;
+    }
+    if let Some(status) = hb.status.clone() {
+        lease.status = Some(status);
+    }
+    if let Some(domain_id) = hb.domain_id {
+        lease.domain_id = Some(domain_id);
+    }
+    if let Some(url) = hb.domain_server_url.clone() {
+        lease.domain_server_url = Some(url);
+    }
+    if let Some(task) = hb.task.clone() {
+        lease.task = task;
+    } else {
+        if let Some(task_id) = hb.task_id {
+            lease.task.id = task_id;
+        }
+        if let Some(job_id) = hb.job_id {
+            lease.task.job_id = Some(job_id);
+        }
+        if let Some(attempts) = hb.attempts {
+            lease.task.attempts = Some(attempts);
+        }
+        if let Some(max_attempts) = hb.max_attempts {
+            lease.task.max_attempts = Some(max_attempts);
+        }
+        if let Some(deps_remaining) = hb.deps_remaining {
+            lease.task.deps_remaining = Some(deps_remaining);
+        }
+    }
+}
+
 /// Run a single poll→run→complete/fail cycle using DMS client and the runner registry.
 /// This is a minimal integration used by tests; `run_node` wiring remains separate.
 pub async fn run_cycle_with_dms(
@@ -251,6 +298,7 @@ pub async fn run_cycle_with_dms(
         )
         .await?;
     apply_heartbeat_token_update(&token_ref, &heartbeat_initial);
+    merge_heartbeat_into_lease(&mut lease, &heartbeat_initial);
     session
         .apply_heartbeat(
             &heartbeat_initial,
@@ -261,10 +309,6 @@ pub async fn run_cycle_with_dms(
         )
         .await
         .map_err(|err| anyhow!("failed to refresh session after heartbeat: {err}"))?;
-    lease.access_token = heartbeat_initial.access_token.clone();
-    lease.access_token_expires_at = heartbeat_initial.access_token_expires_at;
-    lease.lease_expires_at = heartbeat_initial.lease_expires_at;
-    lease.cancel = heartbeat_initial.cancel;
 
     let ports = crate::storage::build_ports(&lease, token_ref.clone())?;
 
@@ -601,12 +645,17 @@ where
         };
 
         match self.transport.post_heartbeat(self.task_id, &request).await {
-            Ok(lease) => {
-                apply_heartbeat_token_update(&self.token_ref, &lease);
+            Ok(update) => {
+                apply_heartbeat_token_update(&self.token_ref, &update);
+                if let Some(task) = &update.task {
+                    self.task_id = task.id;
+                } else if let Some(task_id) = update.task_id {
+                    self.task_id = task_id;
+                }
                 if let Err(err) = self
                     .session
                     .apply_heartbeat(
-                        &lease,
+                        &update,
                         Some(progress.clone()),
                         Instant::now(),
                         &self.policy,
@@ -616,7 +665,7 @@ where
                 {
                     return Some(HeartbeatLoopResult::LostLease(anyhow::Error::new(err)));
                 }
-                if lease.cancel {
+                if update.cancel.unwrap_or(false) {
                     self.runner_cancel.cancel();
                     return Some(HeartbeatLoopResult::Cancelled);
                 }

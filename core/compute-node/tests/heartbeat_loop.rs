@@ -19,12 +19,12 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct StubTransport {
-    responses: Arc<Mutex<VecDeque<anyhow::Result<LeaseEnvelope>>>>,
+    responses: Arc<Mutex<VecDeque<anyhow::Result<types::HeartbeatResponse>>>>,
     requests: Arc<Mutex<Vec<types::HeartbeatRequest>>>,
 }
 
 impl StubTransport {
-    fn new(responses: Vec<anyhow::Result<LeaseEnvelope>>) -> Self {
+    fn new(responses: Vec<anyhow::Result<types::HeartbeatResponse>>) -> Self {
         Self {
             responses: Arc::new(Mutex::new(VecDeque::from(responses))),
             requests: Arc::new(Mutex::new(Vec::new())),
@@ -42,7 +42,7 @@ impl HeartbeatTransport for StubTransport {
         &self,
         task_id: Uuid,
         body: &types::HeartbeatRequest,
-    ) -> anyhow::Result<LeaseEnvelope> {
+    ) -> anyhow::Result<types::HeartbeatResponse> {
         let mut reqs = self.requests.lock().await;
         reqs.push(body.clone());
         drop(reqs);
@@ -50,7 +50,7 @@ impl HeartbeatTransport for StubTransport {
         let mut guard = self.responses.lock().await;
         guard
             .pop_front()
-            .unwrap_or_else(|| Ok(test_lease(task_id, 5_000, false)))
+            .unwrap_or_else(|| Ok(heartbeat_from_lease(&test_lease(task_id, 5_000, false))))
     }
 }
 
@@ -67,7 +67,7 @@ async fn heartbeat_driver_triggers_on_ttl() {
         .await
         .unwrap();
 
-    let transport = StubTransport::new(vec![Ok(lease.clone())]);
+    let transport = StubTransport::new(vec![Ok(heartbeat_from_lease(&lease))]);
     let token_ref = TokenRef::new(lease.access_token.clone().unwrap());
     let (progress_tx, progress_rx) = progress_channel();
     let control_state = Arc::new(Mutex::new(ControlState::default()));
@@ -111,7 +111,7 @@ async fn heartbeat_driver_triggers_on_progress() {
         .await
         .unwrap();
 
-    let transport = StubTransport::new(vec![Ok(lease.clone())]);
+    let transport = StubTransport::new(vec![Ok(heartbeat_from_lease(&lease))]);
     let token_ref = TokenRef::new(lease.access_token.clone().unwrap());
     let (progress_tx, progress_rx) = progress_channel();
     let control_state = Arc::new(Mutex::new(ControlState::default()));
@@ -158,7 +158,7 @@ async fn heartbeat_driver_signals_cancellation() {
     let cancel_response = {
         let mut cancelled = lease.clone();
         cancelled.cancel = true;
-        cancelled
+        heartbeat_from_lease(&cancelled)
     };
     let transport = StubTransport::new(vec![Ok(cancel_response)]);
     let token_ref = TokenRef::new(lease.access_token.clone().unwrap());
@@ -271,4 +271,22 @@ fn test_lease_with_capability(capability: &str, ttl_ms: i64, cancel: bool) -> Le
     let mut lease = test_lease(Uuid::new_v4(), ttl_ms, cancel);
     lease.task.capability = capability.into();
     lease
+}
+
+fn heartbeat_from_lease(lease: &LeaseEnvelope) -> types::HeartbeatResponse {
+    types::HeartbeatResponse {
+        access_token: lease.access_token.clone(),
+        access_token_expires_at: lease.access_token_expires_at,
+        lease_expires_at: lease.lease_expires_at,
+        cancel: Some(lease.cancel),
+        status: lease.status.clone(),
+        domain_id: lease.domain_id,
+        domain_server_url: lease.domain_server_url.clone(),
+        task: Some(lease.task.clone()),
+        task_id: Some(lease.task.id),
+        job_id: lease.task.job_id,
+        attempts: lease.task.attempts,
+        max_attempts: lease.task.max_attempts,
+        deps_remaining: lease.task.deps_remaining,
+    }
 }
