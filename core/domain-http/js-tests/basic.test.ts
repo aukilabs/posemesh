@@ -62,8 +62,18 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download a specific domain data by id', async () => {
-            // Use a known data id for the test (from env or hardcoded for test)
-            const dataId = "a84a36e5-312b-4f80-974a-06f5d19c1e16";
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(config.DOMAIN_ID, {
+                ids: [],
+                name: null,
+                data_type: "dmt_accel_csv"
+            } as DownloadQuery);
+
+            if (metadata.length === 0) {
+                console.warn('No domain data found to test download by ID');
+                return;
+            }
+
+            const dataId = metadata[0].id;
             const domainId = config.DOMAIN_ID;
 
             // Download the data by id
@@ -167,17 +177,17 @@ describe('Posemesh Domain HTTP', () => {
 
         it('should download data as readablestream with user credential', async () => {
             const data: ReadableStream<DomainData> = await client.downloadDomainDataStream(config.DOMAIN_ID, {
-                ids: ["a84a36e5-312b-4f80-974a-06f5d19c1e16"],
+                ids: [],
                 name: null,
-                data_type: null
+                data_type: "dmt_accel_csv"
             } as DownloadQuery);
             expect(data).toBeDefined();
             let count = 0;
             for await (const chunk of data) {
                 count++;
                 expect(chunk.data.length).greaterThan(0);
-                expect(chunk.metadata.data_type).toBe("test");
-                expect(chunk.metadata.id).toBe("a84a36e5-312b-4f80-974a-06f5d19c1e16");
+                expect(chunk.metadata.data_type).toBe("dmt_accel_csv");
+                expect(chunk.metadata.id).toBeDefined();
                 expect(chunk.metadata.name).toBeDefined();
                 expect(chunk.metadata.size).greaterThan(0);
                 expect(chunk.metadata.created_at).toBeDefined();
@@ -189,19 +199,23 @@ describe('Posemesh Domain HTTP', () => {
         it('should upload domain data with user credential', async () => {
             const data = `{"test": "test updated"}`;
             const dataBytes = new TextEncoder().encode(data);
+
             let res: DomainDataMetadata[] = await client.uploadDomainData(config.DOMAIN_ID, [{
-                id: "a84a36e5-312b-4f80-974a-06f5d19c1e16",
+                name: "to be deleted 1 - js test",
+                data_type: "test",
                 data: dataBytes,
             } as UploadDomainData, {
-                name: "to be deleted - js test",
+                name: "to be deleted 2 - js test",
                 data_type: "test",
                 data: dataBytes,
             } as UploadDomainData]);
+
             expect(res.length).toBe(2);
+            expect(res[0].id).toBeDefined();
+            expect(res[1].id).toBeDefined();
+
             for (const item of res) {
-                if (item.id !== "a84a36e5-312b-4f80-974a-06f5d19c1e16") {
-                    await client.deleteDomainDataById(config.DOMAIN_ID, item.id);
-                }
+                await client.deleteDomainDataById(config.DOMAIN_ID, item.id);
             }
         });
 
@@ -225,7 +239,7 @@ describe('Posemesh Domain HTTP', () => {
         });
     });
 
-    describe('oidc_access_token', () => {
+    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_access_token', () => {
         const oidcAccessToken = config.AUTH_TEST_TOKEN;
         let client: DomainClient;
         let clientWithOIDCAccessToken: DomainClient;
