@@ -13,4 +13,3 @@ This directory contains comprehensive test configurations for the `posemesh-doma
 - **Environment**: jsdom (default) + Playwright (headless browsers)
 - **Purpose**: Browser integration, WASM loading, DOM manipulation, HTTP client testing
 - **Test Files**: `browser.test.js` and other browser-specific tests
-
