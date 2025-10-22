@@ -27,6 +27,8 @@ export type DownloadQuery = { ids: string[], name: string | null, data_type: str
 export type UploadDomainData = { id?: string, name?: string, data_type?: string, data: Uint8Array };
 export type DomainDataMetadata = { id: string, name: string, data_type: string, size: number, created_at: string, updated_at: string };
 export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
+export type DomainServer = { id: string, url: string, organization_id: string, name: string };
+export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
@@ -453,6 +455,34 @@ impl DomainClient {
                 .await;
             match res {
                 Ok(()) => Ok(JsValue::undefined()),
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+
+    /// Lists domains for the given organization.
+    ///
+    /// # Arguments
+    /// * `org` - The organization ID or `own` to get the domains for the current organization.
+    ///
+    /// # Returns
+    /// * `Promise<DomainWithServer[]>` - Resolves to an array of DomainWithServer.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let domains: DomainWithServer[] = await client.listDomains("organization-123");
+    /// ```
+    #[wasm_bindgen(js_name = "listDomains")]
+    pub fn list_domains(&self, org: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            let res = domain_client.list_domains(&org).await;
+            match res {
+                Ok(domains) => match to_value(&domains) {
+                    Ok(value) => Ok(value),
+                    Err(e) => Err(JsError::new(&e.to_string()).into()),
+                },
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };

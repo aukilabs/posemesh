@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::lock::Mutex;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
@@ -19,16 +19,7 @@ use crate::auth::{AuthClient, TokenCache, get_cached_or_fresh_token, parse_jwt};
 pub const ALL_DOMAINS_ORG: &str = "all";
 pub const OWN_DOMAINS_ORG: &str = "own";
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct Domain {
-    pub id: String,
-    pub name: String,
-    pub organization_id: String,
-    pub domain_server_id: String,
-    pub redirect_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct DomainServer {
     pub id: String,
     pub organization_id: String,
@@ -54,10 +45,13 @@ impl TokenCache for DomainWithToken {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct DomainWithServer {
-    #[serde(flatten)]
-    pub domain: Domain,
+    pub id: String,
+    pub name: String,
+    pub organization_id: String,
+    pub domain_server_id: String,
+    pub redirect_url: Option<String>,
     pub domain_server: DomainServer,
 }
 
@@ -206,13 +200,11 @@ impl DiscoveryService {
         } else {
             DomainWithToken {
                 domain: DomainWithServer {
-                    domain: Domain {
-                        id: domain_id.to_string(),
-                        name: "".to_string(),
-                        organization_id: "".to_string(),
-                        domain_server_id: "".to_string(),
-                        redirect_url: None,
-                    },
+                    id: domain_id.to_string(),
+                    name: "".to_string(),
+                    organization_id: "".to_string(),
+                    domain_server_id: "".to_string(),
+                    redirect_url: None,
                     domain_server: DomainServer {
                         id: "".to_string(),
                         organization_id: "".to_string(),
