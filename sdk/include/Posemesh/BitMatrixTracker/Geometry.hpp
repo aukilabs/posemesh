@@ -6,11 +6,15 @@
 namespace psm {
 namespace BitMatrixTracker {
 
+std::vector<cv::Point3f> calcObjectSpaceCorners(float physicalSizeMeters);
+
+std::vector<cv::Point2f> calcTargetSpaceCorners(int bitmatrixSideLength); // e.g. 21 for a v1 QR code
+
 bool normalizeVec2(const cv::Vec2d& vec, cv::Vec2d& out, float eps = 1e-9);
 
 void projectWithH(const std::vector<cv::Point2f> &src,
                          const cv::Matx33d &H,
-                         std::vector<cv::Point2i> &dstInt);
+                         std::vector<cv::Point2f> &dst);
 
 cv::Vec2d directionVec(double angleDeg);
 

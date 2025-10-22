@@ -8,6 +8,34 @@
 namespace psm {
 namespace BitMatrixTracker {
 
+
+std::vector<cv::Point3f> calcObjectSpaceCorners(float physicalSizeMeters)
+{
+    const double half = physicalSizeMeters / 2.0f;
+    return {
+        cv::Point3f(-half, half, 0.0f),
+        cv::Point3f(half, half, 0.0f),
+        cv::Point3f(half, -half, 0.0f),
+        cv::Point3f(-half, -half, 0.0f)
+    };
+}
+
+std::vector<cv::Point2f> calcTargetSpaceCorners(int bitmatrixSideLength) // e.g. 21 for a v1 QR code
+{
+    /*return {
+        cv::Point2f(0.0, 0.0),
+        cv::Point2f(bitmatrixSideLength, 0.0),
+        cv::Point2f(bitmatrixSideLength, bitmatrixSideLength),
+        cv::Point2f(0.0, bitmatrixSideLength)
+    };*/
+    return {
+        cv::Point2f(0.0, bitmatrixSideLength),
+        cv::Point2f(bitmatrixSideLength, bitmatrixSideLength),
+        cv::Point2f(bitmatrixSideLength, 0.0),
+        cv::Point2f(0.0, 0.0)
+    };
+}
+
 bool normalizeVec2(const cv::Vec2d& vec, cv::Vec2d& out, float eps)
 {
     double norm = cv::norm(vec);
@@ -18,21 +46,19 @@ bool normalizeVec2(const cv::Vec2d& vec, cv::Vec2d& out, float eps)
 }
 
 
-// Project 2D target-plane points using homography H -> pixel integer coords.
+// Project 2D target-plane points using homography H -> pixel coords.
 void projectWithH(const std::vector<cv::Point2f> &src,
                          const cv::Matx33d &H,
-                         std::vector<cv::Point2i> &dstInt)
+                         std::vector<cv::Point2f> &dst)
 {
-    dstInt.resize(src.size());
+    dst.resize(src.size());
     for (size_t i = 0; i < src.size(); ++i) {
         const double x = src[i].x, y = src[i].y;
         const double X = H(0,0)*x + H(0,1)*y + H(0,2);
         const double Y = H(1,0)*x + H(1,1)*y + H(1,2);
         const double Z = H(2,0)*x + H(2,1)*y + H(2,2);
-        const double ix = X / Z;
-        const double iy = Y / Z;
-        dstInt[i].x = static_cast<int>(std::lround(ix));
-        dstInt[i].y = static_cast<int>(std::lround(iy));
+        dst[i].x = X / Z;
+        dst[i].y = Y / Z;
     }
 }
 
@@ -136,10 +162,13 @@ bool homographyFromPointAndDirs(
         return false;
     }
     
-    if (std::abs(rightDir.dot(upDir)) > 0.999) {
-        //std::cerr << "homographyFromPointAndDirs: rightInImage and upInImage are collinear" << std::endl;
+    // Directions need to be close to orthogonal for a valid pose (not more than reasonable perspective skew)
+    // REMOVED this since we already check for orthogonality when picking up/right axes outside of this call.
+    /*
+    if (std::abs(rightDir.dot(upDir)) > 0.2f) {
         return false;
     }
+    */
     
     double fx = K(0,0);
     double fy = K(1,1);

@@ -178,8 +178,15 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
 
             cv::Mat plot;
             cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
+            const float lineLength = 10;
             for (size_t i = 0; i < raw.points.size(); ++i) {
                 cv::circle(plot, raw.points[i], 2, cv::Scalar(0, 255, 0), -1);
+                cv::Vec2d offset = directionVec(raw.anglesDeg[i]);
+                cv::Point2f lineTo = cv::Point2f(
+                    raw.points[i].x + offset[0] * lineLength,
+                    raw.points[i].y + offset[1] * lineLength
+                );
+                cv::line(plot, raw.points[i], lineTo, cv::Scalar(0, 255, 0), 1);
             }
             cv::imwrite("rawCornersPlot.jpg", plot);
         }
@@ -194,17 +201,35 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
             std::cerr << "detectCornersInCluster: groupSplitAndCollapse failed\n";
             return false;
         }
+
+        /*
+        for (size_t i = 0; i < outDiag2.points.size(); ++i) {
+            outDiag2.anglesDeg[i] = std::fmod(outDiag2.anglesDeg[i] + 90.0f, 180.0f);
+        }
+        */
+
         if (diag) {
             diag->keptCornersLoose  = nLoose;
             diag->keptCornersStrict = nStrict;
 
             cv::Mat plot;
             cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
+            const float lineLength = 10;
             for (size_t i = 0; i < outDiag1.points.size(); ++i) {
                 cv::circle(plot, outDiag1.points[i], 2, cv::Scalar(255, 255, 0), -1);
+                cv::Vec2d offset = directionVec(outDiag1.anglesDeg[i]);
+                cv::Point2f lineTo = cv::Point2f(
+                    outDiag1.points[i].x + offset[0] * lineLength,
+                    outDiag1.points[i].y + offset[1] * lineLength);
+                cv::line(plot, outDiag1.points[i], lineTo, cv::Scalar(255, 255, 0), 1);
             }
             for (size_t i = 0; i < outDiag2.points.size(); ++i) {
                 cv::circle(plot, outDiag2.points[i], 2, cv::Scalar(255, 0, 255), -1);
+                cv::Vec2d offset = directionVec(outDiag2.anglesDeg[i]);
+                cv::Point2f lineTo = cv::Point2f(
+                    outDiag2.points[i].x + offset[0] * lineLength,
+                    outDiag2.points[i].y + offset[1] * lineLength);
+                cv::line(plot, outDiag2.points[i], lineTo, cv::Scalar(255, 0, 255), 1);
             }
             cv::imwrite("groupedCornersPlot.jpg", plot);
         }
@@ -251,27 +276,12 @@ bool Estimator::estimatePose(const cv::Mat &gray,
             diag->ransacIterations = iterations;
         }
 
-        std::vector<cv::Point2f> markerCorners = {
-            {0.0, 0.0},
-            {21.0, 0.0},
-            {21.0, 21.0},
-            {0.0, 21.0}
-        };
+        std::vector<cv::Point2f> markerCorners = calcTargetSpaceCorners(target.bitmatrix.cols);
 
-        std::vector<cv::Point2i> projectedCornersInt;
-        projectWithH(markerCorners, outH, projectedCornersInt);
-        std::vector<cv::Point2d> projectedCorners;
-        for (const auto &p : projectedCornersInt) {
-            projectedCorners.push_back(cv::Point2d(p.x, p.y));
-        }
+        std::vector<cv::Point2f> projectedCorners;
+        projectWithH(markerCorners, outH, projectedCorners);
 
-        const double halfSide = target.sideLengthMeters / 2.0;
-        std::vector<cv::Point3d> objectCorners = {
-            {-halfSide, halfSide, 0.0},
-            {halfSide, halfSide, 0.0},
-            {halfSide, -halfSide, 0.0},
-            {-halfSide, -halfSide, 0.0}
-        };
+        std::vector<cv::Point3f> objectCorners = calcObjectSpaceCorners(target.sideLengthMeters);
 
         std::cout << "num projected corners = " << projectedCorners.size() << std::endl;
         std::cout << "num object corners = " << objectCorners.size() << std::endl;

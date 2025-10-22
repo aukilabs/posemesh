@@ -47,13 +47,14 @@ static bool extractDiagonalFeatures(const cv::Mat1b &bitmatrix,
                 // Center of the 2x2 block in module units
                 const float cx = static_cast<float>(x + 1);
                 const float cy = static_cast<float>(y + 1);
+                const float cy_inv = static_cast<float>(rows - y - 1);
 
                 if (b00 == 1) {
                     // [1 0; 0 1]
-                    diag1.emplace_back(cx, cy);
+                    diag1.emplace_back(cx, cy_inv);
                 } else {
                     // [0 1; 1 0]
-                    diag2.emplace_back(cx, cy);
+                    diag2.emplace_back(cx, cy_inv);
                 }
             }
         }
@@ -99,8 +100,11 @@ bool makeTargetFromBitmatrix(const cv::Mat1b &bitmatrix,
         }
         // Normalize to {0,1}
         cv::Mat1b B;
-        if (bitmatrix.type() != CV_8U) bitmatrix.convertTo(B, CV_8U);
-        else B = bitmatrix.clone();
+        if (bitmatrix.type() != CV_8U)
+            bitmatrix.convertTo(B, CV_8U);
+        else
+            B = bitmatrix.clone();
+
         cv::threshold(B, B, 0, 1, cv::THRESH_BINARY);
 
         outTarget.bitmatrix = B;

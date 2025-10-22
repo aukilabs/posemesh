@@ -5,6 +5,8 @@
 #include <chrono>
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 #include "Posemesh/BitMatrixTracker/Config.hpp"
 #include "Posemesh/BitMatrixTracker/Types.hpp"
@@ -19,7 +21,7 @@ bool buildLabelMap(const cv::Size &imgSize,
                    const std::vector<cv::Point2f> &centers,
                    float radiusPx,
                    cv::Mat1s &outLabel);
-int countInliersOneToOne(const std::vector<cv::Point2i> &proj,
+int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
                          const cv::Mat1s &label);
 
 // --- RANSAC driver ----------------------------------------------------------
@@ -29,6 +31,21 @@ struct RansacResult {
     int inliers {0};
     int iterations {0};
 };
+
+void plotNearbyMask(const cv::Mat &gray, const cv::Mat1s &label, const std::string &filename) {
+    cv::Mat plot = cv::Mat::zeros(gray.rows, gray.cols, CV_8UC3);
+    cv::cvtColor(gray, plot, cv::COLOR_GRAY2BGR);
+    for (int y = 0; y < label.rows; ++y) {
+        for (int x = 0; x < label.cols; ++x) {
+            int labelVal = label(y, x);
+            if (labelVal >= 0) {
+                const cv::Scalar color = cv::Scalar(255 - (20 * labelVal) % 200, (33 * labelVal) % 255, 30);
+                cv::circle(plot, cv::Point(x, y), 1, color, -1);
+            }
+        }
+    }
+    cv::imwrite(filename, plot);
+}
 
 static bool ransacHomography(const Config &cfg,
                              const Target &target,
@@ -42,7 +59,7 @@ static bool ransacHomography(const Config &cfg,
 {
     try {
         PoseCandidateSampler sampler(cfg, target, diag1, diag2, cameraIntrinsics, imageSize);
-        std::vector<cv::Point2i> proj1, proj2;
+        std::vector<cv::Point2f> proj1, proj2;
         const int maxIters = std::max(1, cfg.ransacMaxIters);
         const int targetMax = static_cast<int>(target.diag1.size() + target.diag2.size());
         const int earlyStopAt = (cfg.earlyStopPercent > 0) ? (targetMax * cfg.earlyStopPercent / 100) : std::numeric_limits<int>::max();
@@ -65,8 +82,10 @@ static bool ransacHomography(const Config &cfg,
             projectWithH(target.diag2, H, proj2);
 
             // Score via NearbyMask one-to-one
-            const int s1 = countInliersOneToOne(proj1, label1);
-            const int s2 = countInliersOneToOne(proj2, label2);
+            auto& labelsForProj1 = label1;// flippedDiags ? label2 : label1;
+            auto& labelsForProj2 = label2;// flippedDiags ? label1 : label2;
+            const int s1 = countInliersOneToOne(proj1, labelsForProj1);
+            const int s2 = countInliersOneToOne(proj2, labelsForProj2);
             const int score = s1 + s2;
 
             const bool improved = (score > out.inliers);
@@ -125,6 +144,9 @@ bool estimateWithRansac(const cv::Mat &gray,
 
         std::cout << "label1.size() = " << label1.size() << std::endl;
         std::cout << "label2.size() = " << label2.size() << std::endl;
+
+        plotNearbyMask(gray, label1, "nearbyMask1.jpg");
+        plotNearbyMask(gray, label2, "nearbyMask2.jpg");
 
         RansacResult result;
         if (!ransacHomography(cfg, target, diag1, diag2, cameraIntrinsics, gray.size(), label1, label2, result)) {

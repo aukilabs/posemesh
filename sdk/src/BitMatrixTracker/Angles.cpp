@@ -35,6 +35,14 @@ static inline float wrap90(float a)
     return x;
 }
 
+static inline float wrap180(float a)
+{
+    float x = std::fmod(a, 180.0f);
+    if (x < 0.0f)
+        x += 180.0f;
+    return x;
+}
+
 static float histogramPeakDeg(const std::vector<float> &angles, int bins)
 {
     if (angles.empty() || bins <= 0)
@@ -75,7 +83,17 @@ struct DSU {
     std::vector<int> p, r;
     explicit DSU(int n): p(n), r(n,0) { std::iota(p.begin(), p.end(), 0); }
     int find(int x){ return p[x]==x?x:p[x]=find(p[x]); }
-    void unite(int a,int b){ a=find(a); b=find(b); if(a==b) return; if(r[a]<r[b]) std::swap(a,b); p[b]=a; if(r[a]==r[b]) r[a]++; }
+    void unite(int a,int b) {
+        a=find(a);
+        b=find(b);
+        if(a==b)
+            return;
+        if(r[a]<r[b])
+            std::swap(a,b);
+        p[b]=a;
+        if(r[a]==r[b])
+            r[a]++;
+    }
 };
 
 static void collapseFamily(const std::vector<cv::Point2f> &pts,
@@ -87,11 +105,14 @@ static void collapseFamily(const std::vector<cv::Point2f> &pts,
     outPts.clear();
     outAngles.clear();
     const int n = static_cast<int>(pts.size());
-    if (n == 0) return;
+    if (n == 0)
+        return;
 
     // grid hash
     const float cell = std::max(1.0f, radius);
-    std::unordered_map<long long, std::vector<int>> buckets; buckets.reserve(n*2);
+    std::unordered_map<long long, std::vector<int>> buckets;
+    buckets.reserve(n*2);
+
     auto keyOf = [&](int gx, int gy)->long long { return ( (static_cast<long long>(gx) << 32) ^ static_cast<unsigned long long>(gy) ); };
     auto gidx = [&](float v)->int { return static_cast<int>(std::floor(v / cell)); };
 
@@ -127,13 +148,19 @@ static void collapseFamily(const std::vector<cv::Point2f> &pts,
     for (auto &kv : groups) {
         const auto &g = kv.second;
         // average position
-        float sx=0, sy=0; for(int idx: g){ sx += pts[idx].x; sy += pts[idx].y; }
+        float sx=0, sy=0; for(int idx: g){
+            sx += pts[idx].x;
+            sy += pts[idx].y;
+        }
         cv::Point2f c(sx / g.size(), sy / g.size());
         // simple average of angles (they are already near a small window), no circular wrap needed
-        float sa=0; for(int idx: g){ sa += angs[idx]; }
+        float sa=0;
+        for(int idx: g) {
+            sa += angs[idx];
+        }
         float a = sa / g.size();
         outPts.push_back(c);
-        outAngles.push_back(wrap90(a));
+        outAngles.push_back(wrap180(a));
     }
 }
 

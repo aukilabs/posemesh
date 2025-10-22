@@ -35,8 +35,9 @@ void PoseCandidateSampler::report(bool good)
 
 bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDiags)
 {
-    if (m_diag1.points.empty() && m_diag2.points.empty())
+    if (m_diag1.points.empty() && m_diag2.points.empty()) {
         return false;
+    }
     const bool flipDiags = (m_diag2.points.empty()) || (!m_diag1.points.empty() && std::uniform_int_distribution<int>(0,1)(m_rng)==0);
     outFlipDiags = flipDiags;
 
@@ -50,8 +51,8 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     const auto& targetCorrespondencePoints = correspondenceDiag ? m_target.diag2 : m_target.diag1;
     const auto& detectedCorrespondencePoints = correspondenceDiag ? points2 : points1;
 
-    int targetIndex = std::uniform_int_distribution<int>(0, targetCorrespondencePoints.size() - 1)(m_rng);
-    int detectedIndex = std::uniform_int_distribution<int>(0, detectedCorrespondencePoints.size() - 1)(m_rng);
+    int targetIndex = std::uniform_int_distribution<int>(0, (int)targetCorrespondencePoints.size() - 1)(m_rng);
+    int detectedIndex = std::uniform_int_distribution<int>(0, (int)detectedCorrespondencePoints.size() - 1)(m_rng);
 
     const auto& targetPoint = targetCorrespondencePoints[targetIndex];
     const auto& detectedPoint = detectedCorrespondencePoints[detectedIndex];
@@ -63,7 +64,7 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     const auto& detectedUpAngles = randomAngleDiag ? m_diag1.anglesDeg : m_diag2.anglesDeg;
     const auto& detectedRightAngles = randomAngleDiag ? m_diag2.anglesDeg : m_diag1.anglesDeg;
 
-    int upAngleIndex = std::uniform_int_distribution<int>(0, detectedUpAngles.size() - 1)(m_rng);
+    int upAngleIndex = std::uniform_int_distribution<int>(0, (int)detectedUpAngles.size() - 1)(m_rng);
     double detectedUpAngle = detectedUpAngles[upAngleIndex];
 
     // Try to pick right and up vectors that are reasonably close to orthogonal.
@@ -83,8 +84,8 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     }
 
     // Some extra random jittering
-    detectedUpAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
-    detectedRightAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
+    detectedUpAngle += std::uniform_real_distribution<double>(-5.0, 5.0)(m_rng);
+    detectedRightAngle += std::uniform_real_distribution<double>(-5.0, 5.0)(m_rng);
 
     cv::Vec2d detectedUpVec = directionVec(detectedUpAngle);
     cv::Vec2d detectedRightVec = directionVec(detectedRightAngle);
@@ -114,7 +115,7 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     );
 
     if (!success) {
-        //std::cout << "Homography candidate not valid" << std::endl;
+        std::cout << "Homography candidate not valid" << std::endl;
         return false;
     }
 

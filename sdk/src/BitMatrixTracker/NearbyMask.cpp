@@ -80,20 +80,26 @@ bool buildLabelMap(const cv::Size &imgSize,
 }
 
 // Count inliers for ONE family with one-to-one claiming.
-// - proj: integer pixel projections of target features for this family
+// - proj: pixel projections of target features for this family. (will be rounded to int)
 // - label: label map built by buildLabelMap for the same family
-int countInliersOneToOne(const std::vector<cv::Point2i> &proj,
+int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
                          const cv::Mat1s &label)
 {
-    const int H = label.rows, W = label.cols;
+    const int H = label.rows;
+    const int W = label.cols;
+
     // Compute max index present in label to size the used[] bitset compactly
     int16_t maxIdx = -1;
     {
         // Light scan over proj to avoid scanning entire label
         for (const auto &p : proj) {
-            if ((unsigned)p.x >= (unsigned)W || (unsigned)p.y >= (unsigned)H) continue;
-            int16_t idx = label(p.y, p.x);
-            if (idx > maxIdx) maxIdx = idx;
+            int x = static_cast<int>(p.x);
+            int y = static_cast<int>(p.y);
+            if ((unsigned)x >= (unsigned)W || (unsigned)y >= (unsigned)H)
+                continue;
+            int16_t idx = label(y, x);
+            if (idx > maxIdx)
+                maxIdx = idx;
         }
     }
     int inliers = 0;
@@ -107,7 +113,8 @@ int countInliersOneToOne(const std::vector<cv::Point2i> &proj,
         if ((unsigned)p.x >= (unsigned)W || (unsigned)p.y >= (unsigned)H)
             continue;
         int16_t idx = label(p.y, p.x);
-        if (idx < 0) continue;
+        if (idx < 0)
+            continue;
         if (idx < static_cast<int>(used.size())) {
             if (used[idx]) continue;
             used[idx] = 1;
