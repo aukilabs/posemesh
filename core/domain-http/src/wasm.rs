@@ -2,6 +2,7 @@ use crate::DomainClient as r_DomainClient;
 use crate::domain_data::{
     DomainData, DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
 };
+use crate::ProcessDomainRequest as r_ProcessDomainRequest;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
@@ -27,8 +28,12 @@ export type DownloadQuery = { ids: string[], name: string | null, data_type: str
 export type UploadDomainData = { id?: string, name?: string, data_type?: string, data: Uint8Array };
 export type DomainDataMetadata = { id: string, name: string, data_type: string, size: number, created_at: string, updated_at: string };
 export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
+<<<<<<< HEAD
 export type DomainServer = { id: string, url: string, organization_id: string, name: string };
 export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
+=======
+export type ProcessDomainRequest = { data_ids: string[], processing_type?: string, server_api_key?: string, server_url: string };
+>>>>>>> 38be609 (feat: integrate process api)
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
@@ -483,6 +488,47 @@ impl DomainClient {
                     Ok(value) => Ok(value),
                     Err(e) => Err(JsError::new(&e.to_string()).into()),
                 },
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+
+    /// Triggers a processing job on domain data.
+    ///
+    /// # Arguments
+    /// * `domain_id` - The ID of the domain.
+    /// * `request` - The `ProcessDomainRequest` object containing processing parameters.
+    ///
+    /// # Returns
+    /// * `Promise<string>` - Resolves to the response body text from the processing server.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let result: string = await client.processDomain(
+    ///     "domain-123",
+    ///     {
+    ///         data_ids: ["data-id-1", "data-id-2"],
+    ///         server_url: "https://processing-server.example.com"
+    ///     } as ProcessDomainRequest
+    /// );
+    /// ```
+    #[wasm_bindgen(js_name = "processDomain")]
+    pub fn process_domain(&self, domain_id: String, request: JsValue) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            match from_value::<r_ProcessDomainRequest>(request) {
+                Ok(process_request) => {
+                    let res = domain_client.process_domain(&domain_id, &process_request).await;
+                    match res {
+                        Ok(response) => {
+                            let body = response.text().await
+                                .map_err(|e| JsError::new(&e.to_string()))?;
+                            Ok(JsValue::from_str(&body))
+                        }
+                        Err(e) => Err(JsError::new(&e.to_string()).into()),
+                    }
+                }
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };
