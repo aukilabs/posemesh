@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-compute-node"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 description = "Posemesh compute node engine: config, DDS/DMS, heartbeat, storage (no persistence)."
@@ -11,7 +11,7 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
-compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.0", path = "../compute-node-runner-api" }
+compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.1", path = "../compute-node-runner-api" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
