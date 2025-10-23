@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 
+use compute_runner_api::runner::{DomainArtifactContent, DomainArtifactRequest};
 #[derive(Clone, Debug)]
 struct UploadDescriptor {
     logical_path: String,
@@ -188,24 +189,71 @@ impl DomainOutput {
 impl compute_runner_api::ArtifactSink for DomainOutput {
     async fn put_bytes(&self, rel_path: &str, bytes: &[u8]) -> Result<()> {
         let descriptor = self.descriptor_for(rel_path);
-        let key = descriptor.logical_path.clone();
-        let mut existing_id = {
+        self.put_domain_artifact(DomainArtifactRequest {
+            rel_path,
+            name: &descriptor.name,
+            data_type: &descriptor.data_type,
+            existing_id: None,
+            content: DomainArtifactContent::Bytes(bytes),
+        })
+        .await
+        .map(|_| ())
+    }
+
+    async fn put_file(&self, rel_path: &str, file_path: &std::path::Path) -> Result<()> {
+        let descriptor = self.descriptor_for(rel_path);
+        self.put_domain_artifact(DomainArtifactRequest {
+            rel_path,
+            name: &descriptor.name,
+            data_type: &descriptor.data_type,
+            existing_id: None,
+            content: DomainArtifactContent::File(file_path),
+        })
+        .await
+        .map(|_| ())
+    }
+
+    async fn open_multipart(
+        &self,
+        _rel_path: &str,
+    ) -> Result<Box<dyn compute_runner_api::runner::MultipartUpload>> {
+        // Implemented in later prompt.
+        unimplemented!("multipart not implemented yet")
+    }
+
+    async fn put_domain_artifact(
+        &self,
+        request: DomainArtifactRequest<'_>,
+    ) -> Result<Option<String>> {
+        let logical_path = self.apply_outputs_prefix(request.rel_path);
+        let key = logical_path.clone();
+        let mut existing_id = request.existing_id.map(|s| s.to_string());
+        if existing_id.is_none() {
             let uploads = self.uploads.lock();
-            uploads.get(&key).and_then(|record| record.id.clone())
-        };
+            existing_id = uploads.get(&key).and_then(|record| record.id.clone());
+        }
         if existing_id.is_none() {
             existing_id = self
                 .client
-                .find_artifact_id(&self.domain_id, &descriptor.name, &descriptor.data_type)
+                .find_artifact_id(&self.domain_id, request.name, request.data_type)
                 .await
                 .map_err(|e| anyhow!(e))?;
         }
 
+        let bytes_owned;
+        let bytes = match request.content {
+            DomainArtifactContent::Bytes(b) => b,
+            DomainArtifactContent::File(path) => {
+                bytes_owned = fs::read(path).await?;
+                bytes_owned.as_slice()
+            }
+        };
+
         let upload_req = UploadRequest {
             domain_id: &self.domain_id,
-            name: &descriptor.name,
-            data_type: &descriptor.data_type,
-            logical_path: &descriptor.logical_path,
+            name: request.name,
+            data_type: request.data_type,
+            logical_path: &logical_path,
             bytes,
             existing_id: existing_id.as_deref(),
         };
@@ -216,30 +264,19 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
             .await
             .map_err(|e| anyhow!(e))?;
         let final_id = maybe_id.or(existing_id);
+
         let mut uploads = self.uploads.lock();
         uploads.insert(
             key,
             UploadedArtifact {
-                logical_path: descriptor.logical_path,
-                name: descriptor.name,
-                data_type: descriptor.data_type,
-                id: final_id,
+                logical_path,
+                name: request.name.to_string(),
+                data_type: request.data_type.to_string(),
+                id: final_id.clone(),
             },
         );
-        Ok(())
-    }
 
-    async fn put_file(&self, rel_path: &str, file_path: &std::path::Path) -> Result<()> {
-        let bytes = fs::read(file_path).await?;
-        self.put_bytes(rel_path, &bytes).await
-    }
-
-    async fn open_multipart(
-        &self,
-        _rel_path: &str,
-    ) -> Result<Box<dyn compute_runner_api::runner::MultipartUpload>> {
-        // Implemented in later prompt.
-        unimplemented!("multipart not implemented yet")
+        Ok(final_id)
     }
 }
 

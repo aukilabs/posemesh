@@ -1,7 +1,7 @@
 use crate::types::LeaseEnvelope;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Result of materializing a CID, including discovered metadata from the domain server.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +66,14 @@ pub trait ArtifactSink: Send + Sync {
     async fn open_multipart(&self, _rel_path: &str) -> Result<Box<dyn MultipartUpload>> {
         Err(anyhow::anyhow!("multipart not supported"))
     }
+
+    /// Upload an artifact with explicit Domain metadata.
+    async fn put_domain_artifact(
+        &self,
+        _request: DomainArtifactRequest<'_>,
+    ) -> Result<Option<String>> {
+        Err(anyhow::anyhow!("domain artifact uploads not supported"))
+    }
 }
 
 /// Handle returned by `ArtifactSink::open_multipart`.
@@ -75,6 +83,21 @@ pub trait MultipartUpload: Send + Sync {
     async fn write_chunk(&mut self, chunk: &[u8]) -> Result<()>;
     /// Finish and commit the artifact.
     async fn finish(self: Box<Self>) -> Result<()>;
+}
+
+/// Metadata required to upload an artifact with Domain semantics.
+pub struct DomainArtifactRequest<'a> {
+    pub rel_path: &'a str,
+    pub name: &'a str,
+    pub data_type: &'a str,
+    pub existing_id: Option<&'a str>,
+    pub content: DomainArtifactContent<'a>,
+}
+
+/// Describes the content of a `DomainArtifactRequest`.
+pub enum DomainArtifactContent<'a> {
+    Bytes(&'a [u8]),
+    File(&'a Path),
 }
 
 /// Control-plane interface for a running task.
