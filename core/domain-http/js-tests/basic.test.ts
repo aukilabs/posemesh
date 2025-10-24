@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, ProcessDomainRequest } from 'posemesh-domain-http';
+import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata } from 'posemesh-domain-http';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
@@ -281,25 +281,6 @@ describe('Posemesh Domain HTTP', () => {
                 expect(item).toHaveProperty("created_at");
                 expect(item).toHaveProperty("updated_at");
             }
-        });
-
-        it('should validate ProcessDomainRequest structure', () => {
-            const request: ProcessDomainRequest = {
-                data_ids: ["test-id-1", "test-id-2"],
-                server_url: "https://example.com"
-            };
-
-            expect(request).toHaveProperty("data_ids");
-            expect(request).toHaveProperty("server_url");
-            expect(Array.isArray(request.data_ids)).toBe(true);
-            expect(request.data_ids.length).toBe(2);
-
-            const json = JSON.stringify(request);
-            expect(json).toContain("test-id-1");
-            expect(json).toContain("https://example.com");
-
-            const parsed: ProcessDomainRequest = JSON.parse(json);
-            expect(parsed.data_ids.length).toBe(2);
         });
     });
 
