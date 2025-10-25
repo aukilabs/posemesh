@@ -181,7 +181,7 @@ impl DomainClient {
         self.discovery_client.list_domains(org).await
     }
 
-    pub async fn process_domain(
+    pub async fn submit_job_request_v1(
         &self,
         domain_id: &str,
         request: &ProcessDomainRequest,
