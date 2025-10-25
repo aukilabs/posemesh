@@ -22,7 +22,7 @@ void drawCornerOutlineOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f>
 
     std::vector<cv::Point2i> cornersInt(4);
     for (int i = 0; i < corners.size(); i++) {
-        cornersInt[i] = cv::Point2i(static_cast<int>(corners[i].x), static_cast<int>(corners[i].y));
+        cornersInt[i] = cv::Point2i(std::round(corners[i].x), std::round(corners[i].y));
     }
 
     std::vector<std::vector<cv::Point2i>> contours = { cornersInt };
@@ -50,7 +50,7 @@ void drawPoseOutlineOnPhoto(const cv::Mat &rgb, float sideLengthMeters, const cv
 void drawFeaturePointsOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f> &diagFeats,
                               int bitmatrixSideLength, float physicalSizeMeters,
                               const cv::Vec3f &rvec, const cv::Vec3f &tvec, const cv::Matx33f &K,
-                              const cv::Scalar &color)
+                              const cv::Scalar &color, int pointRadius=4)
 {
     std::vector<cv::Point3f> objFeats;
 
@@ -65,17 +65,17 @@ void drawFeaturePointsOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f>
     std::vector<cv::Point2f> projectedFeats;
     cv::projectPoints(objFeats, rvec, tvec, K, cv::noArray(), projectedFeats);
     for (const auto &feat : projectedFeats) {
-        cv::circle(rgb, feat, 4, color);
+        cv::circle(rgb, feat, pointRadius, color);
     }
 }
 
 void drawTargetOnPhoto(const cv::Mat &rgb, const Target &target, 
                              const cv::Vec3f &rvec, const cv::Vec3f &tvec, const cv::Matx33f &K,
-                             const cv::Scalar &color1, const cv::Scalar &color2)
+                             const cv::Scalar &color1, const cv::Scalar &color2, int pointRadius=4)
 {
     drawPoseOutlineOnPhoto(rgb, target.sideLengthMeters, rvec, tvec, K, color1);
-    drawFeaturePointsOnPhoto(rgb, target.diag1, target.bitmatrix.cols, target.sideLengthMeters, rvec, tvec, K, color1);
-    drawFeaturePointsOnPhoto(rgb, target.diag2, target.bitmatrix.cols, target.sideLengthMeters, rvec, tvec, K, color2);
+    drawFeaturePointsOnPhoto(rgb, target.diag1, target.bitmatrix.cols, target.sideLengthMeters, rvec, tvec, K, color1, pointRadius);
+    drawFeaturePointsOnPhoto(rgb, target.diag2, target.bitmatrix.cols, target.sideLengthMeters, rvec, tvec, K, color2, pointRadius);
 }
 
 struct ExampleFrame {
@@ -90,7 +90,7 @@ struct ExampleFrame {
 const std::string framesFolder = "scannertest/dmt_scan_2024-06-26_14-08-53/Frames";
 std::vector<ExampleFrame> exampleFrames = {
     {
-        "424274.604979.jpg", 1436.762, 1436.762, 960.2018, 725.8228, 0.1f
+        "424274.404912.jpg", 1436.709,1436.709,959.9976,725.895, 0.1f
     }
 };
 
@@ -98,8 +98,11 @@ int main(int argc, char *argv[])
 {
     Config cfg = defaultConfig();
     cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
-    cfg.ransacMaxIters = 500000;
-    cfg.inlierRadiusPx = 5;
+    cfg.ransacMaxIters = 50000;
+    cfg.inlierRadiusPx = 4.0f;
+    cfg.collapseRadiusPx = 2.0f;
+    cfg.sizeFracMax = 0.3f;
+    cfg.earlyStopPercent = 70;
 
     Estimator estimator(cfg);
 
@@ -186,7 +189,7 @@ int main(int argc, char *argv[])
     const double halfSide = exampleFrame.physicalSizeMeters / 2.0;
     std::vector<cv::Point3f> objectCornersPoint3d = calcObjectSpaceCorners(exampleFrame.physicalSizeMeters);
     cv::Vec3d rvecTruth, tvecTruth;
-    bool gotPoseTruth = cv::solvePnP(objectCornersPoint3d, corners, K, cv::noArray(), rvecTruth, tvecTruth, false, cv::SOLVEPNP_ITERATIVE);
+    bool gotPoseTruth = cv::solvePnP(objectCornersPoint3d, corners, K, cv::noArray(), rvecTruth, tvecTruth, false, cv::SOLVEPNP_SQPNP);
     if (gotPoseTruth) {
         std::cout << "rvecTruth: " << rvecTruth.t() << std::endl;
         std::cout << "tvecTruth: " << tvecTruth.t() << std::endl;
@@ -217,6 +220,8 @@ int main(int argc, char *argv[])
     std::cout << "tvec error: " << tvecError << "\n";
     double rvecError = cv::norm(pose.rvec - rvecTruth);
     std::cout << "rvec error: " << rvecError << "\n";
+    double rvecAngleError = rvecAngleDelta(rvecTruth, pose.rvec);
+    std::cout << "rvec angle error: " << rvecAngleError << "\n";
 
     std::cout << "inliers: " << diag.inliersBest << ", iters: " << diag.ransacIterations << "\n";
 
@@ -226,8 +231,8 @@ int main(int argc, char *argv[])
     // Assume drawPoseOnPhoto(cv::Mat &img, const cv::Matx33d &K, const cv::Vec3d &rvec, const cv::Vec3d &tvec, float sideLengthMeters, const cv::Scalar &color, int thickness)
     // - If available, otherwise adapt call.
     cv::Mat comparisonPlot = rgb.clone();
-    drawTargetOnPhoto(comparisonPlot, target, rvecTruth, tvecTruth, K, cv::Scalar(0, 255, 0), cv::Scalar(0, 200, 50));
-    drawTargetOnPhoto(comparisonPlot, target, pose.rvec, pose.tvec, K, cv::Scalar(255, 0, 255), cv::Scalar(255, 0, 200));
+    drawTargetOnPhoto(comparisonPlot, target, rvecTruth, tvecTruth, K, cv::Scalar(0, 255, 0), cv::Scalar(150, 200, 0), 3);
+    drawTargetOnPhoto(comparisonPlot, target, pose.rvec, pose.tvec, K, cv::Scalar(255, 0, 255), cv::Scalar(50, 100, 255), 4);
 
     cv::imwrite("poseComparison.jpg", comparisonPlot);
 

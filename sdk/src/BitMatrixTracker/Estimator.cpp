@@ -50,6 +50,7 @@ bool estimateWithRansac(const cv::Mat &gray,
     const Detections &diag2,
     const cv::Matx33d &cameraIntrinsics,
     cv::Matx33d &outH,
+    Pose &outPose,
     bool &outFlipDiags,
     int &outInliers,
     int &outIterations);
@@ -260,9 +261,9 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         int inliers = 0;
         int iterations = 0;
         bool outFlipDiags = false;
-        bool foundHomography = estimateWithRansac(gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, outH, outFlipDiags, inliers, iterations);
+        bool foundPose = estimateWithRansac(gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, outH, outPose, outFlipDiags, inliers, iterations);
 
-        if (!foundHomography) {
+        if (!foundPose) {
             std::cout << "estimatePose: no homography found" << std::endl;
             return false;
         }
@@ -276,31 +277,8 @@ bool Estimator::estimatePose(const cv::Mat &gray,
             diag->ransacIterations = iterations;
         }
 
-        std::vector<cv::Point2f> markerCorners = calcTargetSpaceCorners(target.bitmatrix.cols);
-
-        std::vector<cv::Point2f> projectedCorners;
-        projectWithH(markerCorners, outH, projectedCorners);
-
-        std::vector<cv::Point3f> objectCorners = calcObjectSpaceCorners(target.sideLengthMeters);
-
-        std::cout << "num projected corners = " << projectedCorners.size() << std::endl;
-        std::cout << "num object corners = " << objectCorners.size() << std::endl;
-        std::cout << "projected corners = " << projectedCorners << std::endl;
-        std::cout << "object corners = " << objectCorners << std::endl;
-
-        cv::Mat rvec, tvec;
-        bool gotPose = cv::solvePnP(objectCorners, projectedCorners, cameraIntrinsics, cv::noArray(), rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
-        if (!gotPose) {
-            std::cout << "estimatePose: solvePnP found no pose" << std::endl;
-            return false;
-        }
-
-        // TODO: final refinement with ALL inliers (if needed, but maybe doing it inside ransac loop is enough)
-        outPose.rvec = rvec;
-        outPose.tvec = tvec;
-
-        std::cout << "solvePnP: rvec = " << rvec.t() << std::endl;
-        std::cout << "solvePnP: tvec = " << tvec.t() << std::endl;
+        std::cout << "solvePnP: rvec = " << outPose.rvec.t() << std::endl;
+        std::cout << "solvePnP: tvec = " << outPose.tvec.t() << std::endl;
 
         return true;
 

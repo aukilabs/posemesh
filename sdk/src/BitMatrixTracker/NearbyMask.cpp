@@ -8,20 +8,20 @@ namespace psm {
 namespace BitMatrixTracker {
 
 // Cached disk offsets for a given integer radius
-static std::vector<cv::Point> &diskOffsets(int radius)
+static std::vector<cv::Point> &diskOffsets(float radius)
 {
-    static int cachedRadius = -1;
+    static float cachedRadius = -1.0f;
     static std::vector<cv::Point> cache;
     if (radius == cachedRadius && !cache.empty())
         return cache;
 
     cachedRadius = radius;
     cache.clear();
-    const int r = std::max(0, radius);
-    const int r2 = r * r;
-    cache.reserve((2*r+1)*(2*r+1));
-    for (int dy = -r; dy <= r; ++dy) {
-        for (int dx = -r; dx <= r; ++dx) {
+    const float r2 = radius * radius;
+    const int range = (int)(std::ceilf(radius));
+    cache.reserve((2*range+1)*(2*range+1));
+    for (int dy = -range; dy <= range; ++dy) {
+        for (int dx = -range; dx <= range; ++dx) {
             if (dx*dx + dy*dy <= r2)
                 cache.emplace_back(dx, dy);
         }
@@ -29,19 +29,19 @@ static std::vector<cv::Point> &diskOffsets(int radius)
     return cache;
 }
 
-// Build a label map for a set of collapsed detection centers.
+// Build a nearby mask for a set of collapsed detection centers.
 // - imgSize: full image size (we allocate full-sized label to keep lookups branch-free)
 // - centers: detection centers for ONE family (already collapsed/deduped)
 // - radiusPx: inlier radius (e.g., 6.0f)
-// - outLabel: CV_16S, -1 for no detection, otherwise detection index [0..centers.size()-1]
-bool buildLabelMap(const cv::Size &imgSize,
-                   const std::vector<cv::Point2f> &centers,
-                   float radiusPx,
-                   cv::Mat1s &outLabel)
+// - outNearbyMask: CV_16S, -1 for no detection, otherwise detection index [0..centers.size()-1]
+bool buildNearbyMask(const cv::Size &imgSize,
+                     const std::vector<cv::Point2f> &centers,
+                     float radiusPx,
+                     cv::Mat1s &outNearbyMask)
 {
     try {
-        outLabel.create(imgSize);
-        outLabel = -1;
+        outNearbyMask.create(imgSize);
+        outNearbyMask = -1;
 
         if (centers.empty())
             return true;
@@ -49,8 +49,7 @@ bool buildLabelMap(const cv::Size &imgSize,
         // Temporary best distance^2 per pixel (uint16 max is plenty since radius<=~255)
         cv::Mat bestDist(imgSize, CV_16U, cv::Scalar(std::numeric_limits<uint16_t>::max()));
 
-        const int r = std::max(0, static_cast<int>(std::round(radiusPx)));
-        auto &offs = diskOffsets(r);
+        auto &offs = diskOffsets(radiusPx);
 
         const int H = imgSize.height;
         const int W = imgSize.width;
@@ -68,13 +67,13 @@ bool buildLabelMap(const cv::Size &imgSize,
                 uint16_t &cur = bestDist.at<uint16_t>(y, x);
                 if (d2 < cur) {
                     cur = d2;
-                    outLabel(y, x) = static_cast<int16_t>(idx);
+                    outNearbyMask(y, x) = static_cast<int16_t>(idx);
                 }
             }
         }
         return true;
     } catch (const std::exception &e) {
-        std::cerr << "buildLabelMap exception: " << e.what() << std::endl;
+        std::cerr << "buildNearbyMask exception: " << e.what() << std::endl;
         return false;
     }
 }
@@ -83,10 +82,15 @@ bool buildLabelMap(const cv::Size &imgSize,
 // - proj: pixel projections of target features for this family. (will be rounded to int)
 // - label: label map built by buildLabelMap for the same family
 int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
-                         const cv::Mat1s &label)
+                         const cv::Mat1s &nearbyMask,
+                         std::vector<int> &outProjInlierIndices,
+                         std::vector<int16_t> &outNearbyMaskInlierLabels)
 {
-    const int H = label.rows;
-    const int W = label.cols;
+    const int H = nearbyMask.rows;
+    const int W = nearbyMask.cols;
+
+    outProjInlierIndices.clear();
+    outNearbyMaskInlierLabels.clear();
 
     // Compute max index present in label to size the used[] bitset compactly
     int16_t maxIdx = -1;
@@ -97,7 +101,7 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
             int y = static_cast<int>(p.y);
             if ((unsigned)x >= (unsigned)W || (unsigned)y >= (unsigned)H)
                 continue;
-            int16_t idx = label(y, x);
+            int16_t idx = nearbyMask(y, x);
             if (idx > maxIdx)
                 maxIdx = idx;
         }
@@ -108,18 +112,23 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
         return 0;
     }
     std::vector<uint8_t> used(static_cast<size_t>(maxIdx) + 1, 0);
-
-    for (const auto &p : proj) {
-        if ((unsigned)p.x >= (unsigned)W || (unsigned)p.y >= (unsigned)H)
+    for (int i = 0; i < proj.size(); ++i) {
+        const auto &p = proj[i];
+        if (p.x >= W || p.y >= H || p.x < 0 || p.y < 0)
             continue;
-        int16_t idx = label(p.y, p.x);
+
+        int16_t idx = nearbyMask(p.y, p.x);
         if (idx < 0)
             continue;
+
         if (idx < static_cast<int>(used.size())) {
-            if (used[idx]) continue;
+            if (used[idx])
+                continue;
             used[idx] = 1;
         }
         ++inliers;
+        outProjInlierIndices.push_back(i);
+        outNearbyMaskInlierLabels.push_back(idx);
     }
     return inliers;
 }

@@ -17,16 +17,20 @@ namespace psm {
 namespace BitMatrixTracker {
 
 // NearbyMask helpers (internal linkage provided by NearbyMask.cpp)
-bool buildLabelMap(const cv::Size &imgSize,
-                   const std::vector<cv::Point2f> &centers,
-                   float radiusPx,
-                   cv::Mat1s &outLabel);
+bool buildNearbyMask(const cv::Size &imgSize,
+                     const std::vector<cv::Point2f> &centers,
+                     float radiusPx,
+                     cv::Mat1s &outNearbyMask);
 int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
-                         const cv::Mat1s &label);
+                         const cv::Mat1s &nearbyMask,
+                         std::vector<int> &outProjInlierIndices,
+                         std::vector<int16_t> &outNearbyMaskInliers);
 
 // --- RANSAC driver ----------------------------------------------------------
 struct RansacResult {
     cv::Matx33d H {cv::Matx33d::eye()};
+    cv::Vec3d rvec {0, 0, 0};
+    cv::Vec3d tvec {0, 0, 0};
     bool flipDiags {false};
     int inliers {0};
     int iterations {0};
@@ -63,9 +67,15 @@ static bool ransacHomography(const Config &cfg,
         const int maxIters = std::max(1, cfg.ransacMaxIters);
         const int targetMax = static_cast<int>(target.diag1.size() + target.diag2.size());
         const int earlyStopAt = (cfg.earlyStopPercent > 0) ? (targetMax * cfg.earlyStopPercent / 100) : std::numeric_limits<int>::max();
+        std::cout << "earlyStopAt = " << earlyStopAt << ", targetMax = " << targetMax
+                  << "(diag1: " << target.diag1.size() << ", diag2: " << target.diag2.size()
+                  << ", cfg.earlyStopPercent: " << cfg.earlyStopPercent << ")" << std::endl;
 
         out.inliers = 0;
         out.iterations = 0;
+        std::vector<int> markerInlierIndices1, markerInlierIndices2;
+        std::vector<int16_t> nearbyMaskInliers1, nearbyMaskInliers2;
+        std::vector<cv::Point2f> targetInliers, photoInliers;
 
         auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -82,11 +92,83 @@ static bool ransacHomography(const Config &cfg,
             projectWithH(target.diag2, H, proj2);
 
             // Score via NearbyMask one-to-one
-            auto& labelsForProj1 = label1;// flippedDiags ? label2 : label1;
-            auto& labelsForProj2 = label2;// flippedDiags ? label1 : label2;
-            const int s1 = countInliersOneToOne(proj1, labelsForProj1);
-            const int s2 = countInliersOneToOne(proj2, labelsForProj2);
-            const int score = s1 + s2;
+            const auto& labelsForProj1 = flippedDiags ? label2 : label1;
+            const auto& labelsForProj2 = flippedDiags ? label1 : label2;
+
+            int s1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
+            int s2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+            int score = s1 + s2;
+            if (score < 4) {
+                // Not good enough, skip ahead.
+                continue;
+            }
+
+            const auto& diagsForProj1 = flippedDiags ? diag2 : diag1;
+            const auto& diagsForProj2 = flippedDiags ? diag1 : diag2;
+
+            // Iteratively refine pose using only inliers
+            for (int refineIter = 0; refineIter < 4; ++refineIter) {
+                targetInliers.clear();
+                photoInliers.clear();
+                for (int i = 0; i < markerInlierIndices1.size(); ++i) {
+                    targetInliers.push_back(target.diag1[markerInlierIndices1[i]]);
+                }
+                for (int i = 0; i < markerInlierIndices2.size(); ++i) {
+                    targetInliers.push_back(target.diag2[markerInlierIndices2[i]]);
+                }
+                for (int i = 0; i < nearbyMaskInliers1.size(); ++i) {
+                    int label = nearbyMaskInliers1[i];
+                    if (label >= 0) {
+                        photoInliers.push_back(diagsForProj1.points[i]);
+                    }
+                }
+                for (int i = 0; i < nearbyMaskInliers2.size(); ++i) {
+                    int label = nearbyMaskInliers2[i];
+                    if (label >= 0) {
+                        photoInliers.push_back(diagsForProj2.points[i]);
+                    }
+                }
+
+                assert(markerInlierIndices1.size() == nearbyMaskInliers1.size());
+                assert(markerInlierIndices2.size() == nearbyMaskInliers2.size());
+                assert(markerInlierIndices1.size() + markerInlierIndices2.size() == targetInliers.size());
+                assert(markerInlierIndices1.size() + markerInlierIndices2.size() == photoInliers.size());
+                assert(targetInliers.size() == photoInliers.size());
+
+                int numDiag1Pairs = static_cast<int>(markerInlierIndices1.size());
+                int numDiag2Pairs = static_cast<int>(markerInlierIndices2.size());
+
+                cv::Mat newH = cv::findHomography(targetInliers, photoInliers, 0);
+                if (newH.empty()) {
+                    continue;
+                }
+
+                projectWithH(target.diag1, newH, proj1);
+                projectWithH(target.diag2, newH, proj2);
+                markerInlierIndices1.clear();
+                markerInlierIndices2.clear();
+                nearbyMaskInliers1.clear();
+                nearbyMaskInliers2.clear();
+                const int newS1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
+                const int newS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+                const int newScore = newS1 + newS2;
+
+                //assert(newS1 == markerInlierIndices1.size());
+                //assert(newS2 == markerInlierIndices2.size());
+                //assert(newS1 + newS2 == newScore);
+                //assert(markerInlierIndices1.size() == nearbyMaskInliers1.size());
+                //assert(markerInlierIndices2.size() == nearbyMaskInliers2.size());
+
+                if (newScore > score) {
+                    H = newH;
+                    score = newScore;
+                    s1 = newS1;
+                    s2 = newS2;
+                }
+                else {
+                    break;
+                }
+            }
 
             const bool improved = (score > out.inliers);
             if (improved) {
@@ -94,12 +176,62 @@ static bool ransacHomography(const Config &cfg,
                 out.H = H;
                 out.flipDiags = flippedDiags;
                 std::cout << "Ransac improved: score = " << score << " (diag1: " << s1 << ", diag2: " << s2 << ")" << std::endl;
-            }
-            //sampler.report(improved);
 
-            if (out.inliers >= earlyStopAt) {
-                std::cout << "Ransac stopping early: reached " << out.inliers << " inliers" << std::endl;
-                break;
+                if (out.inliers >= earlyStopAt) {
+                    std::cout << "Ransac stopping early: reached " << out.inliers << " inliers" << std::endl;
+                    break;
+                }
+            }
+        }
+
+        // Final refinement with all inliers
+        if (out.inliers >= 4) {
+            projectWithH(target.diag1, out.H, proj1);
+            projectWithH(target.diag2, out.H, proj2);
+
+            const auto& labelsForProj1 = out.flipDiags ? label2 : label1;
+            const auto& labelsForProj2 = out.flipDiags ? label1 : label2;
+
+            const int finalS1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
+            const int finalS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+            const int finalScore = finalS1 + finalS2;
+            std::cout << "Final refinement with all inliers (score: " << finalScore << ")" << std::endl;
+
+            const auto& diagsForProj1 = out.flipDiags ? diag2 : diag1;
+            const auto& diagsForProj2 = out.flipDiags ? diag1 : diag2;
+            std::vector<cv::Point3f> targetInliers3D;
+            targetInliers3D.reserve(out.inliers);
+            photoInliers.clear();
+            for (int i = 0; i < markerInlierIndices1.size(); ++i) {
+                const auto& p = target.diag1[markerInlierIndices1[i]];
+                targetInliers3D.push_back(cv::Point3f(
+                    p.x / target.bitmatrix.cols - 0.5f,
+                    p.y / target.bitmatrix.rows - 0.5f,
+                    0.0f));
+            }
+            for (int i = 0; i < markerInlierIndices2.size(); ++i) {
+                const auto& p = target.diag2[markerInlierIndices2[i]];
+                targetInliers3D.push_back(cv::Point3f(
+                    p.x / target.bitmatrix.cols - 0.5f,
+                    p.y / target.bitmatrix.rows - 0.5f,
+                    0.0f));
+            }
+            for (int i = 0; i < nearbyMaskInliers1.size(); ++i) {
+                const auto& p = diagsForProj1.points[nearbyMaskInliers1[i]];
+                photoInliers.push_back(p);
+            }
+            for (int i = 0; i < nearbyMaskInliers2.size(); ++i) {
+                const auto& p = diagsForProj2.points[nearbyMaskInliers2[i]];
+                photoInliers.push_back(p);
+            }
+            const bool poseFound = cv::solvePnP(targetInliers3D, photoInliers, cameraIntrinsics, cv::noArray(), out.rvec, out.tvec, false, cv::SOLVEPNP_SQPNP);
+            if (poseFound) {
+                out.tvec *= target.sideLengthMeters;
+                std::cout << "Final refinement with all inliers found pose: rvec = " << out.rvec.t() << ", tvec = " << out.tvec.t() << std::endl;
+            }
+            else {
+                std::cout << "Final refinement with all inliers failed to find pose" << std::endl;
+                return false;
             }
         }
 
@@ -124,37 +256,40 @@ bool estimateWithRansac(const cv::Mat &gray,
                         const Detections &diag2,
                         const cv::Matx33d &cameraIntrinsics,
                         cv::Matx33d &outH,
+                        Pose &outPose,
                         bool &outFlipDiags,
                         int &outInliers,
                         int &outIterations)
 {
     try {
         // Build NearbyMask label maps
-        cv::Mat1s label1, label2;
+        cv::Mat1s nearbyMask1, nearbyMask2;
 
-        if (!buildLabelMap(gray.size(), diag1.points, cfg.inlierRadiusPx, label1)) {
-            std::cout << "buildLabelMap diag1 failed" << std::endl;
+        if (!buildNearbyMask(gray.size(), diag1.points, cfg.inlierRadiusPx, nearbyMask1)) {
+            std::cout << "buildNearbyMask diag1 failed" << std::endl;
             return false;
         }
 
-        if (!buildLabelMap(gray.size(), diag2.points, cfg.inlierRadiusPx, label2)) {
-            std::cout << "buildLabelMap diag2 failed" << std::endl;
+        if (!buildNearbyMask(gray.size(), diag2.points, cfg.inlierRadiusPx, nearbyMask2)) {
+            std::cout << "buildNearbyMask diag2 failed" << std::endl;
             return false;
         }
 
-        std::cout << "label1.size() = " << label1.size() << std::endl;
-        std::cout << "label2.size() = " << label2.size() << std::endl;
+        std::cout << "nearbyMask1.size() = " << nearbyMask1.size() << std::endl;
+        std::cout << "nearbyMask2.size() = " << nearbyMask2.size() << std::endl;
 
-        plotNearbyMask(gray, label1, "nearbyMask1.jpg");
-        plotNearbyMask(gray, label2, "nearbyMask2.jpg");
+        plotNearbyMask(gray, nearbyMask1, "nearbyMask1.jpg");
+        plotNearbyMask(gray, nearbyMask2, "nearbyMask2.jpg");
 
         RansacResult result;
-        if (!ransacHomography(cfg, target, diag1, diag2, cameraIntrinsics, gray.size(), label1, label2, result)) {
+        if (!ransacHomography(cfg, target, diag1, diag2, cameraIntrinsics, gray.size(), nearbyMask1, nearbyMask2, result)) {
             std::cout << "ransacHomography failed" << std::endl;
             return false;
         }
 
         outH = result.H;
+        outPose.rvec = result.rvec;
+        outPose.tvec = result.tvec;
         outFlipDiags = result.flipDiags;
         outInliers = result.inliers;
         outIterations = result.iterations;

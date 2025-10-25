@@ -84,8 +84,8 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     }
 
     // Some extra random jittering
-    detectedUpAngle += std::uniform_real_distribution<double>(-5.0, 5.0)(m_rng);
-    detectedRightAngle += std::uniform_real_distribution<double>(-5.0, 5.0)(m_rng);
+    detectedUpAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
+    detectedRightAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
 
     cv::Vec2d detectedUpVec = directionVec(detectedUpAngle);
     cv::Vec2d detectedRightVec = directionVec(detectedRightAngle);

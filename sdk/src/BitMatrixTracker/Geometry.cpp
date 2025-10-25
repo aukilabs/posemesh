@@ -51,6 +51,7 @@ void projectWithH(const std::vector<cv::Point2f> &src,
                          const cv::Matx33d &H,
                          std::vector<cv::Point2f> &dst)
 {
+    dst.clear();
     dst.resize(src.size());
     for (size_t i = 0; i < src.size(); ++i) {
         const double x = src[i].x, y = src[i].y;
@@ -72,6 +73,28 @@ double signedAngle2D(const cv::Vec2d &a, const cv::Vec2d &b)
 {
     double rad = std::atan2(a[0] * b[1] - a[1] * b[0], a.dot(b));
     return rad * (180.0 / static_cast<double>(CV_PI));
+}
+
+double rvecAngleDelta(const cv::Vec3d &rvec1, const cv::Vec3d &rvec2)
+{
+    cv::Mat R1, R2;
+    cv::Rodrigues(rvec1, R1);
+    cv::Rodrigues(rvec2, R2);
+
+    // Relative rotation that takes rvec1 -> rvec2
+    cv::Mat rel = R2 * R1.t();
+
+    // Convert relative rotation matrix to angle
+    double trace = rel.at<double>(0,0) +
+                rel.at<double>(1,1) +
+                rel.at<double>(2,2);
+    double cosTheta = (trace - 1.0) * 0.5;
+    if (cosTheta > 1.0) cosTheta = 1.0;
+    if (cosTheta < -1.0) cosTheta = -1.0;
+    double angle_rad = std::acos(cosTheta);
+    double angle_deg = angle_rad * 180.0 / CV_PI;
+
+    return angle_deg;
 }
 
 // Only used in this file

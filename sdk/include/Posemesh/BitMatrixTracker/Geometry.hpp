@@ -20,6 +20,8 @@ cv::Vec2d directionVec(double angleDeg);
 
 double signedAngle2D(const cv::Vec2d &a, const cv::Vec2d &b);
 
+double rvecAngleDelta(const cv::Vec3d &rvec1, const cv::Vec3d &rvec2);
+
 bool homographyFromPointAndDirs(
     const cv::Point2f& markerPoint,
     const cv::Point2f& photoPoint,
