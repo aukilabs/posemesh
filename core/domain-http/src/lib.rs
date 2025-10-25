@@ -11,13 +11,13 @@ mod auth;
 pub mod config;
 pub mod discovery;
 pub mod domain_data;
-pub mod domain;
+pub mod reconstruction;
 #[cfg(target_family = "wasm")]
 pub mod wasm;
 
 use crate::auth::TokenCache;
 use crate::discovery::{DiscoveryService, DomainWithServer};
-pub use crate::domain::ProcessDomainRequest;
+pub use crate::reconstruction::JobRequest;
 
 #[derive(Debug, Clone)]
 pub struct DomainClient {
@@ -184,10 +184,10 @@ impl DomainClient {
     pub async fn submit_job_request_v1(
         &self,
         domain_id: &str,
-        request: &ProcessDomainRequest,
+        request: &JobRequest,
     ) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        crate::domain::process_domain_v1(
+        crate::reconstruction::forward_job_request_v1(
             &domain.domain.domain_server.url,
             &self.client_id,
             &domain.get_access_token(),
