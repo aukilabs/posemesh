@@ -320,6 +320,14 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         return false;
     }
     
+    int clusterSize =  std::max(clusters[bestIndex].pixelBounds.width, clusters[bestIndex].pixelBounds.height);
+    int minDim = std::min(gray.cols, gray.rows);
+    float clusterFrac = static_cast<float>(clusterSize) / static_cast<float>(minDim);
+    int minPixelSize = target.bitmatrix.size[0] * 2; // Very small in screen space
+    float verySmallFrac = static_cast<float>(minPixelSize) / static_cast<float>(minDim);
+    m_impl->m_config.sizeFracMin = std::max(clusterFrac * 0.5f, verySmallFrac);
+    m_impl->m_config.sizeFracMax = std::min(clusterFrac * 1.5f, 0.95f);
+
     bool foundPose = estimatePose(gray, K, target, d1, d2, outPose, outH, diag);
     std::cout << "Found pose? = " << foundPose << std::endl;
     return foundPose;

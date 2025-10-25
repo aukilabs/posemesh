@@ -101,7 +101,6 @@ int main(int argc, char *argv[])
     cfg.ransacMaxIters = 50000;
     cfg.inlierRadiusPx = 4.0f;
     cfg.collapseRadiusPx = 2.0f;
-    cfg.sizeFracMax = 0.3f;
     cfg.earlyStopPercent = 70;
 
     Estimator estimator(cfg);
