@@ -107,7 +107,9 @@ impl DiscoveryService {
             let domain_servers: ListDomainsResponse = response.json().await?;
             Ok(domain_servers.domains)
         } else {
-            Err(format!("Failed to list domains. Status: {}", response.status()).into())
+            let status = response.status();
+            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(format!("Failed to list domains. Status: {} - {} - {}", status, text, org).into())
         }
     }
 
