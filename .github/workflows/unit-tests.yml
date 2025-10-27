@@ -5,6 +5,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test'
+        required: true
+        type: string
   workflow_call:
   push:
     branches:
@@ -26,6 +31,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      
+      - name: Fetch PR branch (if workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          git fetch origin pull/${{ github.event.inputs.pr_number }}/head:pr
+          git checkout pr
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
