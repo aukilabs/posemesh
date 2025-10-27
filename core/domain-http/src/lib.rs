@@ -15,7 +15,7 @@ pub mod domain_data;
 pub mod wasm;
 
 use crate::auth::TokenCache;
-use crate::discovery::DiscoveryService;
+use crate::discovery::{DiscoveryService, DomainWithServer};
 #[derive(Debug, Clone)]
 pub struct DomainClient {
     discovery_client: DiscoveryService,
@@ -170,6 +170,15 @@ impl DomainClient {
         )
         .await
     }
+
+    pub async fn list_domains(
+        &self,
+        org: &str,
+    ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
+        self.discovery_client.list_domains(org).await
+    }
+
+    
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -186,8 +195,8 @@ mod tests {
     fn get_config() -> (config::Config, String) {
         if std::path::Path::new("../.env.local").exists() {
             dotenvy::from_filename("../.env.local").ok();
-            dotenvy::dotenv().ok();
         }
+        dotenvy::dotenv().ok();
         let config = config::Config::from_env().unwrap();
         (config, std::env::var("DOMAIN_ID").unwrap())
     }
@@ -385,6 +394,10 @@ mod tests {
         // Assume we have a function to get a valid oidc_access_token for testing
         let oidc_access_token =
             std::env::var("AUTH_TEST_TOKEN").expect("AUTH_TEST_TOKEN env var not set");
+        if oidc_access_token.is_empty() {
+            eprintln!("Missing AUTH_TEST_TOKEN, skipping test");
+            return;
+        }
 
         let client =
             DiscoveryService::new(&config.0.api_url, &config.0.dds_url, &config.0.client_id);
@@ -394,6 +407,24 @@ mod tests {
             .auth_domain(&config.1)
             .await;
         assert!(domain.is_ok(), "Failed to get domain: {:?}", domain.err());
-        assert_eq!(domain.unwrap().domain.domain.id, config.1);
+        assert_eq!(domain.unwrap().domain.id, config.1);
+    }
+
+    #[tokio::test]
+    async fn test_list_domains() {
+        let config = get_config();
+        let client = DomainClient::new_with_app_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.app_key.unwrap(),
+            &config.0.app_secret.unwrap(),
+        )
+        .await
+        .expect("Failed to create client");
+
+        let org = std::env::var("TEST_ORGANIZATION").unwrap_or("own".to_string());
+        let result = client.list_domains(&org).await.unwrap();
+        assert!(result.len() > 0, "No domains found");
     }
 }

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata } from 'posemesh-domain-http';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vitest } from 'vitest';
 
 const loadConfig = () => {
     if (typeof process == 'undefined') {
@@ -136,6 +136,51 @@ describe('Posemesh Domain HTTP', () => {
                 id: "a84a36e5-312b-4f80-974a-06f5d19c1e16",
                 data: dataBytes,
             }])).rejects.toThrow(/Update failed with status: invalid domain access token/);
+        });
+
+        it('should list all domains within my organization', async () => {
+            const domains = await client.listDomains("own");
+            expect(domains).toBeDefined();
+            expect(Array.isArray(domains)).toBe(true);
+            expect(domains.length).toBeGreaterThan(0);
+
+            for (const domain of domains) {
+                expect(domain.id).toBeDefined();
+                expect(domain.name).toBeDefined();
+                expect(domain.organization_id).toBeDefined();
+                expect(domain.domain_server_id).toBeDefined();
+                expect(domain.domain_server).toBeDefined();
+                expect(domain.domain_server.id).toBeDefined();
+                expect(domain.domain_server.url).toBeDefined();
+                expect(domain.domain_server.organization_id).toBeDefined();
+                expect(domain.domain_server.name).toBeDefined();
+            }
+        });
+
+        it('should list all domains within the specific organization', async () => {
+            const domains = await client.listDomains(config.TEST_ORGANIZATION);
+            expect(domains).toBeDefined();
+            expect(Array.isArray(domains)).toBe(true);
+            expect(domains.length).toBeGreaterThan(0);
+
+            for (const domain of domains) {
+                expect(domain.id).toBeDefined();
+                expect(domain.name).toBeDefined();
+                expect(domain.organization_id).toBeDefined();
+                expect(domain.domain_server_id).toBeDefined();
+                expect(domain.domain_server).toBeDefined();
+                expect(domain.domain_server.id).toBeDefined();
+                expect(domain.domain_server.url).toBeDefined();
+                expect(domain.domain_server.organization_id).toBeDefined();
+                expect(domain.domain_server.name).toBeDefined();
+            } 
+        });
+
+        it('should list no domains if organization is not found', async () => {
+            const domains = await client.listDomains("ca77920d-95fb-4213-b3a3-e27de4be37bf");
+            expect(domains).toBeDefined();
+            expect(Array.isArray(domains)).toBe(true);
+            expect(domains.length).toBe(0);
         });
     });
 
@@ -303,42 +348,42 @@ describe('Posemesh Domain HTTP', () => {
             expect(count).greaterThan(0);
         });
 
-        it('should upload domain data', async () => {
-            const data = `{"oidc": "token test"}`;
-            const dataBytes = new TextEncoder().encode(data);
-            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
-                name: "oidc_access_token test",
-                data_type: "test",
-                data: dataBytes,
-            } as UploadDomainData]);
-
-            expect(res.length).toBe(1);
-            expect(res[0].name).toBe("oidc_access_token test");
-            expect(res[0].data_type).toBe("test");
-            expect(res[0].size).toBe(dataBytes.length);
-            expect(res[0].created_at).toBeDefined();
-            expect(res[0].updated_at).toBeDefined();
-
-            await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
-        });
-
-        it('should throw error if oidc_access_token is not valid', async () => {
-            const invalidClient = client.withOIDCAccessToken("ddddd");
-
-            const data = `{"oidc": "token test"}`;
-            const dataBytes = new TextEncoder().encode(data);
-
-            await expect(async () => {
-                await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
+            it('should upload domain data', async () => {
+                const data = `{"oidc": "token test"}`;
+                const dataBytes = new TextEncoder().encode(data);
+                let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
                     name: "oidc_access_token test",
                     data_type: "test",
                     data: dataBytes,
                 } as UploadDomainData]);
-            }).rejects.toThrow();
 
-            invalidClient.free();
+                expect(res.length).toBe(1);
+                expect(res[0].name).toBe("oidc_access_token test");
+                expect(res[0].data_type).toBe("test");
+                expect(res[0].size).toBe(dataBytes.length);
+                expect(res[0].created_at).toBeDefined();
+                expect(res[0].updated_at).toBeDefined();
+
+                await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
+            });
+
+            it('should throw error if oidc_access_token is not valid', async () => {
+                const invalidClient = client.withOIDCAccessToken("ddddd");
+
+                const data = `{"oidc": "token test"}`;
+                const dataBytes = new TextEncoder().encode(data);
+
+                await expect(async () => {
+                    await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
+                        name: "oidc_access_token test",
+                        data_type: "test",
+                        data: dataBytes,
+                    } as UploadDomainData]);
+                }).rejects.toThrow();
+
+                invalidClient.free();
+            });
         });
-    });
-
+    }
 });
 
