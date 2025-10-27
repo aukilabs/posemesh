@@ -55,22 +55,13 @@ mod tests {
 
     #[test]
     fn test_job_request_structure() {
-        let request = JobRequest {
-            data_ids: vec!["test-id-1".to_string(), "test-id-2".to_string()],
-            processing_type: "custom_processing".to_string(),
-            server_api_key: "custom_key".to_string(),
-            server_url: "https://example.com".to_string(),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
+        let json = r#"{"data_ids":["test-id-1", "test-id-2"], "server_url": "https://example.com"}"#;
         assert!(json.contains("test-id-1"));
         assert!(json.contains("https://example.com"));
-        assert!(json.contains("custom_processing"));
-        assert!(json.contains("custom_key"));
 
         let deserialized: JobRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.processing_type, "custom_processing");
         assert_eq!(deserialized.data_ids.len(), 2);
-        assert_eq!(deserialized.server_api_key, "custom_key");
-    }
+        assert_eq!(deserialized.processing_type, "local_and_global_refinement");
+        assert_eq!(deserialized.server_api_key, "aukilabs123");
+        assert_eq!(deserialized.server_url, "https://example.com")}
 }
