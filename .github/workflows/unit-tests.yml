@@ -5,22 +5,25 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test'
+        required: true
+        type: string
   workflow_call:
   push:
     branches:
-      - main
       - release/*
       - feature/*
       - hotfix/*
       - chore/*
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-unit-tests-${{ github.event.inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   run_test:
-    name: Run Tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,6 +33,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      
+      - name: Fetch PR branch (if workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          git fetch origin pull/${{ github.event.inputs.pr_number }}/head:pr
+          git checkout pr
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
