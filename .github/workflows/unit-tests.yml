@@ -13,11 +13,14 @@ on:
   workflow_call:
   push:
     branches:
-      - main
       - release/*
       - feature/*
       - hotfix/*
       - chore/*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-unit-tests-${{ github.event.inputs.pr_number }}
+  cancel-in-progress: true
 
 jobs:
   run_test:
