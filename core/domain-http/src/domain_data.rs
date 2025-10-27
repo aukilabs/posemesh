@@ -8,11 +8,6 @@ use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-#[derive(Debug, Clone)]
-pub struct DomainServer {
-    pub url: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DomainDataMetadata {
     pub id: String,
