@@ -14,10 +14,6 @@ on:
       - hotfix/*
       - chore/*
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   run_test:
     name: Run Tests
