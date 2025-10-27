@@ -195,8 +195,8 @@ mod tests {
     fn get_config() -> (config::Config, String) {
         if std::path::Path::new("../.env.local").exists() {
             dotenvy::from_filename("../.env.local").ok();
-            dotenvy::dotenv().ok();
         }
+        dotenvy::dotenv().ok();
         let config = config::Config::from_env().unwrap();
         (config, std::env::var("DOMAIN_ID").unwrap())
     }

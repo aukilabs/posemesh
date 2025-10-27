@@ -1,0 +1,70 @@
+name: Unit Tests
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - release/*
+      - feature/*
+      - hotfix/*
+      - chore/*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run_test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-cargo-
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: core/target
+          key: rust-cache-test-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-test-
+            
+      - name: Run unit tests
+        run: |
+          cat <<EOF > .env.local
+          CLIENT_ID=test-core-ci
+          POSEMESH_EMAIL=${{ secrets.POSEMESH_EMAIL }}
+          POSEMESH_PASSWORD=${{ secrets.POSEMESH_PASSWORD }}
+          API_URL=${{ vars.API_URL }}
+          DDS_URL=${{ vars.DDS_URL }}
+          APP_KEY=${{ secrets.APP_KEY }}
+          APP_SECRET=${{ secrets.APP_SECRET }}
+          DOMAIN_ID=${{ vars.TEST_DOMAIN_ID }}
+          AUTH_TEST_TOKEN=${{ secrets.AUTH_TEST_TOKEN }}
+          TEST_ORGANIZATION=${{ vars.TEST_ORGANIZATION_ID }}
+          EOF
+          make unit-tests
+
