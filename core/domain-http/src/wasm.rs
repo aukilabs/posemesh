@@ -516,7 +516,7 @@ impl DomainClient {
         let future = async move {
             match from_value::<r_JobRequest>(request) {
                 Ok(process_request) => {
-                    let res = domain_client.process_domain(&domain_id, &process_request).await;
+                    let res = domain_client.submit_job_request_v1(&domain_id, &process_request).await;
                     match res {
                         Ok(response) => {
                             let body = response.text().await
@@ -526,6 +526,34 @@ impl DomainClient {
                         Err(e) => Err(JsError::new(&e.to_string()).into()),
                     }
                 }
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+          
+    /// Lists domains for the given organization.
+    ///
+    /// # Arguments
+    /// * `org` - The organization ID or `own` to get the domains for the current organization.
+    ///
+    /// # Returns
+    /// * `Promise<DomainWithServer[]>` - Resolves to an array of DomainWithServer.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let domains: DomainWithServer[] = await client.listDomains("organization-123");
+    /// ```
+    #[wasm_bindgen(js_name = "listDomains")]
+    pub fn list_domains(&self, org: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            let res = domain_client.list_domains(&org).await;
+            match res {
+                Ok(domains) => match to_value(&domains) {
+                    Ok(value) => Ok(value),
+                    Err(e) => Err(JsError::new(&e.to_string()).into()),
+                },
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };

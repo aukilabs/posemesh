@@ -174,13 +174,6 @@ impl DomainClient {
         .await
     }
 
-    pub async fn list_domains(
-        &self,
-        org: &str,
-    ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
-        self.discovery_client.list_domains(org).await
-    }
-
     pub async fn submit_job_request_v1(
         &self,
         domain_id: &str,
@@ -195,6 +188,13 @@ impl DomainClient {
             request,
         )
         .await
+    }
+  
+    pub async fn list_domains(
+        &self,
+        org: &str,
+    ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
+        self.discovery_client.list_domains(org).await
     }
 }
 
