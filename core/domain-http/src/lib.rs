@@ -444,4 +444,24 @@ mod tests {
         let result = client.list_domains(&org).await.unwrap();
         assert!(result.len() > 0, "No domains found");
     }
+
+    #[tokio::test]
+    async fn test_submit_job_request_v1_with_invalid_processing_type() {
+        let config = get_config();
+        let client = DomainClient::new_with_user_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.email.unwrap(),
+            &config.0.password.unwrap(),
+            true,
+        )
+        .await
+        .expect("Failed to create client");
+
+        let mut job_request= JobRequest::default();
+        job_request.processing_type = "invalid_processing_type".to_string();
+        let res = client.submit_job_request_v1(&config.1, &job_request).await.expect_err("Failed to submit job request");
+        assert_eq!(res.to_string(), "Failed to process domain. Status: 400 Bad Request - invalid processing type");
+    }
 }

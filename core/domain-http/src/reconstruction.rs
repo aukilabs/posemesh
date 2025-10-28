@@ -22,6 +22,17 @@ fn default_api_key() -> String {
     "aukilabs123".to_string()
 }
 
+impl Default for JobRequest {
+    fn default() -> Self {
+        Self {
+            data_ids: vec![],
+            processing_type: default_processing_type(),
+            server_api_key: default_api_key(),
+            server_url: "".to_string(),
+        }
+    }
+}
+
 pub async fn forward_job_request_v1(
     domain_server_url: &str,
     client_id: &str,

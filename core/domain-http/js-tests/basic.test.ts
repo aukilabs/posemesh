@@ -182,6 +182,13 @@ describe('Posemesh Domain HTTP', () => {
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBe(0);
         });
+
+        it('should return auth error for submitting job request with app credential', async () => {
+            await expect(client.processDomain(config.DOMAIN_ID, {
+                data_ids: ["a84a36e5-312b-4f80-974a-06f5d19c1e16"],
+                server_url: "test"
+            })).rejects.toThrow(/Failed to process domain. Status: 403 Forbidden - invalid domain access token/);
+        });
     });
 
     describe('user credential', async () => {
@@ -281,6 +288,14 @@ describe('Posemesh Domain HTTP', () => {
                 expect(item).toHaveProperty("created_at");
                 expect(item).toHaveProperty("updated_at");
             }
+        });
+
+        it('should return 400 error for submitting job request with invalid data_ids', async () => {
+            await expect(client.processDomain(config.DOMAIN_ID, {
+                data_ids: [],
+                server_url: "test",
+                processing_type: "invalid_processing_type"
+            })).rejects.toThrow(/Failed to process domain. Status: 400 Bad Request - invalid processing type/);
         });
     });
 
