@@ -11,11 +11,14 @@ mod auth;
 pub mod config;
 pub mod discovery;
 pub mod domain_data;
+pub mod reconstruction;
 #[cfg(target_family = "wasm")]
 pub mod wasm;
 
 use crate::auth::TokenCache;
 use crate::discovery::{DiscoveryService, DomainWithServer};
+pub use crate::reconstruction::JobRequest;
+
 #[derive(Debug, Clone)]
 pub struct DomainClient {
     discovery_client: DiscoveryService,
@@ -171,14 +174,28 @@ impl DomainClient {
         .await
     }
 
+    pub async fn submit_job_request_v1(
+        &self,
+        domain_id: &str,
+        request: &JobRequest,
+    ) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        crate::reconstruction::forward_job_request_v1(
+            &domain.domain.domain_server.url,
+            &self.client_id,
+            &domain.get_access_token(),
+            domain_id,
+            request,
+        )
+        .await
+    }
+  
     pub async fn list_domains(
         &self,
         org: &str,
     ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
         self.discovery_client.list_domains(org).await
     }
-
-    
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -426,5 +443,25 @@ mod tests {
         let org = std::env::var("TEST_ORGANIZATION").unwrap_or("own".to_string());
         let result = client.list_domains(&org).await.unwrap();
         assert!(result.len() > 0, "No domains found");
+    }
+
+    #[tokio::test]
+    async fn test_submit_job_request_v1_with_invalid_processing_type() {
+        let config = get_config();
+        let client = DomainClient::new_with_user_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.email.unwrap(),
+            &config.0.password.unwrap(),
+            true,
+        )
+        .await
+        .expect("Failed to create client");
+
+        let mut job_request= JobRequest::default();
+        job_request.processing_type = "invalid_processing_type".to_string();
+        let res = client.submit_job_request_v1(&config.1, &job_request).await.expect_err("Failed to submit job request");
+        assert_eq!(res.to_string(), "Failed to process domain. Status: 400 Bad Request - invalid processing type");
     }
 }

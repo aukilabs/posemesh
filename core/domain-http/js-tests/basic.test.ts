@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
-import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata } from 'posemesh-domain-http';
-import { describe, it, expect, beforeAll, afterAll, vitest } from 'vitest';
+import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest } from 'posemesh-domain-http';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
     if (typeof process == 'undefined') {
@@ -182,6 +182,13 @@ describe('Posemesh Domain HTTP', () => {
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBe(0);
         });
+
+        it('should return auth error for submitting job request with app credential', async () => {
+            await expect(client.submitJobV1(config.DOMAIN_ID, {
+                data_ids: ["a84a36e5-312b-4f80-974a-06f5d19c1e16"],
+                server_url: "test"
+            } as JobRequest)).rejects.toThrow(/Failed to process domain. Status: 403 Forbidden - invalid domain access token/);
+        });
     });
 
     describe('user credential', async () => {
@@ -282,6 +289,14 @@ describe('Posemesh Domain HTTP', () => {
                 expect(item).toHaveProperty("updated_at");
             }
         });
+
+        it('should return 400 error for submitting job request with invalid data_ids', async () => {
+            await expect(client.submitJobV1(config.DOMAIN_ID, {
+                data_ids: [],
+                server_url: "test",
+                processing_type: "invalid_processing_type"
+            })).rejects.toThrow(/Failed to process domain. Status: 400 Bad Request - invalid processing type/);
+        });
     });
 
     describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_access_token', () => {
@@ -348,42 +363,41 @@ describe('Posemesh Domain HTTP', () => {
             expect(count).greaterThan(0);
         });
 
-            it('should upload domain data', async () => {
-                const data = `{"oidc": "token test"}`;
-                const dataBytes = new TextEncoder().encode(data);
-                let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
+        it('should upload domain data', async () => {
+            const data = `{"oidc": "token test"}`;
+            const dataBytes = new TextEncoder().encode(data);
+            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
+                name: "oidc_access_token test",
+                data_type: "test",
+                data: dataBytes,
+            } as UploadDomainData]);
+
+            expect(res.length).toBe(1);
+            expect(res[0].name).toBe("oidc_access_token test");
+            expect(res[0].data_type).toBe("test");
+            expect(res[0].size).toBe(dataBytes.length);
+            expect(res[0].created_at).toBeDefined();
+            expect(res[0].updated_at).toBeDefined();
+
+            await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
+        });
+
+        it('should throw error if oidc_access_token is not valid', async () => {
+            const invalidClient = client.withOIDCAccessToken("ddddd");
+
+            const data = `{"oidc": "token test"}`;
+            const dataBytes = new TextEncoder().encode(data);
+
+            await expect(async () => {
+                await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
                     name: "oidc_access_token test",
                     data_type: "test",
                     data: dataBytes,
                 } as UploadDomainData]);
+            }).rejects.toThrow();
 
-                expect(res.length).toBe(1);
-                expect(res[0].name).toBe("oidc_access_token test");
-                expect(res[0].data_type).toBe("test");
-                expect(res[0].size).toBe(dataBytes.length);
-                expect(res[0].created_at).toBeDefined();
-                expect(res[0].updated_at).toBeDefined();
-
-                await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
-            });
-
-            it('should throw error if oidc_access_token is not valid', async () => {
-                const invalidClient = client.withOIDCAccessToken("ddddd");
-
-                const data = `{"oidc": "token test"}`;
-                const dataBytes = new TextEncoder().encode(data);
-
-                await expect(async () => {
-                    await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
-                        name: "oidc_access_token test",
-                        data_type: "test",
-                        data: dataBytes,
-                    } as UploadDomainData]);
-                }).rejects.toThrow();
-
-                invalidClient.free();
-            });
+            invalidClient.free();
         });
-    }
-);
+    });
+});
 

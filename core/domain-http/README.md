@@ -59,3 +59,8 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 
 ### Features
 - List domains and their domain servers in the given organization
+
+## v1.2.0
+
+### Features
+- Submit jobs to reconstruction servers
