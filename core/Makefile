@@ -26,3 +26,20 @@ unit-tests:
 	@make build-domain-http-wasm
 	@cd domain-http/js-tests && npm install && npx playwright install chromium && npm run test:all
 	@cargo test --release --all-features -- --test-threads=1
+
+publish-domain-http:
+	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
+	echo "posemesh-domain-http version: $$VERSION, will be published to npm and cargo"; \
+	if ! grep -q "## v$${VERSION}" domain-http/README.md; then \
+		echo "ERROR: No changelog for v$${VERSION} found in domain-http/README.md"; \
+		exit 1; \
+	fi; \
+	read -p "Continue with publish? [y/N]: " CONFIRM; \
+	if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
+		echo "Publish cancelled."; \
+		exit 1; \
+	fi
+	@make build-domain-http-wasm
+	@make unit-tests
+	@cd domain-http/pkg && npm publish
+	@cd domain-http && cargo publish
