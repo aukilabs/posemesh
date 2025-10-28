@@ -385,5 +385,5 @@ describe('Posemesh Domain HTTP', () => {
             });
         });
     }
-});
+);
 
