@@ -1,3 +1,4 @@
+use crate::auth::token_manager::TokenProvider;
 use crate::dms::types::{
     CompleteTaskRequest, FailTaskRequest, HeartbeatRequest, HeartbeatResponse, LeaseResponse,
 };
@@ -8,6 +9,7 @@ use reqwest::{
     StatusCode,
 };
 use serde::Serialize;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::Level;
 use url::Url;
@@ -18,29 +20,32 @@ use uuid::Uuid;
 pub struct DmsClient {
     base: Url,
     http: Client,
-    bearer: Option<String>,
+    auth: Arc<dyn TokenProvider>,
 }
 impl DmsClient {
-    /// Create client with base URL, timeout, and optional bearer token.
-    pub fn new(base: Url, timeout: Duration, bearer: Option<String>) -> Result<Self> {
+    /// Create client with base URL, timeout, and a token provider for Authorization.
+    pub fn new(base: Url, timeout: Duration, auth: Arc<dyn TokenProvider>) -> Result<Self> {
         let http = Client::builder()
             .use_rustls_tls()
             .timeout(timeout)
             .build()
             .context("build dms reqwest client")?;
-        Ok(Self { base, http, bearer })
+        Ok(Self { base, http, auth })
     }
 
-    fn auth_headers(&self) -> HeaderMap {
+    async fn auth_headers(&self) -> Result<HeaderMap> {
         let mut h = HeaderMap::new();
-        if let Some(b) = &self.bearer {
-            let token = format!("Bearer {}", b);
-            let mut v = HeaderValue::from_str(&token)
-                .unwrap_or_else(|_| HeaderValue::from_static("Bearer INVALID"));
-            v.set_sensitive(true);
-            h.insert(AUTHORIZATION, v);
-        }
-        h
+        let b = self
+            .auth
+            .bearer()
+            .await
+            .map_err(|e| anyhow!("token provider: {e}"))?;
+        let token = format!("Bearer {}", b);
+        let mut v = HeaderValue::from_str(&token)
+            .unwrap_or_else(|_| HeaderValue::from_static("Bearer INVALID"));
+        v.set_sensitive(true);
+        h.insert(AUTHORIZATION, v);
+        Ok(h)
     }
 
     /// Lease a task: GET /tasks
@@ -54,15 +59,37 @@ impl DmsClient {
                 "Sending DMS lease request"
             );
         }
-        let res = self
+        // First attempt
+        let mut headers = self.auth_headers().await?;
+        let mut res = self
             .http
-            .get(url)
-            .headers(self.auth_headers())
+            .get(url.clone())
+            .headers(headers.clone())
             .send()
             .await
             .context("send GET /tasks")?;
-        let status = res.status();
-        let bytes = res.bytes().await.context("read lease body")?;
+        let mut status = res.status();
+        let mut bytes = res.bytes().await.context("read lease body")?;
+        // Retry once on 401
+        if status == StatusCode::UNAUTHORIZED {
+            let body_preview = String::from_utf8_lossy(&bytes);
+            tracing::warn!(
+                status = %status,
+                body = %body_preview,
+                "DMS lease unauthorized; refreshing token and retrying"
+            );
+            self.auth.on_unauthorized().await;
+            headers = self.auth_headers().await?;
+            res = self
+                .http
+                .get(url)
+                .headers(headers)
+                .send()
+                .await
+                .context("retry GET /tasks")?;
+            status = res.status();
+            bytes = res.bytes().await.context("read lease body (retry)")?;
+        }
         if status == StatusCode::NO_CONTENT {
             tracing::debug!("DMS lease returned 204 (no work available)");
             return Ok(None);
@@ -104,7 +131,7 @@ impl DmsClient {
             .base
             .join(&format!("tasks/{}/complete", task_id))
             .context("join /complete")?;
-        let mut headers = self.auth_headers();
+        let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(preview) = json_debug_preview(body) {
             tracing::debug!(
@@ -114,19 +141,44 @@ impl DmsClient {
                 "Sending DMS complete request"
             );
         }
-        let res = self
+        // First attempt
+        let mut res = self
             .http
-            .post(url)
-            .headers(headers)
+            .post(url.clone())
+            .headers(headers.clone())
             .json(body)
             .send()
             .await
             .context("send POST /complete")?;
-        let status = res.status();
-        let body_text = res
+        let mut status = res.status();
+        let mut body_text = res
             .text()
             .await
             .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        if status == StatusCode::UNAUTHORIZED {
+            let preview = truncate_preview(&body_text);
+            tracing::warn!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS complete unauthorized; refreshing token and retrying"
+            );
+            self.auth.on_unauthorized().await;
+            headers = self.auth_headers().await?;
+            res = self
+                .http
+                .post(url)
+                .headers(headers)
+                .json(body)
+                .send()
+                .await
+                .context("retry POST /complete")?;
+            status = res.status();
+            body_text = res
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read body (retry): {e}>"));
+        }
         let preview = truncate_preview(&body_text);
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
@@ -156,7 +208,7 @@ impl DmsClient {
             .base
             .join(&format!("tasks/{}/fail", task_id))
             .context("join /fail")?;
-        let mut headers = self.auth_headers();
+        let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(preview) = json_debug_preview(body) {
             tracing::debug!(
@@ -166,19 +218,44 @@ impl DmsClient {
                 "Sending DMS fail request"
             );
         }
-        let res = self
+        // First attempt
+        let mut res = self
             .http
-            .post(url)
-            .headers(headers)
+            .post(url.clone())
+            .headers(headers.clone())
             .json(body)
             .send()
             .await
             .context("send POST /fail")?;
-        let status = res.status();
-        let body_text = res
+        let mut status = res.status();
+        let mut body_text = res
             .text()
             .await
             .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        if status == StatusCode::UNAUTHORIZED {
+            let preview = truncate_preview(&body_text);
+            tracing::warn!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS fail unauthorized; refreshing token and retrying"
+            );
+            self.auth.on_unauthorized().await;
+            headers = self.auth_headers().await?;
+            res = self
+                .http
+                .post(url)
+                .headers(headers)
+                .json(body)
+                .send()
+                .await
+                .context("retry POST /fail")?;
+            status = res.status();
+            body_text = res
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read body (retry): {e}>"));
+        }
         let preview = truncate_preview(&body_text);
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
@@ -193,7 +270,6 @@ impl DmsClient {
                 status = %status,
                 body = %preview,
                 task_id = %task_id,
-                runner_error = %body.reason,
                 "DMS fail endpoint returned non-success status"
             );
             return Err(anyhow!(
@@ -214,7 +290,7 @@ impl DmsClient {
             .base
             .join(&format!("tasks/{}/heartbeat", task_id))
             .context("join /heartbeat")?;
-        let mut headers = self.auth_headers();
+        let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(preview) = json_debug_preview(body) {
             tracing::debug!(
@@ -224,16 +300,41 @@ impl DmsClient {
                 "Sending DMS heartbeat request"
             );
         }
-        let res = self
+        // First attempt
+        let mut res = self
             .http
-            .post(url)
-            .headers(headers)
+            .post(url.clone())
+            .headers(headers.clone())
             .json(body)
             .send()
             .await
             .context("send POST /heartbeat")?;
-        let status = res.status();
-        let bytes = res.bytes().await.context("read heartbeat response body")?;
+        let mut status = res.status();
+        let mut bytes = res.bytes().await.context("read heartbeat response body")?;
+        if status == StatusCode::UNAUTHORIZED {
+            let preview = truncate_preview(&String::from_utf8_lossy(&bytes));
+            tracing::warn!(
+                status = %status,
+                body = %preview,
+                task_id = %task_id,
+                "DMS heartbeat unauthorized; refreshing token and retrying"
+            );
+            self.auth.on_unauthorized().await;
+            headers = self.auth_headers().await?;
+            res = self
+                .http
+                .post(url)
+                .headers(headers)
+                .json(body)
+                .send()
+                .await
+                .context("retry POST /heartbeat")?;
+            status = res.status();
+            bytes = res
+                .bytes()
+                .await
+                .context("read heartbeat response body (retry)")?;
+        }
         let preview = truncate_preview(&String::from_utf8_lossy(&bytes));
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(

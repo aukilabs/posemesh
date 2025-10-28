@@ -146,6 +146,7 @@ impl SiweAfterRegistration {
     }
 }
 
+#[derive(Clone)]
 pub struct SiweHandle {
     manager: Arc<SiweTokenManager>,
 }
@@ -157,6 +158,19 @@ impl SiweHandle {
 
     pub async fn shutdown(&self) {
         self.manager.stop_bg().await;
+    }
+}
+
+#[async_trait]
+impl TokenProvider for SiweHandle {
+    async fn bearer(&self) -> crate::auth::token_manager::TokenProviderResult<String> {
+        // Delegate to internal manager
+        self.manager.bearer().await
+    }
+
+    async fn on_unauthorized(&self) {
+        // Force early refresh on next bearer() call
+        self.manager.on_unauthorized_retry().await;
     }
 }
 

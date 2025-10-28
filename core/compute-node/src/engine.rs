@@ -116,23 +116,21 @@ pub async fn run_node_with_shutdown(
             break;
         }
 
-        let bearer = match siwe_handle.bearer().await {
-            Ok(token) => token,
-            Err(err) => {
-                warn!(error = %err, "Failed to obtain SIWE bearer token; backing off");
-                let delay_ms = jittered_delay_ms(poll_cfg);
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = sleep(StdDuration::from_millis(delay_ms)) => continue,
-                }
+        // Ensure SIWE token is available before attempting DMS operations
+        if let Err(err) = siwe_handle.bearer().await {
+            warn!(error = %err, "Failed to obtain SIWE bearer token; backing off");
+            let delay_ms = jittered_delay_ms(poll_cfg);
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = sleep(StdDuration::from_millis(delay_ms)) => continue,
             }
-        };
+        }
 
         let timeout = StdDuration::from_secs(cfg.request_timeout_secs);
         let dms_client = match crate::dms::client::DmsClient::new(
             cfg.dms_base_url.clone(),
             timeout,
-            Some(bearer),
+            std::sync::Arc::new(siwe_handle.clone()),
         ) {
             Ok(client) => client,
             Err(err) => {

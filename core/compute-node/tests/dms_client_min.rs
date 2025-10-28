@@ -1,13 +1,32 @@
+use async_trait::async_trait;
 use httpmock::prelude::*;
+use posemesh_compute_node::auth::token_manager::{TokenProvider, TokenProviderResult};
 use posemesh_compute_node::dms::{
     client::DmsClient,
     types::{CompleteTaskRequest, FailTaskRequest},
 };
 use serde_json::json;
+use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
 const MOCK_CAPABILITY: &str = "/posemesh/mock/v1";
+
+#[derive(Clone)]
+struct StaticProvider {
+    token: String,
+}
+
+#[async_trait]
+impl TokenProvider for StaticProvider {
+    async fn bearer(&self) -> TokenProviderResult<String> {
+        Ok(self.token.clone())
+    }
+
+    async fn on_unauthorized(&self) {
+        // no-op for tests
+    }
+}
 
 #[tokio::test]
 async fn lease_by_capability_and_complete_fail() {
@@ -83,7 +102,10 @@ async fn lease_by_capability_and_complete_fail() {
     });
 
     let base: url::Url = server.base_url().parse().unwrap();
-    let client = DmsClient::new(base, Duration::from_secs(10), Some(node_token.into())).unwrap();
+    let provider = Arc::new(StaticProvider {
+        token: node_token.into(),
+    });
+    let client = DmsClient::new(base, Duration::from_secs(10), provider).unwrap();
 
     // Lease by capability
     let lease = client

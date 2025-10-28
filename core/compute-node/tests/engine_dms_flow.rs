@@ -1,10 +1,13 @@
 mod support;
 
+use async_trait::async_trait;
 use httpmock::prelude::*;
+use posemesh_compute_node::auth::token_manager::{TokenProvider, TokenProviderResult};
 use posemesh_compute_node::config::{LogFormat, NodeConfig};
 use posemesh_compute_node::dms::client::DmsClient;
 use posemesh_compute_node::engine::{run_cycle_with_dms, run_node_with_shutdown, RunnerRegistry};
 use serde_json::json;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -31,6 +34,20 @@ fn base_cfg() -> NodeConfig {
         enable_noop: true,
         noop_sleep_secs: 1,
     }
+}
+
+#[derive(Clone)]
+struct StaticProvider {
+    token: String,
+}
+
+#[async_trait]
+impl TokenProvider for StaticProvider {
+    async fn bearer(&self) -> TokenProviderResult<String> {
+        Ok(self.token.clone())
+    }
+
+    async fn on_unauthorized(&self) {}
 }
 
 #[tokio::test]
@@ -145,7 +162,10 @@ async fn happy_path_poll_run_complete_with_heartbeat_token_rotation() {
 
     let cfg = base_cfg();
     let base: url::Url = server.base_url().parse().unwrap();
-    let dms = DmsClient::new(base, Duration::from_secs(5), Some(node_token.into())).unwrap();
+    let provider = Arc::new(StaticProvider {
+        token: node_token.into(),
+    });
+    let dms = DmsClient::new(base, Duration::from_secs(5), provider).unwrap();
     let processed = run_cycle_with_dms(&cfg, &dms, &reg).await.unwrap();
     assert!(processed, "expected lease to be processed");
 
@@ -267,7 +287,10 @@ async fn error_path_calls_fail() {
 
     let cfg = base_cfg();
     let base: url::Url = server.base_url().parse().unwrap();
-    let dms = DmsClient::new(base, Duration::from_secs(5), Some(node_token.into())).unwrap();
+    let provider = Arc::new(StaticProvider {
+        token: node_token.into(),
+    });
+    let dms = DmsClient::new(base, Duration::from_secs(5), provider).unwrap();
     let processed = run_cycle_with_dms(&cfg, &dms, &reg).await.unwrap();
     assert!(
         processed,
