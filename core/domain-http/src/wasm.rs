@@ -463,55 +463,27 @@ impl DomainClient {
         future_to_promise(future)
     }
 
-    /// Lists domains for the given organization.
-    ///
-    /// # Arguments
-    /// * `org` - The organization ID or `own` to get the domains for the current organization.
-    ///
-    /// # Returns
-    /// * `Promise<DomainWithServer[]>` - Resolves to an array of DomainWithServer.
-    ///
-    /// # Example
-    /// ```javascript
-    /// let domains: DomainWithServer[] = await client.listDomains("organization-123");
-    /// ```
-    #[wasm_bindgen(js_name = "listDomains")]
-    pub fn list_domains(&self, org: String) -> Promise {
-        let domain_client = self.domain_client.clone();
-        let future = async move {
-            let res = domain_client.list_domains(&org).await;
-            match res {
-                Ok(domains) => match to_value(&domains) {
-                    Ok(value) => Ok(value),
-                    Err(e) => Err(JsError::new(&e.to_string()).into()),
-                },
-                Err(e) => Err(JsError::new(&e.to_string()).into()),
-            }
-        };
-        future_to_promise(future)
-    }
-
-    /// Triggers a processing job on domain data.
+    /// Triggers a reconstruction job
     ///
     /// # Arguments
     /// * `domain_id` - The ID of the domain.
-    /// * `request` - The `JobRequest` object containing processing parameters.
+    /// * `request` - The `JobRequest` object containing reconstruction job parameters.
     ///
     /// # Returns
-    /// * `Promise<string>` - Resolves to the response body text from the processing server.
+    /// * `Promise`
     ///
     /// # Example
     /// ```javascript
-    /// let result: string = await client.processDomain(
+    /// let result: string = await client.submitJobV1(
     ///     "domain-123",
     ///     {
     ///         data_ids: ["data-id-1", "data-id-2"],
-    ///         server_url: "https://processing-server.example.com"
+    ///         server_url: "https://processing-server.example.com" // reconstruction server url
     ///     } as JobRequest
     /// );
     /// ```
-    #[wasm_bindgen(js_name = "processDomain")]
-    pub fn process_domain(&self, domain_id: String, request: JsValue) -> Promise {
+    #[wasm_bindgen(js_name = "submitJobV1")]
+    pub fn submit_job_v1(&self, domain_id: String, request: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
             match from_value::<r_JobRequest>(request) {
