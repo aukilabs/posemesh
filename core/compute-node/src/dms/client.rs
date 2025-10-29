@@ -48,11 +48,19 @@ impl DmsClient {
         Ok(h)
     }
 
+    fn join_segments(&self, segments: &[&str]) -> Result<Url> {
+        let mut url = self.base.clone();
+        url.path_segments_mut()
+            .map_err(|_| anyhow!("invalid DMS base URL; cannot be a base"))?
+            .extend(segments.iter().copied());
+        Ok(url)
+    }
+
     /// Lease a task: GET /tasks
     ///
     /// `capability` is accepted for optional filter but not implemented yet.
     pub async fn lease_by_capability(&self, _capability: &str) -> Result<Option<LeaseResponse>> {
-        let url = self.base.join("tasks").context("join /tasks")?;
+        let url = self.join_segments(&["tasks"]).context("join /tasks")?;
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 endpoint = %url,
@@ -128,8 +136,7 @@ impl DmsClient {
     /// Complete task: POST /tasks/{id}/complete
     pub async fn complete(&self, task_id: Uuid, body: &CompleteTaskRequest) -> Result<()> {
         let url = self
-            .base
-            .join(&format!("tasks/{}/complete", task_id))
+            .join_segments(&["tasks", &task_id.to_string(), "complete"])
             .context("join /complete")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -205,8 +212,7 @@ impl DmsClient {
     /// Fail task: POST /tasks/{id}/fail
     pub async fn fail(&self, task_id: Uuid, body: &FailTaskRequest) -> Result<()> {
         let url = self
-            .base
-            .join(&format!("tasks/{}/fail", task_id))
+            .join_segments(&["tasks", &task_id.to_string(), "fail"])
             .context("join /fail")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -287,8 +293,7 @@ impl DmsClient {
         body: &HeartbeatRequest,
     ) -> Result<HeartbeatResponse> {
         let url = self
-            .base
-            .join(&format!("tasks/{}/heartbeat", task_id))
+            .join_segments(&["tasks", &task_id.to_string(), "heartbeat"])
             .context("join /heartbeat")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
