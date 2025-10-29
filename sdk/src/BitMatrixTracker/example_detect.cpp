@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/objdetect.hpp>
@@ -100,8 +101,11 @@ int main(int argc, char *argv[])
     cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
     cfg.ransacMaxIters = 50000;
     cfg.inlierRadiusPx = 4.0f;
-    cfg.collapseRadiusPx = 2.0f;
     cfg.earlyStopPercent = 70;
+    cfg.useFindHomographyFast = true;
+    cfg.finalRefinePnP = true;
+
+    bool verbose = false;
 
     Estimator estimator(cfg);
 
@@ -115,19 +119,31 @@ int main(int argc, char *argv[])
 
     // Load grayscale, undistorted 1920x1080
     std::cout << "imagePath: " << imagePath << std::endl;
-    cv::Mat rgb = cv::imread(imagePath, cv::IMREAD_COLOR);
+
+    cv::Mat rgb; // Only used for saving plots, when verbose is true
     cv::Mat gray;
-    cv::cvtColor(rgb, gray, cv::COLOR_BGR2GRAY);
+    if (verbose) {
+        // Load with RGB for plotting
+        rgb = cv::imread(imagePath, cv::IMREAD_COLOR);
+        cv::cvtColor(rgb, gray, cv::COLOR_BGR2GRAY);
+    }
+    else {
+        // Load only grayscale (enough for detection)
+        gray = cv::imread(imagePath, cv::IMREAD_GRAYSCALE);
+    }
+
     if (gray.empty()) {
         std::cerr << "Could not load image: " << imagePath << std::endl;
         return 1;
     }
 
-    std::cout << "rgb size: " << rgb.size() << std::endl;
-    std::cout << "gray size: " << gray.size() << std::endl;
-    std::cout << "gray type: " << gray.type() << std::endl;
-    cv::imwrite("rgbPhoto.jpg", rgb);
-    cv::imwrite("grayPhoto.jpg", gray);
+    if (verbose) {
+        std::cout << "rgb size: " << rgb.size() << std::endl;
+        std::cout << "gray size: " << gray.size() << std::endl;
+        std::cout << "gray type: " << gray.type() << std::endl;
+        cv::imwrite("rgbPhoto.jpg", rgb);
+        cv::imwrite("grayPhoto.jpg", gray);
+    }
 
     Target target;
 
@@ -147,93 +163,103 @@ int main(int argc, char *argv[])
     std::cout << "qr_straight: " << qr_straight.size() << std::endl;
 
     if (decoded_info.empty() || corners.size() != 4 || qr_straight.empty()) {
-        std::cerr << "Failed to detect or decode QR code from image" << std::endl;
+        std::cerr << "OpenCV comparison failed to detect or decode QR code from image" << std::endl;
         return 1;
     }
 
-    cv::Mat plot = rgb.clone();
-    drawCornerOutlineOnPhoto(plot, corners);
-    cv::imwrite("poseOpenCV.jpg", plot);
+    if (verbose) {
+        cv::Mat plot = rgb.clone();
+        drawCornerOutlineOnPhoto(plot, corners);
+        cv::imwrite("poseOpenCV.jpg", plot);
+    }
 
     // Binarize the straightened QR code image to get the bit matrix
     cv::Mat1b bitmatrix;
     cv::threshold(qr_straight, bitmatrix, 0, 1, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
-    // Optionally, resize to a canonical size if needed (OpenCV's output is usually square)
-    // For robustness, ensure bitmatrix is CV_8U and values are 0/1
     if (bitmatrix.type() != CV_8U) {
         bitmatrix.convertTo(bitmatrix, CV_8U);
     }
 
-    //cv::flip(bitmatrix, bitmatrix, 1);
-
-    std::cout << "bitmatrix size: " << bitmatrix.size() << std::endl;
-    cv::Mat bitmatrix_img;
-    bitmatrix.convertTo(bitmatrix_img, CV_8U, 255);
-    cv::resize(bitmatrix_img, bitmatrix_img, cv::Size(bitmatrix.cols * 10, bitmatrix.rows * 10), 0, 0, cv::INTER_NEAREST);
-    cv::imwrite("bitmatrix.jpg", bitmatrix_img);
+    if (verbose) {
+        std::cout << "bitmatrix size: " << bitmatrix.size() << std::endl;
+        cv::Mat bitmatrix_img;
+        bitmatrix.convertTo(bitmatrix_img, CV_8U, 255);
+        cv::resize(bitmatrix_img, bitmatrix_img, cv::Size(bitmatrix.cols * 10, bitmatrix.rows * 10), 0, 0, cv::INTER_NEAREST);
+        cv::imwrite("bitmatrix.jpg", bitmatrix_img);
+    }
 
     if (!makeTargetFromBitmatrix(bitmatrix, exampleFrame.physicalSizeMeters, target)) {
         std::cerr << "Failed to build target from detected QR code" << std::endl;
         return 1;
     }
 
-    // Camera intrinsics (fx, fy, cx, cy)
+    // Camera intrinsics (fx, fy, cx, cy). Only supporting pinhole for now. Image should be rectified already. Distorted photos not tested.
     cv::Matx33d K(exampleFrame.fx, 0.0, exampleFrame.cx,
                   0.0, exampleFrame.fy, exampleFrame.cy,
                   0.0, 0.0, 1.0);
-    std::cout << "K: " << K << std::endl;
+    if (verbose) {
+        std::cout << "K: " << K << std::endl;
+    }
 
     // Compare with pose from openCV corners, for reference. In real use we won't run this.
-    const double halfSide = exampleFrame.physicalSizeMeters / 2.0;
     std::vector<cv::Point3f> objectCornersPoint3d = calcObjectSpaceCorners(exampleFrame.physicalSizeMeters);
     cv::Vec3d rvecTruth, tvecTruth;
     bool gotPoseTruth = cv::solvePnP(objectCornersPoint3d, corners, K, cv::noArray(), rvecTruth, tvecTruth, false, cv::SOLVEPNP_SQPNP);
-    if (gotPoseTruth) {
-        std::cout << "rvecTruth: " << rvecTruth.t() << std::endl;
-        std::cout << "tvecTruth: " << tvecTruth.t() << std::endl;
-    }
-    else {
-        std::cout << "solvePnP failed for truth pose comparison" << std::endl;
+    if (verbose) {
+        if (gotPoseTruth) {
+            std::cout << "rvecTruth: " << rvecTruth.t() << std::endl;
+            std::cout << "tvecTruth: " << tvecTruth.t() << std::endl;
+        }
+        else {
+            std::cout << "solvePnP failed for truth pose comparison" << std::endl;
+        }
     }
 
     Pose pose;
     cv::Matx33d H;
-    Diagnostics diag;
+    Diagnostics diagnostics;
+    Diagnostics* diagnosticsPtr = verbose ? &diagnostics : nullptr; // Optional
 
     try {
-        if (!estimator.estimatePose(gray, K, target, pose, H, &diag)) {
+        if (!estimator.estimatePose(gray, K, target, pose, H, diagnosticsPtr)) {
             std::cerr << "Pose estimation failed" << std::endl;
             return 1;
         }
     } catch (const std::exception &e) {
-        std::cerr << "Pose estimation failed: " << e.what() << std::endl;
+        std::cerr << "Pose estimation failed with exception: " << e.what() << std::endl;
         return 1;
     }
 
-    std::cout << "truth rvec: " << rvecTruth.t() << "\n";
-    std::cout << "truth tvec: " << tvecTruth.t() << "\n";
-    std::cout << "rvec: " << pose.rvec.t() << "\n";
-    std::cout << "tvec: " << pose.tvec.t() << "\n";
     double tvecError = cv::norm(pose.tvec - tvecTruth);
-    std::cout << "tvec error: " << tvecError << "\n";
-    double rvecError = cv::norm(pose.rvec - rvecTruth);
-    std::cout << "rvec error: " << rvecError << "\n";
     double rvecAngleError = rvecAngleDelta(rvecTruth, pose.rvec);
-    std::cout << "rvec angle error: " << rvecAngleError << "\n";
 
-    std::cout << "inliers: " << diag.inliersBest << ", iters: " << diag.ransacIterations << "\n";
+    if (verbose) {
+        if (diagnosticsPtr) {
+            std::cout << "inliers: " << diagnostics.inliersBest << ", iters: " << diagnostics.ransacIterations << "\n";
+        }
 
-    // INSERT_YOUR_CODE
+        double rvecError = cv::norm(pose.rvec - rvecTruth);
 
-    // Draw truth pose (in green) and detected pose (in blue) on the input photo and save as "poseComparison.jpg".
-    // Assume drawPoseOnPhoto(cv::Mat &img, const cv::Matx33d &K, const cv::Vec3d &rvec, const cv::Vec3d &tvec, float sideLengthMeters, const cv::Scalar &color, int thickness)
-    // - If available, otherwise adapt call.
-    cv::Mat comparisonPlot = rgb.clone();
-    drawTargetOnPhoto(comparisonPlot, target, rvecTruth, tvecTruth, K, cv::Scalar(0, 255, 0), cv::Scalar(150, 200, 0), 3);
-    drawTargetOnPhoto(comparisonPlot, target, pose.rvec, pose.tvec, K, cv::Scalar(255, 0, 255), cv::Scalar(50, 100, 255), 4);
+        std::cout << "truth rvec: " << rvecTruth.t() << "\n";
+        std::cout << "truth tvec: " << tvecTruth.t() << "\n";
+        std::cout << "rvec: " << pose.rvec.t() << "\n";
+        std::cout << "tvec: " << pose.tvec.t() << "\n";
+        std::cout << "tvec error: " << tvecError << "\n";
+        std::cout << "rvec error: " << rvecError << "\n";
+        std::cout << "rvec angle error: " << rvecAngleError << "\n";
 
-    cv::imwrite("poseComparison.jpg", comparisonPlot);
+        // Draw truth pose (in green) and detected pose (in blue) on the input photo and save as "poseComparison.jpg".
+        // Assume drawPoseOnPhoto(cv::Mat &img, const cv::Matx33d &K, const cv::Vec3d &rvec, const cv::Vec3d &tvec, float sideLengthMeters, const cv::Scalar &color, int thickness)
+        // - If available, otherwise adapt call.
+        cv::Mat comparisonPlot = rgb.clone();
+        drawTargetOnPhoto(comparisonPlot, target, rvecTruth, tvecTruth, K, cv::Scalar(0, 255, 0), cv::Scalar(150, 200, 0), 3);
+        drawTargetOnPhoto(comparisonPlot, target, pose.rvec, pose.tvec, K, cv::Scalar(255, 0, 255), cv::Scalar(50, 100, 255), 4);
+        cv::imwrite("poseComparison.jpg", comparisonPlot);
+    }
+    else {
+        std::cout << "Pose error: " << std::fixed << std::setprecision(3) << (tvecError * 100.0) << " cm, " << rvecAngleError << " °" << std::endl;
+    }
 
     return 0;
 }

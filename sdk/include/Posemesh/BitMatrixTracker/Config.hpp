@@ -20,18 +20,20 @@ struct Config {
     int angleHistBins;                // default: 30
     float angleKeepDegLoose;          // default: 20.0f
     float angleKeepDegStrict;         // default: 15.0f
-    float orthogonalityTolDeg;        // default: 10.0f
+    float orthogonalityToleranceDeg;  // default: 10.0f
     float angleJitterDeg;             // default: 2.0f
 
     // RANSAC / inliers / collapse
-    int ransacMaxIters;               // default: 50000
-    float inlierRadiusPx;             // default: 6.0f
-    float collapseRadiusPx;           // default: 2.0f
-    float sizeFracMin;                // default: 0.08f
-    float sizeFracMax;                // default: 0.50f
-    int sizeFracBins;                 // default: 10
-    int earlyStopPercent;             // default: 70
-    float convergenceStrength;        // default: 1.0f
+    int ransacMaxIters;                 // default: 50000
+    int maxInnerRefinements;            // default: 4
+    bool useFindHomographyFast;         // default: true
+    float inlierRadiusPx;               // default: 6.0f
+    float collapseRadiusPx;             // default: 2.0f
+    //float sizeFracMin;                // default: 0.08f
+    //float sizeFracMax;                // default: 0.50f
+    //int sizeFracBins;                 // default: 10
+    int earlyStopPercent;               // default: 70
+    //float convergenceStrength;        // default: 1.0f
 
     bool finalRefinePnP;              // default: true
 };

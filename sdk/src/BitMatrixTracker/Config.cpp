@@ -21,17 +21,19 @@ const Config &defaultConfig()
     s_defaultConfig.angleHistBins = 30;
     s_defaultConfig.angleKeepDegLoose = 20.0f;
     s_defaultConfig.angleKeepDegStrict = 15.0f;
-    s_defaultConfig.orthogonalityTolDeg = 10.0f;
+    s_defaultConfig.orthogonalityToleranceDeg = 10.0f;
     s_defaultConfig.angleJitterDeg = 2.0f;
 
     s_defaultConfig.ransacMaxIters = 50000;
-    s_defaultConfig.inlierRadiusPx = 6.0f;
+    s_defaultConfig.maxInnerRefinements = 4;
+    s_defaultConfig.useFindHomographyFast = true;
+    s_defaultConfig.inlierRadiusPx = 4.0f;
     s_defaultConfig.collapseRadiusPx = 2.0f;
-    s_defaultConfig.sizeFracMin = 0.08f;
-    s_defaultConfig.sizeFracMax = 0.50f;
-    s_defaultConfig.sizeFracBins = 10;
+    //s_defaultConfig.sizeFracMin = 0.08f;
+    //s_defaultConfig.sizeFracMax = 0.50f;
+    //s_defaultConfig.sizeFracBins = 10;
     s_defaultConfig.earlyStopPercent = 70;
-    s_defaultConfig.convergenceStrength = 1.0f;
+    //s_defaultConfig.convergenceStrength = 1.0f;
 
     s_defaultConfig.finalRefinePnP = true;
 

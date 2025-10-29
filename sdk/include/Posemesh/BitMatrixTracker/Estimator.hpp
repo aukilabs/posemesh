@@ -29,6 +29,8 @@ public:
                       const Target &target,
                       const Detections &diag1,
                       const Detections &diag2,
+                      float sizeFracMin,
+                      float sizeFracMax,
                       Pose &outPose,
                       cv::Matx33d &outH,
                       Diagnostics *diag = nullptr) const;

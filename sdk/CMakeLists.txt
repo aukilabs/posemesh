@@ -276,6 +276,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Preprocess.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/Ransac.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/PoseCandidateSampler.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/FastHomography.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/BitMatrixTracker/example_detect.cpp"
 )
 target_include_directories(

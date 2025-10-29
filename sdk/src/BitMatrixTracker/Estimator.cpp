@@ -49,11 +49,14 @@ bool estimateWithRansac(const cv::Mat &gray,
     const Detections &diag1,
     const Detections &diag2,
     const cv::Matx33d &cameraIntrinsics,
+    float sizeFracMin,
+    float sizeFracMax,
     cv::Matx33d &outH,
     Pose &outPose,
     bool &outFlipDiags,
     int &outInliers,
-    int &outIterations);
+    int &outIterations,
+    bool debug);
 
 
 struct Estimator::Impl {
@@ -253,6 +256,8 @@ bool Estimator::estimatePose(const cv::Mat &gray,
                              const Target &target,
                              const Detections &diag1,
                              const Detections &diag2,
+                             float sizeFracMin,
+                             float sizeFracMax,
                              Pose &outPose,
                              cv::Matx33d &outH,
                              Diagnostics *diag) const
@@ -261,7 +266,12 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         int inliers = 0;
         int iterations = 0;
         bool outFlipDiags = false;
-        bool foundPose = estimateWithRansac(gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, outH, outPose, outFlipDiags, inliers, iterations);
+
+        bool foundPose = estimateWithRansac(
+            gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, sizeFracMin, sizeFracMax,
+            outH, outPose, outFlipDiags, inliers, iterations,
+            diag != nullptr
+        );
 
         if (!foundPose) {
             std::cout << "estimatePose: no homography found" << std::endl;
@@ -293,10 +303,10 @@ bool Estimator::estimatePose(const cv::Mat &gray,
                              const Target &target,
                              Pose &outPose,
                              cv::Matx33d &outH,
-                             Diagnostics *diag) const
+                             Diagnostics *diagnostics) const
 {
     std::vector<Cluster> clusters;
-    if (!computeTileClusters(gray, clusters, diag))
+    if (!computeTileClusters(gray, clusters, diagnostics))
         return false;
 
     if (clusters.empty()) {
@@ -310,12 +320,12 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         int area = clusters[i].tileBounds.area();
         if (area > bestArea) { bestArea = area; bestIndex = static_cast<int>(i); }
     }
-    if (diag) {
-        diag->clusterCount = static_cast<int>(clusters.size());
-        diag->bestClusterIndex = static_cast<int>(bestIndex);
+    if (diagnostics) {
+        diagnostics->clusterCount = static_cast<int>(clusters.size());
+        diagnostics->bestClusterIndex = static_cast<int>(bestIndex);
     }
     Detections d1, d2;
-    if (!detectCornersInCluster(gray, clusters[bestIndex], d1, d2, diag)) {
+    if (!detectCornersInCluster(gray, clusters[bestIndex], d1, d2, diagnostics)) {
         std::cout << "detectCornersInCluster returned false" << std::endl;
         return false;
     }
@@ -325,10 +335,12 @@ bool Estimator::estimatePose(const cv::Mat &gray,
     float clusterFrac = static_cast<float>(clusterSize) / static_cast<float>(minDim);
     int minPixelSize = target.bitmatrix.size[0] * 2; // Very small in screen space
     float verySmallFrac = static_cast<float>(minPixelSize) / static_cast<float>(minDim);
-    m_impl->m_config.sizeFracMin = std::max(clusterFrac * 0.5f, verySmallFrac);
-    m_impl->m_config.sizeFracMax = std::min(clusterFrac * 1.5f, 0.95f);
+    float sizeFracMin = std::max(clusterFrac * 0.5f, verySmallFrac);
+    float sizeFracMax = std::min(clusterFrac * 1.5f, 0.95f);
 
-    bool foundPose = estimatePose(gray, K, target, d1, d2, outPose, outH, diag);
+    bool foundPose = estimatePose(
+        gray, K, target, d1, d2, sizeFracMin, sizeFracMax,
+        outPose, outH, diagnostics);
     std::cout << "Found pose? = " << foundPose << std::endl;
     return foundPose;
 }

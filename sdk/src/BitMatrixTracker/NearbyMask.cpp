@@ -111,7 +111,9 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
         // No valid indices touched by these projections
         return 0;
     }
+
     std::vector<uint8_t> used(static_cast<size_t>(maxIdx) + 1, 0);
+
     for (int i = 0; i < proj.size(); ++i) {
         const auto &p = proj[i];
         if (p.x >= W || p.y >= H || p.x < 0 || p.y < 0)

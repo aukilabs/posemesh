@@ -12,6 +12,7 @@
 #include "Posemesh/BitMatrixTracker/Types.hpp"
 #include "Posemesh/BitMatrixTracker/Geometry.hpp"
 #include "Posemesh/BitMatrixTracker/PoseCandidateSampler.hpp"
+#include "Posemesh/BitMatrixTracker/FastHomography.hpp"
 
 namespace psm {
 namespace BitMatrixTracker {
@@ -59,10 +60,12 @@ static bool ransacHomography(const Config &cfg,
                              const cv::Size &imageSize,
                              const cv::Mat1s &label1,
                              const cv::Mat1s &label2,
+                             float sizeFracMin,
+                             float sizeFracMax,
                              RansacResult &out)
 {
     try {
-        PoseCandidateSampler sampler(cfg, target, diag1, diag2, cameraIntrinsics, imageSize);
+        PoseCandidateSampler sampler(cfg, target, diag1, diag2, cameraIntrinsics, imageSize, sizeFracMin, sizeFracMax);
         std::vector<cv::Point2f> proj1, proj2;
         const int maxIters = std::max(1, cfg.ransacMaxIters);
         const int targetMax = static_cast<int>(target.diag1.size() + target.diag2.size());
@@ -107,7 +110,7 @@ static bool ransacHomography(const Config &cfg,
             const auto& diagsForProj2 = flippedDiags ? diag1 : diag2;
 
             // Iteratively refine pose using only inliers
-            for (int refineIter = 0; refineIter < 4; ++refineIter) {
+            for (int refineIter = 0; refineIter < cfg.maxInnerRefinements; ++refineIter) {
                 targetInliers.clear();
                 photoInliers.clear();
                 for (int i = 0; i < markerInlierIndices1.size(); ++i) {
@@ -129,19 +132,20 @@ static bool ransacHomography(const Config &cfg,
                     }
                 }
 
-                assert(markerInlierIndices1.size() == nearbyMaskInliers1.size());
-                assert(markerInlierIndices2.size() == nearbyMaskInliers2.size());
-                assert(markerInlierIndices1.size() + markerInlierIndices2.size() == targetInliers.size());
-                assert(markerInlierIndices1.size() + markerInlierIndices2.size() == photoInliers.size());
-                assert(targetInliers.size() == photoInliers.size());
-
                 int numDiag1Pairs = static_cast<int>(markerInlierIndices1.size());
                 int numDiag2Pairs = static_cast<int>(markerInlierIndices2.size());
 
-                cv::Mat newH = cv::findHomography(targetInliers, photoInliers, 0);
-                if (newH.empty()) {
-                    continue;
+                cv::Mat newH;
+                if (cfg.useFindHomographyFast) {
+                    bool found = findHomographyFast(targetInliers, photoInliers, newH);
+                    if (!found)
+                        continue;
                 }
+                else {
+                    newH = cv::findHomography(targetInliers, photoInliers, 0);
+                    if (newH.empty())
+                        continue;
+                } 
 
                 projectWithH(target.diag1, newH, proj1);
                 projectWithH(target.diag2, newH, proj2);
@@ -175,7 +179,7 @@ static bool ransacHomography(const Config &cfg,
                 out.inliers = score;
                 out.H = H;
                 out.flipDiags = flippedDiags;
-                std::cout << "Ransac improved: score = " << score << " (diag1: " << s1 << ", diag2: " << s2 << ")" << std::endl;
+                //std::cout << "Ransac improved: score = " << score << " (diag1: " << s1 << ", diag2: " << s2 << ")" << std::endl;
 
                 if (out.inliers >= earlyStopAt) {
                     std::cout << "Ransac stopping early: reached " << out.inliers << " inliers" << std::endl;
@@ -185,7 +189,12 @@ static bool ransacHomography(const Config &cfg,
         }
 
         // Final refinement with all inliers
-        if (out.inliers >= 4) {
+        if (out.inliers < 4) {
+            std::cout << "Ransac found no good pose: not enough inliers" << std::endl;
+            return false;
+        }
+
+        if (cfg.finalRefinePnP) {
             projectWithH(target.diag1, out.H, proj1);
             projectWithH(target.diag2, out.H, proj2);
 
@@ -195,7 +204,7 @@ static bool ransacHomography(const Config &cfg,
             const int finalS1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
             const int finalS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
             const int finalScore = finalS1 + finalS2;
-            std::cout << "Final refinement with all inliers (score: " << finalScore << ")" << std::endl;
+            //std::cout << "Final refinement with all inliers (score: " << finalScore << ")" << std::endl;
 
             const auto& diagsForProj1 = out.flipDiags ? diag2 : diag1;
             const auto& diagsForProj2 = out.flipDiags ? diag1 : diag2;
@@ -227,10 +236,23 @@ static bool ransacHomography(const Config &cfg,
             const bool poseFound = cv::solvePnP(targetInliers3D, photoInliers, cameraIntrinsics, cv::noArray(), out.rvec, out.tvec, false, cv::SOLVEPNP_SQPNP);
             if (poseFound) {
                 out.tvec *= target.sideLengthMeters;
-                std::cout << "Final refinement with all inliers found pose: rvec = " << out.rvec.t() << ", tvec = " << out.tvec.t() << std::endl;
+                //std::cout << "Final refinement with all inliers found pose: rvec = " << out.rvec.t() << ", tvec = " << out.tvec.t() << std::endl;
             }
             else {
                 std::cout << "Final refinement with all inliers failed to find pose" << std::endl;
+                return false;
+            }
+        }
+        else {
+            cv::Vec3d rvec, tvec;
+            std::vector<cv::Point3f> objectCorners = calcObjectSpaceCorners(target.sideLengthMeters);
+            std::vector<cv::Point2f> targetCorners = calcTargetSpaceCorners(target.bitmatrix.cols);
+            std::vector<cv::Point2f> photoCorners;
+            projectWithH(targetCorners, out.H, photoCorners);
+
+            bool foundPose = cv::solvePnP(objectCorners, photoCorners, cameraIntrinsics, cv::noArray(), out.rvec, out.tvec, false, cv::SOLVEPNP_IPPE_SQUARE);
+            if (!foundPose) {
+                std::cout << "Ransac found no good pose in final solvePnP" << std::endl;
                 return false;
             }
         }
@@ -239,7 +261,7 @@ static bool ransacHomography(const Config &cfg,
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
         std::cout << "Ransac took " << (duration / 1000) << " ms" << std::endl;
 
-        double timePerIter = duration / out.iterations;
+        double timePerIter = (duration * 100) / out.iterations / 100.0;
         std::cout << "Time per iteration: " << (timePerIter) << " microseconds" << std::endl;
 
         return true;
@@ -255,11 +277,14 @@ bool estimateWithRansac(const cv::Mat &gray,
                         const Detections &diag1,
                         const Detections &diag2,
                         const cv::Matx33d &cameraIntrinsics,
+                        float sizeFracMin,
+                        float sizeFracMax,
                         cv::Matx33d &outH,
                         Pose &outPose,
                         bool &outFlipDiags,
                         int &outInliers,
-                        int &outIterations)
+                        int &outIterations,
+                        bool debug)
 {
     try {
         // Build NearbyMask label maps
@@ -275,14 +300,21 @@ bool estimateWithRansac(const cv::Mat &gray,
             return false;
         }
 
-        std::cout << "nearbyMask1.size() = " << nearbyMask1.size() << std::endl;
-        std::cout << "nearbyMask2.size() = " << nearbyMask2.size() << std::endl;
-
-        plotNearbyMask(gray, nearbyMask1, "nearbyMask1.jpg");
-        plotNearbyMask(gray, nearbyMask2, "nearbyMask2.jpg");
+        if (debug) {
+            std::cout << "nearbyMask1.size() = " << nearbyMask1.size() << std::endl;
+            std::cout << "nearbyMask2.size() = " << nearbyMask2.size() << std::endl;
+            plotNearbyMask(gray, nearbyMask1, "nearbyMask1.jpg");
+            plotNearbyMask(gray, nearbyMask2, "nearbyMask2.jpg");
+        }
 
         RansacResult result;
-        if (!ransacHomography(cfg, target, diag1, diag2, cameraIntrinsics, gray.size(), nearbyMask1, nearbyMask2, result)) {
+        bool success = ransacHomography(
+            cfg, target, diag1, diag2, cameraIntrinsics,
+            gray.size(), nearbyMask1, nearbyMask2,
+            sizeFracMin, sizeFracMax, result
+        );
+
+        if (!success) {
             std::cout << "ransacHomography failed" << std::endl;
             return false;
         }
@@ -293,9 +325,11 @@ bool estimateWithRansac(const cv::Mat &gray,
         outFlipDiags = result.flipDiags;
         outInliers = result.inliers;
         outIterations = result.iterations;
-        std::cout << "estimateWithRansac succeed with " << outInliers
-                  << " inliers after " << outIterations << " iterations"
-                  << std::endl;
+        if (debug) {
+            std::cout << "estimateWithRansac succeed with " << outInliers
+                    << " inliers after " << outIterations << " iterations"
+                    << std::endl;
+        }
 
         return true;
     } catch (const std::exception &e) {

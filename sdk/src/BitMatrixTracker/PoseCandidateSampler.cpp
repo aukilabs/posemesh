@@ -10,19 +10,28 @@ namespace psm {
 namespace BitMatrixTracker {
 
 PoseCandidateSampler::PoseCandidateSampler(const Config &cfg,
-                                         const Target &target,
-                                         const Detections &diag1,
-                                         const Detections &diag2,
-                                         const cv::Matx33d &cameraIntrinsics,
-                                         const cv::Size &imageSize)
+                                           const Target &target,
+                                           const Detections &diag1,
+                                           const Detections &diag2,
+                                           const cv::Matx33d &cameraIntrinsics,
+                                           const cv::Size &imageSize,
+                                           float sizeFracMin,
+                                           float sizeFracMax)
     : m_cfg(cfg)
     , m_target(target)
     , m_diag1(diag1)
     , m_diag2(diag2)
     , m_cameraIntrinsics(cameraIntrinsics)
     , m_imgSize(imageSize)
-    , m_rng(1234567u) // caller can replace via setter later
+    , m_sizeFracMin(sizeFracMin)
+    , m_sizeFracMax(sizeFracMax)
+    , m_rng(1234567u) // caller can replace via seedRandom() later
 {
+}
+
+void PoseCandidateSampler::seedRandom(unsigned int seed)
+{
+    m_rng.seed(seed);
 }
 
 void PoseCandidateSampler::reset()
@@ -77,15 +86,14 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
         // Check if the angle difference is close to 90 degrees, within a tolerance.
         double delta = std::fmod((detectedRightAngle - detectedUpAngle + 180.0), 360.0) - 180.0;
         double degreesOff = std::abs(std::abs(delta) - 90.0);
-        double tolerance = 10.0;
-        if (degreesOff <= tolerance) {
+        if (degreesOff <= m_cfg.orthogonalityToleranceDeg) {
             break; // Close enough!
         }
     }
 
     // Some extra random jittering
-    detectedUpAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
-    detectedRightAngle += std::uniform_real_distribution<double>(-2.0, 2.0)(m_rng);
+    detectedUpAngle += std::uniform_real_distribution<double>(-m_cfg.angleJitterDeg, m_cfg.angleJitterDeg)(m_rng);
+    detectedRightAngle += std::uniform_real_distribution<double>(-m_cfg.angleJitterDeg, m_cfg.angleJitterDeg)(m_rng);
 
     cv::Vec2d detectedUpVec = directionVec(detectedUpAngle);
     cv::Vec2d detectedRightVec = directionVec(detectedRightAngle);
@@ -96,7 +104,7 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
         detectedUpVec *= -1.0;
     }
 
-    double sizeFrac = std::uniform_real_distribution<double>(m_cfg.sizeFracMin, m_cfg.sizeFracMax)(m_rng);
+    double sizeFrac = std::uniform_real_distribution<double>(m_sizeFracMin, m_sizeFracMax)(m_rng);
 
     bool success = homographyFromPointAndDirs(
         targetPoint,
