@@ -43,7 +43,7 @@ posemesh-networking = { path = "networking" }
 posemesh-runtime = { path = "runtime" }
 posemesh-domain = { path = "domain" }
 posemesh-utils = "0.1.2"
-posemesh-node-registration = { version = "0.1.3", path = "node-registration" }
+posemesh-node-registration = { version = "0.1.5", path = "node-registration" }
 async-trait = "0.1.88"
 thiserror = "2.0.12"
 mockall = "0.13.1"

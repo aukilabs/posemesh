@@ -4,9 +4,10 @@ use super::token_manager::{
     TokenProviderError,
 };
 use crate::config::NodeConfig;
-use crate::dds::persist;
+use crate::dds::persist as dds_state;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use posemesh_node_registration::state::read_state;
 use sha3::{Digest, Keccak256};
 use std::sync::Arc;
 use std::time::Duration;
@@ -129,19 +130,36 @@ impl SiweAfterRegistration {
 
     async fn wait_for_registration(&self) -> Result<()> {
         loop {
-            match persist::read_node_secret() {
-                Ok(Some(_)) => {
-                    info!("DDS registration confirmed; starting SIWE token manager");
+            // Prefer the explicit registration state first.
+            match read_state() {
+                Ok(state)
+                    if state.status == posemesh_node_registration::state::STATUS_REGISTERED =>
+                {
+                    info!("DDS registration confirmed (status=registered); starting SIWE token manager");
                     return Ok(());
                 }
-                Ok(None) => {
-                    sleep(Duration::from_secs(1)).await;
+                Ok(_) => {
+                    // Fall through to secret check as a secondary signal (legacy flows).
                 }
                 Err(err) => {
-                    warn!(error = %err, "Failed to read DDS registration status; retrying");
-                    sleep(Duration::from_secs(1)).await;
+                    warn!(error = %err, "Failed to read DDS registration state; retrying");
                 }
             }
+
+            match dds_state::read_node_secret() {
+                Ok(Some(_)) => {
+                    info!(
+                        "DDS registration confirmed (secret present); starting SIWE token manager"
+                    );
+                    return Ok(());
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    warn!(error = %err, "Failed to read DDS registration secret; retrying");
+                }
+            }
+
+            sleep(Duration::from_secs(1)).await;
         }
     }
 }

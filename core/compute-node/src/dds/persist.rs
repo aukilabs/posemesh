@@ -1,43 +1,21 @@
-//! In-memory persistence helpers for DDS registration secret.
+//! Compatibility layer: delegate persistence of the DDS registration secret
+//! to the canonical store provided by `posemesh-node-registration`.
 
-use anyhow::{anyhow, Result};
-use std::sync::{Mutex, MutexGuard, OnceLock};
-
-#[derive(Default)]
-struct NodeSecretStore {
-    secret: Option<String>,
-}
-
-static NODE_SECRET_STORE: OnceLock<Mutex<NodeSecretStore>> = OnceLock::new();
-
-fn store() -> &'static Mutex<NodeSecretStore> {
-    NODE_SECRET_STORE.get_or_init(|| Mutex::new(NodeSecretStore::default()))
-}
-
-fn lock_store() -> Result<MutexGuard<'static, NodeSecretStore>> {
-    store()
-        .lock()
-        .map_err(|_| anyhow!("node secret store poisoned"))
-}
+use anyhow::Result;
 
 /// Persist node secret in memory. Overwrites existing secret.
 pub fn write_node_secret(secret: &str) -> Result<()> {
-    let mut guard = lock_store()?;
-    guard.secret = Some(secret.to_owned());
-    Ok(())
+    posemesh_node_registration::state::write_node_secret(secret)
 }
 
 /// Read persisted secret. Returns `Ok(None)` if secret missing.
 pub fn read_node_secret() -> Result<Option<String>> {
-    let guard = lock_store()?;
-    Ok(guard.secret.clone())
+    posemesh_node_registration::state::read_node_secret()
 }
 
 /// Clear any persisted secret. Intended for tests.
 pub fn clear_node_secret() -> Result<()> {
-    let mut guard = lock_store()?;
-    guard.secret = None;
-    Ok(())
+    posemesh_node_registration::state::clear_node_secret()
 }
 
 #[cfg(test)]
