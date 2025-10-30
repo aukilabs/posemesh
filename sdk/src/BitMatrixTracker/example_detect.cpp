@@ -117,13 +117,11 @@ int main(int argc, char *argv[])
     const ExampleFrame &exampleFrame = exampleFrames[0];
     std::string imagePath = framesFolder + "/" + exampleFrame.jpgName;
 
-    // Load grayscale, undistorted 1920x1080
-    std::cout << "imagePath: " << imagePath << std::endl;
-
     cv::Mat rgb; // Only used for saving plots, when verbose is true
     cv::Mat gray;
     if (verbose) {
         // Load with RGB for plotting
+        std::cout << "Loading RGB image from: " << imagePath << std::endl;
         rgb = cv::imread(imagePath, cv::IMREAD_COLOR);
         cv::cvtColor(rgb, gray, cv::COLOR_BGR2GRAY);
     }
@@ -149,20 +147,21 @@ int main(int argc, char *argv[])
 
     // Detect QR code in the image using OpenCV, extract its bit matrix, and build the Target.
     std::vector<cv::Point2f> corners;
-    std::string decoded_info;
-    cv::Mat qr_straight;
+    cv::Mat qrStraight;
     cv::QRCodeDetector qrDecoder;
 
     // Detect and decode the QR code
-    decoded_info = qrDecoder.detectAndDecode(gray, corners, qr_straight);
-    std::cout << "decoded_info: " << decoded_info << std::endl;
-    std::cout << "corners: " << corners.size() << std::endl;
-    for (const auto &corner : corners) {
-        std::cout << "-- " << corner.x << ", " << corner.y << std::endl;
+    const std::string decodedInfo = qrDecoder.detectAndDecode(gray, corners, qrStraight);
+    if (verbose) {
+        std::cout << "Decoded QR contents: " << decodedInfo << std::endl;
+        std::cout << "corners: " << corners.size() << std::endl;
+        for (const auto &corner : corners) {
+            std::cout << "-- " << corner.x << ", " << corner.y << std::endl;
+        }
+        std::cout << "qrStraight.size(): " << qrStraight.size() << std::endl;
     }
-    std::cout << "qr_straight: " << qr_straight.size() << std::endl;
 
-    if (decoded_info.empty() || corners.size() != 4 || qr_straight.empty()) {
+    if (decodedInfo.empty() || corners.size() != 4 || qrStraight.empty()) {
         std::cerr << "OpenCV comparison failed to detect or decode QR code from image" << std::endl;
         return 1;
     }
@@ -175,7 +174,7 @@ int main(int argc, char *argv[])
 
     // Binarize the straightened QR code image to get the bit matrix
     cv::Mat1b bitmatrix;
-    cv::threshold(qr_straight, bitmatrix, 0, 1, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    cv::threshold(qrStraight, bitmatrix, 0, 1, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
     if (bitmatrix.type() != CV_8U) {
         bitmatrix.convertTo(bitmatrix, CV_8U);
@@ -258,7 +257,7 @@ int main(int argc, char *argv[])
         cv::imwrite("poseComparison.jpg", comparisonPlot);
     }
     else {
-        std::cout << "Pose error: " << std::fixed << std::setprecision(3) << (tvecError * 100.0) << " cm, " << rvecAngleError << " °" << std::endl;
+        std::cout << "Pose error: " << std::fixed << std::setprecision(3) << (tvecError * 100.0) << " cm, " << rvecAngleError << "°" << std::endl;
     }
 
     return 0;

@@ -24,9 +24,9 @@ bool computeTileValidityAndNormalized(const cv::Mat &gray,
 
 bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                                int tileSizePx,
-                               std::vector<Cluster> &outClusters,
                                int minSideLengthTiles,
-                               int minValidTilesCount);
+                               int minValidTilesCount,
+                               std::vector<Cluster> &outClusters);
 
 bool detectCornersPerCluster(const cv::Mat& normalizedU8,
                              const Config& cfg,
@@ -88,7 +88,7 @@ Estimator::~Estimator() = default;
 
 bool Estimator::computeTileClusters(const cv::Mat &gray,
                                     std::vector<Cluster> &outClusters,
-                                    Diagnostics *diag) const
+                                    Diagnostics *diagnostics) const
 {
     try {
         outClusters.clear();
@@ -108,9 +108,9 @@ bool Estimator::computeTileClusters(const cv::Mat &gray,
                                               m_impl->m_normalized))
             return false;
 
-        if (diag) {
-            diag->validTileCount = cv::countNonZero(m_impl->m_tileMask);
-            std::cout << "validTileCount: " << diag->validTileCount << std::endl;
+        if (diagnostics) {
+            diagnostics->validTileCount = cv::countNonZero(m_impl->m_tileMask);
+            std::cout << "validTileCount: " << diagnostics->validTileCount << std::endl;
 
             cv::Mat plot = cv::Mat::zeros(gray.rows, gray.cols, CV_8UC3);
             cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
@@ -126,17 +126,17 @@ bool Estimator::computeTileClusters(const cv::Mat &gray,
         // 2) 8-connected clustering in tile space
         if (!buildClustersFromTileMask(m_impl->m_tileMask,
                                        m_impl->m_config.tileSizePx,
-                                       outClusters,
                                        m_impl->m_config.minClusterSideLengthTiles,
-                                       m_impl->m_config.minClusterValidTilesCount))
+                                       m_impl->m_config.minClusterValidTilesCount,
+                                       outClusters)) {
             return false;
+        }
 
         // Clamp pixel bounds to image size
-        std::cout << "Found " << outClusters.size() << " clusters" << std::endl;
         for (auto &c : outClusters) {
             c.pixelBounds.width = std::min(c.pixelBounds.width, std::max(0, gray.cols - c.pixelBounds.x));
             c.pixelBounds.height = std::min(c.pixelBounds.height, std::max(0, gray.rows - c.pixelBounds.y));
-            std::cout << "cluster pixel bounds (clamped): " << c.pixelBounds << std::endl;
+            //std::cout << "cluster pixel bounds (clamped): " << c.pixelBounds << std::endl;
         }
 
         return true;
@@ -150,7 +150,7 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
                                        const Cluster &cluster,
                                        Detections &outDiag1,
                                        Detections &outDiag2,
-                                       Diagnostics *diag) const
+                                       Diagnostics *diagnostics) const
 {
     try {
         outDiag1.points.clear();
@@ -177,8 +177,8 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
             return false;
         }
 
-        if (diag) {
-            diag->rawCorners = rawCount;
+        if (diagnostics) {
+            diagnostics->rawCorners = rawCount;
 
             cv::Mat plot;
             cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
@@ -212,9 +212,9 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
         }
         */
 
-        if (diag) {
-            diag->keptCornersLoose  = nLoose;
-            diag->keptCornersStrict = nStrict;
+        if (diagnostics) {
+            diagnostics->keptCornersLoose  = nLoose;
+            diagnostics->keptCornersStrict = nStrict;
 
             cv::Mat plot;
             cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
@@ -260,7 +260,7 @@ bool Estimator::estimatePose(const cv::Mat &gray,
                              float sizeFracMax,
                              Pose &outPose,
                              cv::Matx33d &outH,
-                             Diagnostics *diag) const
+                             Diagnostics *diagnostics) const
 {
     try {
         int inliers = 0;
@@ -270,7 +270,7 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         bool foundPose = estimateWithRansac(
             gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, sizeFracMin, sizeFracMax,
             outH, outPose, outFlipDiags, inliers, iterations,
-            diag != nullptr
+            diagnostics != nullptr
         );
 
         if (!foundPose) {
@@ -278,17 +278,13 @@ bool Estimator::estimatePose(const cv::Mat &gray,
             return false;
         }
 
-        std::cout << "FOUND Homography:" << std::endl << outH << std::endl;
-        std::cout << "Inliers = " << inliers << std::endl;
-        std::cout << "Iterations = " << iterations << std::endl;
-
-        if (diag) {
-            diag->inliersBest = inliers;
-            diag->ransacIterations = iterations;
+        if (diagnostics) {
+            diagnostics->inliersBest = inliers;
+            diagnostics->ransacIterations = iterations;
         }
 
-        std::cout << "solvePnP: rvec = " << outPose.rvec.t() << std::endl;
-        std::cout << "solvePnP: tvec = " << outPose.tvec.t() << std::endl;
+        //std::cout << "solvePnP: rvec = " << outPose.rvec.t() << std::endl;
+        //std::cout << "solvePnP: tvec = " << outPose.tvec.t() << std::endl;
 
         return true;
 
@@ -310,9 +306,10 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         return false;
 
     if (clusters.empty()) {
-        std::cerr << "estimatePose: no clusters" << std::endl;
+        std::cout << "No clusters found in image" << std::endl;
         return false;
     }
+
     // Pick biggest cluster by tile area
     size_t bestIndex = 0;
     int bestArea = -1;
@@ -320,13 +317,15 @@ bool Estimator::estimatePose(const cv::Mat &gray,
         int area = clusters[i].tileBounds.area();
         if (area > bestArea) { bestArea = area; bestIndex = static_cast<int>(i); }
     }
+
     if (diagnostics) {
         diagnostics->clusterCount = static_cast<int>(clusters.size());
         diagnostics->bestClusterIndex = static_cast<int>(bestIndex);
     }
+
     Detections d1, d2;
     if (!detectCornersInCluster(gray, clusters[bestIndex], d1, d2, diagnostics)) {
-        std::cout << "detectCornersInCluster returned false" << std::endl;
+        std::cout << "No corners detected in cluster " << bestIndex << std::endl;
         return false;
     }
     
@@ -341,7 +340,7 @@ bool Estimator::estimatePose(const cv::Mat &gray,
     bool foundPose = estimatePose(
         gray, K, target, d1, d2, sizeFracMin, sizeFracMax,
         outPose, outH, diagnostics);
-    std::cout << "Found pose? = " << foundPose << std::endl;
+
     return foundPose;
 }
 

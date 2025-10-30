@@ -8,9 +8,9 @@ namespace BitMatrixTracker {
 
 bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                                int tileSizePx,
-                               std::vector<Cluster> &outClusters,
-                               int minSideLengthTiles,
-                               int minValidTilesCount)
+                               int minSideLengthTiles, // Skip clusters with too small width or height (in tiles)
+                               int minValidTilesCount, // Skip clusters with too few valid tiles
+                               std::vector<Cluster> &outClusters)
 {
     try {
         outClusters.clear();
