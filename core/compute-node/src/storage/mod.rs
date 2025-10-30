@@ -3,7 +3,6 @@
 use anyhow::{anyhow, Result};
 use compute_runner_api::LeaseEnvelope;
 use parking_lot::Mutex;
-use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 
 pub mod client;
@@ -44,16 +43,6 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
         .domain_id
         .map(|id| id.to_string())
         .ok_or_else(|| anyhow!("lease missing domain_id"))?;
-    let override_manifest_id = lease
-        .task
-        .meta
-        .get("legacy")
-        .and_then(|value| value.get("override_manifest_id"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from);
-
     let task_id = lease.task.id.to_string();
 
     let client = client::DomainClient::new(base, token)?;
@@ -65,9 +54,6 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
         task_id,
         Arc::clone(&uploads),
     );
-    if let Some(override_id) = override_manifest_id {
-        output.seed_uploaded_artifact("job_manifest.json", override_id);
-    }
     Ok(Ports {
         input: Box::new(input::DomainInput::new(client.clone())),
         output: Box::new(output),

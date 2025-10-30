@@ -46,11 +46,9 @@ impl compute_runner_api::InputSource for DomainInput {
         if parts.is_empty() {
             return Err(anyhow!("domain response missing data for {}", cid));
         }
-        let primary_index = parts
-            .iter()
-            .position(|p| p.data_type.as_deref() == Some("refined_scan_zip"))
-            .unwrap_or(0);
-        let primary = parts.remove(primary_index);
+        // Choose the first part as primary. Runners can interpret
+        // additional parts or data_type as needed.
+        let primary = parts.remove(0);
         let related_files = parts.into_iter().map(|p| p.path).collect();
 
         Ok(compute_runner_api::MaterializedInput {

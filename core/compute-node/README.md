@@ -83,8 +83,7 @@ Optional environment variables:
   completion/failure reporting. The `RunnerRegistry` façade makes it easy to add
   new capabilities.
 - `storage::client` — performs authenticated multipart downloads/uploads
-  against the domain server, with safe temporary directories and zip extraction
-  for refined scans.
+  against the domain server using safe temporary directories.
 - `session` — tracks lease metadata, computes TTL-driven heartbeat deadlines,
   and survives new heartbeats refreshing tokens or signalling cancellation.
 

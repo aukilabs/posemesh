@@ -86,10 +86,6 @@ impl DomainOutput {
 
     fn descriptor_for(&self, rel_path: &str) -> UploadDescriptor {
         let logical_path = self.apply_outputs_prefix(rel_path);
-        if let Some(descriptor) = self.known_descriptor(rel_path, &logical_path) {
-            return descriptor;
-        }
-
         let sanitized = sanitize_component(&logical_path.replace('/', "_"));
         let data_type = infer_data_type(rel_path);
         UploadDescriptor {
@@ -97,91 +93,6 @@ impl DomainOutput {
             name: format!("{}_{}", sanitized, self.name_suffix()),
             data_type,
         }
-    }
-
-    fn known_descriptor(&self, rel_path: &str, logical_path: &str) -> Option<UploadDescriptor> {
-        let suffix = self.name_suffix();
-        let trimmed = rel_path.trim_start_matches('/');
-        if let Some(scan_id) = trimmed
-            .strip_prefix("refined/local/")
-            .and_then(|rest| rest.strip_suffix("/RefinedScan.zip"))
-        {
-            let sanitized_scan = sanitize_component(scan_id);
-            return Some(UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("refined_scan_{}_{}", sanitized_scan, suffix),
-                data_type: "refined_scan_zip".into(),
-            });
-        }
-        let descriptor = match trimmed {
-            "job_manifest.json" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("job_manifest_{}", suffix),
-                data_type: "job_manifest_json".into(),
-            },
-            "refined/global/refined_manifest.json" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("refined_manifest_{}", suffix),
-                data_type: "refined_manifest_json".into(),
-            },
-            "refined/global/RefinedPointCloudReduced.ply" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("refined_pointcloud_reduced_{}", suffix),
-                data_type: "refined_pointcloud_ply".into(),
-            },
-            "refined/global/RefinedPointCloud.ply.drc" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("refined_pointcloud_full_draco_{}", suffix),
-                data_type: "refined_pointcloud_ply_draco".into(),
-            },
-            "refined/global/topology/topology_downsampled_0.111.obj" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_lowpoly_obj_{}", suffix),
-                data_type: "obj".into(),
-            },
-            "refined/global/topology/topology_downsampled_0.111.glb" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_lowpoly_glb_{}", suffix),
-                data_type: "glb".into(),
-            },
-            "refined/global/topology/topology_downsampled_0.333.obj" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_midpoly_obj_{}", suffix),
-                data_type: "obj".into(),
-            },
-            "refined/global/topology/topology_downsampled_0.333.glb" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_midpoly_glb_{}", suffix),
-                data_type: "glb".into(),
-            },
-            "refined/global/topology/topology.obj" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_highpoly_obj_{}", suffix),
-                data_type: "obj".into(),
-            },
-            "refined/global/topology/topology.glb" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("topologymesh_v1_highpoly_glb_{}", suffix),
-                data_type: "glb".into(),
-            },
-            "outputs_index.json" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("outputs_index_{}", suffix),
-                data_type: "json".into(),
-            },
-            "result.json" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("result_{}", suffix),
-                data_type: "json".into(),
-            },
-            "scan_data_summary.json" => UploadDescriptor {
-                logical_path: logical_path.to_string(),
-                name: format!("scan_data_summary_{}", suffix),
-                data_type: "json".into(),
-            },
-            _ => return None,
-        };
-        Some(descriptor)
     }
 }
 

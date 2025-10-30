@@ -7,14 +7,12 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYP
 use reqwest::{Client, Method, StatusCode};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
-use tokio::task;
 use url::Url;
 use uuid::Uuid;
-use zip::ZipArchive;
+// zip extraction moved to reconstruction-specific runner
 
 /// Representation of one multipart section downloaded from Domain.
 #[derive(Debug, Clone)]
@@ -178,15 +176,7 @@ impl DomainClient {
                 .await
                 .map_err(|e| StorageError::Other(format!("write temp file: {}", e)))?;
 
-            let mut extracted_paths = Vec::new();
-            if data_type == "refined_scan_zip" {
-                let unzip_root = root
-                    .join("refined")
-                    .join("local")
-                    .join(&scan_folder)
-                    .join("sfm");
-                extracted_paths = unzip_refined_scan(buf.clone(), unzip_root).await?;
-            }
+            let extracted_paths = Vec::new();
 
             let relative_path = file_path
                 .strip_prefix(&root)
@@ -473,57 +463,9 @@ fn extract_timestamp(name: &str) -> Option<String> {
 }
 
 fn map_filename(data_type: &str, name: &str) -> String {
-    match data_type {
-        "dmt_manifest_json" => "Manifest.json".into(),
-        "dmt_featurepoints_ply" | "dmt_pointcloud_ply" => "FeaturePoints.ply".into(),
-        "dmt_arposes_csv" => "ARposes.csv".into(),
-        "dmt_portal_detections_csv" | "dmt_observations_csv" => "PortalDetections.csv".into(),
-        "dmt_intrinsics_csv" | "dmt_cameraintrinsics_csv" => "CameraIntrinsics.csv".into(),
-        "dmt_frames_csv" => "Frames.csv".into(),
-        "dmt_gyro_csv" => "Gyro.csv".into(),
-        "dmt_accel_csv" => "Accel.csv".into(),
-        "dmt_gyroaccel_csv" => "gyro_accel.csv".into(),
-        "dmt_recording_mp4" => "Frames.mp4".into(),
-        "refined_scan_zip" => "RefinedScan.zip".into(),
-        _ => format!(
-            "{}.{}",
-            sanitize_component(name),
-            sanitize_component(data_type)
-        ),
-    }
-}
-
-async fn unzip_refined_scan(
-    zip_bytes: Vec<u8>,
-    unzip_root: PathBuf,
-) -> Result<Vec<PathBuf>, StorageError> {
-    task::spawn_blocking(move || {
-        std::fs::create_dir_all(&unzip_root)
-            .map_err(|e| StorageError::Other(format!("create unzip dir: {}", e)))?;
-        let mut archive = ZipArchive::new(Cursor::new(zip_bytes))
-            .map_err(|e| StorageError::Other(format!("open zip: {}", e)))?;
-        let mut extracted = Vec::new();
-        for idx in 0..archive.len() {
-            let mut file = archive
-                .by_index(idx)
-                .map_err(|e| StorageError::Other(format!("read zip entry: {}", e)))?;
-            if file.is_dir() {
-                continue;
-            }
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf)
-                .map_err(|e| StorageError::Other(format!("read zip data: {}", e)))?;
-            let out_path = unzip_root.join(file.name());
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| StorageError::Other(format!("create unzip parent: {}", e)))?;
-            }
-            std::fs::write(&out_path, &buf)
-                .map_err(|e| StorageError::Other(format!("write unzip file: {}", e)))?;
-            extracted.push(out_path);
-        }
-        Ok(extracted)
-    })
-    .await
-    .map_err(|e| StorageError::Other(format!("zip task join: {}", e)))?
+    format!(
+        "{}.{}",
+        sanitize_component(name),
+        sanitize_component(data_type)
+    )
 }

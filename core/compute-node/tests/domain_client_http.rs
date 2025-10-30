@@ -51,8 +51,8 @@ async fn download_cid_and_upload_bytes() {
     let lookup_mock = server.mock(|when, then| {
         when.method(GET)
             .path("/api/v1/domains/dom1/data")
-            .query_param("name", "job_manifest_task-456")
-            .query_param("data_type", "job_manifest_json")
+            .query_param("name", "out_job_manifest_json_task-456")
+            .query_param("data_type", "json")
             .header("authorization", "Bearer tkn")
             .header("accept", "application/json");
         then.status(200)
@@ -91,7 +91,7 @@ async fn download_cid_and_upload_bytes() {
     // InputSource
     let input = DomainInput::new(client.clone());
     let bytes = input.get_bytes_by_cid(&cid).await.unwrap();
-    assert_eq!(bytes, payload);
+    assert_eq!(bytes, zip_bytes);
     get_mock.assert();
     let materialized = input.materialize_cid_with_meta(&cid).await.unwrap();
     assert_eq!(materialized.cid, cid);
@@ -104,22 +104,15 @@ async fn download_cid_and_upload_bytes() {
     assert!(materialized
         .path
         .file_name()
-        .is_some_and(|f| f == "RefinedScan.zip"));
-    assert!(materialized
-        .extracted_paths
-        .iter()
-        .any(|p| p.file_name().is_some_and(|f| f == "images.bin")));
-    let extracted_file = materialized
-        .extracted_paths
-        .iter()
-        .find(|p| p.file_name().is_some_and(|f| f == "images.bin"))
-        .unwrap();
-    let extracted_bytes = tokio::fs::read(extracted_file).await.unwrap();
-    assert_eq!(extracted_bytes, payload);
+        .is_some_and(|f| f == "scan_2024-01-02_03-04-05.refined_scan_zip"));
+    assert!(materialized.extracted_paths.is_empty());
     let manifest_path = materialized
         .related_files
         .iter()
-        .find(|p| p.file_name().is_some_and(|f| f == "Manifest.json"))
+        .find(|p| {
+            p.file_name()
+                .is_some_and(|f| f == "manifest.dmt_manifest_json")
+        })
         .expect("manifest path present");
     let manifest_saved = tokio::fs::read(manifest_path).await.unwrap();
     assert_eq!(manifest_saved, manifest_bytes);
@@ -150,15 +143,13 @@ async fn upload_manifest_with_existing_id_uses_put_via_lookup() {
     let lookup_mock = server.mock(|when, then| {
         when.method(GET)
             .path("/api/v1/domains/dom1/data")
-            .query_param("name", "job_manifest_task-456")
-            .query_param("data_type", "job_manifest_json")
+            .query_param("name", "out_job_manifest_json_task-456")
+            .query_param("data_type", "json")
             .header("authorization", "Bearer tkn")
             .header("accept", "application/json");
         then.status(200)
             .header("content-type", "application/json")
-            .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
-            );
+            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"out_job_manifest_json_task-456","data_type":"json"}]}"#);
     });
 
     let put_mock = server.mock(|when, then| {
@@ -193,8 +184,8 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
     let lookup = server.mock(|when, then| {
         when.method(GET)
             .path("/api/v1/domains/dom1/data")
-            .query_param("name", "refined_scan_scan_a_task-456")
-            .query_param("data_type", "refined_scan_zip")
+            .query_param("name", "out_refined_local_scan_a_RefinedScan_zip_task-456")
+            .query_param("data_type", "zip_data")
             .header("authorization", "Bearer tkn")
             .header("accept", "application/json");
         then.status(200)
@@ -205,8 +196,8 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
         when.method(POST)
             .path("/api/v1/domains/dom1/data")
             .header("authorization", "Bearer tkn")
-            .body_contains("data-type=\"refined_scan_zip\"")
-            .body_contains("name=\"refined_scan_scan_a_");
+            .body_contains("data-type=\"zip_data\"")
+            .body_contains("name=\"out_refined_local_scan_a_RefinedScan_zip_");
         then.status(200)
             .header("content-type", "application/json")
             .body(r#"{"data":[{"id":"data-zip"}]}"#);
@@ -232,7 +223,7 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
         .into_iter()
         .find(|artifact| artifact.logical_path == "out/refined/local/scan_a/RefinedScan.zip")
         .expect("refined scan upload recorded");
-    assert_eq!(refined_record.data_type, "refined_scan_zip");
+    assert_eq!(refined_record.data_type, "zip_data");
     assert_eq!(refined_record.id.as_deref(), Some("data-zip"));
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-compute-node"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 license = "MIT"
 description = "Posemesh compute node engine: config, DDS/DMS, heartbeat, storage (no persistence)."
@@ -37,7 +37,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt", "ansi", "json", "env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true }
-zip = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
