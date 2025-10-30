@@ -752,6 +752,8 @@ async fn handle_domain_data_stream(
                         let mut data_end = next_boundary_pos;
                         if data_end >= 2 && &buffer[data_end - 2..data_end] == b"\r\n" {
                             data_end -= 2;
+                        } else if data_end >= 1 && buffer[data_end - 1] == b'\n' {
+                            data_end -= 1;
                         }
                         dd.data.extend_from_slice(&buffer[..data_end]);
                         buffer.drain(..next_boundary_pos);
