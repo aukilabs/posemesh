@@ -213,7 +213,7 @@ bool groupSplitAndCollapse(const Detections &raw,
             sum += wrap90(angle);
         }
         const float peakStrict = sum / static_cast<float>(looseAngles.size());
-        std::cout << "peakStrict: " << peakStrict << std::endl;
+        //std::cout << "peakStrict: " << peakStrict << std::endl;
 
         std::vector<cv::Point2f> pts1, pts2;
         pts1.reserve(idxLoose.size());

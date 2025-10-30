@@ -1,5 +1,6 @@
 #include <iostream>
 #include <iomanip>
+#include <chrono>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/objdetect.hpp>
@@ -10,7 +11,6 @@
 #include "Posemesh/BitMatrixTracker/Estimator.hpp"
 #include "Posemesh/BitMatrixTracker/Precompute.hpp"
 #include "Posemesh/BitMatrixTracker/Geometry.hpp"
-
 
 using namespace psm::BitMatrixTracker;
 
@@ -220,6 +220,7 @@ int main(int argc, char *argv[])
     Diagnostics diagnostics;
     Diagnostics* diagnosticsPtr = verbose ? &diagnostics : nullptr; // Optional
 
+    auto startTime = std::chrono::high_resolution_clock::now();
     try {
         if (!estimator.estimatePose(gray, K, target, pose, H, diagnosticsPtr)) {
             std::cerr << "Pose estimation failed" << std::endl;
@@ -229,6 +230,9 @@ int main(int argc, char *argv[])
         std::cerr << "Pose estimation failed with exception: " << e.what() << std::endl;
         return 1;
     }
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+    std::cout << "Finding pose took: " << std::fixed << std::setprecision(3) << (duration / 1000.0) << " ms" << std::endl;
 
     double tvecError = cv::norm(pose.tvec - tvecTruth);
     double rvecAngleError = rvecAngleDelta(rvecTruth, pose.rvec);

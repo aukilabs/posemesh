@@ -193,11 +193,12 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
                 cv::line(plot, raw.points[i], lineTo, cv::Scalar(0, 255, 0), 1);
             }
             cv::imwrite("rawCornersPlot.jpg", plot);
+
+            std::cout << "[BitMatrixTracker] Raw detections in cluster: " << rawCount << std::endl;
+            //for (size_t i = 0; i < raw.anglesDeg.size(); ++i) {
+            //    std::cout << "angle " << i << ": " << raw.anglesDeg[i] << std::endl;
+            //}
         }
-        std::cout << "[BitMatrixTracker] Raw detections in cluster: " << rawCount << std::endl;
-        //for (size_t i = 0; i < raw.anglesDeg.size(); ++i) {
-        //    std::cout << "angle " << i << ": " << raw.anglesDeg[i] << std::endl;
-        //}
 
 
         int nLoose = 0, nStrict = 0;
@@ -236,13 +237,11 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
                 cv::line(plot, outDiag2.points[i], lineTo, cv::Scalar(255, 0, 255), 1);
             }
             cv::imwrite("groupedCornersPlot.jpg", plot);
+            std::cout << "keptCornersLoose: " << nLoose << std::endl;
+            std::cout << "keptCornersStrict: " << nStrict << std::endl;
+            std::cout << "Corners after grouping: d1=" << outDiag1.points.size()
+                      << ", d2=" << outDiag2.points.size() << std::endl;
         }
-
-        std::cout << "keptCornersLoose: " << nLoose << std::endl;
-        std::cout << "keptCornersStrict: " << nStrict << std::endl;
-        
-        std::cout << "[BitMatrixTracker] After grouping: d1=" << outDiag1.points.size()
-                << ", d2=" << outDiag2.points.size() << std::endl;
 
         return true;
     } catch (const std::exception &e) {

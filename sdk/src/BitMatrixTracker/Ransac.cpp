@@ -62,7 +62,8 @@ static bool ransacHomography(const Config &cfg,
                              const cv::Mat1s &label2,
                              float sizeFracMin,
                              float sizeFracMax,
-                             RansacResult &out)
+                             RansacResult &out,
+                             bool verbose)
 {
     try {
         PoseCandidateSampler sampler(cfg, target, diag1, diag2, cameraIntrinsics, imageSize, sizeFracMin, sizeFracMax);
@@ -70,9 +71,12 @@ static bool ransacHomography(const Config &cfg,
         const int maxIters = std::max(1, cfg.ransacMaxIters);
         const int targetMax = static_cast<int>(target.diag1.size() + target.diag2.size());
         const int earlyStopAt = (cfg.earlyStopPercent > 0) ? (targetMax * cfg.earlyStopPercent / 100) : std::numeric_limits<int>::max();
-        std::cout << "earlyStopAt = " << earlyStopAt << ", targetMax = " << targetMax
-                  << "(diag1: " << target.diag1.size() << ", diag2: " << target.diag2.size()
-                  << ", cfg.earlyStopPercent: " << cfg.earlyStopPercent << ")" << std::endl;
+
+        if (verbose) {
+            std::cout << "earlyStopAt = " << earlyStopAt << ", targetMax = " << targetMax
+                      << "(diag1: " << target.diag1.size() << ", diag2: " << target.diag2.size()
+                      << ", cfg.earlyStopPercent: " << cfg.earlyStopPercent << ")" << std::endl;
+        }
 
         out.inliers = 0;
         out.iterations = 0;
@@ -157,12 +161,6 @@ static bool ransacHomography(const Config &cfg,
                 const int newS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
                 const int newScore = newS1 + newS2;
 
-                //assert(newS1 == markerInlierIndices1.size());
-                //assert(newS2 == markerInlierIndices2.size());
-                //assert(newS1 + newS2 == newScore);
-                //assert(markerInlierIndices1.size() == nearbyMaskInliers1.size());
-                //assert(markerInlierIndices2.size() == nearbyMaskInliers2.size());
-
                 if (newScore > score) {
                     H = newH;
                     score = newScore;
@@ -182,7 +180,9 @@ static bool ransacHomography(const Config &cfg,
                 //std::cout << "Ransac improved: score = " << score << " (diag1: " << s1 << ", diag2: " << s2 << ")" << std::endl;
 
                 if (out.inliers >= earlyStopAt) {
-                    std::cout << "Ransac stopping early: reached " << out.inliers << " inliers" << std::endl;
+                    if (verbose) {
+                        std::cout << "Ransac stopping early: reached " << out.inliers << " inliers" << std::endl;
+                    }
                     break;
                 }
             }
@@ -190,7 +190,9 @@ static bool ransacHomography(const Config &cfg,
 
         // Final refinement with all inliers
         if (out.inliers < 4) {
-            std::cout << "Ransac found no good pose: not enough inliers" << std::endl;
+            if (verbose) {
+                std::cout << "Ransac found no good pose: not enough inliers" << std::endl;
+            }
             return false;
         }
 
@@ -239,7 +241,9 @@ static bool ransacHomography(const Config &cfg,
                 //std::cout << "Final refinement with all inliers found pose: rvec = " << out.rvec.t() << ", tvec = " << out.tvec.t() << std::endl;
             }
             else {
-                std::cout << "Final refinement with all inliers failed to find pose" << std::endl;
+                if (verbose) {
+                    std::cout << "Final refinement with all inliers failed to find pose" << std::endl;
+                }
                 return false;
             }
         }
@@ -252,17 +256,18 @@ static bool ransacHomography(const Config &cfg,
 
             bool foundPose = cv::solvePnP(objectCorners, photoCorners, cameraIntrinsics, cv::noArray(), out.rvec, out.tvec, false, cv::SOLVEPNP_IPPE_SQUARE);
             if (!foundPose) {
-                std::cout << "Ransac found no good pose in final solvePnP" << std::endl;
+                if (verbose) {
+                    std::cout << "Ransac found no good pose in final solvePnP" << std::endl;
+                }
                 return false;
             }
         }
 
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
-        std::cout << "Ransac took " << (duration / 1000) << " ms" << std::endl;
 
         double timePerIter = (duration * 100) / out.iterations / 100.0;
-        std::cout << "Time per iteration: " << (timePerIter) << " microseconds" << std::endl;
+        std::cout << "Ransac took " << (duration / 1000) << " ms (" << out.iterations << " iterations x " << timePerIter << " µs)" << std::endl;
 
         return true;
     } catch (const std::exception &e) {
@@ -311,7 +316,7 @@ bool estimateWithRansac(const cv::Mat &gray,
         bool success = ransacHomography(
             cfg, target, diag1, diag2, cameraIntrinsics,
             gray.size(), nearbyMask1, nearbyMask2,
-            sizeFracMin, sizeFracMax, result
+            sizeFracMin, sizeFracMax, result, debug
         );
 
         if (!success) {
