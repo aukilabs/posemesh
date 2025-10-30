@@ -3,6 +3,9 @@ use crate::domain_data::{
     DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData, delete_by_id, download_by_id, download_metadata_v1, download_v1_stream, upload_v1
 };
 pub mod auth;
+#[cfg(feature="c")]
+mod uniffi;
+
 pub mod config;
 pub mod discovery;
 pub mod domain_data;

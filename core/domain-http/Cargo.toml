@@ -17,6 +17,7 @@ reqwest = { version = "0.12.22", default-features = false, features = ["json", "
 posemesh-utils = { workspace = true }
 bytes = "1.10.1"
 thiserror.workspace = true
+uniffi = { version = "0.30", features = [ "cli" ] }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
@@ -29,6 +30,9 @@ serde-wasm-bindgen.workspace = true
 console_error_panic_hook = { workspace = true }
 wasm-streams = "0.4.2"
 
+[build-dependencies]
+uniffi = { version = "0.30", features = [ "build" ] }
+
 [dev-dependencies]
 dotenvy = "0.15.7"
 tokio-stream = "0.1.17"
@@ -36,7 +40,11 @@ wasm-bindgen-test.workspace = true
 uuid.workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[features]
+default = ["c"]
+c = []
 
 [profile.release]
 strip = true
