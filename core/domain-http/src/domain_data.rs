@@ -197,34 +197,7 @@ pub async fn download_v1_stream(
 > {
     let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
 
-    let (mut tx, rx) =
-        mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
-
-    let boundary = match response
-        .headers()
-        .get("content-type")
-        .and_then(|ct| ct.to_str().ok())
-        .and_then(|ct| {
-            if ct.starts_with("multipart/form-data; boundary=") {
-                Some(ct.split("boundary=").nth(1)?.to_string())
-            } else {
-                None
-            }
-        }) {
-        Some(b) => b,
-        None => {
-            tracing::error!("Invalid content-type header");
-            let _ = tx.close().await;
-            return Err("Invalid content-type header".into());
-        }
-    };
-
-    spawn(async move {
-        let stream = response.bytes_stream();
-        handle_domain_data_stream(tx, stream, &boundary).await;
-    });
-
-    Ok(rx)
+    stream_from_response(response).await
 }
 
 /// Build a stream from an HTTP response returned by the domain download endpoint.

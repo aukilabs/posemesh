@@ -174,10 +174,10 @@ impl DiscoveryService {
     }
 
     pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {
-        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref()
-            && cached_oidc_access_token == oidc_access_token
-        {
-            return self.clone();
+        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref() {
+            if cached_oidc_access_token == oidc_access_token {
+                return self.clone();
+            }
         }
         Self {
             dds_url: self.dds_url.clone(),
