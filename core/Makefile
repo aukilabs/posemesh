@@ -38,4 +38,3 @@ test-compute-node:
 	cargo test -p posemesh-compute-node
 
 ci-compute-node: fmt-compute-node clippy-compute-node test-compute-node
->>>>>>> 25161b5 (add posemesh-compute-node and runner api)
