@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
-use reqwest::{Body, Client, Response};
+use reqwest::{Body, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]
@@ -71,7 +71,7 @@ pub async fn download_by_id(
     id: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let response = Client::new()
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/domains/{}/data/{}?raw=true",
             url, domain_id, id
         ))
@@ -95,6 +95,23 @@ pub async fn download_by_id(
         )
         .into())
     }
+}
+
+/// Perform a direct absolute download request to the domain server.
+/// Sets headers: Accept: multipart/form-data, Authorization: Bearer <token>, posemesh-client-id.
+pub async fn request_download_absolute(
+    url: &str,
+    client_id: &str,
+    access_token: &str,
+) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+    let response = Client::new()
+        .get(url)
+        .bearer_auth(access_token)
+        .header("posemesh-client-id", client_id)
+        .header("Accept", "multipart/form-data")
+        .send()
+        .await?;
+    Ok(response)
 }
 
 pub async fn download_metadata_v1(
@@ -134,21 +151,14 @@ pub async fn download_v1(
     if let Some(data_type) = &query.data_type {
         params.insert("data_type", data_type.clone());
     }
-    let ids = {
-        if !query.ids.is_empty() {
-            let ids = query.ids.join(",");
-            if params.is_empty() {
-                &format!("?ids={}", ids)
-            } else {
-                &format!("?ids={}", ids)
-            }
-        } else {
-            ""
-        }
+    let ids = if !query.ids.is_empty() {
+        format!("?ids={}", query.ids.join(","))
+    } else {
+        String::new()
     };
 
     let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
+        .get(format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
         .bearer_auth(access_token)
         .header(
             "Accept",
@@ -187,6 +197,44 @@ pub async fn download_v1_stream(
 > {
     let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
 
+    let (mut tx, rx) =
+        mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
+
+    let boundary = match response
+        .headers()
+        .get("content-type")
+        .and_then(|ct| ct.to_str().ok())
+        .and_then(|ct| {
+            if ct.starts_with("multipart/form-data; boundary=") {
+                Some(ct.split("boundary=").nth(1)?.to_string())
+            } else {
+                None
+            }
+        }) {
+        Some(b) => b,
+        None => {
+            tracing::error!("Invalid content-type header");
+            let _ = tx.close().await;
+            return Err("Invalid content-type header".into());
+        }
+    };
+
+    spawn(async move {
+        let stream = response.bytes_stream();
+        handle_domain_data_stream(tx, stream, &boundary).await;
+    });
+
+    Ok(rx)
+}
+
+/// Build a stream from an HTTP response returned by the domain download endpoint.
+/// Parses multipart boundaries and yields DomainData items as they arrive.
+pub async fn stream_from_response(
+    response: Response,
+) -> Result<
+    mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let (mut tx, rx) =
         mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
 
@@ -341,7 +389,7 @@ async fn update_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let update_response = Client::new()
-        .put(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .put(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -374,7 +422,7 @@ async fn create_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let create_response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .post(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -471,6 +519,106 @@ pub async fn upload_v1(
     Ok(res)
 }
 
+/// Upload a single domain data item (create or update) as one HTTP request.
+/// Returns a list of created/updated DomainData entries (with empty data payloads).
+#[cfg(not(target_family = "wasm"))]
+pub async fn upload_one(
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    data: UploadDomainData,
+) -> Result<Vec<DomainData>, (StatusCode, String)> {
+    let boundary = "boundary";
+    let (method, body) = match &data.action {
+        DomainAction::Create(create) => {
+            let bytes = write_create_body(boundary, create, &data.data);
+            (reqwest::Method::POST, Body::from(bytes))
+        }
+        DomainAction::Update(update) => {
+            let bytes = write_update_body(boundary, update, &data.data);
+            (reqwest::Method::PUT, Body::from(bytes))
+        }
+    };
+
+    let endpoint = format!("{}/api/v1/domains/{}/data", url, domain_id);
+    let response = Client::new()
+        .request(method, endpoint)
+        .bearer_auth(access_token)
+        .header(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={}", boundary),
+        )
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if response.status().is_success() {
+        // Be tolerant to varying response shapes (full metadata or id-only)
+        let text = response
+            .text()
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        // Try strict metadata first
+        if let Ok(md) = serde_json::from_str::<ListDomainDataMetadata>(&text) {
+            let items: Vec<DomainData> = md
+                .data
+                .into_iter()
+                .map(|m| DomainData {
+                    metadata: m,
+                    data: Vec::new(),
+                })
+                .collect();
+            return Ok(items);
+        }
+        // Fallback: extract minimal fields from generic JSON
+        let v: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let mut out: Vec<DomainData> = Vec::new();
+        if let Some(arr) = v.get("data").and_then(|d| d.as_array()) {
+            for item in arr {
+                let id = item.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let domain_id = item
+                    .get("domain_id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = item
+                    .get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let data_type = item
+                    .get("data_type")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                out.push(DomainData {
+                    metadata: DomainDataMetadata {
+                        id,
+                        domain_id,
+                        name,
+                        data_type,
+                        size: 0,
+                        created_at: String::new(),
+                        updated_at: String::new(),
+                    },
+                    data: Vec::new(),
+                });
+            }
+            return Ok(out);
+        }
+        Err((StatusCode::INTERNAL_SERVER_ERROR, "invalid response".to_string()))
+    } else {
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err((status, text))
+    }
+}
+
 fn parse_headers(
     headers_slice: &[u8],
 ) -> Result<DomainData, Box<dyn std::error::Error + Send + Sync>> {
@@ -542,12 +690,11 @@ fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
 
 fn find_headers_end(data: &[u8]) -> Option<usize> {
     if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
-        Some(i + 4) // body starts after \r\n\r\n
-    } else if let Some(i) = data.windows(2).position(|w| w == b"\n\n") {
-        Some(i + 2) // body starts after \n\n
-    } else {
-        None
+        return Some(i + 4);
     }
+    data.windows(2)
+        .position(|w| w == b"\n\n")
+        .map(|i| i + 2)
 }
 
 async fn handle_domain_data_stream(
@@ -559,17 +706,14 @@ async fn handle_domain_data_stream(
 
     let mut buffer = Vec::new();
     let mut current_domain_data: Option<DomainData> = None;
-    let boundary_bytes = format!("--{}", boundary).as_bytes().to_vec();
+    let boundary_bytes = format!("--{}", boundary).into_bytes();
+    let keep_tail = boundary_bytes.len() + 4; // bytes to keep for boundary detection across chunks
 
     pin_mut!(stream);
 
     while let Some(chunk_result) = stream.next().await {
-        // Handle chunk result
         let chunk = match chunk_result {
-            Ok(c) if c.is_empty() => {
-                tx.close().await.ok();
-                return;
-            }
+            Ok(c) if c.is_empty() => continue,
             Ok(c) => c,
             Err(e) => {
                 let _ = tx.send(Err(e.into())).await;
@@ -579,68 +723,56 @@ async fn handle_domain_data_stream(
 
         buffer.extend_from_slice(&chunk);
 
-        // If we are in the middle of reading a domain_data part, continue filling it
-        if let Some(mut domain_data) = current_domain_data.take() {
-            let expected_size = domain_data.metadata.size as usize - domain_data.data.len();
-            if buffer.len() >= expected_size {
-                domain_data.data.extend_from_slice(&buffer[..expected_size]);
-                buffer.drain(..expected_size);
-                if tx.send(Ok(domain_data)).await.is_err() {
-                    return;
+        'consume: loop {
+            match &mut current_domain_data {
+                None => {
+                    let Some(boundary_pos) = find_boundary(&buffer, &boundary_bytes) else {
+                        if buffer.len() > keep_tail {
+                            buffer.drain(..buffer.len() - keep_tail);
+                        }
+                        break 'consume;
+                    };
+                    let Some(header_end_rel) = find_headers_end(&buffer[boundary_pos..]) else {
+                        break 'consume;
+                    };
+                    let headers_slice = &buffer[boundary_pos..boundary_pos + header_end_rel];
+                    let part_headers = parse_headers(headers_slice);
+                    let domain_data = match part_headers {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!("Failed to parse headers: {:?}", e);
+                            return;
+                        }
+                    };
+                    buffer.drain(..boundary_pos + header_end_rel);
+                    current_domain_data = Some(domain_data);
                 }
-            } else {
-                domain_data.data.extend_from_slice(&buffer);
-                buffer.clear();
-                current_domain_data = Some(domain_data);
-                continue;
+                Some(dd) => {
+                    if let Some(next_boundary_pos) = find_boundary(&buffer, &boundary_bytes) {
+                        let mut data_end = next_boundary_pos;
+                        if data_end >= 2 && &buffer[data_end - 2..data_end] == b"\r\n" {
+                            data_end -= 2;
+                        }
+                        dd.data.extend_from_slice(&buffer[..data_end]);
+                        buffer.drain(..next_boundary_pos);
+                        let finished = current_domain_data.take().unwrap();
+                        if tx.send(Ok(finished)).await.is_err() {
+                            return;
+                        }
+                    } else {
+                        if buffer.len() > keep_tail {
+                            let take = buffer.len() - keep_tail;
+                            dd.data.extend_from_slice(&buffer[..take]);
+                            buffer.drain(..take);
+                        }
+                        break 'consume;
+                    }
+                }
             }
-        }
-
-        // Process all boundaries in the current buffer
-        loop {
-            // Find the next boundary in the buffer
-            let boundary_pos = match find_boundary(&buffer, &boundary_bytes) {
-                Some(pos) => pos,
-                None => break, // No more boundaries found in current buffer
-            };
-
-            // Look for header end after boundary
-            let header_end = match find_headers_end(&buffer[boundary_pos..]) {
-                Some(end) => end,
-                None => break, // Incomplete headers, wait for more chunks
-            };
-
-            let headers_slice = &buffer[boundary_pos..boundary_pos + header_end];
-            let part_headers = parse_headers(headers_slice);
-
-            let mut domain_data = match part_headers {
-                Ok(data) => data,
-                Err(e) => {
-                    tracing::error!("Failed to parse headers: {:?}", e);
-                    return;
-                }
-            };
-
-            // Remove processed data (boundary + headers) from buffer
-            buffer.drain(..boundary_pos + header_end);
-
-            let expected_size = domain_data.metadata.size as usize - domain_data.data.len();
-            if buffer.len() >= expected_size {
-                domain_data.data.extend_from_slice(&buffer[..expected_size]);
-                buffer.drain(..expected_size);
-                if tx.send(Ok(domain_data)).await.is_err() {
-                    return;
-                }
-            } else {
-                domain_data.data.extend_from_slice(&buffer);
-                buffer.clear();
-                current_domain_data = Some(domain_data);
-                break;
-            }
-
-            // Continue to process the next boundary in the same buffer
         }
     }
+
+    let _ = tx.close().await;
 }
 
 #[cfg(test)]

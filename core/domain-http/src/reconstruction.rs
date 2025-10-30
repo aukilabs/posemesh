@@ -41,7 +41,7 @@ pub async fn forward_job_request_v1(
     request: &JobRequest,
 ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
     let response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/process", domain_server_url, domain_id))
+        .post(format!("{}/api/v1/domains/{}/process", domain_server_url, domain_id))
         .bearer_auth(access_token)
         .header("posemesh-client-id", client_id)
         .json(&request)

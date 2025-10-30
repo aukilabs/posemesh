@@ -93,7 +93,7 @@ impl DiscoveryService {
             .await?;
         let response = self
             .client
-            .get(&format!(
+            .get(format!(
                 "{}/api/v1/domains?org={}&with=domain_server",
                 self.dds_url, org
             ))
@@ -174,10 +174,10 @@ impl DiscoveryService {
     }
 
     pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {
-        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref() {
-            if cached_oidc_access_token == oidc_access_token {
-                return self.clone();
-            }
+        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref()
+            && cached_oidc_access_token == oidc_access_token
+        {
+            return self.clone();
         }
         Self {
             dds_url: self.dds_url.clone(),
@@ -225,7 +225,7 @@ impl DiscoveryService {
             let client_id = self.api_client.client_id.clone();
             async move {
                 let response = client
-                    .post(&format!("{}/api/v1/domains/{}/auth", dds_url, domain_id))
+                    .post(format!("{}/api/v1/domains/{}/auth", dds_url, domain_id))
                     .bearer_auth(access_token)
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)

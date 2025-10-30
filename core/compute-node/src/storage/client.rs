@@ -1,12 +1,11 @@
 use crate::errors::StorageError;
 use crate::storage::token::TokenRef;
 use anyhow::{Context, Result};
-use multer::Multipart;
+use futures::StreamExt;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use reqwest::{Client, Method, StatusCode};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
@@ -82,21 +81,21 @@ impl DomainClient {
         let url =
             Url::parse(uri).map_err(|e| StorageError::Other(format!("parse domain uri: {}", e)))?;
         let url_for_log = url.clone();
-        let mut headers = self.auth_headers();
-        headers.insert(ACCEPT, HeaderValue::from_static("multipart/form-data"));
         tracing::debug!(
             target: "posemesh_compute_node::storage::client",
             method = "GET",
             %url_for_log,
             "Sending domain request"
         );
-        let res = self
-            .http
-            .get(url)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+        let client_id = std::env::var("CLIENT_ID")
+            .unwrap_or_else(|_| format!("posemesh-compute-node/{}", uuid::Uuid::new_v4()));
+        let res = posemesh_domain_http::domain_data::request_download_absolute(
+            url.as_str(),
+            &client_id,
+            &self.token.get(),
+        )
+        .await
+        .map_err(|e| StorageError::Network(e.to_string()))?;
         let status = res.status();
         tracing::debug!(
             target: "posemesh_compute_node::storage::client",
@@ -118,44 +117,15 @@ impl DomainClient {
             .await
             .map_err(|e| StorageError::Other(format!("create datasets root: {}", e)))?;
 
-        let content_type = res
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                StorageError::Other("missing Content-Type header on domain response".into())
-            })?;
-        let boundary = multer::parse_boundary(content_type).map_err(|e| {
-            StorageError::Other(format!("invalid multipart boundary from domain: {}", e))
-        })?;
-        let mut multipart = Multipart::new(res.bytes_stream(), boundary);
         let mut parts = Vec::new();
-
-        while let Some(mut field) = multipart
-            .next_field()
+        let mut rx = posemesh_domain_http::domain_data::stream_from_response(res)
             .await
-            .map_err(|e| StorageError::Other(format!("read multipart field: {}", e)))?
-        {
-            let disposition = field
-                .headers()
-                .get("content-disposition")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or_default();
-            let params = parse_disposition_params(disposition);
-            let name = params
-                .get("name")
-                .cloned()
-                .unwrap_or_else(|| "domain-data".into());
-            let data_type = params.get("data-type").cloned().unwrap_or_default();
+            .map_err(|e| StorageError::Other(e.to_string()))?;
 
-            let mut buf = Vec::new();
-            while let Some(chunk) = field
-                .chunk()
-                .await
-                .map_err(|e| StorageError::Other(format!("stream multipart chunk: {}", e)))?
-            {
-                buf.extend_from_slice(&chunk);
-            }
+        while let Some(item) = rx.next().await {
+            let domain_item = item.map_err(|e| StorageError::Other(e.to_string()))?;
+            let name = domain_item.metadata.name.clone();
+            let data_type = domain_item.metadata.data_type.clone();
 
             let scan_folder = extract_timestamp(&name)
                 .map(|ts| sanitize_component(&ts))
@@ -172,7 +142,7 @@ impl DomainClient {
                     .await
                     .map_err(|e| StorageError::Other(format!("create parent dir: {}", e)))?;
             }
-            fs::write(&file_path, &buf)
+            fs::write(&file_path, &domain_item.data)
                 .await
                 .map_err(|e| StorageError::Other(format!("write temp file: {}", e)))?;
 
@@ -184,10 +154,10 @@ impl DomainClient {
                 .to_path_buf();
 
             parts.push(DownloadedPart {
-                id: params.get("id").cloned(),
+                id: Some(domain_item.metadata.id),
                 name: Some(name),
                 data_type: Some(data_type),
-                domain_id: params.get("domain-id").cloned(),
+                domain_id: Some(domain_item.metadata.domain_id),
                 path: file_path,
                 root: root.clone(),
                 relative_path,
@@ -214,25 +184,29 @@ impl DomainClient {
                 "missing domain_id for artifact upload".into(),
             ));
         }
-        let path = format!("api/v1/domains/{}/data", domain_id);
-        let url = self
-            .base
-            .join(&path)
-            .map_err(|e| StorageError::Other(format!("join upload path: {}", e)))?;
-        let boundary = format!("------------------------{}", Uuid::new_v4().simple());
-        let (body, content_type) = build_multipart_body(
-            &boundary,
-            request.name,
-            request.data_type,
-            domain_id,
-            request.existing_id,
-            request.bytes,
-        );
-        let mut headers = self.auth_headers();
-        let ct_value = HeaderValue::from_str(&content_type)
-            .unwrap_or_else(|_| HeaderValue::from_static("multipart/form-data"));
-        headers.insert(CONTENT_TYPE, ct_value);
-        let method = if request.existing_id.is_some() {
+        let action = if let Some(id) = request.existing_id {
+            posemesh_domain_http::domain_data::DomainAction::Update(
+                posemesh_domain_http::domain_data::UpdateDomainData { id: id.to_string() },
+            )
+        } else {
+            posemesh_domain_http::domain_data::DomainAction::Create(
+                posemesh_domain_http::domain_data::CreateDomainData {
+                    name: request.name.to_string(),
+                    data_type: request.data_type.to_string(),
+                },
+            )
+        };
+
+        let upload = posemesh_domain_http::domain_data::UploadDomainData {
+            action,
+            data: request.bytes.to_vec(),
+        };
+
+        let base = self.base.as_str().trim_end_matches('/');
+        let method = if matches!(
+            upload.action,
+            posemesh_domain_http::domain_data::DomainAction::Update(_)
+        ) {
             Method::PUT
         } else {
             Method::POST
@@ -240,53 +214,27 @@ impl DomainClient {
         tracing::debug!(
             target: "posemesh_compute_node::storage::client",
             method = %method,
-            %url,
+            url = %format!("{}/api/v1/domains/{}/data", base, domain_id),
             logical_path = request.logical_path,
             name = request.name,
             data_type = request.data_type,
             has_existing_id = request.existing_id.is_some(),
             "Sending domain upload request"
         );
-        let res = self
-            .http
-            .request(method.clone(), url.clone())
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
-        let status = res.status();
-        tracing::debug!(
-            target: "posemesh_compute_node::storage::client",
-            method = %method,
-            %url,
-            status = %status,
-            "Domain upload response received"
-        );
-        if !status.is_success() {
-            return Err(map_status(status));
-        }
-        let text = res
-            .text()
-            .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
-        if text.trim().is_empty() {
-            return Ok(None);
-        }
-        match serde_json::from_str::<PostDomainDataResponse>(&text) {
-            Ok(parsed) => {
-                let id = parsed.data.into_iter().next().map(|d| d.id);
+
+        match posemesh_domain_http::domain_data::upload_one(
+            base,
+            &self.token.get(),
+            domain_id,
+            upload,
+        )
+        .await
+        {
+            Ok(mut items) => {
+                let id = items.drain(..).next().map(|d| d.metadata.id);
                 Ok(id)
             }
-            Err(err) => {
-                tracing::debug!(
-                    target: "posemesh_compute_node::storage::client",
-                    error = %err,
-                    body = %text,
-                    "Failed to parse domain upload response body as JSON"
-                );
-                Ok(None)
-            }
+            Err((status, _body)) => Err(map_status(status)),
         }
     }
 
@@ -352,50 +300,6 @@ impl DomainClient {
     }
 }
 
-fn build_multipart_body(
-    boundary: &str,
-    name: &str,
-    data_type: &str,
-    domain_id: &str,
-    existing_id: Option<&str>,
-    bytes: &[u8],
-) -> (Vec<u8>, String) {
-    let mut body = Vec::with_capacity(bytes.len().saturating_add(256));
-    let disposition = if let Some(id) = existing_id {
-        format!(
-            "Content-Disposition: form-data; name=\"{}\"; data-type=\"{}\"; id=\"{}\"; domain-id=\"{}\"\r\n",
-            name, data_type, id, domain_id
-        )
-    } else {
-        format!(
-            "Content-Disposition: form-data; name=\"{}\"; data-type=\"{}\"; domain-id=\"{}\"\r\n",
-            name, data_type, domain_id
-        )
-    };
-    let header = format!(
-        "--{}\r\nContent-Type: application/octet-stream\r\n{}\r\n",
-        boundary, disposition
-    );
-    body.extend_from_slice(header.as_bytes());
-    body.extend_from_slice(bytes);
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
-    let content_type = format!("multipart/form-data; boundary={}", boundary);
-    (body, content_type)
-}
-
-#[derive(Debug, Deserialize)]
-struct PostDomainDataResponse {
-    #[serde(default)]
-    data: Vec<PostDomainDataItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PostDomainDataItem {
-    #[serde(default)]
-    id: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct ListDomainDataResponse {
     #[serde(default)]
@@ -423,20 +327,7 @@ fn map_status(status: reqwest::StatusCode) -> StorageError {
     }
 }
 
-fn parse_disposition_params(value: &str) -> HashMap<String, String> {
-    value
-        .split(';')
-        .filter_map(|segment| {
-            let trimmed = segment.trim();
-            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("form-data") {
-                return None;
-            }
-            let (key, val) = trimmed.split_once('=')?;
-            let cleaned = val.trim().trim_matches('"').to_string();
-            Some((key.trim().to_ascii_lowercase(), cleaned))
-        })
-        .collect()
-}
+// no parse_disposition_params; headers are parsed in posemesh-domain-http
 
 fn sanitize_component(value: &str) -> String {
     let sanitized: String = value

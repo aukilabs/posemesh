@@ -20,10 +20,10 @@ impl Config {
             api_url: std::env::var("API_URL")?,
             dds_url: std::env::var("DDS_URL")?,
             client_id: std::env::var("CLIENT_ID")?,
-            app_key: std::env::var("APP_KEY").map_or(None, |v| Some(v)),
-            app_secret: std::env::var("APP_SECRET").map_or(None, |v| Some(v)),
-            email: std::env::var("POSEMESH_EMAIL").map_or(None, |v| Some(v)),
-            password: std::env::var("POSEMESH_PASSWORD").map_or(None, |v| Some(v)),
+            app_key: std::env::var("APP_KEY").ok(),
+            app_secret: std::env::var("APP_SECRET").ok(),
+            email: std::env::var("POSEMESH_EMAIL").ok(),
+            password: std::env::var("POSEMESH_PASSWORD").ok(),
         })
     }
 }
