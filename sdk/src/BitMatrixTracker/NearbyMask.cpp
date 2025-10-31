@@ -47,7 +47,8 @@ bool buildNearbyMask(const cv::Size &imgSize,
             return true;
 
         // Temporary best distance^2 per pixel (uint16 max is plenty since radius<=~255)
-        cv::Mat bestDist(imgSize, CV_16U, cv::Scalar(std::numeric_limits<uint16_t>::max()));
+        //cv::Mat bestDist(imgSize, CV_16U, cv::Scalar(std::numeric_limits<uint16_t>::max()));
+        std::vector<uint16_t> bestDist(imgSize.width * imgSize.height, std::numeric_limits<uint16_t>::max());
 
         auto &offs = diskOffsets(radiusPx);
 
@@ -64,7 +65,8 @@ bool buildNearbyMask(const cv::Size &imgSize,
                     continue;
                 // d2 = o.x^2 + o.y^2 (precomputed implicitly)
                 const uint16_t d2 = static_cast<uint16_t>(o.x*o.x + o.y*o.y);
-                uint16_t &cur = bestDist.at<uint16_t>(y, x);
+                //uint16_t &cur = bestDist.at<uint16_t>(y, x);
+                uint16_t &cur = bestDist[y * W + x];
                 if (d2 < cur) {
                     cur = d2;
                     outNearbyMask(y, x) = static_cast<int16_t>(idx);
@@ -101,7 +103,7 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
             int y = static_cast<int>(p.y);
             if ((unsigned)x >= (unsigned)W || (unsigned)y >= (unsigned)H)
                 continue;
-            int16_t idx = nearbyMask(y, x);
+            const int16_t &idx = nearbyMask(y, x);
             if (idx > maxIdx)
                 maxIdx = idx;
         }

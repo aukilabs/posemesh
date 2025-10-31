@@ -12,6 +12,8 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                                int minValidTilesCount, // Skip clusters with too few valid tiles
                                std::vector<Cluster> &outClusters)
 {
+    std::vector<bool> visited(tileMask.rows * tileMask.cols, false);
+
     try {
         outClusters.clear();
         if (tileMask.empty())
@@ -19,20 +21,19 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
         const int H = tileMask.rows;
         const int W = tileMask.cols;
 
-        cv::Mat1b visited = cv::Mat1b::zeros(H, W);
         auto inb = [&](int y, int x) { return (unsigned)x < (unsigned)W && (unsigned)y < (unsigned)H; };
         const int dx[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
         const int dy[8] = { -1,-1,-1,  0, 0,  1, 1, 1 };
 
         for (int y0 = 0; y0 < H; ++y0) {
             for (int x0 = 0; x0 < W; ++x0) {
-                if (!tileMask(y0, x0) || visited(y0, x0))
+                if (!tileMask(y0, x0) || visited[y0 * W + x0])
                     continue;
                 std::queue<cv::Point> q;
                 q.emplace(x0, y0);
-                visited(y0, x0) = 1;
+                visited[y0 * W + x0] = true;
 
-                int minx = x0, maxx = x0, miny = y0, maxy = y0;
+                int minX = x0, maxX = x0, minY = y0, maxY = y0;
                 std::vector<cv::Point> pts;
                 pts.emplace_back(x0, y0);
 
@@ -40,24 +41,24 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                 while (!q.empty()) {
                     cv::Point p = q.front(); q.pop();
                     for (int k = 0; k < 8; ++k) {
-                        int nx = p.x + dx[k];
-                        int ny = p.y + dy[k];
-                        if (!inb(ny, nx))
+                        int nearbyX = p.x + dx[k];
+                        int nearbyY = p.y + dy[k];
+                        if (!inb(nearbyY, nearbyX))
                             continue;
-                        if (!tileMask(ny, nx) || visited(ny, nx))
+                        if (!tileMask(nearbyY, nearbyX) || visited[nearbyY * W + nearbyX])
                             continue;
-                        visited(ny, nx) = 1;
-                        q.emplace(nx, ny);
-                        pts.emplace_back(nx, ny);
-                        if (nx < minx) minx = nx;
-                        if (nx > maxx) maxx = nx;
-                        if (ny < miny) miny = ny;
-                        if (ny > maxy) maxy = ny;
+                        visited[nearbyY * W + nearbyX] = true;
+                        q.emplace(nearbyX, nearbyY);
+                        pts.emplace_back(nearbyX, nearbyY);
+                        if (nearbyX < minX) minX = nearbyX;
+                        if (nearbyX > maxX) maxX = nearbyX;
+                        if (nearbyY < minY) minY = nearbyY;
+                        if (nearbyY > maxY) maxY = nearbyY;
                     }
                 }
 
-                int widthTiles = maxx - minx + 1;
-                int heightTiles = maxy - miny + 1;
+                int widthTiles = maxX - minX + 1;
+                int heightTiles = maxY - minY + 1;
                 if (widthTiles < minSideLengthTiles || heightTiles < minSideLengthTiles) {
                     //std::cout << "Skip too small cluster (width or height < " << minSideLengthTiles << ")" << std::endl;
                     continue;
@@ -68,10 +69,10 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                 }
                 
                 Cluster c;
-                c.tileBounds = cv::Rect(minx, miny, (maxx - minx + 1), (maxy - miny + 1));
+                c.tileBounds = cv::Rect(minX, minY, (maxX - minX + 1), (maxY - minY + 1));
                 c.tileMask = cv::Mat1b::zeros(c.tileBounds.size());
                 for (const auto &p : pts) {
-                    c.tileMask(p.y - miny, p.x - minx) = 1;
+                    c.tileMask(p.y - minY, p.x - minX) = 1;
                 }
                 const int halo = 2;
                 c.pixelBounds = cv::Rect(c.tileBounds.x * tileSizePx,
