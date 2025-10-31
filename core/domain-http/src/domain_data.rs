@@ -504,11 +504,15 @@ pub async fn upload_one(
     let boundary = "boundary";
     let (method, body) = match &data.action {
         DomainAction::Create(create) => {
-            let bytes = write_create_body(boundary, create, &data.data);
+            let mut bytes = write_create_body(boundary, create, &data.data);
+            // terminate multipart body
+            bytes.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
             (reqwest::Method::POST, Body::from(bytes))
         }
         DomainAction::Update(update) => {
-            let bytes = write_update_body(boundary, update, &data.data);
+            let mut bytes = write_update_body(boundary, update, &data.data);
+            // terminate multipart body
+            bytes.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
             (reqwest::Method::PUT, Body::from(bytes))
         }
     };
