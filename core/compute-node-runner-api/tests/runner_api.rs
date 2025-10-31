@@ -122,11 +122,19 @@ async fn task_ctx_wiring_and_object_safety() {
     let input = &*input;
     let output = &*output;
     let ctrl = &*ctrl;
+    struct DummyToken;
+    impl posemesh_compute_node_runner_api::runner::AccessTokenProvider for DummyToken {
+        fn get(&self) -> String {
+            "t".into()
+        }
+    }
+    let tok = DummyToken;
     let ctx = TaskCtx {
         lease: &lease,
         input,
         output,
         ctrl,
+        access_token: &tok,
     };
 
     let r = DummyRunner;

@@ -60,6 +60,7 @@ impl RunnerRegistry {
         input: &dyn InputSource,
         output: &dyn ArtifactSink,
         ctrl: &dyn ControlPlane,
+        access_token: &dyn compute_runner_api::runner::AccessTokenProvider,
     ) -> std::result::Result<(), crate::errors::ExecutorError> {
         let cap = lease.task.capability.as_str();
         let runner = self
@@ -70,6 +71,7 @@ impl RunnerRegistry {
             input,
             output,
             ctrl,
+            access_token,
         };
         runner
             .run(ctx)
@@ -347,7 +349,7 @@ pub async fn run_cycle_with_dms(
     let heartbeat_handle = tokio::spawn(async move { heartbeat_driver.run().await });
 
     let run_res = reg
-        .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl)
+        .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref)
         .await;
 
     heartbeat_shutdown.cancel();

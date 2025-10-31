@@ -19,3 +19,10 @@ impl TokenRef {
         *self.0.write() = v;
     }
 }
+
+// Expose read-only access via runner API trait so runners can use the same token ref.
+impl compute_runner_api::runner::AccessTokenProvider for TokenRef {
+    fn get(&self) -> String {
+        TokenRef::get(self)
+    }
+}

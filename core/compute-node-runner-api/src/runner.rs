@@ -113,12 +113,19 @@ pub trait ControlPlane: Send + Sync {
     async fn log_event(&self, fields: serde_json::Value) -> Result<()>;
 }
 
+/// Provides access to a hot-swappable bearer token for domain requests.
+pub trait AccessTokenProvider: Send + Sync {
+    fn get(&self) -> String;
+}
+
 /// Task context passed to runners.
 pub struct TaskCtx<'a> {
     pub lease: &'a LeaseEnvelope,
     pub input: &'a dyn InputSource,
     pub output: &'a dyn ArtifactSink,
     pub ctrl: &'a dyn ControlPlane,
+    /// Hot-swappable bearer token reference (read-only) for domain HTTP.
+    pub access_token: &'a dyn AccessTokenProvider,
 }
 
 /// Runner entrypoint.

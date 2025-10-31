@@ -112,7 +112,14 @@ async fn dispatches_to_correct_runner_only() {
     let input = DummyInput;
     let output = DummySink;
     let ctrl = DummyCtrl;
-    reg.run_for_lease(&lease, &input, &output, &ctrl)
+    struct DummyToken;
+    impl compute_runner_api::runner::AccessTokenProvider for DummyToken {
+        fn get(&self) -> String {
+            "t".into()
+        }
+    }
+    let tok = DummyToken;
+    reg.run_for_lease(&lease, &input, &output, &ctrl, &tok)
         .await
         .expect("run ok");
 
