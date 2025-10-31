@@ -79,6 +79,8 @@ bool buildNearbyMask(const cv::Size &imgSize,
     }
 }
 
+static std::vector<bool> s_used; // Reused to avoid memory allocations (for speed!)
+
 // Count inliers for ONE family with one-to-one claiming.
 // - proj: pixel projections of target features for this family. (will be rounded to int)
 // - label: label map built by buildLabelMap for the same family
@@ -96,29 +98,19 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
     outProjInlierIndices.clear();
     outNearbyMaskInlierLabels.clear();
 
-    // Compute max index present in label to size the used[] bitset compactly
-    int16_t maxIdx = -1;
-    {
-        // Light scan over proj to avoid scanning entire label
-        for (const auto &p : proj) {
-            int px = static_cast<int>(p.x);
-            int py = static_cast<int>(p.y);
-            if (px < 0 || px >= W || py < 0 || py >= H)
-                continue;
-
-            const int16_t &idx = nearbyMask[py * W + px];
-            if (idx > maxIdx)
-                maxIdx = idx;
-        }
+    auto& used = s_used;
+    if (used.empty()) {
+        // Must fit all detected feature points in the photo.
+        // It's fine if too big.
+        // Whenever needed we just increase the size below. Keep reusing same buffer to avoid allocations.
+        used.resize(1000, false);
     }
+    else {
+        // Reset the buffer to all false. Then we mark used features to not match same feature multiple times.
+        std::fill(used.begin(), used.end(), false);
+    }
+
     int inliers = 0;
-    if (maxIdx < 0) {
-        // No valid indices touched by these projections
-        return 0;
-    }
-
-    std::vector<uint8_t> used(static_cast<size_t>(maxIdx) + 1, 0);
-
     for (int i = 0; i < proj.size(); ++i) {
         const auto &p = proj[i];
         const int px = static_cast<int>(p.x);
@@ -130,11 +122,15 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
         if (idx < 0)
             continue;
 
-        if (idx < static_cast<int>(used.size())) {
-            if (used[idx])
-                continue;
-            used[idx] = 1;
+        if (idx >= static_cast<int>(used.size())) {
+            used.resize(idx + 1000, false); // Expand extra so we don't expand every loop. We never shrink "used" so this would only happen a few times, if ever.
         }
+    
+        if (used[idx])
+            continue; // Don't match same photo feature from different target features.
+
+        used[idx] = true;
+
         ++inliers;
         outProjInlierIndices.push_back(i);
         outNearbyMaskInlierLabels.push_back(idx);
