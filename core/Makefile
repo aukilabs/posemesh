@@ -22,7 +22,7 @@ build-domain-http-wasm:
 	@rm -rf domain-http/pkg
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http ./build-wasm.sh
 
-unit-tests:
+unit-tests: ci-compute-node
 	@make build-domain-http-wasm
 	@cd domain-http/js-tests && npm install && npx playwright install chromium && npm run test:all
 	@cargo test --release --all-features -- --test-threads=1
