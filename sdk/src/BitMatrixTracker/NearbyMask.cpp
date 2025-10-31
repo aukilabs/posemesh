@@ -37,11 +37,10 @@ static std::vector<cv::Point> &diskOffsets(float radius)
 bool buildNearbyMask(const cv::Size &imgSize,
                      const std::vector<cv::Point2f> &centers,
                      float radiusPx,
-                     cv::Mat1s &outNearbyMask)
+                     std::vector<int16_t> &outNearbyMask)
 {
     try {
-        outNearbyMask.create(imgSize);
-        outNearbyMask = -1;
+        outNearbyMask.assign(imgSize.width * imgSize.height, static_cast<int16_t>(-1));
 
         if (centers.empty())
             return true;
@@ -69,7 +68,7 @@ bool buildNearbyMask(const cv::Size &imgSize,
                 uint16_t &cur = bestDist[y * W + x];
                 if (d2 < cur) {
                     cur = d2;
-                    outNearbyMask(y, x) = static_cast<int16_t>(idx);
+                    outNearbyMask[y * W + x] = static_cast<int16_t>(idx);
                 }
             }
         }
@@ -84,12 +83,15 @@ bool buildNearbyMask(const cv::Size &imgSize,
 // - proj: pixel projections of target features for this family. (will be rounded to int)
 // - label: label map built by buildLabelMap for the same family
 int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
-                         const cv::Mat1s &nearbyMask,
+                         const std::vector<int16_t> &nearbyMask,
+                         const int W, const int H,
                          std::vector<int> &outProjInlierIndices,
                          std::vector<int16_t> &outNearbyMaskInlierLabels)
 {
-    const int H = nearbyMask.rows;
-    const int W = nearbyMask.cols;
+    if (nearbyMask.size() != W * H) {
+        std::cerr << "countInliersOneToOne: nearbyMask size mismatch (nearbyMask.size(): " << nearbyMask.size() << ", W: " << W << ", H: " << H << ")" << std::endl;
+        return 0;
+    }
 
     outProjInlierIndices.clear();
     outNearbyMaskInlierLabels.clear();
@@ -99,11 +101,12 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
     {
         // Light scan over proj to avoid scanning entire label
         for (const auto &p : proj) {
-            int x = static_cast<int>(p.x);
-            int y = static_cast<int>(p.y);
-            if ((unsigned)x >= (unsigned)W || (unsigned)y >= (unsigned)H)
+            int px = static_cast<int>(p.x);
+            int py = static_cast<int>(p.y);
+            if (px < 0 || px >= W || py < 0 || py >= H)
                 continue;
-            const int16_t &idx = nearbyMask(y, x);
+
+            const int16_t &idx = nearbyMask[py * W + px];
             if (idx > maxIdx)
                 maxIdx = idx;
         }
@@ -118,10 +121,12 @@ int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
 
     for (int i = 0; i < proj.size(); ++i) {
         const auto &p = proj[i];
-        if (p.x >= W || p.y >= H || p.x < 0 || p.y < 0)
+        const int px = static_cast<int>(p.x);
+        const int py = static_cast<int>(p.y);
+        if (px < 0 || px >= W || py < 0 || py >= H)
             continue;
 
-        int16_t idx = nearbyMask(p.y, p.x);
+        const int16_t idx = nearbyMask[py * W + px];
         if (idx < 0)
             continue;
 

@@ -21,9 +21,11 @@ namespace BitMatrixTracker {
 bool buildNearbyMask(const cv::Size &imgSize,
                      const std::vector<cv::Point2f> &centers,
                      float radiusPx,
-                     cv::Mat1s &outNearbyMask);
+                     std::vector<int16_t> &outNearbyMask);
+
 int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
-                         const cv::Mat1s &nearbyMask,
+                         const std::vector<int16_t> &nearbyMask,
+                         const int W, const int H,
                          std::vector<int> &outProjInlierIndices,
                          std::vector<int16_t> &outNearbyMaskInliers);
 
@@ -37,12 +39,17 @@ struct RansacResult {
     int iterations {0};
 };
 
-void plotNearbyMask(const cv::Mat &gray, const cv::Mat1s &label, const std::string &filename) {
+void plotNearbyMask(const cv::Mat &gray, const std::vector<int16_t> &label, const std::string &filename) {
+    if (label.size() != gray.rows * gray.cols) {
+        std::cerr << "plotNearbyMask: label size mismatch (label.size(): " << label.size() << ", gray.rows: " << gray.rows << ", gray.cols: " << gray.cols << ")" << std::endl;
+        return;
+    }
+
     cv::Mat plot = cv::Mat::zeros(gray.rows, gray.cols, CV_8UC3);
     cv::cvtColor(gray, plot, cv::COLOR_GRAY2BGR);
-    for (int y = 0; y < label.rows; ++y) {
-        for (int x = 0; x < label.cols; ++x) {
-            int labelVal = label(y, x);
+    for (int y = 0; y < gray.rows; ++y) {
+        for (int x = 0; x < gray.cols; ++x) {
+            int labelVal = label[y * gray.cols + x];
             if (labelVal >= 0) {
                 const cv::Scalar color = cv::Scalar(255 - (20 * labelVal) % 200, (33 * labelVal) % 255, 30);
                 cv::circle(plot, cv::Point(x, y), 1, color, -1);
@@ -58,8 +65,9 @@ static bool ransacHomography(const Config &cfg,
                              const Detections &diag2,
                              const cv::Matx33d &cameraIntrinsics,
                              const cv::Size &imageSize,
-                             const cv::Mat1s &label1,
-                             const cv::Mat1s &label2,
+                             const std::vector<int16_t> &label1,
+                             const std::vector<int16_t> &label2,
+                             int maskW, int maskH,
                              float sizeFracMin,
                              float sizeFracMax,
                              RansacResult &out,
@@ -102,8 +110,8 @@ static bool ransacHomography(const Config &cfg,
             const auto& labelsForProj1 = flippedDiags ? label2 : label1;
             const auto& labelsForProj2 = flippedDiags ? label1 : label2;
 
-            int s1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
-            int s2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+            int s1 = countInliersOneToOne(proj1, labelsForProj1, maskW, maskH, markerInlierIndices1, nearbyMaskInliers1);
+            int s2 = countInliersOneToOne(proj2, labelsForProj2, maskW, maskH, markerInlierIndices2, nearbyMaskInliers2);
             int score = s1 + s2;
             if (score < 4) {
                 // Not good enough, skip ahead.
@@ -157,8 +165,8 @@ static bool ransacHomography(const Config &cfg,
                 markerInlierIndices2.clear();
                 nearbyMaskInliers1.clear();
                 nearbyMaskInliers2.clear();
-                const int newS1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
-                const int newS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+                const int newS1 = countInliersOneToOne(proj1, labelsForProj1, maskW, maskH, markerInlierIndices1, nearbyMaskInliers1);
+                const int newS2 = countInliersOneToOne(proj2, labelsForProj2, maskW, maskH, markerInlierIndices2, nearbyMaskInliers2);
                 const int newScore = newS1 + newS2;
 
                 if (newScore > score) {
@@ -203,8 +211,8 @@ static bool ransacHomography(const Config &cfg,
             const auto& labelsForProj1 = out.flipDiags ? label2 : label1;
             const auto& labelsForProj2 = out.flipDiags ? label1 : label2;
 
-            const int finalS1 = countInliersOneToOne(proj1, labelsForProj1, markerInlierIndices1, nearbyMaskInliers1);
-            const int finalS2 = countInliersOneToOne(proj2, labelsForProj2, markerInlierIndices2, nearbyMaskInliers2);
+            const int finalS1 = countInliersOneToOne(proj1, labelsForProj1, maskW, maskH, markerInlierIndices1, nearbyMaskInliers1);
+            const int finalS2 = countInliersOneToOne(proj2, labelsForProj2, maskW, maskH, markerInlierIndices2, nearbyMaskInliers2);
             const int finalScore = finalS1 + finalS2;
             //std::cout << "Final refinement with all inliers (score: " << finalScore << ")" << std::endl;
 
@@ -293,7 +301,7 @@ bool estimateWithRansac(const cv::Mat &gray,
 {
     try {
         // Build NearbyMask label maps
-        cv::Mat1s nearbyMask1, nearbyMask2;
+        std::vector<int16_t> nearbyMask1, nearbyMask2;
 
         if (!buildNearbyMask(gray.size(), diag1.points, cfg.inlierRadiusPx, nearbyMask1)) {
             std::cout << "buildNearbyMask diag1 failed" << std::endl;
@@ -315,7 +323,7 @@ bool estimateWithRansac(const cv::Mat &gray,
         RansacResult result;
         bool success = ransacHomography(
             cfg, target, diag1, diag2, cameraIntrinsics,
-            gray.size(), nearbyMask1, nearbyMask2,
+            gray.size(), nearbyMask1, nearbyMask2, gray.cols, gray.rows,
             sizeFracMin, sizeFracMax, result, debug
         );
 
