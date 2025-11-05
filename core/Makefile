@@ -5,7 +5,7 @@ OS ?= "macOS"
 ARCH ?= "ARM64"
 CONFIG ?= "Release"
 
-.PHONY: build-domain build-domain-wasm unit-tests build-domain-http-wasm
+.PHONY: build-domain build-domain-wasm unit-tests build-domain-http-wasm publish-domain-http publish-utils
 
 build-domain:
 ifeq ($(ARCH),WASM)
@@ -54,11 +54,6 @@ publish-domain-http:
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
-	echo "posemesh-utils version: $$VERSION, will be published to npm and cargo"; \
-	if ! grep -q "## v$${VERSION}" utils/README.md; then \
-		echo "ERROR: No changelog for v$${VERSION} found in utils/README.md"; \
-		exit 1; \
-	fi; \
 	if cargo info posemesh-utils | grep -q "$$VERSION"; then \
 		echo "ERROR: Version $$VERSION is already published on crates.io."; \
 		exit 1; \

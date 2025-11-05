@@ -465,6 +465,6 @@ mod tests {
         let mut job_request= JobRequest::default();
         job_request.processing_type = "invalid_processing_type".to_string();
         let res = client.submit_job_request_v1(&config.1, &job_request).await.expect_err("Failed to submit job request");
-        assert_eq!(res.to_string(), "Failed to process domain. Status: 400 Bad Request - invalid processing type");
+        assert_eq!(res.to_string(), "Auki response - status: 400 Bad Request, error: Failed to process domain. invalid processing type");
     }
 }
