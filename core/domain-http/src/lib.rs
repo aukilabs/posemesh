@@ -120,7 +120,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         data: Vec<UploadDomainData>,
-    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<DomainDataMetadata>, DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         upload_v1(
             &domain.domain.domain_server.url,
