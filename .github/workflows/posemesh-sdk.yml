@@ -21,6 +21,8 @@ jobs:
   run_test:
     name: Run Tests
     uses: ./.github/workflows/unit-tests.yml
+    with:
+      publish_domain_http: true
     secrets: inherit
 
   build_apple_frameworks:

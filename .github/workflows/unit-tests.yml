@@ -11,6 +11,12 @@ on:
         required: true
         type: string
   workflow_call:
+    inputs:
+      publish_domain_http:
+        description: 'Publish domain-http package'
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - release/*
@@ -79,4 +85,15 @@ jobs:
           TEST_ORGANIZATION=${{ vars.TEST_ORGANIZATION_ID }}
           EOF
           make unit-tests
-
+        
+      - name: Publish domain-http package
+        if: ${{ github.event.inputs.publish_domain_http }}
+        continue-on-error: true
+        env:
+          CI: true
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          mkdir -p ~/.cargo
+          echo "[registry]" > ~/.cargo/credentials.toml
+          echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
+          make publish-domain-http

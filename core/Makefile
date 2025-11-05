@@ -34,12 +34,20 @@ publish-domain-http:
 		echo "ERROR: No changelog for v$${VERSION} found in domain-http/README.md"; \
 		exit 1; \
 	fi; \
-	read -p "Continue with publish? [y/N]: " CONFIRM; \
-	if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
-		echo "Publish cancelled."; \
+	if npm view posemesh-domain-http@$$VERSION > /dev/null 2>&1; then \
+		echo "ERROR: Version $$VERSION is already published on npm."; \
 		exit 1; \
+	fi; \
+	if cargo info posemesh-domain-http | grep -q "$$VERSION"; then \
+		echo "ERROR: Version $$VERSION is already published on crates.io."; \
+		exit 1; \
+	fi; \
+	if [ -z "$$CI" ]; then \
+		read -p "Continue with publish? [y/N]: " CONFIRM; \
+		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
+			echo "Publish cancelled."; \
+			exit 1; \
+		fi; \
 	fi
-	@make build-domain-http-wasm
-	@make unit-tests
 	@cd domain-http/pkg && npm publish
 	@cd domain-http && cargo publish
