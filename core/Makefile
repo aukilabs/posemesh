@@ -51,3 +51,23 @@ publish-domain-http:
 	fi
 	@cd domain-http/pkg && npm publish
 	@cd domain-http && cargo publish
+
+publish-utils:
+	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
+	echo "posemesh-utils version: $$VERSION, will be published to npm and cargo"; \
+	if ! grep -q "## v$${VERSION}" utils/README.md; then \
+		echo "ERROR: No changelog for v$${VERSION} found in utils/README.md"; \
+		exit 1; \
+	fi; \
+	if cargo info posemesh-utils | grep -q "$$VERSION"; then \
+		echo "ERROR: Version $$VERSION is already published on crates.io."; \
+		exit 1; \
+	fi; \
+	if [ -z "$$CI" ]; then \
+		read -p "Continue with publish? [y/N]: " CONFIRM; \
+		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
+			echo "Publish cancelled."; \
+			exit 1; \
+		fi; \
+	fi
+	@cd utils && cargo publish

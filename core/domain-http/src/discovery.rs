@@ -15,7 +15,7 @@ use posemesh_utils::sleep;
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
 
-use crate::auth::{AuthClient, TokenCache, get_cached_or_fresh_token, parse_jwt};
+use crate::{errors::{AukiErrorResponse, DomainError}, auth::{AuthClient, TokenCache, get_cached_or_fresh_token, parse_jwt}};
 pub const ALL_DOMAINS_ORG: &str = "all";
 pub const OWN_DOMAINS_ORG: &str = "own";
 
@@ -86,7 +86,7 @@ impl DiscoveryService {
     pub async fn list_domains(
         &self,
         org: &str,
-    ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<DomainWithServer>, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -109,7 +109,7 @@ impl DiscoveryService {
         } else {
             let status = response.status();
             let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(format!("Failed to list domains. Status: {} - {} - {}", status, text, org).into())
+            Err(AukiErrorResponse { status, error: format!("Failed to list domains. {}", text) }.into())
         }
     }
 
@@ -191,7 +191,7 @@ impl DiscoveryService {
     pub async fn auth_domain(
         &self,
         domain_id: &str,
-    ) -> Result<DomainWithToken, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<DomainWithToken, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -243,7 +243,7 @@ impl DiscoveryService {
                         .text()
                         .await
                         .unwrap_or_else(|_| "Unknown error".to_string());
-                    Err(format!("Failed to auth domain. Status: {} - {}", status, text).into())
+                    Err(AukiErrorResponse { status, error: format!("Failed to auth domain. {}", text) }.into())
                 }
             }
         })

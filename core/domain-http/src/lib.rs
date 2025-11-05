@@ -1,9 +1,9 @@
 use futures::channel::mpsc::Receiver;
-
 use crate::domain_data::{
     DomainData, DomainDataMetadata, DownloadQuery, delete_by_id, download_by_id,
     download_metadata_v1, download_v1_stream,
 };
+
 #[cfg(target_family = "wasm")]
 use crate::domain_data::{UploadDomainData, upload_v1};
 
@@ -14,10 +14,14 @@ pub mod domain_data;
 pub mod reconstruction;
 #[cfg(target_family = "wasm")]
 pub mod wasm;
+pub mod errors;
 
 use crate::auth::TokenCache;
 use crate::discovery::{DiscoveryService, DomainWithServer};
+#[cfg(not(target_family = "wasm"))]
+use crate::errors::DomainError;
 pub use crate::reconstruction::JobRequest;
+
 
 #[derive(Debug, Clone)]
 pub struct DomainClient {
@@ -79,8 +83,8 @@ impl DomainClient {
         domain_id: &str,
         query: &DownloadQuery,
     ) -> Result<
-        Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
-        Box<dyn std::error::Error + Send + Sync>,
+        Receiver<Result<DomainData, DomainError>>,
+        DomainError,
     > {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         let rx = download_v1_stream(
@@ -99,7 +103,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         data: Receiver<domain_data::UploadDomainData>,
-    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<DomainDataMetadata>, DomainError> {
         use crate::{auth::TokenCache, domain_data::upload_v1_stream};
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         upload_v1_stream(
@@ -131,7 +135,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         query: &DownloadQuery,
-    ) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<DomainDataMetadata>, DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         download_metadata_v1(
             &domain.domain.domain_server.url,
@@ -147,7 +151,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         id: &str,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<u8>, DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         download_by_id(
             &domain.domain.domain_server.url,
@@ -163,7 +167,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         id: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         delete_by_id(
             &domain.domain.domain_server.url,
@@ -178,7 +182,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         request: &JobRequest,
-    ) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<reqwest::Response, DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         crate::reconstruction::forward_job_request_v1(
             &domain.domain.domain_server.url,
@@ -193,7 +197,7 @@ impl DomainClient {
     pub async fn list_domains(
         &self,
         org: &str,
-    ) -> Result<Vec<DomainWithServer>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<DomainWithServer>, DomainError> {
         self.discovery_client.list_domains(org).await
     }
 }

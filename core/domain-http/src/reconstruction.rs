@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
+use crate::errors::{AukiErrorResponse, DomainError};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JobRequest {
     pub data_ids: Vec<String>,
@@ -39,7 +41,7 @@ pub async fn forward_job_request_v1(
     access_token: &str,
     domain_id: &str,
     request: &JobRequest,
-) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Response, DomainError> {
     let response = Client::new()
         .post(&format!("{}/api/v1/domains/{}/process", domain_server_url, domain_id))
         .bearer_auth(access_token)
@@ -56,7 +58,7 @@ pub async fn forward_job_request_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(format!("Failed to process domain. Status: {} - {}", status, text).into())
+        Err(AukiErrorResponse { status, error: format!("Failed to process domain. {}", text) }.into())
     }
 }
 

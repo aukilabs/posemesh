@@ -12,8 +12,8 @@ on:
         type: string
   workflow_call:
     inputs:
-      publish_domain_http:
-        description: 'Publish domain-http package'
+      publish:
+        description: 'Publish packages'
         required: false
         type: boolean
         default: false
@@ -86,8 +86,8 @@ jobs:
           EOF
           make unit-tests
         
-      - name: Publish domain-http package
-        if: ${{ github.event.inputs.publish_domain_http }}
+      - name: Publish packages
+        if: ${{ github.event.inputs.publish && github.event_name == 'workflow_call' }}
         continue-on-error: true
         env:
           CI: true
@@ -97,3 +97,4 @@ jobs:
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
           make publish-domain-http
+          make publish-utils
