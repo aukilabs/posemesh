@@ -18,7 +18,6 @@ pub mod errors;
 
 use crate::auth::TokenCache;
 use crate::discovery::{DiscoveryService, DomainWithServer};
-#[cfg(not(target_family = "wasm"))]
 use crate::errors::DomainError;
 pub use crate::reconstruction::JobRequest;
 
