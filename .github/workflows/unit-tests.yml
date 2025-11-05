@@ -96,5 +96,5 @@ jobs:
           mkdir -p ~/.cargo
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
-          make publish-domain-http
           make publish-utils
+          make publish-domain-http

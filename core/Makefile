@@ -30,18 +30,17 @@ unit-tests:
 publish-domain-http:
 	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
 	echo "posemesh-domain-http version: $$VERSION, will be published to npm and cargo"; \
-	if ! grep -q "## v$${VERSION}" domain-http/README.md; then \
-		echo "ERROR: No changelog for v$${VERSION} found in domain-http/README.md"; \
-		exit 1; \
+	IS_STABLE=`echo "$$VERSION" | grep -E '.*-rc|.*-beta|.*-alpha'` ; \
+	if [ -z "$$IS_STABLE" ]; then \
+		if ! grep -q "## v$${VERSION}" domain-http/README.md; then \
+			echo "ERROR: No changelog for v$${VERSION} found in domain-http/README.md"; \
+			exit 1; \
+		fi; \
 	fi; \
 	if npm view posemesh-domain-http@$$VERSION > /dev/null 2>&1; then \
 		echo "ERROR: Version $$VERSION is already published on npm."; \
 		exit 1; \
 	fi; \
-	if cargo info posemesh-domain-http | grep -q "$$VERSION"; then \
-		echo "ERROR: Version $$VERSION is already published on crates.io."; \
-		exit 1; \
-	fi; \
 	if [ -z "$$CI" ]; then \
 		read -p "Continue with publish? [y/N]: " CONFIRM; \
 		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
@@ -49,15 +48,11 @@ publish-domain-http:
 			exit 1; \
 		fi; \
 	fi
+	@cargo publish -p posemesh-domain-http
 	@cd domain-http/pkg && npm publish
-	@cd domain-http && cargo publish
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
-	if cargo info posemesh-utils | grep -q "$$VERSION"; then \
-		echo "ERROR: Version $$VERSION is already published on crates.io."; \
-		exit 1; \
-	fi; \
 	if [ -z "$$CI" ]; then \
 		read -p "Continue with publish? [y/N]: " CONFIRM; \
 		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
@@ -65,4 +60,4 @@ publish-utils:
 			exit 1; \
 		fi; \
 	fi
-	@cd utils && cargo publish
+	@cargo publish -p posemesh-utils

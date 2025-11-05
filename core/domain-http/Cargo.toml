@@ -5,6 +5,7 @@ edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
 license = "MIT"
+rust-version = "1.89.0"
 
 [dependencies]
 base64 = {workspace = true}
