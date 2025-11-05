@@ -135,7 +135,7 @@ describe('Posemesh Domain HTTP', () => {
             await expect(client.uploadDomainData(config.DOMAIN_ID, [{
                 id: "a84a36e5-312b-4f80-974a-06f5d19c1e16",
                 data: dataBytes,
-            }])).rejects.toThrow(/Update failed with status: invalid domain access token/);
+            }])).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to update data. invalid domain access token/);
         });
 
         it('should list all domains within my organization', async () => {
@@ -187,7 +187,7 @@ describe('Posemesh Domain HTTP', () => {
             await expect(client.submitJobV1(config.DOMAIN_ID, {
                 data_ids: ["a84a36e5-312b-4f80-974a-06f5d19c1e16"],
                 server_url: "test"
-            } as JobRequest)).rejects.toThrow(/Failed to process domain. Status: 403 Forbidden - invalid domain access token/);
+            } as JobRequest)).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to process domain. invalid domain access token/);
         });
     });
 
@@ -295,7 +295,7 @@ describe('Posemesh Domain HTTP', () => {
                 data_ids: [],
                 server_url: "test",
                 processing_type: "invalid_processing_type"
-            })).rejects.toThrow(/Failed to process domain. Status: 400 Bad Request - invalid processing type/);
+            })).rejects.toThrow(/Auki response - status: 400 Bad Request, error: Failed to process domain. invalid processing type/);
         });
     });
 
