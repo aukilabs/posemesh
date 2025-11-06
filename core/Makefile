@@ -42,9 +42,14 @@ publish-domain-http:
 		exit 1; \
 	fi; \
 	if [ -z "$$CI" ]; then \
-		read -p "Continue with publish? [y/N]: " CONFIRM; \
-		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
-			echo "Publish cancelled."; \
+		if make unit-tests; then \
+			read -p "Continue with publish? [y/N]: " CONFIRM; \
+			if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
+				echo "Publish cancelled."; \
+				exit 1; \
+			fi; \
+		else \
+			echo "Unit tests failed. Aborting publish."; \
 			exit 1; \
 		fi; \
 	fi
