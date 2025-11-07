@@ -7,27 +7,30 @@ namespace psm {
 namespace BitMatrixTracker {
 
 struct Config {
-    int tileSizePx;                   // default: 40
-    float peakThreshold;              // default: 0.25
-    int tileHistogramBins;            // default: 32
-    float minContrast;                // default: 0.30
-    bool validateSubtiles;            // default: true
-    int minClusterSideLengthTiles;    // default: 2
-    int minClusterValidTilesCount;    // default: 4
+    int tileSizePx;                    // default: 40
+    float peakThreshold;               // default: 0.25
+    int tileHistogramBins;             // default: 32
+    float minContrast;                 // default: 0.30
+    bool validateSubtiles;             // default: true
+    int minClusterSideLengthTiles;     // default: 2
+    int minClusterValidTilesCount;     // default: 4
+    float minClusterValidAreaRatio;    // default: 0.3
+    float maxClusterBoundsAspectRatio; // default: 2
 
     std::string cornerNetWeightsPath; // default: "cornernet.bin"
     float confidenceThreshold;        // default: 0.80
     int angleHistBins;                // default: 30
     float angleKeepDegLoose;          // default: 20.0f
     float angleKeepDegStrict;         // default: 15.0f
-    float orthogonalityToleranceDeg;  // default: 10.0f
+    float orthogonalityToleranceDeg;  // default: 15.0f
     float angleJitterDeg;             // default: 2.0f
+    int samplerRandomSeed;            // default: 0 (seed with system time)
 
     // RANSAC / inliers / collapse
     int ransacMaxIters;                 // default: 50000
     int maxInnerRefinements;            // default: 4
     bool useFindHomographyFast;         // default: true
-    float inlierRadiusPx;               // default: 6.0f
+    float inlierRadiusPx;               // default: 4.0f
     float collapseRadiusPx;             // default: 2.0f
     //float sizeFracMin;                // default: 0.08f
     //float sizeFracMax;                // default: 0.50f

@@ -26,6 +26,8 @@ bool buildClustersFromTileMask(const cv::Mat1b &tileMask,
                                int tileSizePx,
                                int minSideLengthTiles,
                                int minValidTilesCount,
+                               float minValidAreaRatio,
+                               float maxBoundsAspectRatio,
                                std::vector<Cluster> &outClusters);
 
 bool detectCornersPerCluster(const cv::Mat& normalizedU8,
@@ -54,6 +56,7 @@ bool estimateWithRansac(const cv::Mat &gray,
     cv::Matx33d &outH,
     Pose &outPose,
     bool &outFlipDiags,
+    bool &outRot180,
     int &outInliers,
     int &outIterations,
     bool debug);
@@ -128,6 +131,8 @@ bool Estimator::computeTileClusters(const cv::Mat &gray,
                                        m_impl->m_config.tileSizePx,
                                        m_impl->m_config.minClusterSideLengthTiles,
                                        m_impl->m_config.minClusterValidTilesCount,
+                                       m_impl->m_config.minClusterValidAreaRatio,
+                                       m_impl->m_config.maxClusterBoundsAspectRatio,
                                        outClusters)) {
             return false;
         }
@@ -170,6 +175,15 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
         Detections raw;
         int rawCount = 0;
 
+        if (diagnostics) {
+            cv::Mat plot;
+            cv::cvtColor(m_impl->m_normalized, plot, cv::COLOR_GRAY2BGR);
+            // INSERT_YOUR_CODE
+            // Draw the pixel bounds of the cluster on the plot as a rectangle (blue)
+            cv::rectangle(plot, cluster.pixelBounds, cv::Scalar(255, 0, 200), 2);
+            cv::imwrite("clusterPlot.jpg", plot);
+        }
+
         // Use normalized per-tile image within cluster bounds; Detect.cpp handles tile loop.
         if (!detectCornersPerCluster(m_impl->m_normalized, m_impl->m_config, cluster,
                                      m_impl->m_weights, raw, &rawCount)) {
@@ -178,6 +192,7 @@ bool Estimator::detectCornersInCluster(const cv::Mat &gray,
         }
 
         if (diagnostics) {
+            std::cout << "raw corners count: " << rawCount << std::endl;
             diagnostics->rawCorners = rawCount;
 
             cv::Mat plot;
@@ -264,11 +279,12 @@ bool Estimator::estimatePose(const cv::Mat &gray,
     try {
         int inliers = 0;
         int iterations = 0;
-        bool outFlipDiags = false;
-
+        bool flipDiags = false;
+        bool rot180 = false;
+        
         bool foundPose = estimateWithRansac(
             gray, m_impl->m_config, target, diag1, diag2, cameraIntrinsics, sizeFracMin, sizeFracMax,
-            outH, outPose, outFlipDiags, inliers, iterations,
+            outH, outPose, flipDiags, rot180, inliers, iterations,
             diagnostics != nullptr
         );
 
@@ -282,8 +298,10 @@ bool Estimator::estimatePose(const cv::Mat &gray,
             diagnostics->ransacIterations = iterations;
         }
 
-        //std::cout << "solvePnP: rvec = " << outPose.rvec.t() << std::endl;
-        //std::cout << "solvePnP: tvec = " << outPose.tvec.t() << std::endl;
+        if (diagnostics) {
+            std::cout << "flipDiags: " << (flipDiags ? "true" : "false") << std::endl;
+            std::cout << "rot180: " << (rot180 ? "true" : "false") << std::endl;
+        }
 
         return true;
 
@@ -318,6 +336,8 @@ bool Estimator::estimatePose(const cv::Mat &gray,
     }
 
     if (diagnostics) {
+        std::cout << "clusters: " << clusters.size() << std::endl;
+        std::cout << "best cluster index " << bestIndex << ", tile bounds " << clusters[bestIndex].tileBounds << ", pixel bounds " << clusters[bestIndex].pixelBounds << std::endl;
         diagnostics->clusterCount = static_cast<int>(clusters.size());
         diagnostics->bestClusterIndex = static_cast<int>(bestIndex);
     }

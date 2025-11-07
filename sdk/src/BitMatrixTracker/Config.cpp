@@ -15,14 +15,17 @@ const Config &defaultConfig()
     s_defaultConfig.validateSubtiles = true;
     s_defaultConfig.minClusterSideLengthTiles = 2;
     s_defaultConfig.minClusterValidTilesCount = 4;
+    s_defaultConfig.minClusterValidAreaRatio = 0.3f;
+    s_defaultConfig.maxClusterBoundsAspectRatio = 2;
 
     s_defaultConfig.cornerNetWeightsPath = "cornernet.bin";
     s_defaultConfig.confidenceThreshold = 0.80f;
     s_defaultConfig.angleHistBins = 30;
     s_defaultConfig.angleKeepDegLoose = 20.0f;
     s_defaultConfig.angleKeepDegStrict = 15.0f;
-    s_defaultConfig.orthogonalityToleranceDeg = 10.0f;
+    s_defaultConfig.orthogonalityToleranceDeg = 15.0f;
     s_defaultConfig.angleJitterDeg = 2.0f;
+    s_defaultConfig.samplerRandomSeed = 0;
 
     s_defaultConfig.ransacMaxIters = 50000;
     s_defaultConfig.maxInnerRefinements = 4;

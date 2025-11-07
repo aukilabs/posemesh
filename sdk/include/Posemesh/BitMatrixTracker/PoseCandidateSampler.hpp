@@ -29,7 +29,7 @@ public:
 
     void report(bool good);
 
-    bool generate(cv::Matx33d &outHomography, bool &outFlipDiags);
+    bool generate(cv::Matx33d &outHomography, bool &outFlipDiags, bool &outRot180);
 
 private:
     const Config &m_cfg;

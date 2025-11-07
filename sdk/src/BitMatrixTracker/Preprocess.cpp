@@ -144,8 +144,8 @@ bool normalizeTile(cv::Mat &grayTile, float peakThreshold, float minContrast, in
         // Also already checked inside calcValidPeak
         return false;
     }
-    const double scale = 1.0 / contrast;
-    const double shift = -blackPeakBin * scale;
+    grayTile -= blackPeakBin / static_cast<float>(numBins) * 255.0f;
+    grayTile /= contrast;// * 100.0f;
     return true;
 }
 

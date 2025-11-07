@@ -35,6 +35,7 @@ struct RansacResult {
     cv::Vec3d rvec {0, 0, 0};
     cv::Vec3d tvec {0, 0, 0};
     bool flipDiags {false};
+    bool rot180 {false};
     int inliers {0};
     int iterations {0};
 };
@@ -75,6 +76,12 @@ static bool ransacHomography(const Config &cfg,
 {
     try {
         PoseCandidateSampler sampler(cfg, target, diag1, diag2, cameraIntrinsics, imageSize, sizeFracMin, sizeFracMax);
+        if (cfg.samplerRandomSeed != 0) {
+            sampler.seedRandom(cfg.samplerRandomSeed);
+        }
+        else {
+            sampler.seedRandom(time(nullptr));
+        }
         std::vector<cv::Point2f> proj1, proj2;
         const int maxIters = std::max(1, cfg.ransacMaxIters);
         const int targetMax = static_cast<int>(target.diag1.size() + target.diag2.size());
@@ -99,7 +106,8 @@ static bool ransacHomography(const Config &cfg,
 
             cv::Matx33d H;
             bool flippedDiags = false;
-            if (!sampler.generate(H, flippedDiags))
+            bool rot180 = false;
+            if (!sampler.generate(H, flippedDiags, rot180))
                 continue;
 
             // Project families
@@ -185,6 +193,7 @@ static bool ransacHomography(const Config &cfg,
                 out.inliers = score;
                 out.H = H;
                 out.flipDiags = flippedDiags;
+                out.rot180 = rot180;
                 //std::cout << "Ransac improved: score = " << score << " (diag1: " << s1 << ", diag2: " << s2 << ")" << std::endl;
 
                 if (out.inliers >= earlyStopAt) {
@@ -295,6 +304,7 @@ bool estimateWithRansac(const cv::Mat &gray,
                         cv::Matx33d &outH,
                         Pose &outPose,
                         bool &outFlipDiags,
+                        bool &outRot180,
                         int &outInliers,
                         int &outIterations,
                         bool debug)
@@ -336,6 +346,7 @@ bool estimateWithRansac(const cv::Mat &gray,
         outPose.rvec = result.rvec;
         outPose.tvec = result.tvec;
         outFlipDiags = result.flipDiags;
+        outRot180 = result.rot180;
         outInliers = result.inliers;
         outIterations = result.iterations;
         if (debug) {

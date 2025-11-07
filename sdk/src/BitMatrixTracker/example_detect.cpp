@@ -32,6 +32,11 @@ void drawCornerOutlineOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f>
         const auto &corner = corners[i];
         cv::circle(rgb, corner, 4, color);
     }
+    cv::circle(rgb, corners[0], 6, color, 1); // Make first corner extra big
+
+    // Axis lines
+    cv::line(rgb, corners[0], (corners[0]*2+corners[1])/3, cv::Scalar(0, 0, 255), 2);
+    cv::line(rgb, corners[0], (corners[0]*2+corners[3])/3, cv::Scalar(255, 0, 0), 2);
 }
 
 void drawCornerOutlineOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f> &corners)
@@ -90,31 +95,15 @@ struct ExampleFrame {
 
 const std::string framesFolder = "scannertest/dmt_scan_2024-06-26_14-08-53/Frames";
 std::vector<ExampleFrame> exampleFrames = {
-    {
-        "424274.404912.jpg", 1436.709,1436.709,959.9976,725.895, 0.1f
-    }
+    { "424272.304214.jpg",1432.85,1432.85,961.3515,725.1973,0.1f},
+    { "424273.004447.jpg",1434.154,1434.154,960.8257,724.7334,0.1f},
+    { "424274.404912.jpg",1436.709,1436.709,959.9976,725.895,0.1f},
+    { "424243.594662.jpg",1434.544,1434.544,961.1267,724.8087,0.1f},
+    { "424244.394929.jpg",1435.665,1435.665,960.1682,724.1594,0.1f},
 };
 
-int main(int argc, char *argv[])
+bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator, float& outRuntimeMs, float& outPoseErrorCm, float& outAngleErrorDeg, bool verbose)
 {
-    Config cfg = defaultConfig();
-    cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
-    cfg.ransacMaxIters = 50000;
-    cfg.inlierRadiusPx = 4.0f;
-    cfg.earlyStopPercent = 70;
-    cfg.useFindHomographyFast = true;
-    cfg.finalRefinePnP = true;
-
-    bool verbose = false;
-
-    Estimator estimator(cfg);
-
-    if (exampleFrames.empty()) {
-        std::cerr << "No example frames" << std::endl;
-        return 1;
-    }
-
-    const ExampleFrame &exampleFrame = exampleFrames[0];
     std::string imagePath = framesFolder + "/" + exampleFrame.jpgName;
 
     cv::Mat rgb; // Only used for saving plots, when verbose is true
@@ -132,7 +121,7 @@ int main(int argc, char *argv[])
 
     if (gray.empty()) {
         std::cerr << "Could not load image: " << imagePath << std::endl;
-        return 1;
+        return false;
     }
 
     if (verbose) {
@@ -163,7 +152,7 @@ int main(int argc, char *argv[])
 
     if (decodedInfo.empty() || corners.size() != 4 || qrStraight.empty()) {
         std::cerr << "OpenCV comparison failed to detect or decode QR code from image" << std::endl;
-        return 1;
+        return false;
     }
 
     if (verbose) {
@@ -190,7 +179,7 @@ int main(int argc, char *argv[])
 
     if (!makeTargetFromBitmatrix(bitmatrix, exampleFrame.physicalSizeMeters, target)) {
         std::cerr << "Failed to build target from detected QR code" << std::endl;
-        return 1;
+        return false;
     }
 
     // Camera intrinsics (fx, fy, cx, cy). Only supporting pinhole for now. Image should be rectified already. Distorted photos not tested.
@@ -224,11 +213,11 @@ int main(int argc, char *argv[])
     try {
         if (!estimator.estimatePose(gray, K, target, pose, H, diagnosticsPtr)) {
             std::cerr << "Pose estimation failed" << std::endl;
-            return 1;
+            return false;
         }
     } catch (const std::exception &e) {
         std::cerr << "Pose estimation failed with exception: " << e.what() << std::endl;
-        return 1;
+        return false;
     }
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
@@ -263,6 +252,89 @@ int main(int argc, char *argv[])
     else {
         std::cout << "Pose error: " << std::fixed << std::setprecision(3) << (tvecError * 100.0) << " cm, " << rvecAngleError << "°" << std::endl;
     }
+
+    return true;
+}
+
+void printAggregatedStats(const std::string &title, const std::vector<float> &values)
+{
+    if (values.empty()) {
+        std::cout << title << ": <no values>" << std::endl;
+        return;
+    }
+
+    float avg = std::accumulate(values.begin(), values.end(), 0.0f) / values.size();
+    float max = *std::max_element(values.begin(), values.end());
+    std::cout << title << ": Avg " << std::fixed << std::setprecision(3) << avg << ", max=" << max << std::endl;
+}
+
+int main(int argc, char *argv[])
+{
+    Config cfg = defaultConfig();
+    cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
+    cfg.ransacMaxIters = 100000;
+    cfg.angleJitterDeg = 1.0f;
+    cfg.inlierRadiusPx = 3.0f;
+    cfg.earlyStopPercent = 80;
+    cfg.useFindHomographyFast = true;
+    cfg.finalRefinePnP = true;
+
+    bool verbose = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string param = argv[i];
+        if (param == "-v" || param == "--verbose") {
+            verbose = true;
+            break;
+        }
+    }
+
+    if (exampleFrames.empty()) {
+        std::cerr << "No example frames" << std::endl;
+        return 1;
+    }
+
+    Estimator estimator(cfg);
+
+    int successfulCount = 0;
+    std::vector<float> runtimes, positionErrors, angleErrors;
+
+    if (argc >= 2) {
+        std::string frameIndexStr = argv[1];
+        int frameIndex;
+        if (std::istringstream(frameIndexStr) >> frameIndex) {
+            if (frameIndex >= 0 && frameIndex < exampleFrames.size()) {
+                std::cout << "Processing ONLY example frame " << (frameIndex) << ": " << exampleFrames[frameIndex].jpgName << std::endl;
+                float runtimeMs, poseErrorCm, angleErrorDeg;
+                processExampleFrame(exampleFrames[frameIndex], estimator, runtimeMs, poseErrorCm, angleErrorDeg, verbose);
+                return 0;
+            }
+            else {
+                std::cerr << "Invalid frame index: " << frameIndex << std::endl;
+                return 1;
+            }
+        }
+        else {
+            std::cerr << "Parameter not a valid frame index: " << frameIndexStr << std::endl;
+            return 1;
+        }
+    }
+
+    for (int i = 0; i < exampleFrames.size(); i++) {
+        std::cout << std::endl;
+        std::cout << "Processing example frame " << (i) << ": " << exampleFrames[i].jpgName << std::endl;
+        float runtimeMs, poseErrorCm, angleErrorDeg;
+        bool success = processExampleFrame(exampleFrames[i], estimator, runtimeMs, poseErrorCm, angleErrorDeg, verbose);
+        if (success) {
+            successfulCount++;
+            runtimes.push_back(runtimeMs);
+            positionErrors.push_back(poseErrorCm);
+            angleErrors.push_back(angleErrorDeg);
+        }
+    }
+    
+    printAggregatedStats("Time (ms)", runtimes);
+    printAggregatedStats("Position Error (cm)", positionErrors);
+    printAggregatedStats("Angle Error (deg)", angleErrors);
 
     return 0;
 }

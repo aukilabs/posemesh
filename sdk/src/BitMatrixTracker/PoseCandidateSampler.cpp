@@ -42,16 +42,15 @@ void PoseCandidateSampler::report(bool good)
 {
 }
 
-bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDiags)
+bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDiags, bool &outRot180)
 {
-    if (m_diag1.points.empty() && m_diag2.points.empty()) {
+    if (m_diag1.points.empty() || m_diag2.points.empty()) {
         return false;
     }
-    const bool flipDiags = (m_diag2.points.empty()) || (!m_diag1.points.empty() && std::uniform_int_distribution<int>(0,1)(m_rng)==0);
-    outFlipDiags = flipDiags;
+    outFlipDiags = std::uniform_int_distribution<int>(0,1)(m_rng) == 0;
 
-    auto& points1 = flipDiags ? m_diag2.points : m_diag1.points;
-    auto& points2 = flipDiags ? m_diag1.points : m_diag2.points;
+    auto& points1 = outFlipDiags ? m_diag2.points : m_diag1.points;
+    auto& points2 = outFlipDiags ? m_diag1.points : m_diag2.points;
 
     // ----------
     // Pick position based on one random point correspondence
@@ -67,11 +66,10 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     const auto& detectedPoint = detectedCorrespondencePoints[detectedIndex];
 
     // ----------
-    // Pick random up/right vector
+    // Pick random up/right direction
     // ----------
-    bool randomAngleDiag = std::uniform_int_distribution<int>(0,1)(m_rng)==0;
-    const auto& detectedUpAngles = randomAngleDiag ? m_diag1.anglesDeg : m_diag2.anglesDeg;
-    const auto& detectedRightAngles = randomAngleDiag ? m_diag2.anglesDeg : m_diag1.anglesDeg;
+    const auto& detectedUpAngles = outFlipDiags ? m_diag1.anglesDeg : m_diag2.anglesDeg;
+    const auto& detectedRightAngles = outFlipDiags ? m_diag2.anglesDeg : m_diag1.anglesDeg;
 
     int upAngleIndex = std::uniform_int_distribution<int>(0, (int)detectedUpAngles.size() - 1)(m_rng);
     double detectedUpAngle = detectedUpAngles[upAngleIndex];
@@ -101,6 +99,13 @@ bool PoseCandidateSampler::generate(cv::Matx33d &outHomography, bool &outFlipDia
     // Ensure consistent axis order for later math to work (not get flipped or mirrored etc)
     double signedAngle = signedAngle2D(detectedUpVec, detectedRightVec);
     if (signedAngle < 0.0) {
+        detectedRightVec *= -1.0;
+    }
+
+    outRot180 = std::uniform_int_distribution<int>(0,1)(m_rng) == 0;
+    if (outRot180) {
+        // Marker can be rotated 180 degrees in photo, with same feature diags
+        detectedRightVec *= -1.0;
         detectedUpVec *= -1.0;
     }
 
