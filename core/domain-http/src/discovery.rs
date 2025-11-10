@@ -127,10 +127,10 @@ impl DiscoveryService {
         email: &str,
         password: &str,
         remember_password: bool,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<String, DomainError> {
         self.cache.lock().await.clear();
         self.oidc_access_token = None;
-        let _ = self.api_client.user_login(email, password).await?;
+        let token = self.api_client.user_login(email, password).await?;
         if remember_password {
             let mut api_client = self.api_client.clone();
             let email = email.to_string();
@@ -165,21 +165,20 @@ impl DiscoveryService {
                 }
             });
         }
-        Ok(())
+        Ok(token)
     }
 
     pub async fn sign_in_as_auki_app(
         &mut self,
         app_key: &str,
         app_secret: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<String, DomainError> {
         self.cache.lock().await.clear();
         self.oidc_access_token = None;
-        let _ = self
+        self
             .api_client
             .sign_in_with_app_credentials(app_key, app_secret)
-            .await?;
-        Ok(())
+            .await
     }
 
     pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {

@@ -337,7 +337,7 @@ impl AuthClient {
         &mut self,
         email: &str,
         password: &str,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<String, DomainError> {
         *self.dds_token_cache.lock().await = None;
         *self.user_token_cache.lock().await = None;
         self.app_key = None;
@@ -373,7 +373,12 @@ impl AuthClient {
             *cache = Some(token_cache.clone());
             Ok(token_cache.access_token)
         } else {
-            Err(format!("Failed to login. Status: {}", response.status()).into())
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse { status, error: format!("Failed to login. {}", text) }.into())
         }
     }
 

@@ -3251,7 +3251,7 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "1.4.0-rc.1"
+version = "1.4.0-rc.2"
 dependencies = [
  "base64 0.22.1",
  "bytes",

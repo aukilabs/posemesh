@@ -43,7 +43,7 @@ publish-domain-http:
 	fi; \
 	if [ -z "$$CI" ]; then \
 		if make unit-tests; then \
-			read -p "Continue with publish? [y/N]: " CONFIRM; \
+			read -p "Continue with publish v$$VERSION? [y/N]: " CONFIRM; \
 			if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
 				echo "Publish cancelled."; \
 				exit 1; \
@@ -54,7 +54,12 @@ publish-domain-http:
 		fi; \
 	fi
 	@cargo publish -p posemesh-domain-http
-	@cd domain-http/pkg && npm publish
+	@cd domain-http/pkg && \
+	if [ -z "$$IS_STABLE" ]; then \
+		npm publish --tag "v$$VERSION"; \
+	else \
+		npm publish; \
+	fi
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
