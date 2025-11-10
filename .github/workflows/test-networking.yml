@@ -1,0 +1,59 @@
+name: Test Build
+
+on:
+  push:
+    branches:
+      - main
+      - feature/*
+      - chore/*
+      - hotfix/*
+      - release/*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64, wasm32]
+        platform: [linux, browser]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Build
+        run: |
+          echo "Building for ${{ matrix.platform }} on ${{ matrix.architecture }}"
+          # If architecture == wasm32, it only needs to build for browser platform
+          if [ ${{ matrix.architecture }} == "wasm32" ] && [ ${{ matrix.platform }} != "browser" ]; then
+            echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
+            exit 0
+          fi
+          if [ ${{ matrix.architecture }} != "wasm32" ] && [ ${{ matrix.platform }} == "browser"]; then
+            echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
+            exit 0
+          fi
+          if [ ${{ matrix.architecture }} == "wasm32" ] && [ ${{ matrix.platform }} == "browser" ]; then
+            cargo install wasm-pack
+          fi
+          cd networking
+          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i
+      
+      - name: Build Examples
+        run: |
+          echo "Building examples"
+          if [ ${{ matrix.architecture }} == "wasm32" ] || [ ${{ matrix.platform }} == "browser" ]; then
+            echo "Skipping build for ${{ matrix.platform }} on ${{ matrix.architecture }}"
+            exit 0
+          fi
+          cd networking
+          bash ./networking/scripts/build.sh -p ${{ matrix.platform }} -a ${{ matrix.architecture }} -b Release -i -e -f rust
+
+
+
+      
