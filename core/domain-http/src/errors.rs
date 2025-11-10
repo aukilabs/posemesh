@@ -29,7 +29,7 @@ impl std::error::Error for AukiErrorResponse {}
 pub enum DomainError {
     #[error("Reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     AukiErrorResponse(#[from] AukiErrorResponse),
     #[error("Invalid content-type header")]
     InvalidContentTypeHeader,
