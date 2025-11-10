@@ -255,7 +255,15 @@ static bool ransacHomography(const Config &cfg,
             const bool poseFound = cv::solvePnP(targetInliers3D, photoInliers, cameraIntrinsics, cv::noArray(), out.rvec, out.tvec, false, cv::SOLVEPNP_SQPNP);
             if (poseFound) {
                 out.tvec *= target.sideLengthMeters;
-                //std::cout << "Final refinement with all inliers found pose: rvec = " << out.rvec.t() << ", tvec = " << out.tvec.t() << std::endl;
+
+                std::vector<cv::Point2f> targetInliersMarkerSpace(targetInliers3D.size());
+                for (int i = 0; i < targetInliers3D.size(); ++i) {
+                    targetInliersMarkerSpace[i] = cv::Point2f(
+                        (targetInliers3D[i].x + 0.5f) * target.bitmatrix.cols,
+                        (targetInliers3D[i].y + 0.5f) * target.bitmatrix.rows
+                    );
+                }
+                out.H = cv::findHomography(targetInliersMarkerSpace, photoInliers, 0);
             }
             else {
                 if (verbose) {

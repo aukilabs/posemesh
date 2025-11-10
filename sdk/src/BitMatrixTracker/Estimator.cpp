@@ -359,6 +359,71 @@ bool Estimator::estimatePose(const cv::Mat &gray,
     bool foundPose = estimatePose(
         gray, K, target, d1, d2, sizeFracMin, sizeFracMax,
         outPose, outH, diagnostics);
+    
+
+    // TEST!!
+    // Try moving photo points into marker space and plot if it looks good. Maybe we could do more of the pose finding in marker space to reduce heavy math / ransac?
+    if (foundPose && diagnostics) {
+        cv::Matx33d H_inv = cv::Matx33d::zeros();
+        if (!cv::invert(outH, H_inv)) {
+            std::cerr << "Failed to invert homography" << std::endl;
+            return false;
+        }
+
+        std::vector<cv::Point2f> unprojectedPoints1, unprojectedPoints2;
+        cv::perspectiveTransform(d1.points, unprojectedPoints1, H_inv);
+        cv::perspectiveTransform(d2.points, unprojectedPoints2, H_inv);
+        const int plotScale = 40;
+        const int plotSize = target.bitmatrix.size[0] * 2 * plotScale;
+        const int plotOffset = plotSize / 2 - target.bitmatrix.size[0] / 2 * plotScale; // center target in plot, and more space around it
+        cv::Mat plot = cv::Mat::zeros(plotSize, plotSize, CV_8UC3);
+        auto plotPoint = [plotSize, plotOffset, plotScale] (const cv::Point2f &point) -> cv::Point {
+            return cv::Point(
+                point.x * plotScale + plotOffset,
+                point.y * plotScale + plotOffset
+            );
+        };
+        // plot target rect
+        const auto& targetCorners = calcTargetSpaceCorners(target.bitmatrix.size[0]);
+        std::vector<cv::Point2i> targetCornersPlot(4);
+        for (int i = 0; i < targetCorners.size(); i++) {
+            targetCornersPlot[i] = plotPoint(targetCorners[i]);
+        }
+        std::vector<std::vector<cv::Point2i>> contours = { targetCornersPlot };
+        cv::drawContours(plot, contours, 0, cv::Scalar(0, 255, 0), 1);
+
+        std::vector<cv::Point2i> targetPoints1(target.diag1.size());
+        for (int i = 0; i < target.diag1.size(); i++) {
+            targetPoints1[i] = plotPoint(target.diag1[i]);
+        }
+        std::vector<cv::Point2i> targetPoints2(target.diag2.size());
+        for (int i = 0; i < target.diag2.size(); i++) {
+            targetPoints2[i] = plotPoint(target.diag2[i]);
+        }
+        for (const auto &point : targetPoints1) {
+            cv::circle(plot, point, 4, cv::Scalar(255, 255, 0), 0.7f);
+        }
+        for (const auto &point : targetPoints2) {
+            cv::circle(plot, point, 4, cv::Scalar(255, 0, 255), 0.7f);
+        }
+
+        for (const auto &point : unprojectedPoints1) {
+            auto p = plotPoint(point);
+            //std::cout << "unprojected point 1: " << point << ", plot point: " << p << std::endl;
+            if (p.x < 0 || p.x >= plotSize || p.y < 0 || p.y >= plotSize)
+                continue;
+            cv::circle(plot, p, 2, cv::Scalar(255, 255, 0), -1);
+        }
+        for (const auto &point : unprojectedPoints2) {
+            auto p = plotPoint(point);
+            //std::cout << "unprojected point 2: " << point << ", plot point: " << p << std::endl;
+            if (p.x < 0 || p.x >= plotSize || p.y < 0 || p.y >= plotSize)
+                continue;
+            cv::circle(plot, p, 2, cv::Scalar(255, 0, 255), -1);
+        }
+        cv::imwrite("unprojectedCornersPlot.jpg", plot);
+    }
+
 
     return foundPose;
 }

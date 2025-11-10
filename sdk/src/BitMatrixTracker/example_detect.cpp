@@ -276,6 +276,7 @@ int main(int argc, char *argv[])
     cfg.angleJitterDeg = 1.0f;
     cfg.inlierRadiusPx = 3.0f;
     cfg.earlyStopPercent = 80;
+    cfg.collapseRadiusPx = 3.0f;
     cfg.useFindHomographyFast = true;
     cfg.finalRefinePnP = true;
 
