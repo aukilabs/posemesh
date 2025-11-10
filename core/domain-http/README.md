@@ -37,6 +37,22 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 
 # Changelog
 
+## v1.4.0
+
+### Features
+- Formatted errors
+- Added domain creation and deletion
+
+## v1.2.0
+
+### Features
+- Submit jobs to reconstruction servers
+
+## v1.1.0
+
+### Features
+- List domains and their domain servers in the given organization
+
 ## v1.0.0
 
 ### Features
@@ -54,13 +70,3 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 - Replaced most JavaScript classes with plain objects using `serde_wasm_bindgen` for better interoperability.
 - Removed the `callback` parameter from the JS `downloadDomainData` method to provide a more idiomatic JavaScript developer experience.
 - Renamed the `logout` parameter to `remember_password` for clarity (`logout` is now equivalent to `!remember_password`).
-
-## v1.1.0
-
-### Features
-- List domains and their domain servers in the given organization
-
-## v1.2.0
-
-### Features
-- Submit jobs to reconstruction servers

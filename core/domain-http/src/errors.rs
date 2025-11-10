@@ -30,8 +30,6 @@ pub enum DomainError {
     #[error("Reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("{0}")]
     AukiErrorResponse(#[from] AukiErrorResponse),
     #[error("Invalid content-type header")]
     InvalidContentTypeHeader,
@@ -41,4 +39,6 @@ pub enum DomainError {
     StreamCancelled(#[from] Canceled),
     #[error("Auth error: {0}")]
     AuthError(#[from] AuthError),
+    #[error("Invalid request: {0}")]
+    InvalidRequest(&'static str),
 }

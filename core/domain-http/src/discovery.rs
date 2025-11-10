@@ -69,6 +69,14 @@ pub struct ListDomainsResponse {
     pub domains: Vec<DomainWithServer>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CreateDomainRequest {
+    pub name: String,
+    pub domain_server_id: String,
+    pub redirect_url: Option<String>,
+    domain_server_url: String,
+}
+
 impl DiscoveryService {
     pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         let api_client = AuthClient::new(api_url, client_id);
@@ -100,6 +108,7 @@ impl DiscoveryService {
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
+            .header("posemesh-sdk-version", crate::VERSION)
             .send()
             .await?;
 
@@ -229,6 +238,7 @@ impl DiscoveryService {
                     .bearer_auth(access_token)
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)
+                    .header("posemesh-sdk-version", crate::VERSION)
                     .send()
                     .await?;
 
@@ -253,5 +263,108 @@ impl DiscoveryService {
         let mut cache = self.cache.lock().await;
         cache.insert(domain_id.to_string(), cached.clone());
         Ok(cached)
+    }
+
+    pub async fn create_domain(
+        &self,
+        name: &str,
+        domain_server_id: Option<&str>,
+        domain_server_url: Option<&str>,
+        redirect_url: Option<String>,
+    ) -> Result<DomainWithToken, DomainError> {
+        let domain_server_id = domain_server_id.unwrap_or("");
+        let domain_server_url = domain_server_url.unwrap_or("");
+        if domain_server_id.is_empty() && domain_server_url.is_empty() {
+            return Err(DomainError::InvalidRequest("domain_server_id or domain_server_url is required"));
+        }
+        let access_token: String = self
+            .api_client
+            .get_dds_access_token(self.oidc_access_token.as_deref())
+            .await?;
+        let response = self
+            .client
+            .post(&format!("{}/api/v1/domains?issue_token=true", self.dds_url))
+            .bearer_auth(access_token)
+            .header("Content-Type", "application/json")
+            .header("posemesh-client-id", self.api_client.client_id.clone())
+            .header("posemesh-sdk-version", crate::VERSION)
+            .json(&CreateDomainRequest { name: name.to_string(), domain_server_id: domain_server_id.to_string(), redirect_url, domain_server_url: domain_server_url.to_string() })
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let mut domain_with_token: DomainWithToken = response.json().await?;
+            domain_with_token.expires_at =
+                parse_jwt(&domain_with_token.get_access_token())?.exp;
+            // Cache the result
+            let mut cache = self.cache.lock().await;
+            cache.insert(domain_with_token.domain.id.clone(), domain_with_token.clone());
+            Ok(domain_with_token)
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse { status, error: format!("Failed to create domain. {}", text) }.into())
+        }
+    }
+
+    /// List domains by portal, portal_id or portal_short_id is required
+    /// If org is not provided, it will list domains for the current authorized organization
+    /// If org is provided, it will list domains for the specified organization
+    /// Set org to `all` to list domains for all organizations
+    pub async fn list_domains_by_portal(
+        &self,
+        portal_id: Option<&str>,
+        portal_short_id: Option<&str>,
+        org: Option<&str>,
+    ) -> Result<ListDomainsResponse, DomainError> {
+        let access_token: String = self
+            .api_client
+            .get_dds_access_token(self.oidc_access_token.as_deref())
+            .await?;
+        if portal_id.is_none() && portal_short_id.is_none() {
+            return Err(DomainError::InvalidRequest("portal_id or portal_short_id is required"));
+        }
+        let id = portal_id.or(portal_short_id).unwrap();
+        let org = org.unwrap_or(OWN_DOMAINS_ORG);
+        let response = self
+            .client
+            .get(&format!("{}/api/v1/lighthouses/{}/domains?with=domain_server,lighthouse&org={}", self.dds_url, id, org))
+            .bearer_auth(access_token)
+            .header("Content-Type", "application/json")
+            .header("posemesh-client-id", self.api_client.client_id.clone())
+            .header("posemesh-sdk-version", crate::VERSION)
+            .send()
+            .await?;
+        if response.status().is_success() {
+            let domains: ListDomainsResponse = response.json().await?;
+            Ok(domains)
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse { status, error: format!("Failed to list domains by portal. {}", text) }.into())
+        }
+    }
+
+    pub(crate) async fn delete_domain(
+        &self,
+        access_token: &str,
+        domain_id: &str,
+    ) -> Result<(), DomainError> {
+        let response = self
+            .client
+            .delete(&format!("{}/api/v1/domains/{}", self.dds_url, domain_id))
+            .bearer_auth(access_token)
+            .header("Content-Type", "application/json")
+            .header("posemesh-client-id", self.api_client.client_id.clone())
+            .header("posemesh-sdk-version", crate::VERSION)
+            .send()
+            .await?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse { status, error: format!("Failed to delete domain. {}", text) }.into())
+        }
     }
 }

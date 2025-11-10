@@ -3268,6 +3268,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tracing-wasm",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

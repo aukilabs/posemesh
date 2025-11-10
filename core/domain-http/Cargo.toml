@@ -33,6 +33,7 @@ wasm-streams = "0.4.2"
 dotenvy = "0.15.7"
 tokio-stream = "0.1.17"
 wasm-bindgen-test.workspace = true
+uuid.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

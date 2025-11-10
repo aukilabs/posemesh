@@ -40,8 +40,7 @@ impl TokenCache for UserTokenCache {
 pub(crate) struct DdsTokenCache {
     // DDS access token
     access_token: String,
-    // DDS access token expiration time as UTC timestamp
-    expires_at: u64,
+    claim: JwtClaim,
 }
 
 impl TokenCache for DdsTokenCache {
@@ -50,10 +49,18 @@ impl TokenCache for DdsTokenCache {
     }
 
     fn get_expires_at(&self) -> u64 {
-        self.expires_at
+        self.claim.exp
     }
 }
 
+impl Default for DdsTokenCache {
+    fn default() -> Self {
+        Self {
+            access_token: "".to_string(),
+            claim: JwtClaim { exp: 0, org: None },
+        }
+    }
+}
 pub(crate) trait TokenCache {
     fn get_access_token(&self) -> String;
     fn get_expires_at(&self) -> u64;
@@ -103,7 +110,7 @@ impl AuthClient {
             if dds_token_cache.is_none() {
                 return Err(DomainError::AuthError(AuthError::Unauthorized("No token found")));
             }
-            return Ok(dds_token_cache.unwrap().expires_at);
+            return Ok(dds_token_cache.unwrap().claim.exp);
         }
         Ok(parse_jwt(&token_cache.unwrap().refresh_token)?.exp)
     }
@@ -159,7 +166,7 @@ impl AuthClient {
             let mut cache = self.dds_token_cache.lock().await;
             *cache = Some(DdsTokenCache {
                 access_token: response.access_token.clone(),
-                expires_at: parse_jwt(&response.access_token)?.exp,
+                claim: parse_jwt(&response.access_token)?,
             });
         }
         Ok(response.access_token)
@@ -187,7 +194,7 @@ impl AuthClient {
         let token_cache = get_cached_or_fresh_token(
             &token_cache.unwrap_or(DdsTokenCache {
                 access_token: "".to_string(),
-                expires_at: 0,
+                claim: JwtClaim { exp: 0, org: None },
             }),
             || {
                 let app_key = app_key.to_string();
@@ -208,7 +215,7 @@ impl AuthClient {
                         let token_response: DdsTokenResponse = response.json().await?;
                         Ok(DdsTokenCache {
                             access_token: token_response.access_token.clone(),
-                            expires_at: parse_jwt(&token_response.access_token)?.exp,
+                            claim: parse_jwt(&token_response.access_token)?,
                         })
                     } else {
                         let status = response.status();
@@ -306,7 +313,7 @@ impl AuthClient {
 
                 let dds_cache = DdsTokenCache {
                     access_token: dds_token_response.access_token.clone(),
-                    expires_at: parse_jwt(&dds_token_response.access_token)?.exp,
+                    claim: parse_jwt(&dds_token_response.access_token)?,
                 };
                 {
                     let mut cache = self.dds_token_cache.lock().await;
@@ -361,7 +368,7 @@ impl AuthClient {
             let mut cache = self.dds_token_cache.lock().await;
             let token_cache = DdsTokenCache {
                 access_token: dds_token_response.access_token.clone(),
-                expires_at: parse_jwt(&dds_token_response.access_token)?.exp,
+                claim: parse_jwt(&dds_token_response.access_token)?,
             };
             *cache = Some(token_cache.clone());
             Ok(token_cache.access_token)
@@ -421,9 +428,10 @@ where
     token_fetcher().await
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JwtClaim {
     pub exp: u64,
+    pub org: Option<String>,
 }
 
 pub fn parse_jwt(token: &str) -> Result<JwtClaim, AuthError> {
