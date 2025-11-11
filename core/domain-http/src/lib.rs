@@ -7,7 +7,7 @@ use crate::domain_data::{
 #[cfg(target_family = "wasm")]
 use crate::domain_data::{UploadDomainData, upload_v1};
 
-mod auth;
+pub mod auth;
 pub mod config;
 pub mod discovery;
 pub mod domain_data;
