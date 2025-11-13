@@ -1,4 +1,4 @@
-# posemesh-domain-http
+# Domain HTTP
 
 A cross-platform HTTP client library for interacting with posemesh domains on the Auki Network. Supports both native and WebAssembly (WASM) environments.
 
@@ -42,6 +42,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 ### Features
 - Formatted errors
 - Added domain creation and deletion
+- Package renaming to @auki/domain-http
 
 ## v1.2.0
 

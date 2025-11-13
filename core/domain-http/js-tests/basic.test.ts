@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest } from 'posemesh-domain-http';
+import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest } from '@auki/domain-http';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
