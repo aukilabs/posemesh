@@ -41,8 +41,8 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 
 ### Features
 - Formatted errors
-- Added domain creation and deletion
-- Package renaming to @auki/domain-http
+- Supported domain creation and deletion
+- Renamed JS package to @auki/domain-http
 
 ## v1.2.0
 
