@@ -409,6 +409,9 @@ mod tests {
         .await
         .expect("Failed to create client");
 
+        let domain = create_test_domain(&client).await.expect("Failed to create test domain");
+        let domain_id = domain.domain.id.clone();
+
         let data = vec![
             UploadDomainData {
                 action: DomainAction::Create(CreateDomainData {
@@ -417,9 +420,33 @@ mod tests {
                 }),
                 data: "{\"test\": \"test\"}".as_bytes().to_vec(),
             },
+        ];
+        let (mut tx, rx) = mpsc::channel(10);
+        spawn(async move {
+            for d in data {
+                tx.send(d).await.unwrap();
+            }
+            tx.close().await.unwrap();
+        });
+        let result = client.upload_domain_data(&domain_id, rx).await;
+
+        assert!(result.is_ok(), "error message : {:?}", result.err());
+
+        sleep(Duration::from_secs(5)).await;
+        let created = result.unwrap();
+        assert_eq!(created.len(), 1);
+
+        let data = vec![
             UploadDomainData {
                 action: DomainAction::Update(UpdateDomainData {
-                    id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
+                    id: created[0].id.clone(),
+                }),
+                data: "{\"test\": \"test updated\"}".as_bytes().to_vec(),
+            },
+            UploadDomainData {
+                action: DomainAction::Create(CreateDomainData {
+                    name: "to be deleted2".to_string(),
+                    data_type: "test".to_string(),
                 }),
                 data: "{\"test\": \"test updated\"}".as_bytes().to_vec(),
             },
@@ -431,15 +458,12 @@ mod tests {
             }
             tx.close().await.unwrap();
         });
-        let result = client.upload_domain_data(&config.1, rx).await;
-
+        let result = client.upload_domain_data(&domain_id, rx).await;
         assert!(result.is_ok(), "error message : {:?}", result.err());
+        let created2 = result.unwrap();
+        assert_eq!(created2.len(), 2);
 
-        sleep(Duration::from_secs(5)).await;
-        let result = result.unwrap();
-        assert_eq!(result.len(), 2);
-
-        let ids = result.iter().map(|d| d.id.clone()).collect::<Vec<String>>();
+        let ids = created2.iter().map(|d| d.id.clone()).collect::<Vec<String>>();
         assert_eq!(ids.len(), 2);
         // Create a test query
         let query = DownloadQuery {
@@ -449,7 +473,7 @@ mod tests {
         };
 
         // Test the download function
-        let result = client.download_domain_data(&config.1, &query).await;
+        let result = client.download_domain_data(&domain_id, &query).await;
 
         assert!(result.is_ok(), "error message : {:?}", result.err());
 
@@ -458,7 +482,7 @@ mod tests {
         let mut rx = result.unwrap();
         while let Some(Ok(data)) = rx.next().await {
             count += 1;
-            if data.metadata.id == "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
+            if data.metadata.id == created[0].id {
                 assert_eq!(data.data, b"{\"test\": \"test updated\"}");
                 continue;
             } else {
@@ -471,11 +495,19 @@ mod tests {
 
         // Delete the one whose id is not "a8"
         let delete_result = client
-            .delete_domain_data_by_id(&config.1, &to_delete.unwrap())
+            .delete_domain_data_by_id(&domain_id, &to_delete.unwrap())
             .await;
         assert!(
             delete_result.is_ok(),
             "Failed to delete data by id: {:?}",
+            delete_result.err()
+        );
+
+        // Delete the domain
+        let delete_result = client.delete_domain(&domain_id).await;
+        assert!(
+            delete_result.is_ok(),
+            "Failed to delete domain: {:?}",
             delete_result.err()
         );
     }

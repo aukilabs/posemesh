@@ -15,7 +15,7 @@ use posemesh_utils::sleep;
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
 
-use crate::{errors::{AukiErrorResponse, DomainError}, auth::{AuthClient, TokenCache, get_cached_or_fresh_token, parse_jwt}};
+use crate::{auth::{AuthClient, REFRESH_CACHE_TIME, TokenCache, get_cached_or_fresh_token, parse_jwt}, errors::{AukiErrorResponse, DomainError}};
 pub const ALL_DOMAINS_ORG: &str = "all";
 pub const OWN_DOMAINS_ORG: &str = "own";
 
@@ -145,7 +145,7 @@ impl DiscoveryService {
                         let expiration = {
                             let now = now_unix_secs();
                             let duration = expires_at - now;
-                            if duration > 600 {
+                            if duration > REFRESH_CACHE_TIME {
                                 Some(Duration::from_secs(duration))
                             } else {
                                 None
@@ -160,7 +160,7 @@ impl DiscoveryService {
                         let _ = api_client
                             .user_login(&email, &password)
                             .await
-                            .inspect_err(|e| tracing::error!("Failed to login: {}", e));
+                            .inspect_err(|e| tracing::error!("Failed to relogin: {}", e));
                     }
                 }
             });

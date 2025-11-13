@@ -338,8 +338,6 @@ impl AuthClient {
         email: &str,
         password: &str,
     ) -> Result<String, DomainError> {
-        *self.dds_token_cache.lock().await = None;
-        *self.user_token_cache.lock().await = None;
         self.app_key = None;
         self.app_secret = None;
 
@@ -378,6 +376,7 @@ impl AuthClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+
             Err(AukiErrorResponse { status, error: format!("Failed to login. {}", text) }.into())
         }
     }
@@ -410,7 +409,7 @@ impl AuthClient {
     }
 }
 
-const REFRESH_CACHE_TIME: u64 = 3;
+pub const REFRESH_CACHE_TIME: u64 = 60; // 1 minute
 
 pub(crate) async fn get_cached_or_fresh_token<R, F, Fut>(
     cache: &R,
