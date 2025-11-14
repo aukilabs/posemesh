@@ -13,7 +13,31 @@ const loadConfig = () => {
 
 const config = loadConfig();
 
-describe('Posemesh Domain HTTP', () => {
+const createTestDomain = async (client: DomainClient) => {
+    const domain = await client.createDomain("test domain " + new Date().toISOString(), null, config.TEST_DOMAIN_SERVER_URL, null);
+    let _ = await client.uploadDomainData(domain.id, [{
+        name: "test data",
+        data_type: "test",
+        data: new TextEncoder().encode("test data"),
+    }] as UploadDomainData[]);
+    return domain.id;
+}
+
+const deleteTestDomain = async (client: DomainClient, domainId: string) => {
+    await client.deleteDomain(domainId);
+}
+
+describe('Posemesh Domain HTTP', async() => {
+    let domainId: string;
+    const userClient: DomainClient = await signInWithUserCredential(config.API_URL, config.DDS_URL, config.CLIENT_ID, config.POSEMESH_EMAIL, config.POSEMESH_PASSWORD, true);
+    
+    beforeAll(async () => {
+        domainId = await createTestDomain(userClient);
+    });
+    afterAll(async () => {
+        await deleteTestDomain(userClient, domainId);
+        userClient.free();
+    });
     describe('App Credential', async () => {
         let client: DomainClient;
         beforeAll(async () => {
@@ -42,17 +66,17 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download domain data with app credential', async () => {
-            const data: DomainData[] = await client.downloadDomainData(config.DOMAIN_ID, {
+            const data: DomainData[] = await client.downloadDomainData(domainId, {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery);
             expect(data).toBeDefined();
             expect(data.length).greaterThan(0);
 
             for (const item of data) {
                 expect(item.data.length).greaterThan(0);
-                expect(item.metadata.data_type).toBe("dmt_accel_csv");
+                expect(item.metadata.data_type).toBe("test");
                 expect(item.metadata.id).toBeDefined();
                 expect(item.metadata.name).toBeDefined();
                 expect(item.metadata.size).greaterThan(0);
@@ -62,10 +86,10 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download a specific domain data by id', async () => {
-            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(config.DOMAIN_ID, {
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(domainId, {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery);
 
             if (metadata.length === 0) {
@@ -74,7 +98,6 @@ describe('Posemesh Domain HTTP', () => {
             }
 
             const dataId = metadata[0].id;
-            const domainId = config.DOMAIN_ID;
 
             // Download the data by id
             const bytes = await client.downloadDomainDataById(domainId, dataId);
@@ -90,9 +113,9 @@ describe('Posemesh Domain HTTP', () => {
             const query = {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery;
-            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(config.DOMAIN_ID, query);
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(domainId, query);
 
             expect(metadata).toBeDefined();
             expect(Array.isArray(metadata)).toBe(true);
@@ -101,7 +124,7 @@ describe('Posemesh Domain HTTP', () => {
             for (const item of metadata) {
                 expect(item.id).toBeDefined();
                 expect(item.name).toBeDefined();
-                expect(item.data_type).toBe("dmt_accel_csv");
+                expect(item.data_type).toBe("test");
                 expect(item.size).toBeGreaterThan(0);
                 expect(item.created_at).toBeDefined();
                 expect(item.updated_at).toBeDefined();
@@ -109,16 +132,16 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download data as readablestream', async () => {
-            const data: ReadableStream<DomainData> = await client.downloadDomainDataStream(config.DOMAIN_ID, {
+            const data: ReadableStream<DomainData> = await client.downloadDomainDataStream(domainId, {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery);
             expect(data).toBeDefined();
             let count = 0;
             for await (const chunk of data) {
                 count++;
-                expect(chunk.metadata.data_type).toBe("dmt_accel_csv");
+                expect(chunk.metadata.data_type).toBe("test");
                 expect(chunk.metadata.id).toBeDefined();
                 expect(chunk.metadata.name).toBeDefined();
                 expect(chunk.metadata.size).greaterThan(0);
@@ -130,10 +153,20 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should not upload domain data', async () => {
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(domainId, {
+                ids: [],
+                name: null,
+                data_type: "test"
+            } as DownloadQuery);
+            if (metadata.length === 0) {
+                console.warn('No domain data found to test upload');
+                return;
+            }
+            const dataId = metadata[0].id;
             const data = `{"test": "test updated2"}`;
             const dataBytes = new TextEncoder().encode(data);
-            await expect(client.uploadDomainData(config.DOMAIN_ID, [{
-                id: "a84a36e5-312b-4f80-974a-06f5d19c1e16",
+            await expect(client.uploadDomainData(domainId, [{
+                id: dataId,
                 data: dataBytes,
             }])).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to update data. invalid domain access token/);
         });
@@ -184,7 +217,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should return auth error for submitting job request with app credential', async () => {
-            await expect(client.submitJobV1(config.DOMAIN_ID, {
+            await expect(client.submitJobV1(domainId, {
                 data_ids: ["a84a36e5-312b-4f80-974a-06f5d19c1e16"],
                 server_url: "test"
             } as JobRequest)).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to process domain. invalid domain access token/);
@@ -192,26 +225,12 @@ describe('Posemesh Domain HTTP', () => {
     });
 
     describe('user credential', async () => {
-        let client: DomainClient;
-        beforeAll(async () => {
-            client = await signInWithUserCredential(
-                config.API_URL,
-                config.DDS_URL,
-                config.CLIENT_ID,
-                config.POSEMESH_EMAIL,
-                config.POSEMESH_PASSWORD,
-                false
-            );
-        });
-        afterAll(() => {
-            client.free();
-        });
-
+        let client: DomainClient = userClient;
         it('should sign in with user credential and download domain data', async () => {
-            const dataList: DomainData[] = await client.downloadDomainData(config.DOMAIN_ID, {
+            const dataList: DomainData[] = await client.downloadDomainData(domainId, {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery);
             expect(Array.isArray(dataList)).toBe(true);
             expect(dataList.length).greaterThan(0);
@@ -219,7 +238,7 @@ describe('Posemesh Domain HTTP', () => {
             for (const item of dataList) {
                 expect(item.metadata.id).toBeDefined();
                 expect(item.metadata.name).toBeDefined();
-                expect(item.metadata.data_type).toBe("dmt_accel_csv");
+                expect(item.metadata.data_type).toBe("test");
                 expect(item.metadata.size).greaterThan(0);
                 expect(item.metadata.created_at).toBeDefined();
                 expect(item.metadata.updated_at).toBeDefined();
@@ -228,17 +247,17 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download data as readablestream with user credential', async () => {
-            const data: ReadableStream<DomainData> = await client.downloadDomainDataStream(config.DOMAIN_ID, {
+            const data: ReadableStream<DomainData> = await client.downloadDomainDataStream(domainId, {
                 ids: [],
                 name: null,
-                data_type: "dmt_accel_csv"
+                data_type: "test"
             } as DownloadQuery);
             expect(data).toBeDefined();
             let count = 0;
             for await (const chunk of data) {
                 count++;
                 expect(chunk.data.length).greaterThan(0);
-                expect(chunk.metadata.data_type).toBe("dmt_accel_csv");
+                expect(chunk.metadata.data_type).toBe("test");
                 expect(chunk.metadata.id).toBeDefined();
                 expect(chunk.metadata.name).toBeDefined();
                 expect(chunk.metadata.size).greaterThan(0);
@@ -252,13 +271,23 @@ describe('Posemesh Domain HTTP', () => {
             const data = `{"test": "test updated"}`;
             const dataBytes = new TextEncoder().encode(data);
 
-            let res: DomainDataMetadata[] = await client.uploadDomainData(config.DOMAIN_ID, [{
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(domainId, {
+                ids: [],
+                name: null,
+                data_type: "test"
+            } as DownloadQuery);
+            if (metadata.length === 0) {
+                console.warn('No domain data found to test upload');
+                return;
+            }
+            const dataId = metadata[0].id;
+
+            let res: DomainDataMetadata[] = await client.uploadDomainData(domainId, [{
                 name: "to be deleted 1 - js test",
                 data_type: "test",
                 data: dataBytes,
             } as UploadDomainData, {
-                name: "to be deleted 2 - js test",
-                data_type: "test",
+                id: dataId,
                 data: dataBytes,
             } as UploadDomainData]);
 
@@ -266,13 +295,21 @@ describe('Posemesh Domain HTTP', () => {
             expect(res[0].id).toBeDefined();
             expect(res[1].id).toBeDefined();
 
-            for (const item of res) {
-                await client.deleteDomainDataById(config.DOMAIN_ID, item.id);
+            const downloaded: DomainData[] = await client.downloadDomainData(domainId, {
+                ids: res.map(item => item.id),
+                name: null,
+                data_type: null
+            } as DownloadQuery);
+            expect(downloaded.length).toBe(2);
+            for (const item of downloaded) {
+                const uint8Array = item.data instanceof Uint8Array ? item.data : new Uint8Array(item.data);
+                const str = new TextDecoder().decode(uint8Array);
+                expect(str).toEqual(data);
             }
         });
 
         it('should load domain metadata', async () => {
-            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(config.DOMAIN_ID, {
+            const metadata: DomainDataMetadata[] = await client.downloadDomainDataMetadata(domainId, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -291,7 +328,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should return 400 error for submitting job request with invalid data_ids', async () => {
-            await expect(client.submitJobV1(config.DOMAIN_ID, {
+            await expect(client.submitJobV1(domainId, {
                 data_ids: [],
                 server_url: "test",
                 processing_type: "invalid_processing_type"
@@ -313,7 +350,7 @@ describe('Posemesh Domain HTTP', () => {
         });
         
         it('should download domain data', async () => {
-            const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(config.DOMAIN_ID, {
+            const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(domainId, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -330,7 +367,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download domain data metadata', async () => {
-            const metadata: DomainDataMetadata[] = await clientWithOIDCAccessToken.downloadDomainDataMetadata(config.DOMAIN_ID, {
+            const metadata: DomainDataMetadata[] = await clientWithOIDCAccessToken.downloadDomainDataMetadata(domainId, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -345,7 +382,7 @@ describe('Posemesh Domain HTTP', () => {
         });
 
         it('should download domain data stream', async () => {
-            const data: ReadableStream<DomainData> = await clientWithOIDCAccessToken.downloadDomainDataStream(config.DOMAIN_ID, {
+            const data: ReadableStream<DomainData> = clientWithOIDCAccessToken.downloadDomainDataStream(domainId, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -366,7 +403,7 @@ describe('Posemesh Domain HTTP', () => {
         it('should upload domain data', async () => {
             const data = `{"oidc": "token test"}`;
             const dataBytes = new TextEncoder().encode(data);
-            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(config.DOMAIN_ID, [{
+            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(domainId, [{
                 name: "oidc_access_token test",
                 data_type: "test",
                 data: dataBytes,
@@ -379,7 +416,7 @@ describe('Posemesh Domain HTTP', () => {
             expect(res[0].created_at).toBeDefined();
             expect(res[0].updated_at).toBeDefined();
 
-            await clientWithOIDCAccessToken.deleteDomainDataById(config.DOMAIN_ID, res[0].id);
+            await clientWithOIDCAccessToken.deleteDomainDataById(domainId, res[0].id);
         });
 
         it('should throw error if oidc_access_token is not valid', async () => {
@@ -389,7 +426,7 @@ describe('Posemesh Domain HTTP', () => {
             const dataBytes = new TextEncoder().encode(data);
 
             await expect(async () => {
-                await invalidClient.uploadDomainData(config.DOMAIN_ID, [{
+                await invalidClient.uploadDomainData(domainId, [{
                     name: "oidc_access_token test",
                     data_type: "test",
                     data: dataBytes,

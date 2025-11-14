@@ -642,19 +642,7 @@ async fn handle_domain_data_stream(
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-
-    use crate::{auth::TokenCache, config::Config, discovery::DiscoveryService};
-
     use super::*;
-
-    fn get_config() -> (Config, String) {
-        if std::path::Path::new("../.env.local").exists() {
-            dotenvy::from_filename("../.env.local").ok();
-            dotenvy::dotenv().ok();
-        }
-        let config = Config::from_env().unwrap();
-        (config, std::env::var("DOMAIN_ID").unwrap())
-    }
 
     #[test]
     fn test_find_boundary_found() {
@@ -877,64 +865,5 @@ Content-Type: application/octet-stream
             std::str::from_utf8(&output[0].data).unwrap(),
             "{\"test\": \"test\"}"
         );
-    }
-
-    #[tokio::test]
-    async fn test_upload_v1_with_user_dds_access_token() {
-        use crate::domain_data::{CreateDomainData, DomainAction, UploadDomainData};
-
-        let (config, domain_id) = get_config();
-
-        let mut discovery =
-            DiscoveryService::new(&config.api_url, &config.dds_url, &config.client_id);
-        discovery
-            .sign_in_with_auki_account(&config.email.unwrap(), &config.password.unwrap(), false)
-            .await
-            .expect("sign_in_with_auki_account failed");
-        let domain = discovery
-            .auth_domain(&domain_id)
-            .await
-            .expect("get_domain failed");
-        // 4. Prepare upload data
-        let upload_data = vec![
-            UploadDomainData {
-                action: DomainAction::Create(CreateDomainData {
-                    name: "test_upload".to_string(),
-                    data_type: "test".to_string(),
-                }),
-                data: b"hello world".to_vec(),
-            },
-            UploadDomainData {
-                action: DomainAction::Update(UpdateDomainData {
-                    id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
-                }),
-                data: b"{\"test\": \"test updated\"}".to_vec(),
-            },
-        ];
-
-        // 5. Call upload_v1
-        let result = upload_v1(
-            &domain.domain.domain_server.url,
-            &domain.get_access_token(),
-            &domain_id,
-            upload_data,
-        )
-        .await
-        .expect("upload_v1 failed");
-
-        assert_eq!(result.len(), 2, "No metadata returned from upload_v1");
-        for data in result {
-            if data.id != "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
-                assert_eq!(data.name, "test_upload");
-                delete_by_id(
-                    &domain.domain.domain_server.url,
-                    &domain.get_access_token(),
-                    &domain_id,
-                    &data.id,
-                )
-                .await
-                .expect("delete_by_id failed");
-            }
-        }
     }
 }

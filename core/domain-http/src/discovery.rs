@@ -267,12 +267,12 @@ impl DiscoveryService {
     pub async fn create_domain(
         &self,
         name: &str,
-        domain_server_id: Option<&str>,
-        domain_server_url: Option<&str>,
+        domain_server_id: Option<String>,
+        domain_server_url: Option<String>,
         redirect_url: Option<String>,
     ) -> Result<DomainWithToken, DomainError> {
-        let domain_server_id = domain_server_id.unwrap_or("");
-        let domain_server_url = domain_server_url.unwrap_or("");
+        let domain_server_id = domain_server_id.unwrap_or_default();
+        let domain_server_url = domain_server_url.unwrap_or_default();
         if domain_server_id.is_empty() && domain_server_url.is_empty() {
             return Err(DomainError::InvalidRequest("domain_server_id or domain_server_url is required"));
         }
