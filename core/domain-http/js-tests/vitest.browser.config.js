@@ -8,8 +8,6 @@ import dotenv from 'dotenv';
 // dotenv behaves differently in browser and node.js
 let env = dotenv.config({ path: '../../.env' });
 let localEnv = dotenv.config({ path: '../../.env.local', override: true });
-console.log(env);
-console.log(localEnv);
 let config = {
     ...env.parsed,
     ...localEnv.parsed,

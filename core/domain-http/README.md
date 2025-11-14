@@ -33,41 +33,88 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 - Secure authentication and authorization with the Auki Network.
 - Efficient streaming download of domain data, enabling seamless handling of large datasets.
 - Flexible upload functionality for both creating and updating domain data.
-- Universal compatibility: [JavaScript package](https://www.npmjs.com/package/posemesh-domain-http) works in browsers, Deno, and Node.js(v18+ with ReadableStream support).
+- Universal compatibility: [JavaScript package](https://www.npmjs.com/package/@auki/domain-http) works in browsers, Deno, and Node.js(v18+ with ReadableStream support).
 
-# Changelog
 
-## v1.4.0
+## Changelog
 
-### Features
-- Formatted errors
-- Supported domain creation and deletion
-- Renamed JS package to @auki/domain-http
+See [CHANGELOG.md](./CHANGELOG.md) for a list of features, bug fixes, and breaking changes.
 
-## v1.2.0
+## Development
 
-### Features
-- Submit jobs to reconstruction servers
+To build the `domain-http` crate locally for different platforms and for WebAssembly (WASM), follow these instructions:
 
-## v1.1.0
+### 1. Build for Native (Host) Platform
 
-### Features
-- List domains and their domain servers in the given organization
+From the repository root, run:
+```sh
+cargo build -p posemesh-domain-http --release
+```
 
-## v1.0.0
+### 2. Build for a Different Target Platform (Cross-Compile)
 
-### Features
-- Added comprehensive tests for the JavaScript SDK.
-- Introduced support for using OIDC access tokens to access domain servers.
-- Added a method to list available domains.
-- Improved and polished JavaScript/TypeScript documentation.
-- Added a method to delete domain data by ID.
-- Enabled streaming download of domain data in the WASM build for efficient handling of large datasets.
+For cross-compiling, use [`cross`](https://github.com/cross-rs/cross). Install cross if you don't already have it:
+```sh
+cargo install cross
+```
 
-### Bug Fixes
-- Fixed an issue where streaming download of domain data failed if multiple domain data objects were present in a single chunk.
+Then, build for your desired target. For example, to build for ARM64 Linux:
+```sh
+cross build -p posemesh-domain-http --release --target aarch64-unknown-linux-gnu
+```
+Replace `aarch64-unknown-linux-gnu` with the appropriate [Rust target triple](https://doc.rust-lang.org/nightly/rustc/platform-support.html) for your platform.
 
-### Breaking Changes
-- Replaced most JavaScript classes with plain objects using `serde_wasm_bindgen` for better interoperability.
-- Removed the `callback` parameter from the JS `downloadDomainData` method to provide a more idiomatic JavaScript developer experience.
-- Renamed the `logout` parameter to `remember_password` for clarity (`logout` is now equivalent to `!remember_password`).
+### 3. Build for WebAssembly (WASM)
+
+To build the WASM package, use the provided Makefile task:
+```sh
+make build-domain-http-wasm
+```
+This will produce the WASM package in `domain-http/pkg`.
+
+### 4. Additional Notes
+
+- Make sure you have the required Rust target installed:
+  ```sh
+  rustup target add wasm32-unknown-unknown
+  ```
+- For JavaScript or web integration, see the output in the `domain-http/pkg` directory after building for WASM.
+
+For any further development, see each crate's README for more details.
+
+## Test
+
+To run all tests (including both Rust and JS/WASM tests), use:
+
+```sh
+make unit-tests
+```
+
+This will run all unit and integration tests for both the Rust crate and the JavaScript/WASM package.
+
+## Publish
+
+To publish a new version of this crate, follow these steps:
+
+1. **Update the Version in `Cargo.toml`**
+   - If you are publishing a development/unstable release (such as during pre-release testing or RCs), increment the version in `Cargo.toml` to an unstable version suffix, such as:
+     - `1.5.0-alpha.1`
+     - `1.5.0-beta.1`
+     - `1.5.0-rc.1`
+   - Only stable releases (e.g., `1.5.0`, with no `-` suffix) are published to crates.io by CI.
+   - **Stable versions:**
+     - When you are ready for a stable release, bump the version to a new stable version (e.g., `1.5.0`).
+     - **Update the changelog** in `README.md` with the changes for the new release.
+
+2. **Committing & PR**
+   - Always commit and push your version bump (and changelog update if stable) in your PR.
+
+3. **Publishing**
+   - For stable versions: After merging your PR to the default branch, the CI will automatically build and publish the crate to crates.io and npm.js
+   - For unstable/pre-release versions: You can publish manually if needed
+
+## Contributing
+
+Contributions are welcome! Please ensure that all tests pass before submitting a pull request.
+
+
