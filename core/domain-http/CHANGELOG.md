@@ -4,6 +4,7 @@
 - Formatted errors
 - Supported domain creation and deletion
 - Renamed JS package to @auki/domain-http
+- Upgraded rust version to 1.89.0
 
 ## v1.2.0
 
