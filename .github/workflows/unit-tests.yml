@@ -17,12 +17,6 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    branches:
-      - release/*
-      - feature/*
-      - hotfix/*
-      - chore/*
   pull_request:
     branches:
       - main
