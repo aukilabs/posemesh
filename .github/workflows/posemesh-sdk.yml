@@ -21,6 +21,8 @@ jobs:
   run_test:
     name: Run Tests
     uses: ./.github/workflows/unit-tests.yml
+    with:
+      publish: true
     secrets: inherit
 
   build_apple_frameworks:
@@ -48,7 +50,7 @@ jobs:
           npm run generate
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Switch to Xcode 16.4
         run: |
@@ -167,7 +169,7 @@ jobs:
           ./emsdk activate 3.1.69
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4
@@ -241,7 +243,7 @@ jobs:
           sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu clang lld
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Cache Cargo registry and Git sources (Shared)
         uses: actions/cache@v4

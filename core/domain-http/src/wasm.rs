@@ -310,7 +310,7 @@ impl DomainClient {
     /// ```javascript
     /// let stream: ReadableStream<DomainData> = client.downloadDomainDataStream(
     ///     "domain-123",
-    ///     query_js_value
+    ///     { ids: [], name: null, data_type: "data type" }
     /// );
     /// ```
     #[wasm_bindgen(js_name = "downloadDomainDataStream")]
@@ -526,6 +526,62 @@ impl DomainClient {
                     Ok(value) => Ok(value),
                     Err(e) => Err(JsError::new(&e.to_string()).into()),
                 },
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+    
+    /// Creates domain
+    /// 
+    /// # Arguments
+    /// * `name` - The name of the domain.
+    /// * `domain_server_id` - The ID of the domain server.
+    /// * `domain_server_url` - The URL of the domain server.
+    /// * `redirect_url` - The redirect URL of the domain.
+    ///
+    /// # Returns
+    /// * `Promise<DomainWithServer>` - Resolves to a DomainWithServer object.
+    ///
+    /// # Example
+    /// ```javascript
+    /// let domain: DomainWithServer = await client.createDomain("test domain", "domain-server-id", "https://domain-server.example.com", "https://redirect.example.com");
+    /// ```
+    #[wasm_bindgen(js_name = "createDomain")]
+    pub fn create_domain(&self, name: String, domain_server_id: Option<String>, domain_server_url: Option<String>, redirect_url: Option<String>) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            let res = domain_client.create_domain(&name, domain_server_id, domain_server_url, redirect_url).await;
+            match res {
+                Ok(domain) => match to_value(&domain.domain) {
+                    Ok(value) => Ok(value),
+                    Err(e) => Err(JsError::new(&e.to_string()).into()),
+                },
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        };
+        future_to_promise(future)
+    }
+
+    /// Deletes a domain
+    /// 
+    /// # Arguments
+    /// * `domain_id` - The ID of the domain to delete.
+    ///
+    /// # Returns
+    /// * `Promise<void>` - Resolves when the deletion is complete.
+    ///
+    /// # Example
+    /// ```javascript
+    /// await client.deleteDomain("domain-123");
+    /// ```
+    #[wasm_bindgen(js_name = "deleteDomain")]
+    pub fn delete_domain(&self, domain_id: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        let future = async move {
+            let res = domain_client.delete_domain(&domain_id).await;
+            match res {
+                Ok(()) => Ok(JsValue::undefined()),
                 Err(e) => Err(JsError::new(&e.to_string()).into()),
             }
         };

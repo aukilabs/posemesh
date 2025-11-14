@@ -47,10 +47,12 @@ echo "✅ Universal loader ready!"
 
 # --- Step 3: Update package.json to point main -> index.js ---
 if [ -f "$PACKAGE_JSON" ]; then
-    echo "📦 Updating package.json 'main' field to '$LOADER_FILE'..."
+    echo "📦 Updating package.json 'main' field to '$LOADER_FILE' and renaming package to '@auki/domain-http'..."
     # Use jq if available
     if command -v jq >/dev/null 2>&1; then
-        jq --arg main "index.js" '.main = $main | .files += ["index.js"] | .files |= unique' "$PACKAGE_JSON" > tmp.json && mv tmp.json "$PACKAGE_JSON"
+        jq --arg main "index.js" --arg name "@auki/domain-http" \
+            '.main = $main | .files += ["index.js"] | .files |= unique | .name = $name' \
+            "$PACKAGE_JSON" > tmp.json && mv tmp.json "$PACKAGE_JSON"
     else
         # fallback: simple sed (works for most cases)
         sed -i.bak 's#"main": *".*"#"main": "index.js"#' "$PACKAGE_JSON"
@@ -58,6 +60,8 @@ if [ -f "$PACKAGE_JSON" ]; then
         if ! grep -q '"index.js"' "$PACKAGE_JSON"; then
             sed -i.bak 's#\("files": *\[\)#\1"index.js", #' "$PACKAGE_JSON"
         fi
+        # Replace the name field
+        sed -i.bak 's#"name": *".*"#"name": "@auki/domain-http"#' "$PACKAGE_JSON"
     fi
     echo "✅ package.json updated"
 fi
