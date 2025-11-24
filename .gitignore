@@ -34,6 +34,7 @@ target/
 .vscode
 
 node_modules
+**/package-lock.json
 
 /sdk/build/
 /sdk/src/Protobuf
