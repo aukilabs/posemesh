@@ -1,13 +1,13 @@
 import { resolve } from 'path';
 import topLevelAwait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config.js';
 import path from 'path';
 import dotenv from 'dotenv';
 
 // dotenv behaves differently in browser and node.js
-let env = dotenv.config({ path: '../../.env' });
-let localEnv = dotenv.config({ path: '../../.env.local', override: true });
+let env = dotenv.config({ path: '../../../../.env' });
+let localEnv = dotenv.config({ path: '../../../../.env.local', override: true });
 let config = {
     ...env.parsed,
     ...localEnv.parsed,

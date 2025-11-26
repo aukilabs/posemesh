@@ -1,9 +1,9 @@
 import { resolve } from 'path';
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config.js';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: '../../.env' });
-let config = dotenv.config({ path: '../../.env.local', override: true }).parsed;
+dotenv.config({ path: '../../../../.env' });
+let config = dotenv.config({ path: '../../../../.env.local', override: true }).parsed;
 export default defineConfig({
     test: {
         // Test environment

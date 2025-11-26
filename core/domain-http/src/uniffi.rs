@@ -1,31 +1,69 @@
-use uniffi::{constructor, export, Object};
+use std::sync::Arc;
+use futures::StreamExt;
+use crate::{discovery::DiscoveryService, domain_data::{DomainData, DownloadQuery, download_v1_stream}, errors::DomainError};
+use crate::auth::TokenCache;
 
-use crate::DomainClient as r_DomainClient;
-
+#[derive(Debug, Clone)]
 pub struct DomainClient {
-    domain_client: r_DomainClient,
+    discovery_client: DiscoveryService,
+    pub client_id: String,
 }
 
-#[export]
+
+pub async fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Arc<DomainClient>, DomainError> {
+    let mut discovery = DiscoveryService::new(&api_url, &dds_url, &client_id);
+    discovery.sign_in_as_auki_app(&app_key, &app_secret).await?;
+    Ok(Arc::new(DomainClient {
+        discovery_client: discovery,
+        client_id: client_id.to_string(),
+    }))
+}
+
+pub async fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str, remember_password: bool) -> Result<Arc<DomainClient>, DomainError> {
+    let mut discovery = DiscoveryService::new(&api_url, &dds_url, &client_id);
+    discovery.sign_in_with_auki_account(&email, &password, remember_password).await?;
+    Ok(Arc::new(DomainClient {
+        discovery_client: discovery,
+        client_id: client_id.to_string(),
+    }))
+}
+
 impl DomainClient {
-    #[constructor]
-    pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
+    pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         Self {
-            domain_client: r_DomainClient::new(&api_url, &dds_url, &client_id),
+            discovery_client: DiscoveryService::new(&api_url, &dds_url, &client_id),
+            client_id: client_id.to_string(),
         }
     }
 
-    // #[constructor]
-    // pub fn sign_in_with_app_credential(&self, api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Self {
-    //     get_runtime().block_on(async move {
-    //         r_DomainClient::new_with_app_credential(api_url, dds_url, client_id, app_key, app_secret).await.unwrap()
-    //     })
-    // }
+    pub fn with_oidc_access_token(&self, token: &str) -> Arc<Self> {
+        let discovery = self.discovery_client.with_oidc_access_token(token);
+        Arc::new(Self {
+            discovery_client: discovery,
+            client_id: self.client_id.clone(),
+        })
+    }
 
-    // #[constructor]
-    // pub fn sign_in_with_user_credential(&self, api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str, remember_password: bool) -> Self {
-    //     Self {
-    //         domain_client: r_DomainClient::new_with_user_credential(api_url, dds_url, client_id, email, password, remember_password).unwrap(),
-    //     }
-    // }
+    pub async fn download_domain_data(
+        &self,
+        domain_id: &str,
+        query: &DownloadQuery,
+    ) -> Result<Vec<DomainData>, DomainError> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        let mut rx = download_v1_stream(
+            &domain.domain.domain_server.url,
+            &self.client_id,
+            &domain.get_access_token(),
+            domain_id,
+            query,
+        )
+        .await?;
+        
+        // Convert Receiver to Vec by collecting all items
+        let mut results = Vec::new();
+        while let Some(result) = rx.next().await {
+            results.push(result?);
+        }
+        Ok(results)
+    }
 }

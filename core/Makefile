@@ -19,12 +19,21 @@ build-domain-wasm:
 	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
 build-domain-http-wasm:
-	@rm -rf domain-http/pkg
-	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http ./build-wasm.sh
+	@rm -rf domain-http/bindings/javascript/pkg
+	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http OUT_DIR=bindings/javascript/pkg ./build-wasm.sh
+
+build-domain-http-uniffi:
+	@if [ -z "$(LANG)" ]; then \
+		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \
+		exit 1; \
+	fi; \
+	OUT_DIR=domain-http/bindings/$(LANG)/pkg; \
+	mkdir -p $$OUT_DIR; \
+	cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR
 
 unit-tests:
 	@make build-domain-http-wasm
-	@cd domain-http/js-tests && npm install && npx playwright install chromium && npm run test:all
+	@cd domain-http/bindings/javascript/tests && npm install && npx playwright install chromium && npm run test:all
 	@cargo test --release --all-features -- --test-threads=1
 
 publish-domain-http:
@@ -58,7 +67,7 @@ publish-domain-http:
 		fi; \
 	fi
 	@cargo publish -p posemesh-domain-http
-	@cd domain-http/pkg && \
+	@cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
 		npm publish --tag "v$$VERSION"; \
 	else \

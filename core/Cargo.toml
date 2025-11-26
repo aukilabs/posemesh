@@ -9,7 +9,7 @@ members = [
     "examples/test-concurrent",
     "utils",
     "domain-http",
-    "node-registration",
+    "node-registration", "uniffi-bindgen",
 ]
 resolver = "2"
 
@@ -59,6 +59,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 uuid = { version = "1.10.1", features = ["v4"] }
 parking_lot = "0.12.3"
 scopeguard = "1.2.0"
+uniffi = { version = "0.30", features = [ "cli" ] }
 
 [profile.release]
 strip = true

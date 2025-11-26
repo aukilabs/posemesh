@@ -3,8 +3,7 @@ use crate::domain_data::{
     DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData, delete_by_id, download_by_id, download_metadata_v1, download_v1_stream, upload_v1
 };
 pub mod auth;
-#[cfg(feature="c")]
-mod uniffi;
+
 
 pub mod config;
 pub mod discovery;
@@ -21,12 +20,23 @@ pub use crate::reconstruction::JobRequest;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[cfg(feature="uniffi")]
+pub mod uniffi;
+
+#[cfg(feature="uniffi")]
+use crate::uniffi::{DomainClient, new_with_app_credential, new_with_user_credential};
+
+#[cfg(feature="uniffi")]
+::uniffi::include_scaffolding!("domain-client");
+
+#[cfg(not(feature="uniffi"))]
 #[derive(Debug, Clone)]
 pub struct DomainClient {
     discovery_client: DiscoveryService,
     pub client_id: String,
 }
 
+#[cfg(not(feature="uniffi"))]
 impl DomainClient {
     pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         if client_id.is_empty() {
@@ -217,6 +227,7 @@ impl DomainClient {
     }
 }
 
+#[cfg(not(feature="uniffi"))]
 #[cfg(not(target_family = "wasm"))]
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,25 @@
+namespace domain_client {
+    [Async, Throws=DomainError]
+    DomainClient new_with_app_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string app_key, [ByRef] string app_secret);
+
+    [Async, Throws=DomainError]
+    DomainClient new_with_user_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string email, [ByRef] string password, boolean remember_password);
+    
+};
+
+[Error]
+enum DomainError {
+  "ReqwestError",
+  "AukiErrorResponse",
+  "InvalidContentTypeHeader",
+  "StreamError",
+  "StreamCancelled",
+  "AuthError",
+  "InvalidRequest",
+};
+
+interface DomainClient {
+    constructor([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id);
+    DomainClient with_oidc_access_token([ByRef] string token);
+
+};
