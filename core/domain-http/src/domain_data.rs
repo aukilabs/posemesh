@@ -42,8 +42,13 @@ pub struct CreateDomainData {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DomainAction {
-    Create(CreateDomainData),
-    Update(UpdateDomainData),
+    Create {
+        name: String,
+        data_type: String,
+    },
+    Update {
+        id: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -287,12 +292,12 @@ pub async fn upload_v1_stream(
 
     while let Some(datum) = rx.next().await {
         match datum.action {
-            DomainAction::Create(create) => {
-                let create_data = write_create_body(boundary, &create, &datum.data);
+            DomainAction::Create { name, data_type } => {
+                let create_data = write_create_body(boundary, &CreateDomainData { name, data_type }, &datum.data);
                 create_tx.clone().send(create_data).await?;
             }
-            DomainAction::Update(update) => {
-                let update_data = write_update_body(boundary, &update, &datum.data);
+            DomainAction::Update { id } => {
+                let update_data = write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
                 update_tx.send(update_data).await?;
             }
         }
@@ -433,14 +438,14 @@ pub async fn upload_v1(
     // Process the first item to get metadata for the form
     for datum in data {
         match datum.action {
-            DomainAction::Create(create) => {
+            DomainAction::Create { name, data_type } => {
                 to_create = true;
-                let create_data = write_create_body(boundary, &create, &datum.data);
+                let create_data = write_create_body(boundary, &CreateDomainData { name, data_type }, &datum.data);
                 create_body.extend_from_slice(&create_data);
             }
-            DomainAction::Update(update) => {
+            DomainAction::Update { id } => {
                 to_update = true;
-                let update_data = write_update_body(boundary, &update, &datum.data);
+                let update_data = write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
                 update_body.extend_from_slice(&update_data);
             }
         }

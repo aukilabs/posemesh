@@ -18,22 +18,67 @@ build-domain-wasm:
 	wasm-pack build --target bundler --release domain
 	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
+build-domain-http:
+ifeq ($(TARGET),wasm)
+	$(MAKE) build-domain-http-wasm
+else
+	$(MAKE) build-domain-http-uniffi LANG=$(TARGET)
+endif
+
 build-domain-http-wasm:
 	@rm -rf domain-http/bindings/javascript/pkg
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http OUT_DIR=bindings/javascript/pkg ./build-wasm.sh
 
-build-domain-http-uniffi:
+build-domain-http-uniffi:	
+	@rm -rf domain-http/bindings/python/pkg
 	@if [ -z "$(LANG)" ]; then \
 		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \
 		exit 1; \
 	fi; \
 	OUT_DIR=domain-http/bindings/$(LANG)/pkg; \
 	mkdir -p $$OUT_DIR; \
-	cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR
+	cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR; \
+	if [ "$(LANG)" = "python" ]; then \
+		echo "Building Rust library for Python bindings..."; \
+		cargo build --features uniffi -p posemesh-domain-http; \
+		if [ "$$(uname)" = "Darwin" ]; then \
+			LIB_EXT="dylib"; \
+			LIB_PATTERN="libposemesh_domain_http.dylib"; \
+		else \
+			LIB_EXT="so"; \
+			LIB_PATTERN="libposemesh_domain_http.so"; \
+		fi; \
+		LIB_SRC=""; \
+		if [ -f "target/debug/$$LIB_PATTERN" ]; then \
+			LIB_SRC="target/debug/$$LIB_PATTERN"; \
+		elif [ -f "target/release/$$LIB_PATTERN" ]; then \
+			LIB_SRC="target/release/$$LIB_PATTERN"; \
+		fi; \
+		if [ -n "$$LIB_SRC" ]; then \
+			cp "$$LIB_SRC" "$$OUT_DIR/libuniffi.$$LIB_EXT"; \
+			echo "Copied library to $$OUT_DIR/libuniffi.$$LIB_EXT"; \
+		else \
+			echo "ERROR: Could not find built library $$LIB_PATTERN in target/debug or target/release"; \
+			echo "Trying to find any matching library..."; \
+			find target -name "*.$$LIB_EXT" -type f | head -5; \
+			exit 1; \
+		fi; \
+	fi
 
 unit-tests:
 	@make build-domain-http-wasm
 	@cd domain-http/bindings/javascript/tests && npm install && npx playwright install chromium && npm run test:all
+	@make build-domain-http-uniffi LANG=python
+	@python3 -m venv domain-http/bindings/python/tests/.venv
+	@. domain-http/bindings/python/tests/.venv/bin/activate && pip install -r domain-http/bindings/python/tests/requirements.txt
+	@cd domain-http/bindings/python/tests && \
+		if [ -f "../../../../.env" ]; then \
+			set -o allexport; source ../../../../.env; set +o allexport; \
+		fi; \
+		if [ -f "../../../../.env.local" ]; then \
+			set -o allexport; source ../../../../.env.local; set +o allexport; \
+		fi; \
+		. .venv/bin/activate && pytest -v -s
 	@cargo test --release --all-features -- --test-threads=1
 
 publish-domain-http:

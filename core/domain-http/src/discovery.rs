@@ -35,6 +35,7 @@ pub struct DomainWithToken {
     pub expires_at: u64,
     access_token: String,
 }
+
 impl TokenCache for DomainWithToken {
     fn get_access_token(&self) -> String {
         self.access_token.clone()

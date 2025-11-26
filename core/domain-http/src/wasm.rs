@@ -1,8 +1,8 @@
-use crate::DomainClient as r_DomainClient;
+use crate::domain_client::DomainClient as r_DomainClient;
 use crate::domain_data::{
-    DomainData, DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
+    DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
 };
-use crate::JobRequest as r_JobRequest;
+use crate::reconstruction::JobRequest as r_JobRequest;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
@@ -269,7 +269,6 @@ impl DomainClient {
     pub fn download_domain_data(&self, domain_id: String, query: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            use futures::StreamExt;
             let parse = from_value::<r_DownloadQuery>(query);
             if let Err(e) = parse {
                 return Err(JsError::new(&e.to_string()).into());
@@ -279,18 +278,7 @@ impl DomainClient {
             if let Err(e) = res {
                 return Err(JsError::new(&e.to_string()).into());
             }
-            let mut rx = res.unwrap();
-            let mut response: Vec<DomainData> = vec![];
-            while let Some(result) = rx.next().await {
-                match result {
-                    Ok(data) => {
-                        response.push(data);
-                    }
-                    Err(e) => {
-                        return Err(JsError::new(&e.to_string()).into());
-                    }
-                }
-            }
+            let response = res.unwrap(); 
 
             to_value(&response).map_err(|e| JsError::new(&e.to_string()).into())
         };
@@ -333,7 +321,7 @@ impl DomainClient {
                     return;
                 }
             };
-            let res = domain_client.download_domain_data(&domain_id, &query).await;
+            let res = domain_client.download_domain_data_stream(&domain_id, &query).await;
             if let Ok(mut download_rx) = res {
                 while let Some(result) = download_rx.next().await {
                     match result {

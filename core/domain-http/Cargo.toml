@@ -17,10 +17,11 @@ reqwest = { version = "0.12.22", default-features = false, features = ["json", "
 posemesh-utils = { workspace = true }
 bytes = "1.10.1"
 thiserror.workspace = true
-uniffi.workspace = true
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
+posemesh-runtime = { workspace = true }
+uniffi.workspace = true
 
 [target.'cfg(target_family="wasm")'.dependencies]
 tracing-wasm.workspace = true
@@ -43,7 +44,7 @@ uuid.workspace = true
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [features]
-default = ["uniffi"]
+default = []
 uniffi = []
 
 [profile.release]

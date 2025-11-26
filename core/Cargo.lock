@@ -3387,6 +3387,7 @@ dependencies = [
  "console_error_panic_hook",
  "dotenvy",
  "futures",
+ "posemesh-runtime",
  "posemesh-utils 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest",
  "serde",

@@ -1,10 +1,9 @@
 namespace domain_client {
-    [Async, Throws=DomainError]
+    [Throws=DomainError]
     DomainClient new_with_app_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string app_key, [ByRef] string app_secret);
 
-    [Async, Throws=DomainError]
+    [Throws=DomainError]
     DomainClient new_with_user_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string email, [ByRef] string password, boolean remember_password);
-    
 };
 
 [Error]
@@ -18,8 +17,67 @@ enum DomainError {
   "InvalidRequest",
 };
 
+dictionary DomainDataMetadata {
+    string id;
+    string domain_id;
+    string name;
+    string data_type;
+    u64 size;
+    string created_at;
+    string updated_at;
+};
+
+dictionary DomainData {
+    DomainDataMetadata metadata;
+    bytes data;
+};
+
+dictionary DownloadQuery {
+    sequence<string> ids;
+    string? name;
+    string? data_type;
+};
+
+dictionary DomainServer {
+    string id;
+    string organization_id;
+    string name;
+    string url;
+};
+
+dictionary DomainWithServer {
+    string id;
+    string name;
+    string organization_id;
+    string domain_server_id;
+    string? redirect_url;
+    DomainServer domain_server;
+};
+
+[Enum]
+interface DomainAction {
+  Create(string name, string data_type);
+  Update(string id);
+};
+
+dictionary UploadDomainData {
+    DomainAction action;
+    bytes data;
+};
+
 interface DomainClient {
     constructor([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id);
     DomainClient with_oidc_access_token([ByRef] string token);
+    
+    [Throws=DomainError]
+    sequence<DomainData> download_domain_data([ByRef] string domain_id, [ByRef] DownloadQuery query);
 
+    [Throws=DomainError]
+    DomainWithServer create_domain([ByRef] string name, string? domain_server_id, string? domain_server_url, string? redirect_url);
+
+    [Throws=DomainError]
+    void delete_domain([ByRef] string id);
+
+    [Throws=DomainError]
+    sequence<DomainDataMetadata> upload_domain_data([ByRef] string id, sequence<UploadDomainData> data);
 };
