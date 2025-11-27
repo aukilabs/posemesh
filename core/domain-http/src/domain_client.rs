@@ -227,7 +227,7 @@ impl DomainClient {
 #[cfg(not(target_family = "wasm"))]
 #[cfg(test)]
 mod tests {
-    use crate::{auth::AuthClient, domain_data::{CreateDomainData, DomainAction, UpdateDomainData, UploadDomainData}};
+    use crate::{auth::AuthClient, domain_data::{DomainAction, UploadDomainData}};
 
     use super::*;
     use futures::channel::mpsc;

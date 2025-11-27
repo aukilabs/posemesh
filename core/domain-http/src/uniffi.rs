@@ -7,11 +7,6 @@ use crate::domain_client::DomainClient as r_DomainClient;
 pub struct DomainClient(r_DomainClient);
 
 pub fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, app_key: &str, app_secret: &str) -> Result<Arc<DomainClient>, DomainError> {
-    // posemesh_runtime::with_runtime(|| async move {
-    //     let dc = r_DomainClient::new_with_app_credential(api_url, dds_url, client_id, app_key, app_secret).await?;
-    //     Ok(Arc::new(DomainClient(dc)))
-    // }).await
-
     get_runtime().block_on(async move {
         let dc = r_DomainClient::new_with_app_credential(api_url, dds_url, client_id, app_key, app_secret).await?;
         Ok(Arc::new(DomainClient(dc)))
@@ -19,11 +14,6 @@ pub fn new_with_app_credential(api_url: &str, dds_url: &str, client_id: &str, ap
 }
 
 pub fn new_with_user_credential(api_url: &str, dds_url: &str, client_id: &str, email: &str, password: &str, remember_password: bool) -> Result<Arc<DomainClient>, DomainError> {
-    // posemesh_runtime::with_runtime(|| async move {
-    //     let dc = r_DomainClient::new_with_user_credential(api_url, dds_url, client_id, email, password, remember_password).await?;
-    //     Ok(Arc::new(DomainClient(dc)))
-    // }).await
-
     get_runtime().block_on(async move {
         let dc = r_DomainClient::new_with_user_credential(api_url, dds_url, client_id, email, password, remember_password).await?;
         Ok(Arc::new(DomainClient(dc)))
@@ -45,10 +35,6 @@ impl DomainClient {
         domain_id: &str,
         query: &DownloadQuery,
     ) -> Result<Vec<DomainData>, DomainError> {
-        // posemesh_runtime::with_runtime(|| async move {
-        //     self.0.download_domain_data(domain_id, query).await
-        // }).await
-
         get_runtime().block_on(async move {
             self.0.download_domain_data(domain_id, query).await
         })

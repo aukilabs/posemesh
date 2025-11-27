@@ -21,7 +21,7 @@ thiserror.workspace = true
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
 posemesh-runtime = { workspace = true }
-uniffi.workspace = true
+uniffi = { workspace = true, optional = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 tracing-wasm.workspace = true
@@ -45,7 +45,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 
 [features]
 default = []
-uniffi = []
+uniffi = ["dep:uniffi"]
 
 [profile.release]
 strip = true
