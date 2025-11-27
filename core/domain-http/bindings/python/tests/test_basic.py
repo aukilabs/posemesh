@@ -21,6 +21,8 @@ from domain_client import (
     DomainError,
     new_with_app_credential,
     new_with_user_credential,
+    ListDomainsQuery,
+    ListDomainsResponse,
 )
 
 
@@ -222,6 +224,16 @@ class TestAppCredential:
             assert item.metadata.created_at is not None
             assert item.metadata.updated_at is not None
 
+    def test_list_domains(self, app_client):
+        """Test listing domains."""
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None)
+        res = app_client.list_domains(query)
+        assert res is not None
+        assert isinstance(res, ListDomainsResponse)
+        assert len(res.domains) > 0
+        for domain in res.domains:
+            assert domain.id is not None
+            assert domain.name is not None
 
 class TestUserCredential:
     """Tests for user credential authentication."""

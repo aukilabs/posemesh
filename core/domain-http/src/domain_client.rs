@@ -1,14 +1,22 @@
 use futures::channel::mpsc::Receiver;
+use serde::{Deserialize, Serialize};
 use crate::domain_data::{
     DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData, delete_by_id, download_by_id, download_metadata_v1, download_v1_stream, upload_v1
 };
 
 use crate::auth::TokenCache;
-use crate::discovery::{DiscoveryService, DomainWithServer, DomainWithToken};
+use crate::discovery::{DiscoveryService, DomainWithToken, ListDomainsResponse};
 use crate::errors::DomainError;
 pub use crate::reconstruction::JobRequest;
 pub use crate::config;
 pub use crate::auth;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListDomainsQuery {
+    pub portal_id: Option<String>,
+    pub portal_short_id: Option<String>,
+    pub org: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct DomainClient {
@@ -200,9 +208,13 @@ impl DomainClient {
   
     pub async fn list_domains(
         &self,
-        org: &str,
-    ) -> Result<Vec<DomainWithServer>, DomainError> {
-        self.discovery_client.list_domains(org).await
+        query: &ListDomainsQuery,
+    ) -> Result<ListDomainsResponse, DomainError> {
+        if query.portal_id.is_none() && query.portal_short_id.is_none() {
+            self.discovery_client.list_domains(&query.org).await
+        } else {
+            self.discovery_client.list_domains_by_portal(query.portal_id.as_deref(), query.portal_short_id.as_deref(), &query.org).await
+        }
     }
 
     pub async fn create_domain(
@@ -576,8 +588,12 @@ mod tests {
         .expect("Failed to create client");
 
         let org = std::env::var("TEST_ORGANIZATION").unwrap_or("own".to_string());
-        let result = client.list_domains(&org).await.unwrap();
-        assert!(result.len() > 0, "No domains found");
+        let result = client.list_domains(&ListDomainsQuery {
+            portal_id: None,
+            portal_short_id: None,
+            org: org,
+        }).await.unwrap();
+        assert!(result.domains.len() > 0, "No domains found");
     }
 
     #[tokio::test]

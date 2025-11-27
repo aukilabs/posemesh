@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use posemesh_runtime::get_runtime;
-use crate::{discovery::DomainWithServer, domain_data::{DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData}, errors::DomainError};
+use crate::{discovery::{DomainWithServer, ListDomainsResponse}, domain_data::{DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData}, errors::DomainError};
 use crate::domain_client::DomainClient as r_DomainClient;
+use crate::domain_client::ListDomainsQuery;
 
 #[derive(Debug, Clone)]
 pub struct DomainClient(r_DomainClient);
@@ -71,6 +72,16 @@ impl DomainClient {
     ) -> Result<(), DomainError> {
         let res = get_runtime().block_on(async move {
             self.0.delete_domain(domain_id).await
+        })?;
+        Ok(res)
+    }
+
+    pub fn list_domains(
+        &self,
+        query: &ListDomainsQuery,
+    ) -> Result<ListDomainsResponse, DomainError> {
+        let res = get_runtime().block_on(async move {
+            self.0.list_domains(query).await
         })?;
         Ok(res)
     }

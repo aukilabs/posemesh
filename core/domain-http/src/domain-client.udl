@@ -65,6 +65,16 @@ dictionary UploadDomainData {
     bytes data;
 };
 
+dictionary ListDomainsResponse {
+    sequence<DomainWithServer> domains;
+};
+
+dictionary ListDomainsQuery {
+    string org;
+    string? portal_id;
+    string? portal_short_id;
+};
+
 interface DomainClient {
     constructor([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id);
     DomainClient with_oidc_access_token([ByRef] string token);
@@ -80,4 +90,7 @@ interface DomainClient {
 
     [Throws=DomainError]
     sequence<DomainDataMetadata> upload_domain_data([ByRef] string id, sequence<UploadDomainData> data);
+
+    [Throws=DomainError]
+    ListDomainsResponse list_domains([ByRef] ListDomainsQuery query);
 };

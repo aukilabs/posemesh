@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { defineConfig } from 'vitest/config.js';
+import { defineConfig } from 'vitest/config';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '../../../../.env' });

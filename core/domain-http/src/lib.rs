@@ -12,7 +12,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod wasm;
 
 #[cfg(feature="uniffi")]
-use crate::{errors::DomainError, domain_data::{DomainData, DomainDataMetadata, DownloadQuery, DomainAction, UploadDomainData}, discovery::{DomainWithServer, DomainServer}};
+use crate::{errors::DomainError, domain_client::ListDomainsQuery, domain_data::{DomainData, DomainDataMetadata, DownloadQuery, DomainAction, UploadDomainData}, discovery::{DomainWithServer, DomainServer, ListDomainsResponse}};
 
 #[cfg(feature="uniffi")]
 pub mod uniffi;

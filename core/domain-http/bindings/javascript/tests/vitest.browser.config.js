@@ -1,7 +1,7 @@
 import { resolve } from 'path';
 import topLevelAwait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
-import { defineConfig } from 'vitest/config.js';
+import { defineConfig } from 'vitest/config';
 import path from 'path';
 import dotenv from 'dotenv';
 
