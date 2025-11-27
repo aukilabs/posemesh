@@ -122,7 +122,7 @@ publish-domain-http:
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
 	if [ -z "$$CI" ]; then \
-		read -p "Continue with publish? [y/N]: " CONFIRM; \
+		read -p "Continue with publish v$$VERSION? [y/N]: " CONFIRM; \
 		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
 			echo "Publish cancelled."; \
 			exit 1; \

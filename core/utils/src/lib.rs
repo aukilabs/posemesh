@@ -1,6 +1,10 @@
 use std::time::Duration;
 use std::io;
 use futures::{self, Future};
+#[cfg(not(target_family = "wasm"))]
+use once_cell::sync::Lazy;
+#[cfg(not(target_family = "wasm"))]
+use tokio::runtime::Runtime;
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
@@ -113,4 +117,15 @@ pub fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
+}
+
+#[cfg(not(target_family = "wasm"))]
+static GLOBAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    Runtime::new().expect("Failed to create Tokio runtime")
+});
+
+#[cfg(not(target_family = "wasm"))]
+/// Expose a function to get the global Tokio runtime.
+pub fn get_runtime() -> &'static Runtime {
+    &*GLOBAL_RUNTIME
 }

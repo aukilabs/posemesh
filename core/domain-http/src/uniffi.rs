@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use posemesh_runtime::get_runtime;
+use posemesh_utils::get_runtime;
 use crate::{discovery::{DomainWithServer, ListDomainsResponse}, domain_data::{DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData}, errors::DomainError};
 use crate::domain_client::DomainClient as r_DomainClient;
 use crate::domain_client::ListDomainsQuery;

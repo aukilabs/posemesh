@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-domain-http"
-version = "1.4.0"
+version = "1.4.0-rc.4"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
@@ -20,7 +20,6 @@ thiserror.workspace = true
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
-posemesh-runtime = { workspace = true }
 uniffi = { workspace = true, optional = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]

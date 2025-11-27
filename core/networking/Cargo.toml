@@ -21,7 +21,6 @@ libp2p = { workspace = true, features = [ "ping", "dcutr", "tokio", "gossipsub",
 tokio = { workspace = true, features = ["full"] }
 libp2p-webrtc = { workspace = true, features = ["tokio"] }
 libp2p-websocket = { workspace = true }
-posemesh-runtime = { workspace = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 libp2p = { workspace = true, features = [ "ping", "wasm-bindgen", "macros", "gossipsub", "serde", "identify", "kad", "autonat", "relay", "noise", "yamux", "dcutr" ] }
