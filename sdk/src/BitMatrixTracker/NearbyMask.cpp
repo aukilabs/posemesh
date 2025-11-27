@@ -79,6 +79,23 @@ bool buildNearbyMask(const cv::Size &imgSize,
     }
 }
 
+int countInliers(const std::vector<cv::Point2i> &proj,
+                 const std::vector<int16_t> &nearbyMask,
+                 const int W, const int H)
+{
+    int inliers = 0;
+    for (const auto &p : proj) {
+        if (p.x < 0 || p.x >= W || p.y < 0 || p.y >= H)
+            continue;
+
+        if (nearbyMask[p.y * W + p.x] >= 0) {
+            ++inliers;
+        }
+    }
+    return inliers;
+
+}
+
 static std::vector<bool> s_used; // Reused to avoid memory allocations (for speed!)
 
 // Count inliers for ONE family with one-to-one claiming.

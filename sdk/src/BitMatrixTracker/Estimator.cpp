@@ -370,7 +370,18 @@ bool Estimator::estimatePose(const cv::Mat &gray,
             return false;
         }
 
+        std::cout << "H: " << outH << std::endl;
+        std::cout << "H_inv: " << H_inv << std::endl;
+
         std::vector<cv::Point2f> unprojectedPoints1, unprojectedPoints2;
+
+        float shiftX = 0.0f; // Offset unprojected points in marker coordinates (bitmatrix size units)
+        float shiftY = 0.0f;
+        cv::Matx33d offsetMat = cv::Matx33d::eye();
+        offsetMat(0,2) = shiftX;
+        offsetMat(1,2) = shiftY;
+        H_inv = offsetMat * H_inv;
+
         cv::perspectiveTransform(d1.points, unprojectedPoints1, H_inv);
         cv::perspectiveTransform(d2.points, unprojectedPoints2, H_inv);
         const int plotScale = 40;

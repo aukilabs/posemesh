@@ -23,6 +23,10 @@ bool buildNearbyMask(const cv::Size &imgSize,
                      float radiusPx,
                      std::vector<int16_t> &outNearbyMask);
 
+int countInliers(const std::vector<cv::Point2i> &proj,
+                 const std::vector<int16_t> &nearbyMask,
+                 const int W, const int H);
+
 int countInliersOneToOne(const std::vector<cv::Point2f> &proj,
                          const std::vector<int16_t> &nearbyMask,
                          const int W, const int H,
@@ -59,6 +63,8 @@ void plotNearbyMask(const cv::Mat &gray, const std::vector<int16_t> &label, cons
     }
     cv::imwrite(filename, plot);
 }
+
+static std::vector<cv::Point2f> unprojectedPoints1, unprojectedPoints2;
 
 static bool ransacHomography(const Config &cfg,
                              const Target &target,
@@ -101,6 +107,8 @@ static bool ransacHomography(const Config &cfg,
 
         auto startTime = std::chrono::high_resolution_clock::now();
 
+        const int markerSpaceIterations = 100;
+
         for (int it = 0; it < maxIters; ++it) {
             out.iterations = it + 1;
 
@@ -109,6 +117,98 @@ static bool ransacHomography(const Config &cfg,
             bool rot180 = false;
             if (!sampler.generate(H, flippedDiags, rot180))
                 continue;
+            
+            if (markerSpaceIterations > 0) {
+                cv::Matx33d H_inv = H.inv();
+                unprojectedPoints1.clear();
+                unprojectedPoints2.clear();
+                const auto& photoPoints1 = flippedDiags ? diag2.points : diag1.points;
+                const auto& photoPoints2 = flippedDiags ? diag1.points : diag2.points;
+                cv::perspectiveTransform(photoPoints1, unprojectedPoints1, H_inv);
+                cv::perspectiveTransform(photoPoints2, unprojectedPoints2, H_inv);
+
+
+                std::vector<cv::Point2i> scaledUnprojectedPoints1, scaledUnprojectedPoints2;
+                scaledUnprojectedPoints1.resize(unprojectedPoints1.size());
+                scaledUnprojectedPoints2.resize(unprojectedPoints2.size());
+
+                if (verbose) {
+                    //std::cout << "targetNearbyMask1.size() = " << targetNearbyMask1.size() << std::endl;
+                    //std::cout << "targetNearbyMask2.size() = " << targetNearbyMask2.size() << std::endl;
+                }
+
+                float bestScale = 1;
+                cv::Point2i bestOffset2D;
+                int bestScore = 0;
+                for (int i = 0; i < markerSpaceIterations; ++i) {
+
+                    // Each iteration, guess one random point correspondence and align the
+                    // points. Keep only the most similar alignment as homography matrix.
+                    // This is done in marker space (axis aligned, no perspective, int math),
+                    // so it is much faster than the full 3D inlier check.
+                    // We do fewer but better outer iterations.
+
+                    float scale = 0.5f + (rand() % 1000) / 1000.0f;
+                    for(int j = 0; j < unprojectedPoints1.size(); ++j) {
+                        scaledUnprojectedPoints1[j].x = static_cast<int>(unprojectedPoints1[j].x * scale);
+                        scaledUnprojectedPoints1[j].y = static_cast<int>(unprojectedPoints1[j].y * scale);
+                    }
+                    for(int j = 0; j < unprojectedPoints2.size(); ++j) {
+                        scaledUnprojectedPoints2[j].x = static_cast<int>(unprojectedPoints2[j].x * scale);
+                        scaledUnprojectedPoints2[j].y = static_cast<int>(unprojectedPoints2[j].y * scale);
+                    }
+
+                    cv::Point2i targetPoint, unprojectedPoint;
+                    const bool correspondenceDiag = rand() % 2 == 0;
+                    if (correspondenceDiag) {
+                        targetPoint = target.diag1[rand() % target.diag1.size()];
+                        unprojectedPoint = scaledUnprojectedPoints1[rand() % unprojectedPoints1.size()];
+                    }
+                    else {
+                        targetPoint = target.diag2[rand() % target.diag2.size()];
+                        unprojectedPoint = scaledUnprojectedPoints2[rand() % unprojectedPoints2.size()];
+                    }
+                    const auto& offset2D = targetPoint - unprojectedPoint;
+                    for(int j = 0; j < scaledUnprojectedPoints1.size(); ++j) {
+                        scaledUnprojectedPoints1[j].x += offset2D.x;
+                        scaledUnprojectedPoints1[j].y += offset2D.y;
+                    }
+                    for(int j = 0; j < scaledUnprojectedPoints2.size(); ++j) {
+                        scaledUnprojectedPoints2[j].x += offset2D.x;
+                        scaledUnprojectedPoints2[j].y += offset2D.y;
+                    }
+                    int inlierCount1 = countInliers(
+                        scaledUnprojectedPoints1, target.nearbyMask1,
+                        target.bitmatrix.cols, target.bitmatrix.rows
+                    );
+
+                    int inlierCount2 = countInliers(
+                        scaledUnprojectedPoints2, target.nearbyMask2,
+                        target.bitmatrix.cols, target.bitmatrix.rows
+                    );
+
+                    if (inlierCount1 + inlierCount2 > bestScore) {
+                        bestScore = inlierCount1 + inlierCount2;
+                        bestOffset2D = offset2D;
+                        bestScale = scale;
+                    }
+                }
+
+                /*
+                if (verbose) {
+                    std::cout << "bestScore = " << bestScore << std::endl;
+                    std::cout << "bestOffset2D = " << bestOffset2D << std::endl;
+                    std::cout << "bestScale = " << bestScale << std::endl;
+                }
+                */
+                cv::Matx33d offsetMat = cv::Matx33d::eye();
+                offsetMat(0,0) = bestScale;
+                offsetMat(1,1) = bestScale;
+                offsetMat(0,2) = bestOffset2D.x;
+                offsetMat(1,2) = bestOffset2D.y;
+                H_inv = offsetMat * H_inv;
+                H = H_inv.inv();
+            }
 
             // Project families
             projectWithH(target.diag1, H, proj1);

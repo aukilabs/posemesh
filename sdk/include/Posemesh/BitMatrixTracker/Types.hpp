@@ -15,6 +15,9 @@ struct Target {
     // Feature coords in canonical target plane (units consistent with PnP setup)
     std::vector<cv::Point2f> diag1; // family near dominant angle
     std::vector<cv::Point2f> diag2; // perpendicular family
+
+    std::vector<int16_t> nearbyMask1;
+    std::vector<int16_t> nearbyMask2;
 };
 
 struct Cluster {

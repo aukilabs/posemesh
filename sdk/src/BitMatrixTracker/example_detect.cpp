@@ -14,6 +14,16 @@
 
 using namespace psm::BitMatrixTracker;
 
+// Forward declared from NearbyMask.cpp
+namespace psm {
+namespace BitMatrixTracker {
+bool buildNearbyMask(const cv::Size &imgSize,
+    const std::vector<cv::Point2f> &centers,
+    float radiusPx,
+    std::vector<int16_t> &outNearbyMask);
+}
+}
+
 void drawCornerOutlineOnPhoto(const cv::Mat &rgb, const std::vector<cv::Point2f> &corners, cv::Scalar color)
 {
     std::cout << "corners: " << corners.size() << std::endl;
@@ -95,15 +105,17 @@ struct ExampleFrame {
 
 const std::string framesFolder = "scannertest/dmt_scan_2024-06-26_14-08-53/Frames";
 std::vector<ExampleFrame> exampleFrames = {
-    { "424272.304214.jpg",1432.85,1432.85,961.3515,725.1973,0.1f},
+    //{ "424272.304214.jpg",1432.85,1432.85,961.3515,725.1973,0.1f},
     { "424273.004447.jpg",1434.154,1434.154,960.8257,724.7334,0.1f},
     { "424274.404912.jpg",1436.709,1436.709,959.9976,725.895,0.1f},
-    { "424243.594662.jpg",1434.544,1434.544,961.1267,724.8087,0.1f},
+    //{ "424243.594662.jpg",1434.544,1434.544,961.1267,724.8087,0.1f},
     { "424244.394929.jpg",1435.665,1435.665,960.1682,724.1594,0.1f},
 };
 
-bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator, float& outRuntimeMs, float& outPoseErrorCm, float& outAngleErrorDeg, bool verbose)
+bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator, float& outRuntimeMs, float& outPoseErrorCm, float& outAngleErrorDeg, Diagnostics* outDiagnostics=nullptr)
 {
+    bool verbose = outDiagnostics != nullptr;
+
     std::string imagePath = framesFolder + "/" + exampleFrame.jpgName;
 
     cv::Mat rgb; // Only used for saving plots, when verbose is true
@@ -182,6 +194,28 @@ bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator,
         return false;
     }
 
+
+    // TODO move to Target.cpp file
+    //target.buildNearbyMasks();
+    std::vector<cv::Point2f> targetDiag1, targetDiag2;
+    targetDiag1.reserve(target.diag1.size());
+    targetDiag2.reserve(target.diag2.size());
+    for (const auto& p : target.diag1) {
+        targetDiag1.emplace_back(p.x, p.y);
+    }
+    for (const auto& p : target.diag2) {
+        targetDiag2.emplace_back(p.x, p.y);
+    }
+    if (!buildNearbyMask(target.bitmatrix.size(), targetDiag1, 0.5f, target.nearbyMask1)) {
+        std::cerr << "buildNearbyMask target.diag1 failed" << std::endl;
+        return false;
+    }
+
+    if (!buildNearbyMask(target.bitmatrix.size(), targetDiag2, 0.5f, target.nearbyMask2)) {
+        std::cerr << "buildNearbyMask target.diag2 failed" << std::endl;
+        return false;
+    }
+
     // Camera intrinsics (fx, fy, cx, cy). Only supporting pinhole for now. Image should be rectified already. Distorted photos not tested.
     cv::Matx33d K(exampleFrame.fx, 0.0, exampleFrame.cx,
                   0.0, exampleFrame.fy, exampleFrame.cy,
@@ -206,12 +240,10 @@ bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator,
 
     Pose pose;
     cv::Matx33d H;
-    Diagnostics diagnostics;
-    Diagnostics* diagnosticsPtr = verbose ? &diagnostics : nullptr; // Optional
 
     auto startTime = std::chrono::high_resolution_clock::now();
     try {
-        if (!estimator.estimatePose(gray, K, target, pose, H, diagnosticsPtr)) {
+        if (!estimator.estimatePose(gray, K, target, pose, H, outDiagnostics)) {
             std::cerr << "Pose estimation failed" << std::endl;
             return false;
         }
@@ -226,10 +258,13 @@ bool processExampleFrame(const ExampleFrame &exampleFrame, Estimator& estimator,
     double tvecError = cv::norm(pose.tvec - tvecTruth);
     double rvecAngleError = rvecAngleDelta(rvecTruth, pose.rvec);
 
+
+    outPoseErrorCm = tvecError * 100.0;
+    outAngleErrorDeg = rvecAngleError;
+    outRuntimeMs = duration / 1000.0;
+
     if (verbose) {
-        if (diagnosticsPtr) {
-            std::cout << "inliers: " << diagnostics.inliersBest << ", iters: " << diagnostics.ransacIterations << "\n";
-        }
+        std::cout << "inliers: " << outDiagnostics->inliersBest << ", iters: " << outDiagnostics->ransacIterations << "\n";
 
         double rvecError = cv::norm(pose.rvec - rvecTruth);
 
@@ -272,8 +307,9 @@ int main(int argc, char *argv[])
 {
     Config cfg = defaultConfig();
     cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
-    cfg.ransacMaxIters = 100000;
-    cfg.angleJitterDeg = 1.0f;
+    cfg.ransacMaxIters = 5000;
+    cfg.maxInnerRefinements = 1;
+    cfg.angleJitterDeg = 0.1f;
     cfg.inlierRadiusPx = 3.0f;
     cfg.earlyStopPercent = 80;
     cfg.collapseRadiusPx = 3.0f;
@@ -281,10 +317,15 @@ int main(int argc, char *argv[])
     cfg.finalRefinePnP = true;
 
     bool verbose = false;
+    bool evalMode = false;
     for (int i = 1; i < argc; ++i) {
         std::string param = argv[i];
         if (param == "-v" || param == "--verbose") {
             verbose = true;
+            break;
+        }
+        else if (param == "--eval") {
+            evalMode = true;
             break;
         }
     }
@@ -299,14 +340,14 @@ int main(int argc, char *argv[])
     int successfulCount = 0;
     std::vector<float> runtimes, positionErrors, angleErrors;
 
-    if (argc >= 2) {
+    if (argc >= 2 && !evalMode) {
         std::string frameIndexStr = argv[1];
         int frameIndex;
         if (std::istringstream(frameIndexStr) >> frameIndex) {
             if (frameIndex >= 0 && frameIndex < exampleFrames.size()) {
                 std::cout << "Processing ONLY example frame " << (frameIndex) << ": " << exampleFrames[frameIndex].jpgName << std::endl;
                 float runtimeMs, poseErrorCm, angleErrorDeg;
-                processExampleFrame(exampleFrames[frameIndex], estimator, runtimeMs, poseErrorCm, angleErrorDeg, verbose);
+                processExampleFrame(exampleFrames[frameIndex], estimator, runtimeMs, poseErrorCm, angleErrorDeg);
                 return 0;
             }
             else {
@@ -320,22 +361,29 @@ int main(int argc, char *argv[])
         }
     }
 
-    for (int i = 0; i < exampleFrames.size(); i++) {
-        std::cout << std::endl;
-        std::cout << "Processing example frame " << (i) << ": " << exampleFrames[i].jpgName << std::endl;
-        float runtimeMs, poseErrorCm, angleErrorDeg;
-        bool success = processExampleFrame(exampleFrames[i], estimator, runtimeMs, poseErrorCm, angleErrorDeg, verbose);
-        if (success) {
-            successfulCount++;
-            runtimes.push_back(runtimeMs);
-            positionErrors.push_back(poseErrorCm);
-            angleErrors.push_back(angleErrorDeg);
+    const int repeats = evalMode ? 20 : 1;
+    for (int r = 0; r < repeats; r++) {
+        for (int i = 0; i < exampleFrames.size(); i++) {
+            std::cout << std::endl;
+            std::cout << "Processing example frame " << (i) << ": " << exampleFrames[i].jpgName << std::endl;
+            float runtimeMs, poseErrorCm, angleErrorDeg;
+            Diagnostics diagnostics;
+            Diagnostics* diagPtr = verbose ? &diagnostics : nullptr;
+            bool success = processExampleFrame(exampleFrames[i], estimator, runtimeMs, poseErrorCm, angleErrorDeg, diagPtr);
+            if (success) {
+                successfulCount++;
+                runtimes.push_back(runtimeMs);
+                positionErrors.push_back(poseErrorCm);
+                angleErrors.push_back(angleErrorDeg);
+            }
         }
     }
     
-    printAggregatedStats("Time (ms)", runtimes);
-    printAggregatedStats("Position Error (cm)", positionErrors);
-    printAggregatedStats("Angle Error (deg)", angleErrors);
+    if (evalMode) {
+        printAggregatedStats("Time (ms)", runtimes);
+        printAggregatedStats("Position Error (cm)", positionErrors);
+        printAggregatedStats("Angle Error (deg)", angleErrors);
+    }
 
     return 0;
 }
