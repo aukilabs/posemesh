@@ -1,8 +1,5 @@
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_family = "wasm"))]
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_futures::spawn_local as spawn;
 
 use crate::errors::{AukiErrorResponse, DomainError};
 

@@ -3,7 +3,7 @@ use std::ffi::{CStr, CString};
 use std::ptr;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
-use posemesh_runtime::get_runtime;
+use posemesh_utils::get_runtime;
 
 use crate::cluster::DomainCluster;
 use crate::datastore::common::{self, data_id_generator, Datastore, ReliableDataProducer as r_ReliableDataProducer, DomainError as r_DomainError};

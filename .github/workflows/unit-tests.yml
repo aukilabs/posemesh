@@ -84,7 +84,7 @@ jobs:
           make unit-tests
         
       - name: Publish packages
-        if: ${{ github.event.inputs.publish && github.event_name == 'workflow_call' }}
+        if: ${{ github.event.inputs.publish == true && github.event_name == 'workflow_call' }}
         continue-on-error: true
         env:
           CI: true

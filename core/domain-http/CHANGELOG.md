@@ -1,10 +1,13 @@
 ## v1.4.0
 
 ### Features
-- Formatted errors
-- Supported domain creation and deletion
-- Renamed JS package to @auki/domain-http
-- Upgraded rust version to 1.89.0
+- Improved error formatting for clearer diagnostics
+- Added support for domain creation and deletion
+- Renamed JavaScript package to `@auki/domain-http`
+- Upgraded Rust version to 1.89.0
+- Included `posemesh-sdk-version` header in all Auki requests
+- Enabled filtering of domains by portal short ID
+- Added Python binding and reorganized codebase for UniFFI integration
 
 ## v1.2.0
 
