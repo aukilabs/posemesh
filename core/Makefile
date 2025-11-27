@@ -73,10 +73,10 @@ unit-tests:
 	@. domain-http/bindings/python/tests/.venv/bin/activate && pip install -r domain-http/bindings/python/tests/requirements.txt
 	@cd domain-http/bindings/python/tests && \
 		if [ -f "../../../../.env" ]; then \
-			set -o allexport; source ../../../../.env; set +o allexport; \
+			set -o allexport; . ../../../../.env; set +o allexport; \
 		fi; \
 		if [ -f "../../../../.env.local" ]; then \
-			set -o allexport; source ../../../../.env.local; set +o allexport; \
+			set -o allexport; . ../../../../.env.local; set +o allexport; \
 		fi; \
 		. .venv/bin/activate && pytest -v -s
 	@cargo test --release --all-features -- --test-threads=1
