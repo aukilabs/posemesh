@@ -151,7 +151,7 @@ Different tasks need different verification. We support **three modes** dependin
 
 * **ZK validity proofs** (best when feasible): Provider returns a **zero‑knowledge proof** that a program ran correctly on given inputs. Works for deterministic and circuit/zkVM‑friendly tasks. ([RISC Zero Docs][4])
 * **Optimistic verification** (general‑purpose): Provider returns a result immediately; a **challenge window** allows disputes. If a challenger proves fraud via an **interactive verification game** (Truebit‑style), the provider is slashed and funds are refunded; if no challenge, pay. ([Truebit][5])
-* **TEE attestation** (hardware‑based trust): Provider runs inside a **Trusted Execution Environment** and returns **remote attestation** proving code identity. The protocol may require **random spot‑checks**; failures are slashed. Useful for heavy or non‑deterministic GPU paths until ZK/optimistic becomes practical. (Intel SGX DCAP)
+* **TEE attestation** (hardware‑based trust): Provider runs inside a **Trusted Execution Environment** and returns **remote attestation** proving code identity. The protocol may require **random spot‑checks**; failures are slashed. Useful for heavy or non‑deterministic GPU paths until ZK/optimistic becomes practical. (https://cocoon.org/architecture)
 
 **Notes**
 
