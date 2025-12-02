@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+readme = "../../README.md"
 
 [tool.maturin]
 module-name = "auki_domain_client"
