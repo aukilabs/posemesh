@@ -34,6 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Copy README.md to package directory
+        run: |
+          cp core/${{inputs.folder}}/README.md core/${{inputs.folder}}/bindings/python/README.md
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.0
         env:
