@@ -36,10 +36,3 @@ features = ["uniffi"]
 build = ["cp37-*", "cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*"]
 # Skip tests during wheel building (tests are run separately)
 skip = []
-# Use maturin as the build frontend
-build-frontend = "maturin"
-# Environment variables for the build
-environment = {}
-# Before building, ensure bindings are generated
-before-build = "cd ../../.. && make build-domain-http-uniffi LANG=python"
-
