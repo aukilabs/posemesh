@@ -43,8 +43,7 @@ impl DomainClient {
         app_secret: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
-        let _ = dc
-            .discovery_client
+        dc.discovery_client
             .sign_in_as_auki_app(app_key, app_secret)
             .await?;
         Ok(dc)
@@ -59,8 +58,7 @@ impl DomainClient {
         remember_password: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut dc = DomainClient::new(api_url, dds_url, client_id);
-        let _ = dc
-            .discovery_client
+        dc.discovery_client
             .sign_in_with_auki_account(email, password, remember_password)
             .await?;
         Ok(dc)

@@ -22,10 +22,22 @@ build-domain-http-wasm:
 	@rm -rf domain-http/pkg
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http ./build-wasm.sh
 
-unit-tests:
+unit-tests: ci-compute-node
 	@make build-domain-http-wasm
 	@cd domain-http/js-tests && npm install && npx playwright install chromium && npm run test:all
 	@cargo test --release --all-features -- --test-threads=1
+
+fmt-compute-node:
+	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -- --check
+
+clippy-compute-node:
+	cargo clippy -p posemesh-compute-node-runner-api -p posemesh-compute-node --all-targets -- -D warnings
+
+test-compute-node:
+	cargo test -p posemesh-compute-node-runner-api
+	cargo test -p posemesh-compute-node
+
+ci-compute-node: fmt-compute-node clippy-compute-node test-compute-node
 
 publish-domain-http:
 	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \

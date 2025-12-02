@@ -204,7 +204,7 @@ impl AuthClient {
                 let client_id = self.client_id.clone();
                 async move {
                     let response = client
-                        .post(&format!("{}/service/domains-access-token", api_url))
+                        .post(format!("{}/service/domains-access-token", api_url))
                         .basic_auth(app_key, Some(app_secret))
                         .header("Content-Type", "application/json")
                         .header("posemesh-client-id", client_id)
@@ -275,7 +275,7 @@ impl AuthClient {
                 let user_token_cache =
                     get_cached_or_fresh_token(&user_token_cache.unwrap(), || async move {
                         let response = client_clone
-                            .post(&format!("{}/user/refresh", api_url_clone))
+                            .post(format!("{}/user/refresh", api_url_clone))
                             .header("Content-Type", "application/json")
                             .header("posemesh-client-id", client_id_clone)
                             .header("Authorization", format!("Bearer {}", refresh_token))
@@ -344,7 +344,7 @@ impl AuthClient {
         let credentials = UserCredentials { email: email.to_string(), password: password.to_string() };
 
         let response = self.client
-            .post(&format!("{}/user/login", &self.api_url))
+            .post(format!("{}/user/login", &self.api_url))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
             .json(&credentials)

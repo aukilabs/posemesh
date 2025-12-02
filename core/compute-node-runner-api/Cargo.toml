@@ -1,0 +1,23 @@
+[package]
+name = "posemesh-compute-node-runner-api"
+version = "0.1.2"
+edition = "2021"
+license = "MIT"
+description = "Runner trait + ports + shared types (no HTTP)."
+repository = "https://github.com/aukilabs/prompting"
+readme = "README.md"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

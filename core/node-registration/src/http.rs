@@ -1,6 +1,8 @@
 #[cfg(test)]
 use crate::state::clear_node_secret;
-use crate::state::{read_node_secret, touch_healthcheck_now, write_node_secret};
+use crate::state::{
+    read_node_secret, set_status, touch_healthcheck_now, write_node_secret, STATUS_REGISTERED,
+};
 use axum::extract::State;
 use axum::http::{header::USER_AGENT, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -114,6 +116,12 @@ async fn callback_registration(
         }
     }
 
+    // Mark registration state explicitly so downstream listeners can trigger SIWE promptly.
+    if let Err(e) = set_status(STATUS_REGISTERED) {
+        warn!(error = %e, "failed to set registration status to 'registered'");
+        // Not fatal to the callback; secret persistence is the primary signal.
+    }
+
     Ok(Json(OkResponse { ok: true }))
 }
 
@@ -185,6 +193,10 @@ mod tests {
 
         let got = read_node_secret().unwrap();
         assert_eq!(got.as_deref(), Some(secret));
+
+        // Registration status should be set to 'registered'.
+        let st = crate::state::read_state().unwrap();
+        assert_eq!(st.status.as_str(), STATUS_REGISTERED);
 
         let captured = String::from_utf8(buf.lock().clone()).unwrap_or_default();
         assert!(captured.contains("Received registration callback"));
