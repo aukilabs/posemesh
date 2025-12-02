@@ -34,3 +34,4 @@ features = ["uniffi"]
 build = ["cp39-*", "cp310-*", "cp311-*", "cp312-*"]
 # Skip tests during wheel building (tests are run separately)
 skip = []
+environment = { MATURIN_NO_INSTALL_RUST = "1" }
