@@ -92,7 +92,6 @@ jobs:
           mkdir -p ~/.cargo
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
-          make publish-utils
           make publish-domain-http
 
   publish_python_wheels:
