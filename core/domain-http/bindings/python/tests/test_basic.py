@@ -11,7 +11,7 @@ from typing import Optional
 # Add the pkg directory to the path so we can import domain_client
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pkg'))
 
-from domain_client import (
+from auki_domain_client import (
     DomainClient,
     DomainData,
     DomainDataMetadata,

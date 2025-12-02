@@ -30,7 +30,7 @@ export default defineConfig({
     resolve: {
         alias: {
             // Alias for the WASM module
-            '@auki/domain-http': resolve(__dirname, '../pkg'),
+            '@auki/domain-client': resolve(__dirname, '../pkg'),
         },
     },
 
@@ -42,6 +42,6 @@ export default defineConfig({
 
     // Optimize dependencies
     optimizeDeps: {
-        exclude: ['@auki/domain-http'],
+        exclude: ['@auki/domain-client'],
     },
 });

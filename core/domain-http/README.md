@@ -33,7 +33,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 - Secure authentication and authorization with the Auki Network.
 - Efficient streaming download of domain data, enabling seamless handling of large datasets.
 - Flexible upload functionality for both creating and updating domain data.
-- Universal compatibility: [JavaScript package](https://www.npmjs.com/package/@auki/domain-http) works in browsers, Deno, and Node.js(v18+ with ReadableStream support).
+- Universal compatibility: [JavaScript package](https://www.npmjs.com/package/@auki/domain-client) works in browsers, Deno, and Node.js(v18+ with ReadableStream support).
 
 
 ## Changelog

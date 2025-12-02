@@ -3,7 +3,7 @@
 ### Features
 - Improved error formatting for clearer diagnostics
 - Added support for domain creation and deletion
-- Renamed JavaScript package to `@auki/domain-http`
+- Renamed JavaScript package to `@auki/domain-client`
 - Upgraded Rust version to 1.89.0
 - Included `posemesh-sdk-version` header in all Auki requests
 - Enabled filtering of domains by portal short ID

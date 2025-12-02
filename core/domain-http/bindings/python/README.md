@@ -33,9 +33,7 @@ Run a specific test:
 pytest test_basic.py::TestPosemeshDomainHTTP::TestAppCredential::test_download_domain_data_with_app_credential
 ```
 
-## Test Structure
-
-The tests mirror the JavaScript tests in `basic.test.ts` but are adapted for the Python bindings:
+## Test Structur
 
 - **TestPosemeshDomainHTTP**: Main test class that sets up a test domain
 - **TestAppCredential**: Tests for app credential authentication

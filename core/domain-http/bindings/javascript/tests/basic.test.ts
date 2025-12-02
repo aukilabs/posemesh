@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest, ListDomainsQuery } from '@auki/domain-http';
+import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest, ListDomainsQuery } from '@auki/domain-client';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
