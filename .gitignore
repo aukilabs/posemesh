@@ -40,3 +40,4 @@ node_modules
 /sdk/src/Protobuf
 
 .env.local
+.env

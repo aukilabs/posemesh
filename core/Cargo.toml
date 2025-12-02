@@ -12,6 +12,7 @@ members = [
     "node-registration",
     "compute-node-runner-api",
     "compute-node",
+    "compute-node-runner-api/examples/hello-runner",
 ]
 resolver = "2"
 

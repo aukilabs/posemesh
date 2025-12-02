@@ -3778,6 +3778,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "posemesh-hello-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "dotenvy",
+ "posemesh-compute-node",
+ "posemesh-compute-node-runner-api",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "posemesh-networking"
 version = "0.1.0"
 dependencies = [

@@ -352,6 +352,15 @@ pub async fn run_cycle_with_dms(
         .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref)
         .await;
 
+    // Re-broadcast the latest progress/events so the heartbeat loop can flush
+    // them before shutdown. Without this, very short tasks may complete before
+    // the final heartbeat is delivered, leaving stale progress in DMS.
+    {
+        let state = control_state.lock().await;
+        progress_tx.update(state.progress.clone(), state.events.clone());
+    }
+    sleep(StdDuration::from_millis(200)).await;
+
     heartbeat_shutdown.cancel();
     let heartbeat_result = match heartbeat_handle.await {
         Ok(result) => result,
