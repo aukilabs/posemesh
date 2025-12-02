@@ -20,16 +20,13 @@ jobs:
         platform: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-15-intel, macos-latest]
     steps:
       - name: Checkout repository with submodules
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       # Install Rust
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@1.89.0
 
       - uses: actions/setup-python@v5
 
