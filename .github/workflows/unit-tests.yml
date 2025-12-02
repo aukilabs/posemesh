@@ -83,9 +83,9 @@ jobs:
           EOF
           make unit-tests
         
-      - name: Publish packages
+      - name: Publish JS and Rust packages
+        id: publish_js_and_rust
         if: ${{ github.event.inputs.publish == true && github.event_name == 'workflow_call' }}
-        continue-on-error: true
         env:
           CI: true
         run: |
@@ -95,3 +95,10 @@ jobs:
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
           make publish-utils
           make publish-domain-http
+
+      - name: Publish Python Wheels
+        if: ${{ success() && github.event.inputs.publish == true && github.event_name == 'workflow_call' }}
+        uses: ./.github/workflows/publish-python.yml
+        with:
+          folder: domain-http
+        secrets: inherit

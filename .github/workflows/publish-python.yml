@@ -1,0 +1,55 @@
+name: Publish Python Wheels
+
+on:
+  workflow_call:
+    inputs:
+      folder:
+        description: 'Folder name to the rust package'
+        required: true
+        type: string
+        default: 'domain-http'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    strategy:
+      matrix:
+        python-version: [3.8,3.9,3.10,3.11,3.12]
+        platform: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-15-intel, macos-latest]
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # Install Rust
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: actions/setup-python@v5
+
+      # Install maturin & cibuildwheel
+      - name: Install maturin & cibuildwheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin cibuildwheel==3.3.0
+
+      # Build wheels
+      - name: Build wheels
+        run: |
+          cp ${folder}/README.md ${folder}/bindings/python/README.md
+          cibuildwheel ${folder}/bindings/python --output-dir wheelhouse
+
+      # Publish to PyPI
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.7.0
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages_dir: wheelhouse

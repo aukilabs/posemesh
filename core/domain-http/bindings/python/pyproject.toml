@@ -23,13 +23,12 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-readme = "../../README.md"
+readme = "README.md"
 
 [tool.maturin]
 module-name = "auki_domain_client"
 manifest-path = "../../Cargo.toml"
 bindings = "uniffi"
-compatibility = "linux"
 features = ["uniffi"]
 
 [tool.cibuildwheel]
