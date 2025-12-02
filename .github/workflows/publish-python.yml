@@ -43,8 +43,8 @@ jobs:
       # Build wheels
       - name: Build wheels
         run: |
-          cp ${folder}/README.md ${folder}/bindings/python/README.md
-          cibuildwheel ${folder}/bindings/python --output-dir wheelhouse
+          cp ${{ inputs.folder }}/README.md ${{ inputs.folder }}/bindings/python/README.md
+          cibuildwheel ${{ inputs.folder }}/bindings/python --output-dir wheelhouse
 
       # Publish to PyPI
       - name: Publish to PyPI
