@@ -33,9 +33,7 @@ jobs:
         working-directory: core
     steps:
       - name: Checkout repository with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+        uses: actions/checkout@v6
       
       # # - name: Fetch PR branch (if workflow_dispatch)
       # #   if: ${{ github.event_name == 'workflow_dispatch' }}
