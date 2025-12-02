@@ -85,7 +85,6 @@ jobs:
         
       - name: Publish JS and Rust packages
         id: publish_js_and_rust
-        if: ${{ github.event.inputs.publish == true && github.event_name == 'workflow_call' }}
         env:
           CI: true
         run: |
@@ -96,9 +95,10 @@ jobs:
           make publish-utils
           make publish-domain-http
 
-      - name: Publish Python Wheels
-        if: ${{ success() && github.event.inputs.publish == true && github.event_name == 'workflow_call' }}
-        uses: ./.github/workflows/publish-python.yml
-        with:
-          folder: domain-http
-        secrets: inherit
+  publish_python_wheels:
+    name: Publish Python Wheels
+    needs: run_test
+    uses: ./.github/workflows/publish-python.yml
+    with:
+      folder: domain-http
+    secrets: inherit

@@ -34,9 +34,10 @@ build-domain-http-uniffi:
 	@if [ -z "$(LANG)" ]; then \
 		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \
 		exit 1; \
-	fi; \
-	if [ "$(LANG)" = "python" ]; then \
+	fi
+	@if [ "$(LANG)" = "python" ]; then \
 		cd domain-http/bindings/python && \
+		cp ../../README.md . && \
 		python3 -m venv .venv && \
 		. .venv/bin/activate && \
 		pip install -r requirements.txt && \
@@ -108,4 +109,4 @@ publish-utils:
 			exit 1; \
 		fi; \
 	fi
-	@cargo publish -p posemesh-utils
+	@cargo publish -p posemesh-utils || true
