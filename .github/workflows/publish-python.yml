@@ -24,13 +24,6 @@ jobs:
         with:
           submodules: recursive
 
-      # Install Rust
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
       - uses: actions/setup-python@v5
 
       # Install maturin & cibuildwheel
