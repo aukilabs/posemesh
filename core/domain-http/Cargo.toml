@@ -39,18 +39,12 @@ tokio-stream = "0.1.17"
 wasm-bindgen-test.workspace = true
 uuid.workspace = true
 
-[dependencies.pyo3]
-optional = true
-version = "0.27.0"
-# "abi3-py39" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.9
-features = ["abi3-py39"]
-
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [features]
 default = []
-uniffi = ["dep:uniffi", "dep:pyo3"]
+uniffi = ["dep:uniffi"]
 
 [profile.release]
 strip = true
