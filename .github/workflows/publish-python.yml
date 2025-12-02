@@ -41,8 +41,7 @@ jobs:
           CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
         # Can also be configured directly, using `with:`
         with:
-          package-dir: ${{inputs.folder}}/bindings/python
-          config-file: ${{inputs.folder}}/bindings/python/pyproject.toml
+          package-dir: core/${{inputs.folder}}/bindings/python
 
       - uses: actions/upload-artifact@v4
         with:
