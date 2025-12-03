@@ -43,6 +43,11 @@ jobs:
         env:
           CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
           CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
+          CIBW_BEFORE_BUILD_LINUX: |
+            curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+            . "$HOME/.cargo/env" && \
+            rustc --version
+          CIBW_ENVIRONMENT_LINUX: MATURIN_NO_INSTALL_RUST="1" PATH="$HOME/.cargo/bin:$PATH"
         # Can also be configured directly, using `with:`
         with:
           package-dir: core/${{inputs.folder}}/bindings/python
