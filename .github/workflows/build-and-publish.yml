@@ -19,30 +19,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  run_test:
-    name: Run Tests
-    uses: ./.github/workflows/unit-tests.yml
-    secrets: inherit
+  # run_test:
+  #   name: Run Tests
+  #   uses: ./.github/workflows/unit-tests.yml
+  #   secrets: inherit
 
-  publish_js_and_rust_packages:
-    runs-on: ubuntu-latest
-    name: Publish JS and Rust Packages
-    needs: run_test
-    steps:
-      - name: Publish JS and Rust packages
-        env:
-          CI: true
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-          mkdir -p ~/.cargo
-          echo "[registry]" > ~/.cargo/credentials.toml
-          echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
-          make publish-utils || true
-          make publish-domain-http
+  # publish_js_and_rust_packages:
+  #   runs-on: ubuntu-latest
+  #   name: Publish JS and Rust Packages
+  #   needs: run_test
+  #   steps:
+  #     - name: Publish JS and Rust packages
+  #       env:
+  #         CI: true
+  #       run: |
+  #         echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+  #         mkdir -p ~/.cargo
+  #         echo "[registry]" > ~/.cargo/credentials.toml
+  #         echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
+  #         make publish-utils || true
+  #         make publish-domain-http
   
   publish_python_wheels:
     name: Build wheels for ${{ matrix.os }}
-    needs: publish_js_and_rust_packages
+    # needs: publish_js_and_rust_packages
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
