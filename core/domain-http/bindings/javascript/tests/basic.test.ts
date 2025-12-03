@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest } from '@auki/domain-http';
+import { DownloadQuery, signInWithAppCredential, signInWithUserCredential, DomainClient, UploadDomainData, DomainData, DomainDataMetadata, JobRequest, ListDomainsQuery } from '@auki/domain-client';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const loadConfig = () => {
@@ -172,7 +172,7 @@ describe('Posemesh Domain HTTP', async() => {
         });
 
         it('should list all domains within my organization', async () => {
-            const domains = await client.listDomains("own");
+            const domains = await client.listDomains({ org: "own" } as ListDomainsQuery);
             expect(domains).toBeDefined();
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBeGreaterThan(0);
@@ -191,7 +191,7 @@ describe('Posemesh Domain HTTP', async() => {
         });
 
         it('should list all domains within the specific organization', async () => {
-            const domains = await client.listDomains(config.TEST_ORGANIZATION);
+            const domains = await client.listDomains({ org: config.TEST_ORGANIZATION } as ListDomainsQuery);
             expect(domains).toBeDefined();
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBeGreaterThan(0);
@@ -210,7 +210,7 @@ describe('Posemesh Domain HTTP', async() => {
         });
 
         it('should list no domains if organization is not found', async () => {
-            const domains = await client.listDomains("ca77920d-95fb-4213-b3a3-e27de4be37bf");
+            const domains = await client.listDomains({ org: "ca77920d-95fb-4213-b3a3-e27de4be37bf" } as ListDomainsQuery);
             expect(domains).toBeDefined();
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBe(0);

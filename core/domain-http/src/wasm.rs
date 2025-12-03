@@ -1,8 +1,9 @@
-use crate::DomainClient as r_DomainClient;
+use crate::domain_client::DomainClient as r_DomainClient;
+use crate::domain_client::ListDomainsQuery as r_ListDomainsQuery;
 use crate::domain_data::{
-    DomainData, DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
+    DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
 };
-use crate::JobRequest as r_JobRequest;
+use crate::reconstruction::JobRequest as r_JobRequest;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
@@ -31,6 +32,7 @@ export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
 export type DomainServer = { id: string, url: string, organization_id: string, name: string };
 export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
 export type JobRequest = { data_ids: string[], processing_type: string, server_api_key: string, server_url: string };
+export type ListDomainsQuery = { portal_id: string | null, portal_short_id: string | null, org: string };
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
@@ -269,7 +271,6 @@ impl DomainClient {
     pub fn download_domain_data(&self, domain_id: String, query: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            use futures::StreamExt;
             let parse = from_value::<r_DownloadQuery>(query);
             if let Err(e) = parse {
                 return Err(JsError::new(&e.to_string()).into());
@@ -279,18 +280,7 @@ impl DomainClient {
             if let Err(e) = res {
                 return Err(JsError::new(&e.to_string()).into());
             }
-            let mut rx = res.unwrap();
-            let mut response: Vec<DomainData> = vec![];
-            while let Some(result) = rx.next().await {
-                match result {
-                    Ok(data) => {
-                        response.push(data);
-                    }
-                    Err(e) => {
-                        return Err(JsError::new(&e.to_string()).into());
-                    }
-                }
-            }
+            let response = res.unwrap(); 
 
             to_value(&response).map_err(|e| JsError::new(&e.to_string()).into())
         };
@@ -333,7 +323,7 @@ impl DomainClient {
                     return;
                 }
             };
-            let res = domain_client.download_domain_data(&domain_id, &query).await;
+            let res = domain_client.download_domain_data_stream(&domain_id, &query).await;
             if let Ok(mut download_rx) = res {
                 while let Some(result) = download_rx.next().await {
                     match result {
@@ -510,19 +500,25 @@ impl DomainClient {
     /// * `org` - The organization ID or `own` to get the domains for the current organization.
     ///
     /// # Returns
-    /// * `Promise<DomainWithServer[]>` - Resolves to an array of DomainWithServer.
+    /// * `Promise<ListDomainsResponse>` - Resolves to a ListDomainsResponse object.
     ///
     /// # Example
     /// ```javascript
-    /// let domains: DomainWithServer[] = await client.listDomains("organization-123");
+    /// let domains: ListDomainsResponse = await client.listDomains({ org: "organization-123" });
     /// ```
     #[wasm_bindgen(js_name = "listDomains")]
-    pub fn list_domains(&self, org: String) -> Promise {
+    pub fn list_domains(&self, query: JsValue) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.list_domains(&org).await;
+            let query = match from_value::<r_ListDomainsQuery>(query) {
+                Ok(q) => q,
+                Err(e) => {
+                    return Err(JsError::new(&e.to_string()).into());
+                }
+            };
+            let res = domain_client.list_domains(&query).await;
             match res {
-                Ok(domains) => match to_value(&domains) {
+                Ok(response) => match to_value(&response.domains) {
                     Ok(value) => Ok(value),
                     Err(e) => Err(JsError::new(&e.to_string()).into()),
                 },

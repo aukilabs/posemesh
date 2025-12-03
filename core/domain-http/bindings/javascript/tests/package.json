@@ -1,8 +1,8 @@
 {
-  "name": "@auki/domain-http-tests",
+  "name": "@auki/domain-client-tests",
   "version": "1.0.0",
   "type": "module",
-  "description": "Test suite for @auki/domain-http",
+  "description": "Test suite for @auki/domain-client",
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
@@ -27,6 +27,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@auki/domain-http": "file:../pkg"
+    "@auki/domain-client": "file:../pkg"
   }
 }

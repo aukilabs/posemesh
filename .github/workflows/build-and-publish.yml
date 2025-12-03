@@ -1,0 +1,109 @@
+name: Build and Publish
+permissions:
+  contents: read
+  id-token: write
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**'
+      - '!**/examples/**'
+      - '!**/*.md'
+      - '!.vscode/**'
+      - '!.github/**'
+      - '.github/workflows/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run_test:
+    name: Run Tests
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
+
+  publish_js_and_rust_packages:
+    runs-on: ubuntu-latest
+    name: Publish JS and Rust Packages
+    needs: run_test
+    steps:
+      - name: Publish JS and Rust packages
+        env:
+          CI: true
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          mkdir -p ~/.cargo
+          echo "[registry]" > ~/.cargo/credentials.toml
+          echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
+          make publish-utils || true
+          make publish-domain-http
+  
+  publish_python_wheels:
+    name: Build wheels for ${{ matrix.os }}
+    needs: publish_js_and_rust_packages
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        os: [linux-intel, linux-arm, windows-intel, windows-arm, macos-intel, macos-arm]
+        folder: [domain-http]
+        include:
+          - os: linux-intel
+            runner: ubuntu-latest
+          - os: linux-arm
+            runner: ubuntu-24.04-arm
+          - os: windows-intel
+            runner: windows-latest
+          - os: windows-arm
+            runner: windows-11-arm
+          - os: macos-intel
+            # macos-15-intel is the last x86_64 runner
+            runner: macos-15-intel
+          - os: macos-arm
+            # macos-14+ (including latest) are ARM64 runners
+            runner: macos-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Copy README.md to package directory
+        run: |
+          cp core/${{matrix.folder}}/README.md core/${{matrix.folder}}/bindings/python/README.md
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.0
+        env:
+          CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
+          CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
+          CIBW_BEFORE_BUILD_LINUX: |
+            curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+            . "$HOME/.cargo/env" && \
+            rustc --version
+          CIBW_ENVIRONMENT_LINUX: MATURIN_NO_INSTALL_RUST="1" PATH="$HOME/.cargo/bin:$PATH"
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET="10.12"
+        with:
+          package-dir: core/${{matrix.folder}}/bindings/python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  upload_pypi:
+    needs: publish_python_wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+

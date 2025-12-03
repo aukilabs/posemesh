@@ -6,8 +6,8 @@ import path from 'path';
 import dotenv from 'dotenv';
 
 // dotenv behaves differently in browser and node.js
-let env = dotenv.config({ path: '../../.env' });
-let localEnv = dotenv.config({ path: '../../.env.local', override: true });
+let env = dotenv.config({ path: '../../../../.env' });
+let localEnv = dotenv.config({ path: '../../../../.env.local', override: true });
 let config = {
     ...env.parsed,
     ...localEnv.parsed,
@@ -60,7 +60,7 @@ export default defineConfig({
     resolve: {
         alias: {
             // Alias for the WASM module
-            '@auki/domain-http': resolve(__dirname, '../pkg'),
+            '@auki/domain-client': resolve(__dirname, '../pkg'),
         },
     },
 
@@ -73,7 +73,7 @@ export default defineConfig({
 
     // Optimize dependencies
     optimizeDeps: {
-        exclude: ['@auki/domain-http'],
+        exclude: ['@auki/domain-client'],
     },
 
     // Plugins for WASM support

@@ -10,7 +10,7 @@ TARGET="web"                          # bundler target
 PACKAGE_JSON="./package.json"
 
 # --- Step 1: Build wasm-pack ---
-echo "🚀 Building WASM package '$CRATE_NAME'..."
+echo "🚀 building wasm package '$CRATE_NAME'..."
 wasm-pack build "$CRATE_DIR" --target "$TARGET" --out-dir "$OUT_DIR" --release
 
 cd $CRATE_DIR/$OUT_DIR
@@ -47,10 +47,10 @@ echo "✅ Universal loader ready!"
 
 # --- Step 3: Update package.json to point main -> index.js ---
 if [ -f "$PACKAGE_JSON" ]; then
-    echo "📦 Updating package.json 'main' field to '$LOADER_FILE' and renaming package to '@auki/domain-http'..."
+    echo "📦 Updating package.json 'main' field to '$LOADER_FILE' and renaming package to '@auki/domain-client'..."
     # Use jq if available
     if command -v jq >/dev/null 2>&1; then
-        jq --arg main "index.js" --arg name "@auki/domain-http" \
+        jq --arg main "index.js" --arg name "@auki/domain-client" \
             '.main = $main | .files += ["index.js"] | .files |= unique | .name = $name' \
             "$PACKAGE_JSON" > tmp.json && mv tmp.json "$PACKAGE_JSON"
     else
@@ -61,7 +61,7 @@ if [ -f "$PACKAGE_JSON" ]; then
             sed -i.bak 's#\("files": *\[\)#\1"index.js", #' "$PACKAGE_JSON"
         fi
         # Replace the name field
-        sed -i.bak 's#"name": *".*"#"name": "@auki/domain-http"#' "$PACKAGE_JSON"
+        sed -i.bak 's#"name": *".*"#"name": "@auki/domain-client"#' "$PACKAGE_JSON"
     fi
     echo "✅ package.json updated"
 fi
