@@ -46,6 +46,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
+        os: [linux-intel, linux-arm, windows-intel, windows-arm, macos-intel, macos-arm]
+        folder: [domain-http]
         include:
           - os: linux-intel
             runner: ubuntu-latest
@@ -61,10 +63,9 @@ jobs:
           - os: macos-arm
             # macos-14+ (including latest) are ARM64 runners
             runner: macos-latest
-        folder: [domain-http]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Copy README.md to package directory
         run: |
@@ -106,5 +107,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
 
