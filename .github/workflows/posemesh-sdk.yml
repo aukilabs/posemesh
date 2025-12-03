@@ -2,16 +2,7 @@ name: Posemesh SDK
 permissions:
   contents: read
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '**'
-      - '!**/examples/**'
-      - '!**/*.md'
-      - '!.vscode/**'
-      - '!.github/**'
-      - '.github/workflows/**'
+  workflow_dispatch: # Manual trigger only
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

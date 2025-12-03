@@ -138,7 +138,7 @@ domainData.forEach((data) => {
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for a list of features, bug fixes, and breaking changes.
+See [CHANGELOG.md](https://github.com/aukilabs/posemesh/blob/main/core/domain-http/CHANGELOG.md) for a list of features, bug fixes, and breaking changes.
 
 ## Development
 
