@@ -2,7 +2,6 @@ name: Unit Tests
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   workflow_dispatch:
@@ -12,15 +11,9 @@ on:
         required: true
         type: string
   workflow_call:
-    inputs:
-      publish:
-        description: 'Publish packages'
-        required: false
-        type: boolean
-        default: false
-  pull_request:
-    branches:
-      - main
+  # pull_request:
+  #   branches:
+  #     - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-unit-tests-${{ github.event.inputs.pr_number }}
@@ -35,68 +28,49 @@ jobs:
     steps:
       - name: Checkout repository with submodules
         uses: actions/checkout@v6
-      
-      # # - name: Fetch PR branch (if workflow_dispatch)
-      # #   if: ${{ github.event_name == 'workflow_dispatch' }}
-      # #   run: |
-      # #     git fetch origin pull/${{ github.event.inputs.pr_number }}/head:pr
-      # #     git checkout pr
-
-      # # - name: Install Rust
-      # #   uses: dtolnay/rust-toolchain@stable
-
-      # # - name: Install wasm-pack
-      # #   run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      # # - name: Cache Cargo registry and Git sources
-      # #   uses: actions/cache@v4
-      # #   with:
-      # #     path: |
-      # #       ~/.cargo/registry
-      # #       ~/.cargo/git
-      # #     key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
-      # #     restore-keys: |
-      # #       rust-cache-cargo-
-
-      # # - name: Cache Cargo build artifacts
-      # #   uses: actions/cache@v4
-      # #   with:
-      # #     path: core/target
-      # #     key: rust-cache-test-${{ hashFiles('*/Cargo.lock') }}
-      # #     restore-keys: |
-      # #       rust-cache-test-
-            
-      # # - name: Run unit tests
-      # #   run: |
-      # #     cat <<EOF > .env.local
-      # #     CLIENT_ID=test-core-ci
-      # #     POSEMESH_EMAIL=${{ secrets.POSEMESH_EMAIL }}
-      # #     POSEMESH_PASSWORD=${{ secrets.POSEMESH_PASSWORD }}
-      # #     API_URL=${{ vars.API_URL }}
-      # #     DDS_URL=${{ vars.DDS_URL }}
-      # #     APP_KEY=${{ secrets.APP_KEY }}
-      # #     APP_SECRET=${{ secrets.APP_SECRET }}
-      # #     DOMAIN_ID=${{ vars.TEST_DOMAIN_ID }}
-      # #     AUTH_TEST_TOKEN=${{ secrets.AUTH_TEST_TOKEN }}
-      # #     TEST_ORGANIZATION=${{ vars.TEST_ORGANIZATION_ID }}
-      # #     EOF
-      # #     make unit-tests
         
-      # # - name: Publish JS and Rust packages
-      # #   id: publish_js_and_rust
-      # #   env:
-      # #     CI: true
-      # #   run: |
-      # #     echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-      # #     mkdir -p ~/.cargo
-      # #     echo "[registry]" > ~/.cargo/credentials.toml
-      # #     echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
-      # #     # make publish-domain-http
+      - name: Fetch PR branch (if workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          git fetch origin pull/${{ github.event.inputs.pr_number }}/head:pr
+          git checkout pr
 
-  publish_python_wheels:
-    name: Publish Python Wheels
-    needs: run_test
-    uses: ./.github/workflows/publish-python.yml
-    with:
-      folder: domain-http
-    secrets: inherit
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-cache-cargo-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-cargo-
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: core/target
+          key: rust-cache-test-${{ hashFiles('*/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-test-
+            
+      - name: Run unit tests
+        run: |
+          cat <<EOF > .env.local
+          CLIENT_ID=test-core-ci
+          POSEMESH_EMAIL=${{ secrets.POSEMESH_EMAIL }}
+          POSEMESH_PASSWORD=${{ secrets.POSEMESH_PASSWORD }}
+          API_URL=${{ vars.API_URL }}
+          DDS_URL=${{ vars.DDS_URL }}
+          APP_KEY=${{ secrets.APP_KEY }}
+          APP_SECRET=${{ secrets.APP_SECRET }}
+          DOMAIN_ID=${{ vars.TEST_DOMAIN_ID }}
+          AUTH_TEST_TOKEN=${{ secrets.AUTH_TEST_TOKEN }}
+          TEST_ORGANIZATION=${{ vars.TEST_ORGANIZATION_ID }}
+          EOF
+          make unit-tests

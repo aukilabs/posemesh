@@ -1,42 +1,74 @@
-name: Publish Python Wheels
-
+name: Build and Publish
+permissions:
+  contents: read
+  id-token: write
 on:
-  workflow_call:
-    inputs:
-      folder:
-        description: 'Folder name to the rust package'
-        required: true
-        type: string
-        default: 'domain-http'
+  push:
+    branches:
+      - feature/uniffi
+    paths:
+      - '**'
+      - '!**/examples/**'
+      - '!**/*.md'
+      - '!.vscode/**'
+      - '!.github/**'
+      - '.github/workflows/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build_wheels:
+  run_test:
+    name: Run Tests
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
+
+  publish_js_and_rust_packages:
+    runs-on: ubuntu-latest
+    name: Publish JS and Rust Packages
+    needs: run_test
+    steps:
+      - name: Publish JS and Rust packages
+        env:
+          CI: true
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          mkdir -p ~/.cargo
+          echo "[registry]" > ~/.cargo/credentials.toml
+          echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
+          make publish-utils || true
+          make publish-domain-http
+  
+  publish_python_wheels:
     name: Build wheels for ${{ matrix.os }}
-    runs-on: ${{ matrix.runs-on }}
+    needs: publish_js_and_rust_packages
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - os: linux-intel
-            runs-on: ubuntu-latest
+            runner: ubuntu-latest
           - os: linux-arm
-            runs-on: ubuntu-24.04-arm
+            runner: ubuntu-24.04-arm
           - os: windows-intel
-            runs-on: windows-latest
+            runner: windows-latest
           - os: windows-arm
-            runs-on: windows-11-arm
+            runner: windows-11-arm
           - os: macos-intel
             # macos-15-intel is the last x86_64 runner
-            runs-on: macos-15-intel
+            runner: macos-15-intel
           - os: macos-arm
             # macos-14+ (including latest) are ARM64 runners
-            runs-on: macos-latest
+            runner: macos-latest
+        folder: [domain-http]
 
     steps:
       - uses: actions/checkout@v5
 
       - name: Copy README.md to package directory
         run: |
-          cp core/${{inputs.folder}}/README.md core/${{inputs.folder}}/bindings/python/README.md
+          cp core/${{matrix.folder}}/README.md core/${{matrix.folder}}/bindings/python/README.md
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.0
@@ -50,7 +82,7 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: MATURIN_NO_INSTALL_RUST="1" PATH="$HOME/.cargo/bin:$PATH"
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET="10.12"
         with:
-          package-dir: core/${{inputs.folder}}/bindings/python
+          package-dir: core/${{matrix.folder}}/bindings/python
 
       - uses: actions/upload-artifact@v4
         with:
@@ -58,7 +90,7 @@ jobs:
           path: ./wheelhouse/*.whl
 
   upload_pypi:
-    needs: build_wheels
+    needs: publish_python_wheels
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -75,3 +107,4 @@ jobs:
           merge-multiple: true
 
       - uses: pypa/gh-action-pypi-publish@release/v1
+
