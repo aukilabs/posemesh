@@ -48,7 +48,7 @@ jobs:
             . "$HOME/.cargo/env" && \
             rustc --version
           CIBW_ENVIRONMENT_LINUX: MATURIN_NO_INSTALL_RUST="1" PATH="$HOME/.cargo/bin:$PATH"
-        # Can also be configured directly, using `with:`
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET="10.12"
         with:
           package-dir: core/${{inputs.folder}}/bindings/python
 
