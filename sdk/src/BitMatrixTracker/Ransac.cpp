@@ -107,7 +107,7 @@ static bool ransacHomography(const Config &cfg,
 
         auto startTime = std::chrono::high_resolution_clock::now();
 
-        const int markerSpaceIterations = 100;
+        const int markerSpaceIterations = 0;
 
         for (int it = 0; it < maxIters; ++it) {
             out.iterations = it + 1;
