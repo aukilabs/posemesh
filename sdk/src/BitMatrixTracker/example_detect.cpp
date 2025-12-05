@@ -308,9 +308,9 @@ int main(int argc, char *argv[])
     Config cfg = defaultConfig();
     cfg.cornerNetWeightsPath = "cornernet_2025-10-12_1.bin";
     cfg.ransacMaxIters = 30000;
-    cfg.maxInnerRefinements = 0;
+    cfg.maxInnerRefinements = 2;
     cfg.angleJitterDeg = 0.1f;
-    cfg.inlierRadiusPx = 4.0f;
+    cfg.inlierRadiusPx = 2.5f;
     cfg.earlyStopPercent = 70;
     cfg.collapseRadiusPx = 3.0f;
     cfg.useFindHomographyFast = true;
