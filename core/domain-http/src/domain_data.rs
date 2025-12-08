@@ -1,10 +1,14 @@
 use bytes::Bytes;
 use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
-use reqwest::{Body, Client, Response, StatusCode};
+use reqwest::{Body, Client, Response, StatusCode, header::CONTENT_LENGTH};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(not(target_family = "wasm"))]
-use tokio::spawn;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    spawn,
+};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
@@ -54,6 +58,61 @@ pub struct UploadDomainData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct InitiateMultipartRequest {
+    name: String,
+    data_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields kept for completeness of API response
+struct InitiateMultipartResponse {
+    upload_id: String,
+    data_id: String,
+    part_size: i64,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompletedPart {
+    #[serde(rename = "part_number")]
+    pub part_number: i32,
+    pub etag: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadPartResult {
+    pub etag: String,
+}
+
+/// Options for multipart uploads.
+#[cfg(not(target_family = "wasm"))]
+pub type ProgressCallback = Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
+
+#[derive(Clone, Default)]
+pub struct MultipartUploadOptions {
+    pub content_type: Option<String>,
+    /// Progress callback receives (uploaded_bytes, total_bytes if known).
+    pub progress: Option<ProgressCallback>,
+}
+
+/// Request payload for multipart uploads.
+#[cfg(not(target_family = "wasm"))]
+pub struct MultipartUploadRequest<R: AsyncRead + Unpin + Send + 'static> {
+    pub url: String,
+    pub access_token: String,
+    pub domain_id: String,
+    pub name: String,
+    pub data_type: String,
+    pub reader: R,
+    pub total_size: Option<u64>,
+    pub opts: Option<MultipartUploadOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DownloadQuery {
     pub ids: Vec<String>,
     pub name: Option<String>,
@@ -87,8 +146,15 @@ pub async fn download_by_id(
         Ok(data.to_vec())
     } else {
         let status = response.status();
-        let error = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data by id. {}", error) }.into())
+        let error = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download data by id. {}", error),
+        }
+        .into())
     }
 }
 
@@ -126,7 +192,11 @@ pub async fn download_metadata_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download metadata. {}", text) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download metadata. {}", text),
+        }
+        .into())
     }
 }
 
@@ -176,7 +246,11 @@ pub async fn download_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data. {}", text) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download data. {}", text),
+        }
+        .into())
     }
 }
 
@@ -186,10 +260,7 @@ pub async fn download_v1_stream(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<
-    mpsc::Receiver<Result<DomainData, DomainError>>,
-    DomainError,
-> {
+) -> Result<mpsc::Receiver<Result<DomainData, DomainError>>, DomainError> {
     let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
 
     stream_from_response(response).await
@@ -199,12 +270,8 @@ pub async fn download_v1_stream(
 /// Parses multipart boundaries and yields DomainData items as they arrive.
 pub async fn stream_from_response(
     response: Response,
-) -> Result<
-    mpsc::Receiver<Result<DomainData, DomainError>>,
-    DomainError,
-> {
-    let (mut tx, rx) =
-        mpsc::channel::<Result<DomainData, DomainError>>(100);
+) -> Result<mpsc::Receiver<Result<DomainData, DomainError>>, DomainError> {
+    let (mut tx, rx) = mpsc::channel::<Result<DomainData, DomainError>>(100);
 
     let boundary = match response
         .headers()
@@ -255,7 +322,232 @@ pub async fn delete_by_id(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to delete data by id. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to delete data by id. {}", err),
+        }
+        .into())
+    }
+}
+
+async fn response_error(action: &str, response: Response) -> DomainError {
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Unknown error".to_string());
+    AukiErrorResponse {
+        status,
+        error: format!("{}: {}", action, text),
+    }
+    .into()
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn init_multipart(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    req: &InitiateMultipartRequest,
+) -> Result<InitiateMultipartResponse, DomainError> {
+    let res = client
+        .post(format!(
+            "{}/api/v1/domains/{}/data/multipart?uploads",
+            url, domain_id
+        ))
+        .bearer_auth(access_token)
+        .json(req)
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        Ok(res.json::<InitiateMultipartResponse>().await?)
+    } else {
+        Err(response_error("init multipart upload", res).await)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn upload_part(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    upload_id: &str,
+    part_number: i32,
+    chunk: &[u8],
+) -> Result<UploadPartResult, DomainError> {
+    let res = client
+        .put(format!(
+            "{}/api/v1/domains/{}/data/multipart",
+            url, domain_id
+        ))
+        .bearer_auth(access_token)
+        .query(&[
+            ("uploadId", upload_id),
+            ("partNumber", &part_number.to_string()),
+        ])
+        .header(CONTENT_LENGTH, chunk.len())
+        .body(chunk.to_owned())
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        Ok(res.json::<UploadPartResult>().await?)
+    } else {
+        Err(response_error("upload multipart part", res).await)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn complete_multipart(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    upload_id: &str,
+    parts: &[CompletedPart],
+) -> Result<DomainDataMetadata, DomainError> {
+    #[derive(Serialize)]
+    struct CompleteReq<'a> {
+        parts: &'a [CompletedPart],
+    }
+    let res = client
+        .post(format!(
+            "{}/api/v1/domains/{}/data/multipart",
+            url, domain_id
+        ))
+        .bearer_auth(access_token)
+        .query(&[("uploadId", upload_id)])
+        .json(&CompleteReq { parts })
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        Ok(res.json::<DomainDataMetadata>().await?)
+    } else {
+        Err(response_error("complete multipart upload", res).await)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn abort_multipart(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    domain_id: &str,
+    upload_id: &str,
+) {
+    let _ = client
+        .delete(format!(
+            "{}/api/v1/domains/{}/data/multipart",
+            url, domain_id
+        ))
+        .bearer_auth(access_token)
+        .query(&[("uploadId", upload_id)])
+        .send()
+        .await;
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn call_progress(uploaded: u64, total: Option<u64>, opts: &Option<MultipartUploadOptions>) {
+    if let Some(cb) = opts.as_ref().and_then(|o| o.progress.as_ref()) {
+        cb(uploaded, total);
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn upload_large_file_reader<R: AsyncRead + Unpin + Send + 'static>(
+    mut req: MultipartUploadRequest<R>,
+) -> Result<DomainDataMetadata, DomainError> {
+    let client = Client::new();
+    let init_req = InitiateMultipartRequest {
+        name: req.name.clone(),
+        data_type: req.data_type.clone(),
+        size: req.total_size,
+        content_type: req.opts.as_ref().and_then(|o| o.content_type.clone()),
+    };
+
+    let init_res = init_multipart(
+        &client,
+        &req.url,
+        &req.access_token,
+        &req.domain_id,
+        &init_req,
+    )
+    .await?;
+    let part_size = if init_res.part_size > 0 {
+        init_res.part_size as usize
+    } else {
+        return Err(DomainError::InvalidRequest(
+            "Invalid part size returned from server",
+        ));
+    };
+
+    let mut parts: Vec<CompletedPart> = Vec::new();
+    let mut buf = vec![0u8; part_size];
+    let mut part_no: i32 = 1;
+    let mut uploaded: u64 = 0;
+
+    let upload_result = async {
+        loop {
+            let n = req.reader.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            let chunk = &buf[..n];
+            let res = upload_part(
+                &client,
+                &req.url,
+                &req.access_token,
+                &req.domain_id,
+                &init_res.upload_id,
+                part_no,
+                chunk,
+            )
+            .await?;
+            parts.push(CompletedPart {
+                part_number: part_no,
+                etag: res.etag,
+            });
+            uploaded += n as u64;
+            call_progress(uploaded, req.total_size, &req.opts);
+            part_no += 1;
+        }
+
+        if parts.is_empty() {
+            return Err(DomainError::InvalidRequest(
+                "No data read from source for multipart upload",
+            ));
+        }
+
+        complete_multipart(
+            &client,
+            &req.url,
+            &req.access_token,
+            &req.domain_id,
+            &init_res.upload_id,
+            &parts,
+        )
+        .await
+    }
+    .await;
+
+    match upload_result {
+        Ok(md) => Ok(md),
+        Err(e) => {
+            tracing::warn!("multipart upload failed, attempting abort: {}", e);
+            abort_multipart(
+                &client,
+                &req.url,
+                &req.access_token,
+                &req.domain_id,
+                &init_res.upload_id,
+            )
+            .await;
+            Err(e)
+        }
     }
 }
 
@@ -283,12 +575,10 @@ pub async fn upload_v1_stream(
     let access_token_2 = access_token.clone();
     let domain_id_2 = domain_id.clone();
 
-    let (create_signal, create_signal_rx) = oneshot::channel::<
-        Result<Vec<DomainDataMetadata>, DomainError>,
-    >();
-    let (update_signal, update_signal_rx) = oneshot::channel::<
-        Result<Vec<DomainDataMetadata>, DomainError>,
-    >();
+    let (create_signal, create_signal_rx) =
+        oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
+    let (update_signal, update_signal_rx) =
+        oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
 
     spawn(async move {
         let create_response =
@@ -378,7 +668,11 @@ async fn update_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to update data. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to update data. {}", err),
+        }
+        .into())
     }
 }
 
@@ -412,7 +706,11 @@ async fn create_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to create data. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to create data. {}", err),
+        }
+        .into())
     }
 }
 
@@ -550,7 +848,11 @@ pub async fn upload_one(
         let mut out: Vec<DomainData> = Vec::new();
         if let Some(arr) = v.get("data").and_then(|d| d.as_array()) {
             for item in arr {
-                let id = item.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let id = item
+                    .get("id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let domain_id = item
                     .get("domain_id")
                     .and_then(|x| x.as_str())
@@ -581,7 +883,10 @@ pub async fn upload_one(
             }
             return Ok(out);
         }
-        Err((StatusCode::INTERNAL_SERVER_ERROR, "invalid response".to_string()))
+        Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid response".to_string(),
+        ))
     } else {
         let status = response.status();
         let text = response
@@ -665,9 +970,7 @@ fn find_headers_end(data: &[u8]) -> Option<usize> {
     if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
         return Some(i + 4);
     }
-    data.windows(2)
-        .position(|w| w == b"\n\n")
-        .map(|i| i + 2)
+    data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
 }
 
 async fn handle_domain_data_stream(
@@ -752,8 +1055,8 @@ async fn handle_domain_data_stream(
 
 #[cfg(test)]
 mod tests {
-    use bytes::Bytes;
     use super::*;
+    use bytes::Bytes;
 
     #[test]
     fn test_find_boundary_found() {

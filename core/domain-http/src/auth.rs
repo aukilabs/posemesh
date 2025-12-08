@@ -108,7 +108,9 @@ impl AuthClient {
                 cache.clone()
             };
             if dds_token_cache.is_none() {
-                return Err(DomainError::AuthError(AuthError::Unauthorized("No token found")));
+                return Err(DomainError::AuthError(AuthError::Unauthorized(
+                    "No token found",
+                )));
             }
             return Ok(dds_token_cache.unwrap().claim.exp);
         }
@@ -137,7 +139,8 @@ impl AuthClient {
         oidc_access_token: Option<&str>,
     ) -> Result<String, DomainError> {
         let result = if let Some(oidc_access_token) = oidc_access_token {
-            self.get_dds_access_token_with_oidc_access_token(oidc_access_token).await
+            self.get_dds_access_token_with_oidc_access_token(oidc_access_token)
+                .await
         } else if self.app_key.is_some() {
             self.get_dds_app_access_token().await
         } else {
@@ -160,7 +163,7 @@ impl AuthClient {
         // Clear all caches before proceeding
         *self.dds_token_cache.lock().await = None;
         *self.user_token_cache.lock().await = None;
-        
+
         let response = self.get_dds_token_by_token(oidc_access_token).await?;
         {
             let mut cache = self.dds_token_cache.lock().await;
@@ -174,9 +177,7 @@ impl AuthClient {
 
     // Get DDS access token with app credentials, it checks the cache first, if found and not about to expire, return the cached token
     // if not found or about to expire, fetch a new token with app credentials and sets the cache.
-    async fn get_dds_app_access_token(
-        &self,
-    ) -> Result<String, DomainError> {
+    async fn get_dds_app_access_token(&self) -> Result<String, DomainError> {
         let token_cache = {
             let cache = self.dds_token_cache.lock().await;
             cache.clone()
@@ -223,7 +224,11 @@ impl AuthClient {
                             .text()
                             .await
                             .unwrap_or_else(|_| "Unknown error".to_string());
-                        Err(AukiErrorResponse { status, error: format!("Failed to get DDS access token. {}", text) }.into())
+                        Err(AukiErrorResponse {
+                            status,
+                            error: format!("Failed to get DDS access token. {}", text),
+                        }
+                        .into())
                     }
                 }
             },
@@ -241,9 +246,7 @@ impl AuthClient {
     // Get DDS access token with user credentials, it checks the cache first, if found and not about to expire, return the cached token
     // if not found or about to expire, it fetches a new token with user access token and sets the cache.
     // If user access token is about to expire, it refreshes the user access token with refresh token first and sets the cache.
-    async fn get_dds_user_access_token(
-        &self,
-    ) -> Result<String, DomainError> {
+    async fn get_dds_user_access_token(&self) -> Result<String, DomainError> {
         let token_cache = {
             let cache = self.dds_token_cache.lock().await;
             cache.clone()
@@ -296,10 +299,11 @@ impl AuthClient {
                                 .text()
                                 .await
                                 .unwrap_or_else(|_| "Unknown error".to_string());
-                            Err(
-                                AukiErrorResponse { status, error: format!("Failed to refresh token. {}", text) }
-                                    .into(),
-                            )
+                            Err(AukiErrorResponse {
+                                status,
+                                error: format!("Failed to refresh token. {}", text),
+                            }
+                            .into())
                         }
                     })
                     .await?;
@@ -309,7 +313,9 @@ impl AuthClient {
                     *cache = Some(user_token_cache.clone());
                 }
 
-                let dds_token_response = self.get_dds_token_by_token(&user_token_cache.access_token).await?;
+                let dds_token_response = self
+                    .get_dds_token_by_token(&user_token_cache.access_token)
+                    .await?;
 
                 let dds_cache = DdsTokenCache {
                     access_token: dds_token_response.access_token.clone(),
@@ -323,7 +329,7 @@ impl AuthClient {
             }
         })
         .await?;
-    
+
         {
             let mut cache = self.dds_token_cache.lock().await;
             *cache = Some(token_cache.clone());
@@ -333,17 +339,17 @@ impl AuthClient {
     }
 
     // Login with user credentials, return DDS access token. It clears all caches and sets the app credentials to none.
-    pub async fn user_login(
-        &mut self,
-        email: &str,
-        password: &str,
-    ) -> Result<String, DomainError> {
+    pub async fn user_login(&mut self, email: &str, password: &str) -> Result<String, DomainError> {
         self.app_key = None;
         self.app_secret = None;
 
-        let credentials = UserCredentials { email: email.to_string(), password: password.to_string() };
+        let credentials = UserCredentials {
+            email: email.to_string(),
+            password: password.to_string(),
+        };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/user/login", &self.api_url))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
@@ -362,7 +368,9 @@ impl AuthClient {
                 });
             }
 
-            let dds_token_response = self.get_dds_token_by_token(&token_response.access_token).await?;
+            let dds_token_response = self
+                .get_dds_token_by_token(&token_response.access_token)
+                .await?;
             let mut cache = self.dds_token_cache.lock().await;
             let token_cache = DdsTokenCache {
                 access_token: dds_token_response.access_token.clone(),
@@ -377,34 +385,41 @@ impl AuthClient {
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
-            Err(AukiErrorResponse { status, error: format!("Failed to login. {}", text) }.into())
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to login. {}", text),
+            }
+            .into())
         }
     }
 
     // Get DDS access token with either user access token or oidc_access_token, doesn't cache
-    async fn get_dds_token_by_token(
-        &self,
-        token: &str,
-    ) -> Result<DdsTokenResponse, DomainError> {
-        let dds_response = self.client.post(&format!("{}/service/domains-access-token", &self.api_url))
-            .header(
-                "Authorization",
-                format!("Bearer {}", token),
-            )
+    async fn get_dds_token_by_token(&self, token: &str) -> Result<DdsTokenResponse, DomainError> {
+        let dds_response = self
+            .client
+            .post(format!("{}/service/domains-access-token", &self.api_url))
+            .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
             .send()
             .await?;
 
         if dds_response.status().is_success() {
-            dds_response.json::<DdsTokenResponse>().await.map_err(|e| e.into())
+            dds_response
+                .json::<DdsTokenResponse>()
+                .await
+                .map_err(|e| e.into())
         } else {
             let status = dds_response.status();
             let text = dds_response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            Err(AukiErrorResponse { status, error: format!("Failed to get DDS access token. {}", text) }.into())
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to get DDS access token. {}", text),
+            }
+            .into())
         }
     }
 }
@@ -441,7 +456,7 @@ pub struct JwtClaim {
 pub fn parse_jwt(token: &str) -> Result<JwtClaim, AuthError> {
     let parts = token.split('.').collect::<Vec<&str>>();
     if parts.len() != 3 {
-        return Err(AuthError::Unauthorized("Invalid JWT token").into());
+        return Err(AuthError::Unauthorized("Invalid JWT token"));
     }
     let payload = parts[1];
     let decoded = general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
@@ -453,8 +468,8 @@ pub fn parse_jwt(token: &str) -> Result<JwtClaim, AuthError> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use tokio::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tokio::sync::Mutex;
 
     #[derive(Clone, Debug)]
     struct DummyTokenCache {
@@ -481,8 +496,10 @@ mod tests {
     fn make_jwt(exp: u64) -> String {
         // Header: {"alg":"HS256","typ":"JWT"}
         // Payload: {"exp":exp}
-        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(r#"{{"exp":{}}}"#, exp));
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!(r#"{{"exp":{}}}"#, exp));
         format!("{}.{}.sig", header, payload)
     }
 
@@ -513,9 +530,14 @@ mod tests {
             }
         };
 
-        let result = get_cached_or_fresh_token(&cache, token_fetcher).await.unwrap();
+        let result = get_cached_or_fresh_token(&cache, token_fetcher)
+            .await
+            .unwrap();
         // Should have called fetcher
-        assert!(*fetch_called.lock().await, "Fetcher should have been called");
+        assert!(
+            *fetch_called.lock().await,
+            "Fetcher should have been called"
+        );
         // Should have new expiration
         assert_eq!(result.expires_at, new_exp);
     }
@@ -542,9 +564,14 @@ mod tests {
             }
         };
 
-        let result = get_cached_or_fresh_token(&cache, token_fetcher).await.unwrap();
+        let result = get_cached_or_fresh_token(&cache, token_fetcher)
+            .await
+            .unwrap();
         // Should NOT have called fetcher
-        assert!(!*fetch_called.lock().await, "Fetcher should NOT have been called");
+        assert!(
+            !*fetch_called.lock().await,
+            "Fetcher should NOT have been called"
+        );
         // Should have same expiration
         assert_eq!(result.expires_at, not_expiring);
     }

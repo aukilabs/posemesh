@@ -1,20 +1,27 @@
-use futures::channel::mpsc::Receiver;
 use crate::domain_data::{
-    DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData, delete_by_id, download_by_id, download_metadata_v1, download_v1_stream, upload_v1
+    DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData, delete_by_id, download_by_id,
+    download_metadata_v1, download_v1_stream, upload_v1,
 };
+#[cfg(not(target_family = "wasm"))]
+use crate::domain_data::{MultipartUploadRequest, upload_large_file_reader};
+use futures::channel::mpsc::Receiver;
 pub mod auth;
 pub mod config;
 pub mod discovery;
 pub mod domain_data;
+pub mod errors;
 pub mod reconstruction;
 #[cfg(target_family = "wasm")]
 pub mod wasm;
-pub mod errors;
+#[cfg(not(target_family = "wasm"))]
+pub use crate::domain_data::MultipartUploadOptions;
 
 use crate::auth::TokenCache;
 use crate::discovery::{DiscoveryService, DomainWithServer, DomainWithToken};
 use crate::errors::DomainError;
 pub use crate::reconstruction::JobRequest;
+#[cfg(not(target_family = "wasm"))]
+use tokio::{fs::File, io::BufReader};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -75,10 +82,7 @@ impl DomainClient {
         &self,
         domain_id: &str,
         query: &DownloadQuery,
-    ) -> Result<
-        Receiver<Result<DomainData, DomainError>>,
-        DomainError,
-    > {
+    ) -> Result<Receiver<Result<DomainData, DomainError>>, DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
         let rx = download_v1_stream(
             &domain.domain.domain_server.url,
@@ -120,6 +124,34 @@ impl DomainClient {
             domain_id,
             data,
         )
+        .await
+    }
+
+    /// Upload a large file using the server's multipart API. Handles initiation,
+    /// chunked part uploads, completion, and abort-on-failure.
+    #[cfg(not(target_family = "wasm"))]
+    pub async fn upload_large_file_path(
+        &self,
+        domain_id: &str,
+        name: &str,
+        data_type: &str,
+        path: impl AsRef<std::path::Path>,
+        opts: Option<MultipartUploadOptions>,
+    ) -> Result<DomainDataMetadata, DomainError> {
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        let file = File::open(path.as_ref()).await?;
+        let meta = file.metadata().await?;
+        let reader = BufReader::new(file);
+        upload_large_file_reader(MultipartUploadRequest {
+            url: domain.domain.domain_server.url.clone(),
+            access_token: domain.get_access_token(),
+            domain_id: domain_id.to_string(),
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            reader,
+            total_size: Some(meta.len()),
+            opts,
+        })
         .await
     }
 
@@ -185,11 +217,8 @@ impl DomainClient {
         )
         .await
     }
-  
-    pub async fn list_domains(
-        &self,
-        org: &str,
-    ) -> Result<Vec<DomainWithServer>, DomainError> {
+
+    pub async fn list_domains(&self, org: &str) -> Result<Vec<DomainWithServer>, DomainError> {
         self.discovery_client.list_domains(org).await
     }
 
@@ -200,22 +229,26 @@ impl DomainClient {
         domain_server_url: Option<String>,
         redirect_url: Option<String>,
     ) -> Result<DomainWithToken, DomainError> {
-        self.discovery_client.create_domain(name, domain_server_id, domain_server_url, redirect_url).await
+        self.discovery_client
+            .create_domain(name, domain_server_id, domain_server_url, redirect_url)
+            .await
     }
 
-    pub async fn delete_domain(
-        &self,
-        domain_id: &str,
-    ) -> Result<(), DomainError> {
+    pub async fn delete_domain(&self, domain_id: &str) -> Result<(), DomainError> {
         let domain = self.discovery_client.auth_domain(domain_id).await?;
-        self.discovery_client.delete_domain(&domain.get_access_token(), domain_id).await
+        self.discovery_client
+            .delete_domain(&domain.get_access_token(), domain_id)
+            .await
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
 #[cfg(test)]
 mod tests {
-    use crate::{auth::AuthClient, domain_data::{CreateDomainData, DomainAction, UpdateDomainData, UploadDomainData}};
+    use crate::{
+        auth::AuthClient,
+        domain_data::{CreateDomainData, DomainAction, UpdateDomainData, UploadDomainData},
+    };
 
     use super::*;
     use futures::{StreamExt, channel::mpsc};
@@ -241,16 +274,20 @@ mod tests {
         )
         .await
         .expect("Failed to create test client");
-        client.create_domain(
-            &format!("test_domain_{}", uuid::Uuid::new_v4()),
-            None,
-            Some(std::env::var("TEST_DOMAIN_SERVER_URL").unwrap()),
-            None,
-        )
-        .await
+        client
+            .create_domain(
+                &format!("test_domain_{}", uuid::Uuid::new_v4()),
+                None,
+                Some(std::env::var("TEST_DOMAIN_SERVER_URL").unwrap()),
+                None,
+            )
+            .await
     }
 
-    async fn delete_test_domain(config: &config::Config, domain_id: &str) -> Result<(), DomainError> {
+    async fn delete_test_domain(
+        config: &config::Config,
+        domain_id: &str,
+    ) -> Result<(), DomainError> {
         let client = DomainClient::new_with_user_credential(
             &config.api_url,
             &config.dds_url,
@@ -264,7 +301,10 @@ mod tests {
         client.delete_domain(domain_id).await
     }
 
-    async fn create_test_domain_data(config: &config::Config, domain_id: &str) -> Result<Vec<DomainDataMetadata>, DomainError> {
+    async fn create_test_domain_data(
+        config: &config::Config,
+        domain_id: &str,
+    ) -> Result<Vec<DomainDataMetadata>, DomainError> {
         let client = DomainClient::new_with_user_credential(
             &config.api_url,
             &config.dds_url,
@@ -276,27 +316,28 @@ mod tests {
         .await
         .expect("Failed to create test client");
 
-        let data = vec![
-            UploadDomainData {
-                action: DomainAction::Create(CreateDomainData {
-                    name: "to be deleted".to_string(),
-                    data_type: "test".to_string(),
-                }),
-                data: "{\"test\": \"test\"}".as_bytes().to_vec(),
-            },
-        ];
+        let data = vec![UploadDomainData {
+            action: DomainAction::Create(CreateDomainData {
+                name: "to be deleted".to_string(),
+                data_type: "test".to_string(),
+            }),
+            data: "{\"test\": \"test\"}".as_bytes().to_vec(),
+        }];
         client.upload_domain_data(domain_id, data).await
     }
 
     #[tokio::test]
     async fn get_organization_id() {
         let config = get_config();
-        let mut client = AuthClient::new(
-            &config.0.api_url,
-            &config.0.client_id,
-        );
-        client.sign_in_with_app_credentials(&config.0.app_key.unwrap(), &config.0.app_secret.unwrap()).await.expect("Failed to sign in with app credentials");
-        let token = client.get_dds_access_token(None).await.expect("Failed to get DDS access token");
+        let mut client = AuthClient::new(&config.0.api_url, &config.0.client_id);
+        client
+            .sign_in_with_app_credentials(&config.0.app_key.unwrap(), &config.0.app_secret.unwrap())
+            .await
+            .expect("Failed to sign in with app credentials");
+        let token = client
+            .get_dds_access_token(None)
+            .await
+            .expect("Failed to get DDS access token");
         let claims = auth::parse_jwt(&token).expect("Failed to parse JWT");
         assert_ne!(claims.org.is_some(), false);
     }
@@ -316,10 +357,14 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let domain = create_test_domain(&config).await.expect("Failed to create test domain");
+        let domain = create_test_domain(&config)
+            .await
+            .expect("Failed to create test domain");
         let domain_id = domain.domain.id.clone();
 
-        let created = create_test_domain_data(&config, &domain_id).await.expect("Failed to create test domain data");
+        let created = create_test_domain_data(&config, &domain_id)
+            .await
+            .expect("Failed to create test domain data");
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].name, "to be deleted");
         assert_eq!(created[0].data_type, "test");
@@ -345,7 +390,9 @@ mod tests {
         assert!(count > 0);
 
         // Delete the domain
-        delete_test_domain(&config, &domain_id).await.expect("Failed to delete test domain");
+        delete_test_domain(&config, &domain_id)
+            .await
+            .expect("Failed to delete test domain");
     }
 
     #[tokio::test]
@@ -363,10 +410,14 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let domain = create_test_domain(&config.0).await.expect("Failed to create test domain");
+        let domain = create_test_domain(&config.0)
+            .await
+            .expect("Failed to create test domain");
         let domain_id = domain.domain.id.clone();
 
-        let created = create_test_domain_data(&config.0, &domain_id).await.expect("Failed to create test domain data");
+        let created = create_test_domain_data(&config.0, &domain_id)
+            .await
+            .expect("Failed to create test domain data");
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].name, "to be deleted");
         assert_eq!(created[0].data_type, "test");
@@ -398,7 +449,10 @@ mod tests {
         let created2 = result.unwrap();
         assert_eq!(created2.len(), 2);
 
-        let ids = created2.iter().map(|d| d.id.clone()).collect::<Vec<String>>();
+        let ids = created2
+            .iter()
+            .map(|d| d.id.clone())
+            .collect::<Vec<String>>();
         assert_eq!(ids.len(), 2);
         // Create a test query
         let query = DownloadQuery {
@@ -439,7 +493,9 @@ mod tests {
         );
 
         // Delete the domain
-        delete_test_domain(&config.0, &domain_id).await.expect("Failed to delete test domain");
+        delete_test_domain(&config.0, &domain_id)
+            .await
+            .expect("Failed to delete test domain");
     }
 
     #[tokio::test]
@@ -455,10 +511,14 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let domain = create_test_domain(&config.0).await.expect("Failed to create test domain");
+        let domain = create_test_domain(&config.0)
+            .await
+            .expect("Failed to create test domain");
         let domain_id = domain.domain.id.clone();
 
-        let created = create_test_domain_data(&config.0, &domain_id).await.expect("Failed to create test domain data");
+        let created = create_test_domain_data(&config.0, &domain_id)
+            .await
+            .expect("Failed to create test domain data");
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].name, "to be deleted");
         assert_eq!(created[0].data_type, "test");
@@ -477,7 +537,9 @@ mod tests {
         assert_eq!(downloaded_bytes, b"{\"test\": \"test\"}".to_vec());
 
         // Delete the domain
-        delete_test_domain(&config.0, &domain_id).await.expect("Failed to delete test domain");
+        delete_test_domain(&config.0, &domain_id)
+            .await
+            .expect("Failed to delete test domain");
     }
 
     #[tokio::test]
@@ -493,10 +555,14 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let domain = create_test_domain(&config.0).await.expect("Failed to create test domain");
+        let domain = create_test_domain(&config.0)
+            .await
+            .expect("Failed to create test domain");
         let domain_id = domain.domain.id.clone();
 
-        let created = create_test_domain_data(&config.0, &domain_id).await.expect("Failed to create test domain data");
+        let created = create_test_domain_data(&config.0, &domain_id)
+            .await
+            .expect("Failed to create test domain data");
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].name, "to be deleted");
         assert_eq!(created[0].data_type, "test");
@@ -527,7 +593,9 @@ mod tests {
         }
 
         // Delete the domain
-        delete_test_domain(&config.0, &domain_id).await.expect("Failed to delete test domain");
+        delete_test_domain(&config.0, &domain_id)
+            .await
+            .expect("Failed to delete test domain");
     }
 
     #[tokio::test]
@@ -584,9 +652,15 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let mut job_request= JobRequest::default();
+        let mut job_request = JobRequest::default();
         job_request.processing_type = "invalid_processing_type".to_string();
-        let res = client.submit_job_request_v1(&config.1, &job_request).await.expect_err("Failed to submit job request");
-        assert_eq!(res.to_string(), "Auki response - status: 400 Bad Request, error: Failed to process domain. invalid processing type");
+        let res = client
+            .submit_job_request_v1(&config.1, &job_request)
+            .await
+            .expect_err("Failed to submit job request");
+        assert_eq!(
+            res.to_string(),
+            "Auki response - status: 400 Bad Request, error: Failed to process domain. invalid processing type"
+        );
     }
 }

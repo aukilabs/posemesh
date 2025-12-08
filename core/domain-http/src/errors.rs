@@ -19,7 +19,11 @@ pub struct AukiErrorResponse {
 
 impl std::fmt::Display for AukiErrorResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Auki response - status: {}, error: {}", self.status, self.error)
+        write!(
+            f,
+            "Auki response - status: {}, error: {}",
+            self.status, self.error
+        )
     }
 }
 
@@ -31,6 +35,8 @@ pub enum DomainError {
     ReqwestError(#[from] reqwest::Error),
     #[error("{0}")]
     AukiErrorResponse(#[from] AukiErrorResponse),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
     #[error("Invalid content-type header")]
     InvalidContentTypeHeader,
     #[error("Stream error: {0}")]

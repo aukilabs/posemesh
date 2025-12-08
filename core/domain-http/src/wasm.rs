@@ -1,8 +1,8 @@
 use crate::DomainClient as r_DomainClient;
+use crate::JobRequest as r_JobRequest;
 use crate::domain_data::{
     DomainData, DownloadQuery as r_DownloadQuery, UploadDomainData as r_UploadDomainData,
 };
-use crate::JobRequest as r_JobRequest;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
@@ -178,11 +178,11 @@ impl DomainClient {
     ///     "https://dds.example.com".to_string(),
     ///     "my-client-id".to_string()
     /// );
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client.free();
     /// ```
-    /// 
+    ///
     #[wasm_bindgen(constructor)]
     pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
         Self {
@@ -201,14 +201,16 @@ impl DomainClient {
     /// # Example
     /// ```javascript
     /// const client_with_token = client.withOIDCAccessToken("your-oidc-token");
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client_with_token.free();
     /// ```
     #[wasm_bindgen(js_name = "withOIDCAccessToken")]
     pub fn with_oidc_access_token(&self, oidc_access_token: String) -> Self {
         Self {
-            domain_client: self.domain_client.with_oidc_access_token(&oidc_access_token),
+            domain_client: self
+                .domain_client
+                .with_oidc_access_token(&oidc_access_token),
         }
     }
 
@@ -488,10 +490,14 @@ impl DomainClient {
         let future = async move {
             match from_value::<r_JobRequest>(request) {
                 Ok(process_request) => {
-                    let res = domain_client.submit_job_request_v1(&domain_id, &process_request).await;
+                    let res = domain_client
+                        .submit_job_request_v1(&domain_id, &process_request)
+                        .await;
                     match res {
                         Ok(response) => {
-                            let body = response.text().await
+                            let body = response
+                                .text()
+                                .await
                                 .map_err(|e| JsError::new(&e.to_string()))?;
                             Ok(JsValue::from_str(&body))
                         }
@@ -503,7 +509,7 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-          
+
     /// Lists domains for the given organization.
     ///
     /// # Arguments
@@ -531,9 +537,9 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-    
+
     /// Creates domain
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the domain.
     /// * `domain_server_id` - The ID of the domain server.
@@ -548,10 +554,18 @@ impl DomainClient {
     /// let domain: DomainWithServer = await client.createDomain("test domain", "domain-server-id", "https://domain-server.example.com", "https://redirect.example.com");
     /// ```
     #[wasm_bindgen(js_name = "createDomain")]
-    pub fn create_domain(&self, name: String, domain_server_id: Option<String>, domain_server_url: Option<String>, redirect_url: Option<String>) -> Promise {
+    pub fn create_domain(
+        &self,
+        name: String,
+        domain_server_id: Option<String>,
+        domain_server_url: Option<String>,
+        redirect_url: Option<String>,
+    ) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.create_domain(&name, domain_server_id, domain_server_url, redirect_url).await;
+            let res = domain_client
+                .create_domain(&name, domain_server_id, domain_server_url, redirect_url)
+                .await;
             match res {
                 Ok(domain) => match to_value(&domain.domain) {
                     Ok(value) => Ok(value),
@@ -564,7 +578,7 @@ impl DomainClient {
     }
 
     /// Deletes a domain
-    /// 
+    ///
     /// # Arguments
     /// * `domain_id` - The ID of the domain to delete.
     ///

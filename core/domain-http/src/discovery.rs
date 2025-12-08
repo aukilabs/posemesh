@@ -15,7 +15,10 @@ use posemesh_utils::sleep;
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
 
-use crate::{auth::{AuthClient, REFRESH_CACHE_TIME, TokenCache, get_cached_or_fresh_token, parse_jwt}, errors::{AukiErrorResponse, DomainError}};
+use crate::{
+    auth::{AuthClient, REFRESH_CACHE_TIME, TokenCache, get_cached_or_fresh_token, parse_jwt},
+    errors::{AukiErrorResponse, DomainError},
+};
 pub const ALL_DOMAINS_ORG: &str = "all";
 pub const OWN_DOMAINS_ORG: &str = "own";
 
@@ -91,10 +94,7 @@ impl DiscoveryService {
     }
 
     /// List domains with domain server without issue token
-    pub async fn list_domains(
-        &self,
-        org: &str,
-    ) -> Result<Vec<DomainWithServer>, DomainError> {
+    pub async fn list_domains(&self, org: &str) -> Result<Vec<DomainWithServer>, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -117,8 +117,15 @@ impl DiscoveryService {
             Ok(domain_servers.domains)
         } else {
             let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(AukiErrorResponse { status, error: format!("Failed to list domains. {}", text) }.into())
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to list domains. {}", text),
+            }
+            .into())
         }
     }
 
@@ -175,17 +182,16 @@ impl DiscoveryService {
     ) -> Result<String, DomainError> {
         self.cache.lock().await.clear();
         self.oidc_access_token = None;
-        self
-            .api_client
+        self.api_client
             .sign_in_with_app_credentials(app_key, app_secret)
             .await
     }
 
     pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {
-        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref() {
-            if cached_oidc_access_token == oidc_access_token {
-                return self.clone();
-            }
+        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref()
+            && cached_oidc_access_token == oidc_access_token
+        {
+            return self.clone();
         }
         Self {
             dds_url: self.dds_url.clone(),
@@ -196,10 +202,7 @@ impl DiscoveryService {
         }
     }
 
-    pub async fn auth_domain(
-        &self,
-        domain_id: &str,
-    ) -> Result<DomainWithToken, DomainError> {
+    pub async fn auth_domain(&self, domain_id: &str) -> Result<DomainWithToken, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -252,7 +255,11 @@ impl DiscoveryService {
                         .text()
                         .await
                         .unwrap_or_else(|_| "Unknown error".to_string());
-                    Err(AukiErrorResponse { status, error: format!("Failed to auth domain. {}", text) }.into())
+                    Err(AukiErrorResponse {
+                        status,
+                        error: format!("Failed to auth domain. {}", text),
+                    }
+                    .into())
                 }
             }
         })
@@ -274,7 +281,9 @@ impl DiscoveryService {
         let domain_server_id = domain_server_id.unwrap_or_default();
         let domain_server_url = domain_server_url.unwrap_or_default();
         if domain_server_id.is_empty() && domain_server_url.is_empty() {
-            return Err(DomainError::InvalidRequest("domain_server_id or domain_server_url is required"));
+            return Err(DomainError::InvalidRequest(
+                "domain_server_id or domain_server_url is required",
+            ));
         }
         let access_token: String = self
             .api_client
@@ -282,27 +291,41 @@ impl DiscoveryService {
             .await?;
         let response = self
             .client
-            .post(&format!("{}/api/v1/domains?issue_token=true", self.dds_url))
+            .post(format!("{}/api/v1/domains?issue_token=true", self.dds_url))
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
-            .json(&CreateDomainRequest { name: name.to_string(), domain_server_id: domain_server_id.to_string(), redirect_url, domain_server_url: domain_server_url.to_string() })
+            .json(&CreateDomainRequest {
+                name: name.to_string(),
+                domain_server_id: domain_server_id.to_string(),
+                redirect_url,
+                domain_server_url: domain_server_url.to_string(),
+            })
             .send()
             .await?;
 
         if response.status().is_success() {
             let mut domain_with_token: DomainWithToken = response.json().await?;
-            domain_with_token.expires_at =
-                parse_jwt(&domain_with_token.get_access_token())?.exp;
+            domain_with_token.expires_at = parse_jwt(&domain_with_token.get_access_token())?.exp;
             // Cache the result
             let mut cache = self.cache.lock().await;
-            cache.insert(domain_with_token.domain.id.clone(), domain_with_token.clone());
+            cache.insert(
+                domain_with_token.domain.id.clone(),
+                domain_with_token.clone(),
+            );
             Ok(domain_with_token)
         } else {
             let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(AukiErrorResponse { status, error: format!("Failed to create domain. {}", text) }.into())
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to create domain. {}", text),
+            }
+            .into())
         }
     }
 
@@ -321,13 +344,18 @@ impl DiscoveryService {
             .get_dds_access_token(self.oidc_access_token.as_deref())
             .await?;
         if portal_id.is_none() && portal_short_id.is_none() {
-            return Err(DomainError::InvalidRequest("portal_id or portal_short_id is required"));
+            return Err(DomainError::InvalidRequest(
+                "portal_id or portal_short_id is required",
+            ));
         }
         let id = portal_id.or(portal_short_id).unwrap();
         let org = org.unwrap_or(OWN_DOMAINS_ORG);
         let response = self
             .client
-            .get(&format!("{}/api/v1/lighthouses/{}/domains?with=domain_server,lighthouse&org={}", self.dds_url, id, org))
+            .get(format!(
+                "{}/api/v1/lighthouses/{}/domains?with=domain_server,lighthouse&org={}",
+                self.dds_url, id, org
+            ))
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
@@ -339,8 +367,15 @@ impl DiscoveryService {
             Ok(domains)
         } else {
             let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(AukiErrorResponse { status, error: format!("Failed to list domains by portal. {}", text) }.into())
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to list domains by portal. {}", text),
+            }
+            .into())
         }
     }
 
@@ -351,7 +386,7 @@ impl DiscoveryService {
     ) -> Result<(), DomainError> {
         let response = self
             .client
-            .delete(&format!("{}/api/v1/domains/{}", self.dds_url, domain_id))
+            .delete(format!("{}/api/v1/domains/{}", self.dds_url, domain_id))
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
@@ -362,8 +397,15 @@ impl DiscoveryService {
             Ok(())
         } else {
             let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(AukiErrorResponse { status, error: format!("Failed to delete domain. {}", text) }.into())
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(AukiErrorResponse {
+                status,
+                error: format!("Failed to delete domain. {}", text),
+            }
+            .into())
         }
     }
 }

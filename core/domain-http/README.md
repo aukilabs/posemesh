@@ -33,6 +33,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 - Secure authentication and authorization with the Auki Network.
 - Efficient streaming download of domain data, enabling seamless handling of large datasets.
 - Flexible upload functionality for both creating and updating domain data.
+- Built-in multipart large-file upload helper that handles session initiation, chunking, retries, and completion for you.
 - Universal compatibility: [JavaScript package](https://www.npmjs.com/package/@auki/domain-http) works in browsers, Deno, and Node.js(v18+ with ReadableStream support).
 
 
@@ -115,6 +116,44 @@ To publish a new version of this crate, follow these steps:
 
 ## Contributing
 
-Contributions are welcome! Please ensure that all tests pass before submitting a pull request.
+## Large file uploads (native)
 
+```rust
+use posemesh_domain_http::{DomainClient, MultipartUploadOptions};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let client = DomainClient::new_with_user_credential(
+    "https://api.example.com",
+    "https://dds.example.com",
+    "my-client-id",
+    "user@example.com",
+    "password123",
+    true,
+).await?;
+
+let md = client
+    .upload_large_file_path(
+        "domain-id",
+        "my-large-file.bin",
+        "binary",
+        "/path/to/file",
+        Some(MultipartUploadOptions {
+            content_type: Some("application/octet-stream".into()),
+            progress: None,
+        }),
+    )
+    .await?;
+
+println!("Uploaded {} ({} bytes)", md.name, md.size);
+# Ok(()) }
+```
+The helper will:
+- initiate a multipart session on the domain server,
+- stream the file in server-advertised part sizes,
+- upload each part sequentially,
+- complete the upload (or abort automatically on errors).
+
+Progress callbacks can be provided via `MultipartUploadOptions::progress` (receives `(uploaded_bytes, total_bytes)`).
+
+Contributions are welcome! Please ensure that all tests pass before submitting a pull request.
 
