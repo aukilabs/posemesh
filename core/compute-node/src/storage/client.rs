@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
+use tokio::io::BufReader;
 use url::Url;
 use uuid::Uuid;
 // zip extraction moved to reconstruction-specific runner
@@ -33,6 +34,16 @@ pub struct UploadRequest<'a> {
     pub data_type: &'a str,
     pub logical_path: &'a str,
     pub bytes: &'a [u8],
+    pub existing_id: Option<&'a str>,
+}
+
+#[derive(Debug)]
+pub struct UploadPathRequest<'a> {
+    pub domain_id: &'a str,
+    pub name: &'a str,
+    pub data_type: &'a str,
+    pub logical_path: &'a str,
+    pub path: &'a std::path::Path,
     pub existing_id: Option<&'a str>,
 }
 
@@ -235,6 +246,57 @@ impl DomainClient {
                 Ok(id)
             }
             Err((status, _body)) => Err(map_status(status)),
+        }
+    }
+
+    pub async fn upload_large_artifact_path(
+        &self,
+        request: UploadPathRequest<'_>,
+    ) -> std::result::Result<Option<String>, StorageError> {
+        let domain_id = request.domain_id.trim();
+        if domain_id.is_empty() {
+            return Err(StorageError::Other(
+                "missing domain_id for artifact upload".into(),
+            ));
+        }
+
+        let base = self.base.as_str().trim_end_matches('/');
+        let file = fs::File::open(request.path)
+            .await
+            .map_err(|e| StorageError::Other(format!("open file: {}", e)))?;
+        let meta = file
+            .metadata()
+            .await
+            .map_err(|e| StorageError::Other(format!("stat file: {}", e)))?;
+
+        let reader = BufReader::new(file);
+        tracing::debug!(
+            target: "posemesh_compute_node::storage::client",
+            method = "MULTIPART",
+            url = %format!("{}/api/v1/domains/{}/data/multipart", base, domain_id),
+            logical_path = request.logical_path,
+            name = request.name,
+            data_type = request.data_type,
+            size_bytes = meta.len(),
+            "Sending multipart domain upload request"
+        );
+
+        match posemesh_domain_http::domain_data::upload_large_file_reader(
+            posemesh_domain_http::domain_data::MultipartUploadRequest {
+                url: base.to_string(),
+                access_token: self.token.get(),
+                domain_id: domain_id.to_string(),
+                name: request.name.to_string(),
+                data_type: request.data_type.to_string(),
+                reader,
+                total_size: Some(meta.len()),
+                opts: None,
+            },
+        )
+        .await
+        {
+            Ok(md) => Ok(Some(md.id)),
+            Err(err) => Err(StorageError::Other(err.to_string())),
         }
     }
 

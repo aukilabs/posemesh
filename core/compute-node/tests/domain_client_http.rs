@@ -227,6 +227,171 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
     assert_eq!(refined_record.id.as_deref(), Some("data-zip"));
 }
 
+#[tokio::test]
+async fn put_file_uses_multipart_for_large_payload() {
+    // Lower threshold so test fixture triggers multipart
+    std::env::set_var("POSEMESH_MULTIPART_MIN_BYTES", "1024");
+
+    let server = MockServer::start();
+
+    let lookup_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/v1/domains/dom1/data")
+            .query_param(
+                "name",
+                "out_refined_global_refined_sfm_combined_combined_ply_task-456",
+            )
+            .query_param("data_type", "ply")
+            .header("authorization", "Bearer tkn")
+            .header("accept", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"data":[]}"#);
+    });
+
+    let init_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param_exists("uploads")
+            .header("authorization", "Bearer tkn")
+            .header("content-type", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"upload_id":"up-1","data_id":"data-xyz","part_size":4096,"expires_at":"2025-01-01T00:00:00Z"}"#);
+    });
+
+    let part_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up-1")
+            .query_param("partNumber", "1")
+            .header("authorization", "Bearer tkn");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"etag":"etag-1"}"#);
+    });
+
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up-1")
+            .header("authorization", "Bearer tkn")
+            .header("content-type", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"id":"data-xyz","domain_id":"dom1","name":"out_refined_global_refined_sfm_combined_combined_ply_task-456","data_type":"ply","size":2048,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}"#);
+    });
+
+    let token = TokenRef::new("tkn".into());
+    let base: url::Url = server.base_url().parse().unwrap();
+    let client = DomainClient::new(base, token).unwrap();
+    let output = DomainOutput::new(client, "dom1".into(), Some("out".into()), "task-456".into());
+
+    let mut tmp = NamedTempFile::new().unwrap();
+    tmp.write_all(&vec![1u8; 2048]).unwrap();
+
+    output
+        .put_file(
+            "refined/global/refined_sfm_combined/combined.ply",
+            tmp.path(),
+        )
+        .await
+        .unwrap();
+
+    lookup_mock.assert();
+    init_mock.assert();
+    part_mock.assert();
+    complete_mock.assert();
+
+    let artifacts = output.uploaded_artifacts();
+    let combined = artifacts
+        .into_iter()
+        .find(|artifact| {
+            artifact.logical_path == "out/refined/global/refined_sfm_combined/combined.ply"
+        })
+        .expect("combined artifact uploaded");
+    assert_eq!(combined.id.as_deref(), Some("data-xyz"));
+}
+
+#[tokio::test]
+async fn open_multipart_streams_and_records_upload() {
+    std::env::set_var("POSEMESH_MULTIPART_MIN_BYTES", "1024");
+    let server = MockServer::start();
+
+    let lookup_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/v1/domains/dom1/data")
+            .query_param(
+                "name",
+                "out_refined_global_refined_sfm_combined_combined_ply_task-456",
+            )
+            .query_param("data_type", "ply")
+            .header("authorization", "Bearer tkn")
+            .header("accept", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"data":[]}"#);
+    });
+
+    let init_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param_exists("uploads")
+            .header("authorization", "Bearer tkn");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"upload_id":"up-2","data_id":"data-abc","part_size":4096,"expires_at":"2025-01-01T00:00:00Z"}"#);
+    });
+
+    let part_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up-2")
+            .query_param("partNumber", "1")
+            .header("authorization", "Bearer tkn");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"etag":"etag-2"}"#);
+    });
+
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up-2")
+            .header("authorization", "Bearer tkn")
+            .header("content-type", "application/json");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"id":"data-abc","domain_id":"dom1","name":"out_refined_global_refined_sfm_combined_combined_ply_task-456","data_type":"ply","size":5,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}"#);
+    });
+
+    let token = TokenRef::new("tkn".into());
+    let base: url::Url = server.base_url().parse().unwrap();
+    let client = DomainClient::new(base, token).unwrap();
+    let output = DomainOutput::new(client, "dom1".into(), Some("out".into()), "task-456".into());
+
+    let mut writer = output
+        .open_multipart("refined/global/refined_sfm_combined/combined.ply")
+        .await
+        .unwrap();
+    writer.write_chunk(b"hello").await.unwrap();
+    writer.finish().await.unwrap();
+
+    lookup_mock.assert();
+    init_mock.assert();
+    part_mock.assert();
+    complete_mock.assert();
+
+    let artifacts = output.uploaded_artifacts();
+    let combined = artifacts
+        .into_iter()
+        .find(|artifact| {
+            artifact.logical_path == "out/refined/global/refined_sfm_combined/combined.ply"
+        })
+        .expect("combined artifact uploaded via multipart writer");
+    assert_eq!(combined.id.as_deref(), Some("data-abc"));
+}
+
 fn build_zip(payload: &[u8]) -> Vec<u8> {
     let mut buffer = Vec::new();
     {

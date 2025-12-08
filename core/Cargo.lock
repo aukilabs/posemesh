@@ -3641,7 +3641,7 @@ checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
 
 [[package]]
 name = "posemesh-compute-node"
-version = "0.1.15"
+version = "0.1.16-rc.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3654,7 +3654,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "posemesh-compute-node-runner-api",
- "posemesh-domain-http 1.3.2",
+ "posemesh-domain-http",
  "posemesh-node-registration",
  "rand 0.8.5",
  "regex",
@@ -3730,30 +3730,7 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "1.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e676987928ddf4df85d3ce4bb19f6c714b6695ca6614939a72179c8d83ebf85"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "console_error_panic_hook",
- "futures",
- "posemesh-utils 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "reqwest",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-wasm",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams",
-]
-
-[[package]]
-name = "posemesh-domain-http"
-version = "1.4.0"
+version = "1.5.0-rc.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",

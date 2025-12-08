@@ -73,6 +73,9 @@ Optional environment variables:
 - `LOG_FORMAT` (default `json`) — set to `text` for pretty console logs.
 - `ENABLE_NOOP` (default `false`) — when true the binary registers noop runners.
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
+- `POSEMESH_MULTIPART_MIN_BYTES` (default `8388608`) — size threshold (bytes)
+  after which artifact uploads switch to the domain server's multipart API;
+  useful for large outputs like `refined/global/refined_sfm_combined/*`.
 
 ## Notable modules
 - `auth::siwe_after_registration` — waits for DDS registration to persist a
@@ -82,8 +85,10 @@ Optional environment variables:
 - `engine` — orchestrates leasing, cancellation, heartbeat posting, and
   completion/failure reporting. The `RunnerRegistry` façade makes it easy to add
   new capabilities.
-- `storage::client` — performs authenticated multipart downloads/uploads
-  against the domain server using safe temporary directories.
+- `storage::client` — performs authenticated downloads/uploads (including
+  multipart) against the domain server using safe temporary directories.
+- `storage::output` — implements `ArtifactSink` with size-aware routing to
+  multipart uploads and supports streaming via `open_multipart`.
 - `session` — tracks lease metadata, computes TTL-driven heartbeat deadlines,
   and survives new heartbeats refreshing tokens or signalling cancellation.
 
