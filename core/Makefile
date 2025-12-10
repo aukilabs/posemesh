@@ -92,7 +92,8 @@ publish-domain-http:
 			exit 1; \
 		fi; \
 	fi
-	@cargo publish -p posemesh-domain-http
+	# @cargo publish -p posemesh-domain-http
+	@make build-domain-http-wasm
 	@cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
 		npm publish --tag "v$$VERSION"; \
