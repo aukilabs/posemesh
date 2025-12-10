@@ -95,7 +95,7 @@ publish-domain-http:
 	make build-domain-http-wasm; \
 	cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
-		npm publish --access public --tag "v$$VERSION"; \
+		npm publish --access public --tag stable; \
 	else \
 		npm publish; \
 	fi; \
