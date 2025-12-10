@@ -56,9 +56,6 @@ jobs:
     name: Build wheels for ${{ matrix.os }}
     # needs: publish_js_and_rust_packages
     runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        working-directory: core
     strategy:
       matrix:
         os: [linux-intel, linux-arm, windows-intel, windows-arm, macos-intel, macos-arm]
