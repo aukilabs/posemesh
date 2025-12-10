@@ -47,6 +47,7 @@ jobs:
           CI: true
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          echo "@auki:registry=https://registry.npmjs.org/" >> ~/.npmrc
           mkdir -p ~/.cargo
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
