@@ -11,12 +11,6 @@ on:
         required: true
         type: string
   workflow_call:
-    inputs:
-      publish:
-        description: 'Publish packages'
-        required: false
-        type: boolean
-        default: false
   pull_request:
     branches:
       - main
@@ -33,10 +27,8 @@ jobs:
         working-directory: core
     steps:
       - name: Checkout repository with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      
+        uses: actions/checkout@v6
+        
       - name: Fetch PR branch (if workflow_dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
@@ -82,16 +74,3 @@ jobs:
           TEST_ORGANIZATION=${{ vars.TEST_ORGANIZATION_ID }}
           EOF
           make unit-tests
-        
-      - name: Publish packages
-        if: ${{ github.event.inputs.publish && github.event_name == 'workflow_call' }}
-        continue-on-error: true
-        env:
-          CI: true
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-          mkdir -p ~/.cargo
-          echo "[registry]" > ~/.cargo/credentials.toml
-          echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
-          make publish-utils
-          make publish-domain-http

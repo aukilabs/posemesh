@@ -35,6 +35,7 @@ pub struct DomainWithToken {
     pub expires_at: u64,
     access_token: String,
 }
+
 impl TokenCache for DomainWithToken {
     fn get_access_token(&self) -> String {
         self.access_token.clone()
@@ -94,7 +95,7 @@ impl DiscoveryService {
     pub async fn list_domains(
         &self,
         org: &str,
-    ) -> Result<Vec<DomainWithServer>, DomainError> {
+    ) -> Result<ListDomainsResponse, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -114,7 +115,7 @@ impl DiscoveryService {
 
         if response.status().is_success() {
             let domain_servers: ListDomainsResponse = response.json().await?;
-            Ok(domain_servers.domains)
+            Ok(domain_servers)
         } else {
             let status = response.status();
             let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
@@ -314,7 +315,7 @@ impl DiscoveryService {
         &self,
         portal_id: Option<&str>,
         portal_short_id: Option<&str>,
-        org: Option<&str>,
+        org: &str,
     ) -> Result<ListDomainsResponse, DomainError> {
         let access_token: String = self
             .api_client
@@ -324,7 +325,6 @@ impl DiscoveryService {
             return Err(DomainError::InvalidRequest("portal_id or portal_short_id is required"));
         }
         let id = portal_id.or(portal_short_id).unwrap();
-        let org = org.unwrap_or(OWN_DOMAINS_ORG);
         let response = self
             .client
             .get(&format!("{}/api/v1/lighthouses/{}/domains?with=domain_server,lighthouse&org={}", self.dds_url, id, org))

@@ -1,0 +1,255 @@
+namespace domain_client {
+    /// Creates a new DomainClient instance using app credentials (app key and secret).
+    /// This method authenticates the client using application-level credentials.
+    ///
+    /// Args:
+    ///     api_url: The base URL for the API server
+    ///     dds_url: The URL for the Domain Data Service
+    ///     client_id: The client identifier
+    ///     app_key: The application key for authentication
+    ///     app_secret: The application secret for authentication
+    ///
+    /// Returns:
+    ///     A new authenticated DomainClient instance
+    ///
+    /// Throws:
+    ///     DomainError: If authentication fails or connection cannot be established
+    [Throws=DomainError]
+    DomainClient new_with_app_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string app_key, [ByRef] string app_secret);
+
+    /// Creates a new DomainClient instance using user credentials (email and password).
+    /// This method authenticates the client using user account credentials.
+    ///
+    /// Args:
+    ///     api_url: The base URL for the API server
+    ///     dds_url: The URL for the Domain Data Service
+    ///     client_id: The client identifier
+    ///     email: The user's email address
+    ///     password: The user's password
+    ///     remember_password: Whether to remember the password for future sessions
+    ///
+    /// Returns:
+    ///     A new authenticated DomainClient instance
+    ///
+    /// Throws:
+    ///     DomainError: If authentication fails or connection cannot be established
+    [Throws=DomainError]
+    DomainClient new_with_user_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string email, [ByRef] string password, boolean remember_password);
+};
+
+/// Error types that can be raised by DomainClient operations.
+[Error]
+enum DomainError {
+  /// An error occurred in the HTTP request library (reqwest)
+  "ReqwestError",
+  /// The server returned an error response from Auki services
+  "AukiErrorResponse",
+  /// The content type header is invalid or missing
+  "InvalidContentTypeHeader",
+  /// An error occurred while streaming data
+  "StreamError",
+  /// The stream operation was cancelled
+  "StreamCancelled",
+  /// Authentication failed or token is invalid
+  "AuthError",
+  /// The request parameters are invalid
+  "InvalidRequest",
+};
+
+/// Metadata information about domain data.
+/// Contains descriptive information about a piece of domain data without the actual data payload.
+dictionary DomainDataMetadata {
+    /// Unique identifier for this data entry
+    string id;
+    /// The domain ID this data belongs to
+    string domain_id;
+    /// Human-readable name for this data entry
+    string name;
+    /// Type/category of the data (e.g., "pose", "landmark", etc.)
+    string data_type;
+    /// Size of the data in bytes
+    u64 size;
+    /// ISO 8601 timestamp when this data was created
+    string created_at;
+    /// ISO 8601 timestamp when this data was last updated
+    string updated_at;
+};
+
+/// Complete domain data including both metadata and the actual data payload.
+dictionary DomainData {
+    /// Metadata describing this data entry
+    DomainDataMetadata metadata;
+    /// The actual binary data payload
+    bytes data;
+};
+
+/// Query parameters for downloading domain data.
+/// Used to filter which data entries to download from a domain.
+dictionary DownloadQuery {
+    /// List of specific data entry IDs to download. If empty, all matching entries are returned.
+    sequence<string> ids;
+    /// Optional filter by name (partial match)
+    string? name;
+    /// Optional filter by data type
+    string? data_type;
+};
+
+/// Information about a domain server.
+/// A domain server hosts the actual data for one or more domains.
+dictionary DomainServer {
+    /// Unique identifier for the domain server
+    string id;
+    /// The organization ID that owns this server
+    string organization_id;
+    /// Human-readable name of the domain server
+    string name;
+    /// Base URL where the domain server can be accessed
+    string url;
+};
+
+/// Complete domain information including its associated server.
+/// Represents a domain and all the information needed to access it.
+dictionary DomainWithServer {
+    /// Unique identifier for the domain
+    string id;
+    /// Human-readable name of the domain
+    string name;
+    /// The organization ID that owns this domain
+    string organization_id;
+    /// ID of the domain server that hosts this domain's data
+    string domain_server_id;
+    /// Optional redirect URL for the domain
+    string? redirect_url;
+    /// Complete information about the domain server
+    DomainServer domain_server;
+};
+
+/// Action to perform when uploading domain data.
+/// Determines whether to create a new data entry or update an existing one.
+[Enum]
+interface DomainAction {
+  /// Create a new data entry with the specified name and data type
+  Create(string name, string data_type);
+  /// Update an existing data entry identified by its ID
+  Update(string id);
+};
+
+/// Data to upload to a domain along with the action to perform.
+dictionary UploadDomainData {
+    /// The action to perform (create new entry or update existing)
+    DomainAction action;
+    /// The binary data to upload
+    bytes data;
+};
+
+/// Response containing a list of domains.
+dictionary ListDomainsResponse {
+    /// List of domains with their associated server information
+    sequence<DomainWithServer> domains;
+};
+
+/// Query parameters for listing domains.
+/// Used to filter which domains to retrieve.
+dictionary ListDomainsQuery {
+    /// Organization ID to filter domains by (required)
+    string org;
+    /// Optional portal ID filter
+    string? portal_id;
+    /// Optional portal short ID filter
+    string? portal_short_id;
+};
+
+/// Main client interface for interacting with domain services.
+/// Provides methods to manage domains and their data.
+interface DomainClient {
+    /// Creates a new DomainClient instance without authentication.
+    /// Use with_oidc_access_token() or the namespace-level constructors for authenticated access.
+    ///
+    /// Args:
+    ///     api_url: The base URL for the API server
+    ///     dds_url: The URL for the Domain Data Service
+    ///     client_id: The client identifier
+    constructor([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id);
+    
+    /// Creates a new DomainClient instance with an OIDC access token.
+    /// This method clones the current client and sets the provided access token for authentication.
+    ///
+    /// Args:
+    ///     token: The OIDC access token to use for authentication
+    ///
+    /// Returns:
+    ///     A new DomainClient instance with the access token set
+    DomainClient with_oidc_access_token([ByRef] string token);
+    
+    /// Downloads domain data matching the query criteria.
+    /// Retrieves both metadata and data payload for matching entries.
+    ///
+    /// Args:
+    ///     domain_id: The ID of the domain to download data from
+    ///     query: Query parameters to filter which data to download
+    ///
+    /// Returns:
+    ///     A list of DomainData objects containing metadata and data
+    ///
+    /// Throws:
+    ///     DomainError: If the download fails, authentication fails, or the domain is not found
+    [Throws=DomainError]
+    sequence<DomainData> download_domain_data([ByRef] string domain_id, [ByRef] DownloadQuery query);
+
+    /// Creates a new domain.
+    /// A domain is a container for organizing and managing related data.
+    ///
+    /// Args:
+    ///     name: The name for the new domain
+    ///     domain_server_id: Optional ID of an existing domain server to use
+    ///     domain_server_url: Optional URL for a new domain server to create
+    ///     redirect_url: Optional redirect URL for the domain
+    ///
+    /// Returns:
+    ///     DomainWithServer object containing the created domain and server information
+    ///
+    /// Throws:
+    ///     DomainError: If domain creation fails or parameters are invalid
+    [Throws=DomainError]
+    DomainWithServer create_domain([ByRef] string name, string? domain_server_id, string? domain_server_url, string? redirect_url);
+
+    /// Deletes a domain by its ID.
+    /// This operation is permanent and cannot be undone.
+    ///
+    /// Args:
+    ///     id: The ID of the domain to delete
+    ///
+    /// Throws:
+    ///     DomainError: If deletion fails, authentication fails, or the domain is not found
+    [Throws=DomainError]
+    void delete_domain([ByRef] string id);
+
+    /// Uploads data to a domain.
+    /// Can create new data entries or update existing ones based on the action specified.
+    ///
+    /// Args:
+    ///     id: The domain ID to upload data to
+    ///     data: List of UploadDomainData objects, each containing an action and data payload
+    ///
+    /// Returns:
+    ///     List of DomainDataMetadata for the successfully uploaded entries
+    ///
+    /// Throws:
+    ///     DomainError: If upload fails, authentication fails, or the domain is not found
+    [Throws=DomainError]
+    sequence<DomainDataMetadata> upload_domain_data([ByRef] string id, sequence<UploadDomainData> data);
+
+    /// Lists domains matching the query criteria.
+    /// Returns domains along with their associated server information.
+    ///
+    /// Args:
+    ///     query: Query parameters to filter which domains to list
+    ///
+    /// Returns:
+    ///     ListDomainsResponse containing the matching domains
+    ///
+    /// Throws:
+    ///     DomainError: If the query fails or authentication fails
+    [Throws=DomainError]
+    ListDomainsResponse list_domains([ByRef] ListDomainsQuery query);
+};

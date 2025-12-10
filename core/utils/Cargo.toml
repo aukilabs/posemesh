@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-utils"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "Utility functions and helpers for async operations, retries, and timeouts, supporting both native and WebAssembly targets."
@@ -13,6 +13,7 @@ tracing = { workspace = true }
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
+once_cell = "1.20.3"
 
 [target.'cfg(target_family="wasm")'.dependencies]
 wasm-bindgen = { workspace = true }

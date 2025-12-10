@@ -20,6 +20,7 @@ thiserror.workspace = true
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
 tokio = { workspace = true, features = ["full"] }
+uniffi = { workspace = true, optional = true }
 
 [target.'cfg(target_family="wasm")'.dependencies]
 tracing-wasm.workspace = true
@@ -29,6 +30,9 @@ serde-wasm-bindgen.workspace = true
 console_error_panic_hook = { workspace = true }
 wasm-streams = "0.4.2"
 
+[build-dependencies]
+uniffi = {workspace = true, features = ["build"]} 
+
 [dev-dependencies]
 dotenvy = "0.15.7"
 tokio-stream = "0.1.17"
@@ -36,7 +40,11 @@ wasm-bindgen-test.workspace = true
 uuid.workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[features]
+default = []
+uniffi = ["dep:uniffi"]
 
 [profile.release]
 strip = true
