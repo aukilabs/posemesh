@@ -91,15 +91,14 @@ publish-domain-http:
 			echo "Unit tests failed. Aborting publish."; \
 			exit 1; \
 		fi; \
-	fi
-	# @cargo publish -p posemesh-domain-http
-	@make build-domain-http-wasm
-	@cd domain-http/bindings/javascript/pkg && \
+	fi; \
+	make build-domain-http-wasm; \
+	cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
 		npm publish --access public --tag "v$$VERSION"; \
 	else \
 		npm publish; \
-	fi
+	fi; \
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
