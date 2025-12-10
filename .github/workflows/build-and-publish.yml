@@ -33,6 +33,9 @@ jobs:
       run:
         working-directory: core
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        
       - name: Publish JS and Rust packages
         env:
           CI: true
