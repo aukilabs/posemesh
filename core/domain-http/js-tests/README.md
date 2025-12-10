@@ -1,6 +1,6 @@
 # Posemesh Domain HTTP Tests
 
-This directory contains comprehensive test configurations for the `@auki/domain-http` package, supporting both Node.js and headless browser environments.
+This directory contains comprehensive test configurations for the `posemesh-domain-http` package, supporting both Node.js and headless browser environments.
 
 ## Test Configurations
 

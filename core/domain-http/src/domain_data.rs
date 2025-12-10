@@ -8,8 +8,6 @@ use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
-use crate::errors::{AukiErrorResponse, DomainError};
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DomainDataMetadata {
     pub id: String,
@@ -71,7 +69,7 @@ pub async fn download_by_id(
     access_token: &str,
     domain_id: &str,
     id: &str,
-) -> Result<Vec<u8>, DomainError> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let response = Client::new()
         .get(format!(
             "{}/api/v1/domains/{}/data/{}?raw=true",
@@ -87,8 +85,15 @@ pub async fn download_by_id(
         Ok(data.to_vec())
     } else {
         let status = response.status();
-        let error = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data by id. {}", error) }.into())
+        let text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!(
+            "Failed to download data by id. Status: {} - {}",
+            status, text
+        )
+        .into())
     }
 }
 
@@ -115,7 +120,7 @@ pub async fn download_metadata_v1(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<Vec<DomainDataMetadata>, DomainError> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let response = download_v1(url, client_id, access_token, domain_id, query, false).await?;
     if response.status().is_success() {
         let data = response.json::<ListDomainDataMetadata>().await?;
@@ -126,7 +131,7 @@ pub async fn download_metadata_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download metadata. {}", text) }.into())
+        Err(format!("Failed to download data. Status: {} - {}", status, text).into())
     }
 }
 
@@ -137,7 +142,7 @@ pub async fn download_v1(
     domain_id: &str,
     query: &DownloadQuery,
     with_data: bool,
-) -> Result<Response, DomainError> {
+) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
     let mut params = HashMap::new();
 
     if let Some(name) = &query.name {
@@ -176,7 +181,7 @@ pub async fn download_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data. {}", text) }.into())
+        Err(format!("Failed to download data. Status: {} - {}", status, text).into())
     }
 }
 
@@ -187,8 +192,8 @@ pub async fn download_v1_stream(
     domain_id: &str,
     query: &DownloadQuery,
 ) -> Result<
-    mpsc::Receiver<Result<DomainData, DomainError>>,
-    DomainError,
+    mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+    Box<dyn std::error::Error + Send + Sync>,
 > {
     let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
 
@@ -200,11 +205,11 @@ pub async fn download_v1_stream(
 pub async fn stream_from_response(
     response: Response,
 ) -> Result<
-    mpsc::Receiver<Result<DomainData, DomainError>>,
-    DomainError,
+    mpsc::Receiver<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
+    Box<dyn std::error::Error + Send + Sync>,
 > {
     let (mut tx, rx) =
-        mpsc::channel::<Result<DomainData, DomainError>>(100);
+        mpsc::channel::<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>(100);
 
     let boundary = match response
         .headers()
@@ -221,7 +226,7 @@ pub async fn stream_from_response(
         None => {
             tracing::error!("Invalid content-type header");
             let _ = tx.close().await;
-            return Err(DomainError::InvalidContentTypeHeader);
+            return Err("Invalid content-type header".into());
         }
     };
 
@@ -238,7 +243,7 @@ pub async fn delete_by_id(
     access_token: &str,
     domain_id: &str,
     id: &str,
-) -> Result<(), DomainError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let endpoint = format!("{}/api/v1/domains/{}/data/{}", url, domain_id, id);
     let client = Client::new();
     let resp = client
@@ -250,12 +255,11 @@ pub async fn delete_by_id(
     if resp.status().is_success() {
         Ok(())
     } else {
-        let status = resp.status();
         let err = resp
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to delete data by id. {}", err) }.into())
+        Err(format!("Delete failed with status: {}", err).into())
     }
 }
 
@@ -265,7 +269,7 @@ pub async fn upload_v1_stream(
     access_token: &str,
     domain_id: &str,
     mut rx: mpsc::Receiver<UploadDomainData>,
-) -> Result<Vec<DomainDataMetadata>, DomainError> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     use futures::channel::oneshot;
 
     let boundary = "boundary";
@@ -284,10 +288,10 @@ pub async fn upload_v1_stream(
     let domain_id_2 = domain_id.clone();
 
     let (create_signal, create_signal_rx) = oneshot::channel::<
-        Result<Vec<DomainDataMetadata>, DomainError>,
+        Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>>,
     >();
     let (update_signal, update_signal_rx) = oneshot::channel::<
-        Result<Vec<DomainDataMetadata>, DomainError>,
+        Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>>,
     >();
 
     spawn(async move {
@@ -328,21 +332,23 @@ pub async fn upload_v1_stream(
     create_tx.close().await?;
 
     let mut data = {
-        match create_signal_rx.await {
-            Ok(res) => match res {
+        if let Ok(res) = create_signal_rx.await {
+            match res {
                 Ok(d) => d,
                 Err(e) => return Err(e),
-            },
-            Err(e) => return Err(DomainError::StreamCancelled(e)),
+            }
+        } else {
+            return Err("create cancelled".into());
         }
     };
 
-    match update_signal_rx.await {
-        Ok(res) => match res {
+    if let Ok(res) = update_signal_rx.await {
+        match res {
             Ok(d) => data.extend(d),
             Err(e) => return Err(e),
-        },
-        Err(e) => return Err(DomainError::StreamCancelled(e)),
+        }
+    } else {
+        return Err("update cancelled".into());
     }
 
     Ok(data)
@@ -354,7 +360,7 @@ async fn update_v1(
     domain_id: &str,
     boundary: &str,
     body: Body,
-) -> Result<Vec<DomainDataMetadata>, DomainError> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let update_response = Client::new()
         .put(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
@@ -373,12 +379,11 @@ async fn update_v1(
             .unwrap();
         Ok(data.data)
     } else {
-        let status = update_response.status();
         let err = update_response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to update data. {}", err) }.into())
+        Err(format!("Update failed with status: {}", err).into())
     }
 }
 
@@ -388,7 +393,7 @@ async fn create_v1(
     domain_id: &str,
     boundary: &str,
     body: Body,
-) -> Result<Vec<DomainDataMetadata>, DomainError> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let create_response = Client::new()
         .post(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
@@ -407,12 +412,11 @@ async fn create_v1(
             .unwrap();
         Ok(data.data)
     } else {
-        let status = create_response.status();
         let err = create_response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to create data. {}", err) }.into())
+        Err(format!("Create failed with status: {}", err).into())
     }
 }
 
@@ -443,7 +447,7 @@ pub async fn upload_v1(
     access_token: &str,
     domain_id: &str,
     data: Vec<UploadDomainData>,
-) -> Result<Vec<DomainDataMetadata>, DomainError> {
+) -> Result<Vec<DomainDataMetadata>, Box<dyn std::error::Error + Send + Sync>> {
     let boundary = "boundary";
 
     let mut create_body = Vec::new();
@@ -671,7 +675,7 @@ fn find_headers_end(data: &[u8]) -> Option<usize> {
 }
 
 async fn handle_domain_data_stream(
-    mut tx: mpsc::Sender<Result<DomainData, DomainError>>,
+    mut tx: mpsc::Sender<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>,
     stream: impl Stream<Item = Result<Bytes, reqwest::Error>>,
     boundary: &str,
 ) {
@@ -753,7 +757,19 @@ async fn handle_domain_data_stream(
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
+
+    use crate::{auth::TokenCache, config::Config, discovery::DiscoveryService};
+
     use super::*;
+
+    fn get_config() -> (Config, String) {
+        if std::path::Path::new("../.env.local").exists() {
+            dotenvy::from_filename("../.env.local").ok();
+            dotenvy::dotenv().ok();
+        }
+        let config = Config::from_env().unwrap();
+        (config, std::env::var("DOMAIN_ID").unwrap())
+    }
 
     #[test]
     fn test_find_boundary_found() {
@@ -836,7 +852,7 @@ Content-Type: application/octet-stream
         .await;
 
         let output: Vec<DomainData> = rx
-            .collect::<Vec<Result<DomainData, DomainError>>>()
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
             .await
             .into_iter()
             .map(|r| r.unwrap())
@@ -878,7 +894,7 @@ Content-Type: application/octet-stream
         .await;
 
         let output: Vec<DomainData> = rx
-            .collect::<Vec<Result<DomainData, DomainError>>>()
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
             .await
             .into_iter()
             .map(|r| r.unwrap())
@@ -921,7 +937,7 @@ Content-Type: application/octet-stream
         .await;
 
         let output: Vec<DomainData> = rx
-            .collect::<Vec<Result<DomainData, DomainError>>>()
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
             .await
             .into_iter()
             .map(|r| r.unwrap())
@@ -962,7 +978,7 @@ Content-Type: application/octet-stream
         .await;
 
         let output: Vec<DomainData> = rx
-            .collect::<Vec<Result<DomainData, DomainError>>>()
+            .collect::<Vec<Result<DomainData, Box<dyn std::error::Error + Send + Sync>>>>()
             .await
             .into_iter()
             .map(|r| r.unwrap())
@@ -976,5 +992,64 @@ Content-Type: application/octet-stream
             std::str::from_utf8(&output[0].data).unwrap(),
             "{\"test\": \"test\"}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_upload_v1_with_user_dds_access_token() {
+        use crate::domain_data::{CreateDomainData, DomainAction, UploadDomainData};
+
+        let (config, domain_id) = get_config();
+
+        let mut discovery =
+            DiscoveryService::new(&config.api_url, &config.dds_url, &config.client_id);
+        discovery
+            .sign_in_with_auki_account(&config.email.unwrap(), &config.password.unwrap(), false)
+            .await
+            .expect("sign_in_with_auki_account failed");
+        let domain = discovery
+            .auth_domain(&domain_id)
+            .await
+            .expect("get_domain failed");
+        // 4. Prepare upload data
+        let upload_data = vec![
+            UploadDomainData {
+                action: DomainAction::Create(CreateDomainData {
+                    name: "test_upload".to_string(),
+                    data_type: "test".to_string(),
+                }),
+                data: b"hello world".to_vec(),
+            },
+            UploadDomainData {
+                action: DomainAction::Update(UpdateDomainData {
+                    id: "a84a36e5-312b-4f80-974a-06f5d19c1e16".to_string(),
+                }),
+                data: b"{\"test\": \"test updated\"}".to_vec(),
+            },
+        ];
+
+        // 5. Call upload_v1
+        let result = upload_v1(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            &domain_id,
+            upload_data,
+        )
+        .await
+        .expect("upload_v1 failed");
+
+        assert_eq!(result.len(), 2, "No metadata returned from upload_v1");
+        for data in result {
+            if data.id != "a84a36e5-312b-4f80-974a-06f5d19c1e16" {
+                assert_eq!(data.name, "test_upload");
+                delete_by_id(
+                    &domain.domain.domain_server.url,
+                    &domain.get_access_token(),
+                    &domain_id,
+                    &data.id,
+                )
+                .await
+                .expect("delete_by_id failed");
+            }
+        }
     }
 }

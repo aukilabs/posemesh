@@ -5,13 +5,9 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 import dotenv from 'dotenv';
 
-// dotenv behaves differently in browser and node.js
-let env = dotenv.config({ path: '../../.env' });
-let localEnv = dotenv.config({ path: '../../.env.local', override: true });
-let config = {
-    ...env.parsed,
-    ...localEnv.parsed,
-};
+dotenv.config({ path: '../../.env' });
+let config = dotenv.config({ path: '../../.env.local', override: true }).parsed;
+
 export default defineConfig({
     server: {
       fs: {
@@ -60,7 +56,7 @@ export default defineConfig({
     resolve: {
         alias: {
             // Alias for the WASM module
-            '@auki/domain-http': resolve(__dirname, '../pkg'),
+            'posemesh-domain-http': resolve(__dirname, '../pkg'),
         },
     },
 
@@ -73,7 +69,7 @@ export default defineConfig({
 
     // Optimize dependencies
     optimizeDeps: {
-        exclude: ['@auki/domain-http'],
+        exclude: ['posemesh-domain-http'],
     },
 
     // Plugins for WASM support
