@@ -39,6 +39,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@auki'
+
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
@@ -54,7 +60,7 @@ jobs:
   
   publish_python_wheels:
     name: Build wheels for ${{ matrix.os }}
-    # needs: publish_js_and_rust_packages
+    needs: publish_js_and_rust_packages
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
