@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - hotfix/fix-workflow
     paths:
       - '**'
       - '!**/examples/**'
@@ -28,6 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish JS and Rust Packages
     needs: run_test
+    defaults:
+      run:
+        working-directory: core
     steps:
       - name: Publish JS and Rust packages
         env:
@@ -44,6 +48,9 @@ jobs:
     name: Build wheels for ${{ matrix.os }}
     needs: publish_js_and_rust_packages
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: core
     strategy:
       matrix:
         os: [linux-intel, linux-arm, windows-intel, windows-arm, macos-intel, macos-arm]
