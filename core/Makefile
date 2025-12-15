@@ -18,53 +18,30 @@ build-domain-wasm:
 	wasm-pack build --target bundler --release domain
 	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
 
-build-domain-http:
-ifeq ($(TARGET),wasm)
-	$(MAKE) build-domain-http-wasm
-else
-	$(MAKE) build-domain-http-uniffi LANG=$(TARGET)
-endif
-
 build-domain-http-wasm:
-	@rm -rf domain-http/bindings/javascript/pkg
-	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http OUT_DIR=bindings/javascript/pkg ./build-wasm.sh
+	@rm -rf domain-http/pkg
+	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http ./build-wasm.sh
 
-build-domain-http-uniffi:	
-	@rm -rf domain-http/bindings/python/pkg
-	@if [ -z "$(LANG)" ]; then \
-		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \
-		exit 1; \
-	fi
-	@if [ "$(LANG)" = "python" ]; then \
-		cd domain-http/bindings/python && \
-		cp ../../README.md . && \
-		python3 -m venv .venv && \
-		. .venv/bin/activate && \
-		pip install -r requirements.txt && \
-		maturin develop; \
-	else \
-		OUT_DIR=domain-http/bindings/$(LANG)/pkg; \
-		mkdir -p $$OUT_DIR; \
-		cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR; \
-	fi
-
-unit-tests:
+unit-tests: ci-compute-node
 	@make build-domain-http-wasm
-	@cd domain-http/bindings/javascript/tests && npm install && npx playwright install chromium && npm run test:all
-	@make build-domain-http-uniffi LANG=python
-	@cd domain-http/bindings/python && \
-		if [ -f "../../../.env" ]; then \
-			set -o allexport; . ../../../.env; set +o allexport; \
-		fi; \
-		if [ -f "../../../.env.local" ]; then \
-			set -o allexport; . ../../../.env.local; set +o allexport; \
-		fi; \
-		. .venv/bin/activate && pytest -v -s
+	@cd domain-http/js-tests && npm install && npx playwright install chromium && npm run test:all
 	@cargo test --release --all-features -- --test-threads=1
+
+fmt-compute-node:
+	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -- --check
+
+clippy-compute-node:
+	cargo clippy -p posemesh-compute-node-runner-api -p posemesh-compute-node --all-targets -- -D warnings
+
+test-compute-node:
+	cargo test -p posemesh-compute-node-runner-api
+	cargo test -p posemesh-compute-node
+
+ci-compute-node: fmt-compute-node clippy-compute-node test-compute-node
 
 publish-domain-http:
 	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
-	echo "posemesh-domain-http version: $$VERSION, will be published to cargo, npm, and PyPI"; \
+	echo "posemesh-domain-http version: $$VERSION, will be published to npm and cargo"; \
 	IS_UNSTABLE=`echo "$$VERSION" | grep -E '.*-rc|.*-beta|.*-alpha'` ; \
 	if [ -z "$$IS_UNSTABLE" ]; then \
 		if ! grep -q "## v$${VERSION}" domain-http/CHANGELOG.md; then \
@@ -93,7 +70,7 @@ publish-domain-http:
 		fi; \
 	fi
 	@cargo publish -p posemesh-domain-http
-	@cd domain-http/bindings/javascript/pkg && \
+	@cd domain-http/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
 		npm publish --tag "v$$VERSION"; \
 	else \
@@ -102,16 +79,11 @@ publish-domain-http:
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
-	echo "posemesh-utils version: $$VERSION, will be published to crates.io"; \
-	if curl -s -o /dev/null -w "%{http_code}" "https://crates.io/api/v1/crates/posemesh-utils/$$VERSION" | grep -q "200"; then \
-		echo "Warning: Version $$VERSION is already published on crates.io."; \
-		exit 0; \
-	fi || exit 0; \
 	if [ -z "$$CI" ]; then \
-		read -p "Continue with publish v$$VERSION? [y/N]: " CONFIRM; \
+		read -p "Continue with publish? [y/N]: " CONFIRM; \
 		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
 			echo "Publish cancelled."; \
 			exit 1; \
 		fi; \
-	fi; \
-	cargo publish -p posemesh-utils
+	fi
+	@cargo publish -p posemesh-utils
