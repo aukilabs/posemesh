@@ -58,6 +58,8 @@ jobs:
           make publish-utils || true
           make build-domain-http-wasm
           cd domain-http/bindings/javascript/pkg
+          npm config list
+          npm whoami || true
           npm publish --access public --tag stable
   
   publish_python_wheels:
