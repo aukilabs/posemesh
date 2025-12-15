@@ -58,6 +58,7 @@ jobs:
           make publish-utils || true
           make build-domain-http-wasm
           cd domain-http/bindings/javascript/pkg
+          npm install -g npm@latest
           NODE_AUTH_TOKEN="" npm publish --access public --tag stable
   
   publish_python_wheels:
