@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "auki-domain-client"
+dynamic = ["version"]
 description = "HTTP client library for interacting with AukiLabs domain data services"
 requires-python = ">=3.9"
 license = {text = "MIT"}
