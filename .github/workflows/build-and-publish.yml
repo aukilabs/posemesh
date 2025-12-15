@@ -41,9 +41,12 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           scope: '@auki'
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -56,10 +59,7 @@ jobs:
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
           make publish-utils || true
-          make build-domain-http-wasm
-          cd domain-http/bindings/javascript/pkg
-          npm install -g npm@latest
-          NODE_AUTH_TOKEN="" npm publish --access public --tag stable
+          make publish-domain-http
   
   publish_python_wheels:
     name: Build wheels for ${{ matrix.os }}
