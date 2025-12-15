@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - hotfix/fix-workflow
     paths:
       - '**'
       - '!**/examples/**'
@@ -20,15 +19,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # run_test:
-  #   name: Run Tests
-  #   uses: ./.github/workflows/unit-tests.yml
-  #   secrets: inherit
+  run_test:
+    name: Run Tests
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
 
   publish_js_and_rust_packages:
     runs-on: ubuntu-latest
     name: Publish JS and Rust Packages
-    # needs: run_test
+    needs: run_test
     defaults:
       run:
         working-directory: core

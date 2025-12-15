@@ -76,7 +76,7 @@ publish-domain-http:
 			exit 1; \
 		fi; \
 	fi; \
-	if npm view posemesh-domain-http@$$VERSION > /dev/null 2>&1; then \
+	if npm view @auki/domain-client@$$VERSION > /dev/null 2>&1; then \
 		echo "ERROR: Version $$VERSION is already published on npm."; \
 		exit 1; \
 	fi; \
@@ -92,6 +92,7 @@ publish-domain-http:
 			exit 1; \
 		fi; \
 	fi; \
+	cargo publish -p posemesh-domain-http; \
 	make build-domain-http-wasm; \
 	cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
