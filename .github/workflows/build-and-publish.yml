@@ -56,7 +56,9 @@ jobs:
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
           make publish-utils || true
-          make publish-domain-http
+          make build-domain-http-wasm
+          cd domain-http/bindings/javascript/pkg
+          npm publish --access public --tag stable
   
   publish_python_wheels:
     name: Build wheels for ${{ matrix.os }}
