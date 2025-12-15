@@ -141,9 +141,7 @@ async fn happy_path_poll_run_complete_with_heartbeat_token_rotation() {
                 .header("authorization", "Bearer t-B");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(
-                    r#"{"data":[{"id":"artifact-id","domain_id":"dom","name":"n","data_type":"d"}]}"#,
-                );
+                .body(r#"{"data":[{"id":"artifact-id","domain_id":"dom","name":"n","data_type":"d","size":1,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
         }
     });
 
@@ -441,9 +439,7 @@ async fn run_node_uses_siwe_token_and_completes_task() {
                 .header("authorization", "Bearer session-B");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(
-                    r#"{"data":[{"id":"artifact-id","domain_id":"dom","name":"n","data_type":"d"}]}"#,
-                );
+                .body(r#"{"data":[{"id":"artifact-id","domain_id":"dom","name":"n","data_type":"d","size":1,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
         }
     });
 

@@ -7,10 +7,11 @@ use tokio::fs;
 #[derive(Clone)]
 pub struct DomainInput {
     client: DomainClient,
+    domain_id: String,
 }
 impl DomainInput {
-    pub fn new(client: DomainClient) -> Self {
-        Self { client }
+    pub fn new(client: DomainClient, domain_id: String) -> Self {
+        Self { client, domain_id }
     }
 }
 
@@ -40,7 +41,7 @@ impl compute_runner_api::InputSource for DomainInput {
     ) -> Result<compute_runner_api::MaterializedInput> {
         let mut parts = self
             .client
-            .download_uri(cid)
+            .download_cid(&self.domain_id, cid)
             .await
             .map_err(|e| anyhow!(e))?;
         if parts.is_empty() {

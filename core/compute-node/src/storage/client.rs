@@ -1,11 +1,9 @@
 use crate::errors::StorageError;
 use crate::storage::token::TokenRef;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::StreamExt;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
-use reqwest::{Client, Method, StatusCode};
-use serde::Deserialize;
+use reqwest::Method;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
@@ -41,35 +39,25 @@ pub struct UploadRequest<'a> {
 pub struct DomainClient {
     pub base: Url,
     pub token: TokenRef,
-    http: Client,
+    client_id: String,
 }
 impl DomainClient {
     pub fn new(base: Url, token: TokenRef) -> Result<Self> {
-        let http = Client::builder()
-            .use_rustls_tls()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .context("build reqwest client")?;
-        Ok(Self { base, token, http })
+        let client_id = env_client_id();
+        Ok(Self {
+            base,
+            token,
+            client_id,
+        })
     }
 
-    pub fn with_timeout(base: Url, token: TokenRef, timeout: Duration) -> Result<Self> {
-        let http = Client::builder()
-            .use_rustls_tls()
-            .timeout(timeout)
-            .build()
-            .context("build reqwest client")?;
-        Ok(Self { base, token, http })
-    }
-
-    fn auth_headers(&self) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        let token = format!("Bearer {}", self.token.get());
-        let mut v = HeaderValue::from_str(&token)
-            .unwrap_or_else(|_| HeaderValue::from_static("Bearer INVALID"));
-        v.set_sensitive(true);
-        h.insert(AUTHORIZATION, v);
-        h
+    pub fn with_timeout(base: Url, token: TokenRef, _timeout: Duration) -> Result<Self> {
+        let client_id = env_client_id();
+        Ok(Self {
+            base,
+            token,
+            client_id,
+        })
     }
 
     /// Download a Domain data item referenced by an absolute URI, persisting each multipart
@@ -78,35 +66,74 @@ impl DomainClient {
         &self,
         uri: &str,
     ) -> std::result::Result<Vec<DownloadedPart>, StorageError> {
-        let url =
-            Url::parse(uri).map_err(|e| StorageError::Other(format!("parse domain uri: {}", e)))?;
-        let url_for_log = url.clone();
+        let resolved = resolve_domain_url(&self.base, uri)?;
+        let (domain_id, query) = parse_download_target(&resolved, None)?;
+        self.download_domain_data(&resolved, &domain_id, query)
+            .await
+    }
+
+    /// Download domain data referenced by a CID, which can be either:
+    /// - a bare domain-data ID (UUID), or
+    /// - an absolute/relative URL under the domain server.
+    pub async fn download_cid(
+        &self,
+        domain_id: &str,
+        cid: &str,
+    ) -> std::result::Result<Vec<DownloadedPart>, StorageError> {
+        let cid = cid.trim();
+        if cid.is_empty() {
+            return Err(StorageError::Other("empty cid".into()));
+        }
+
+        if cid.contains("://") || cid.starts_with('/') {
+            let resolved = resolve_domain_url(&self.base, cid)?;
+            let (domain_id, query) = parse_download_target(&resolved, Some(domain_id))?;
+            return self
+                .download_domain_data(&resolved, &domain_id, query)
+                .await;
+        }
+
+        let query = posemesh_domain_http::domain_data::DownloadQuery {
+            ids: vec![cid.to_string()],
+            name: None,
+            data_type: None,
+        };
+        self.download_domain_data(&self.base, domain_id, query)
+            .await
+    }
+
+    async fn download_domain_data(
+        &self,
+        url_for_log: &Url,
+        domain_id: &str,
+        query: posemesh_domain_http::domain_data::DownloadQuery,
+    ) -> std::result::Result<Vec<DownloadedPart>, StorageError> {
+        let domain_id = domain_id.trim();
+        if domain_id.is_empty() {
+            return Err(StorageError::Other("missing domain_id for download".into()));
+        }
+
         tracing::debug!(
             target: "posemesh_compute_node::storage::client",
             method = "GET",
             %url_for_log,
-            "Sending domain request"
+            domain_id = domain_id,
+            ids = ?query.ids,
+            name = ?query.name,
+            data_type = ?query.data_type,
+            "Downloading domain data"
         );
-        let client_id = std::env::var("CLIENT_ID")
-            .unwrap_or_else(|_| format!("posemesh-compute-node/{}", uuid::Uuid::new_v4()));
-        let res = posemesh_domain_http::domain_data::request_download_absolute(
-            url.as_str(),
-            &client_id,
-            &self.token.get(),
+
+        let base = self.base.as_str().trim_end_matches('/');
+        let mut rx = posemesh_domain_http::domain_data::download_v1_stream(
+            base,
+            self.client_id.as_str(),
+            self.token.get().as_str(),
+            domain_id,
+            &query,
         )
         .await
-        .map_err(|e| StorageError::Network(e.to_string()))?;
-        let status = res.status();
-        tracing::debug!(
-            target: "posemesh_compute_node::storage::client",
-            method = "GET",
-            %url_for_log,
-            status = %status,
-            "Domain response received"
-        );
-        if !status.is_success() {
-            return Err(map_status(status));
-        }
+        .map_err(map_domain_error)?;
 
         let root = std::env::temp_dir().join(format!("domain-input-{}", Uuid::new_v4()));
         fs::create_dir_all(&root)
@@ -118,12 +145,9 @@ impl DomainClient {
             .map_err(|e| StorageError::Other(format!("create datasets root: {}", e)))?;
 
         let mut parts = Vec::new();
-        let mut rx = posemesh_domain_http::domain_data::stream_from_response(res)
-            .await
-            .map_err(|e| StorageError::Other(e.to_string()))?;
 
         while let Some(item) = rx.next().await {
-            let domain_item = item.map_err(|e| StorageError::Other(e.to_string()))?;
+            let domain_item = item.map_err(map_domain_error)?;
             let name = domain_item.metadata.name.clone();
             let data_type = domain_item.metadata.data_type.clone();
 
@@ -166,9 +190,7 @@ impl DomainClient {
         }
 
         if parts.is_empty() {
-            return Err(StorageError::Other(
-                "domain response did not contain any data parts".into(),
-            ));
+            return Err(StorageError::NotFound);
         }
 
         Ok(parts)
@@ -185,16 +207,12 @@ impl DomainClient {
             ));
         }
         let action = if let Some(id) = request.existing_id {
-            posemesh_domain_http::domain_data::DomainAction::Update(
-                posemesh_domain_http::domain_data::UpdateDomainData { id: id.to_string() },
-            )
+            posemesh_domain_http::domain_data::DomainAction::Update { id: id.to_string() }
         } else {
-            posemesh_domain_http::domain_data::DomainAction::Create(
-                posemesh_domain_http::domain_data::CreateDomainData {
-                    name: request.name.to_string(),
-                    data_type: request.data_type.to_string(),
-                },
-            )
+            posemesh_domain_http::domain_data::DomainAction::Create {
+                name: request.name.to_string(),
+                data_type: request.data_type.to_string(),
+            }
         };
 
         let upload = posemesh_domain_http::domain_data::UploadDomainData {
@@ -203,10 +221,7 @@ impl DomainClient {
         };
 
         let base = self.base.as_str().trim_end_matches('/');
-        let method = if matches!(
-            upload.action,
-            posemesh_domain_http::domain_data::DomainAction::Update(_)
-        ) {
+        let method = if request.existing_id.is_some() {
             Method::PUT
         } else {
             Method::POST
@@ -222,20 +237,16 @@ impl DomainClient {
             "Sending domain upload request"
         );
 
-        match posemesh_domain_http::domain_data::upload_one(
+        let items = posemesh_domain_http::domain_data::upload_v1(
             base,
-            &self.token.get(),
+            self.token.get().as_str(),
             domain_id,
-            upload,
+            vec![upload],
         )
         .await
-        {
-            Ok(mut items) => {
-                let id = items.drain(..).next().map(|d| d.metadata.id);
-                Ok(id)
-            }
-            Err((status, _body)) => Err(map_status(status)),
-        }
+        .map_err(map_domain_error)?;
+
+        Ok(items.into_iter().next().map(|d| d.id))
     }
 
     pub async fn find_artifact_id(
@@ -250,13 +261,15 @@ impl DomainClient {
                 "missing domain_id for artifact lookup".into(),
             ));
         }
-        let path = format!("api/v1/domains/{}/data", domain_id);
-        let url = self
-            .base
-            .join(&path)
-            .map_err(|e| StorageError::Other(format!("join lookup path: {}", e)))?;
-        let mut headers = self.auth_headers();
-        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
+        let query = posemesh_domain_http::domain_data::DownloadQuery {
+            ids: Vec::new(),
+            name: Some(name.to_string()),
+            data_type: Some(data_type.to_string()),
+        };
+
+        let base = self.base.as_str().trim_end_matches('/');
+        let url = format!("{}/api/v1/domains/{}/data", base, domain_id);
         tracing::debug!(
             target: "posemesh_compute_node::storage::client",
             method = "GET",
@@ -265,55 +278,33 @@ impl DomainClient {
             artifact_type = data_type,
             "Looking up existing domain artifact"
         );
-        let res = self
-            .http
-            .get(url.clone())
-            .headers(headers)
-            .query(&[("name", name), ("data_type", data_type)])
-            .send()
-            .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
-        let status = res.status();
-        if status == StatusCode::NOT_FOUND {
-            tracing::debug!(
-                target: "posemesh_compute_node::storage::client",
-                method = "GET",
-                %url,
-                artifact_name = name,
-                artifact_type = data_type,
-                "Artifact lookup returned 404"
-            );
-            return Ok(None);
-        }
-        if !status.is_success() {
-            return Err(map_status(status));
-        }
-        let payload = res
-            .json::<ListDomainDataResponse>()
-            .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
-        let found = payload
-            .data
+
+        let results = posemesh_domain_http::domain_data::download_metadata_v1(
+            base,
+            self.client_id.as_str(),
+            self.token.get().as_str(),
+            domain_id,
+            &query,
+        )
+        .await;
+
+        let results = match results {
+            Ok(items) => items,
+            Err(err) => {
+                if let posemesh_domain_http::errors::DomainError::AukiErrorResponse(resp) = &err {
+                    if resp.status == reqwest::StatusCode::NOT_FOUND {
+                        return Ok(None);
+                    }
+                }
+                return Err(map_domain_error(err));
+            }
+        };
+
+        Ok(results
             .into_iter()
-            .find(|item| item.name == name && item.data_type == data_type);
-        Ok(found.map(|item| item.id))
+            .find(|item| item.name == name && item.data_type == data_type)
+            .map(|item| item.id))
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct ListDomainDataResponse {
-    #[serde(default)]
-    data: Vec<DomainDataSummary>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DomainDataSummary {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    data_type: String,
 }
 
 fn map_status(status: reqwest::StatusCode) -> StorageError {
@@ -325,6 +316,100 @@ fn map_status(status: reqwest::StatusCode) -> StorageError {
         n if (500..=599).contains(&n) => StorageError::Server(n),
         other => StorageError::Other(format!("unexpected status: {}", other)),
     }
+}
+
+fn map_domain_error(err: posemesh_domain_http::errors::DomainError) -> StorageError {
+    use posemesh_domain_http::errors::{AuthError, DomainError};
+
+    match err {
+        DomainError::AukiErrorResponse(resp) => map_status(resp.status),
+        DomainError::ReqwestError(e) => StorageError::Network(e.to_string()),
+        DomainError::AuthError(AuthError::Unauthorized(_)) => StorageError::Unauthorized,
+        other => StorageError::Other(other.to_string()),
+    }
+}
+
+fn env_client_id() -> String {
+    std::env::var("CLIENT_ID")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| format!("posemesh-compute-node/{}", Uuid::new_v4()))
+}
+
+fn resolve_domain_url(base: &Url, value: &str) -> std::result::Result<Url, StorageError> {
+    if value.contains("://") {
+        Url::parse(value).map_err(|e| StorageError::Other(format!("parse domain url: {e}")))
+    } else {
+        base.join(value)
+            .map_err(|e| StorageError::Other(format!("join domain url: {e}")))
+    }
+}
+
+fn parse_download_target(
+    url: &Url,
+    fallback_domain_id: Option<&str>,
+) -> std::result::Result<(String, posemesh_domain_http::domain_data::DownloadQuery), StorageError> {
+    let segments: Vec<&str> = url
+        .path_segments()
+        .map(|segments| segments.filter(|seg| !seg.is_empty()).collect())
+        .unwrap_or_default();
+
+    let mut domain_id_from_path: Option<&str> = None;
+    let mut data_id_from_path: Option<&str> = None;
+
+    for idx in 0..segments.len() {
+        if segments[idx] == "domains" && idx + 2 < segments.len() && segments[idx + 2] == "data" {
+            domain_id_from_path = Some(segments[idx + 1]);
+            data_id_from_path = segments.get(idx + 3).copied();
+            break;
+        }
+    }
+
+    let domain_id = domain_id_from_path
+        .or(fallback_domain_id)
+        .ok_or_else(|| StorageError::Other(format!("cid url missing domain_id: {}", url)))?
+        .to_string();
+
+    let mut ids: Vec<String> = Vec::new();
+    let mut name: Option<String> = None;
+    let mut data_type: Option<String> = None;
+
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "ids" => ids.extend(
+                value
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+            ),
+            "name" => {
+                if name.is_none() {
+                    name = Some(value.to_string());
+                }
+            }
+            "data_type" => {
+                if data_type.is_none() {
+                    data_type = Some(value.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(id) = data_id_from_path {
+        ids = vec![id.to_string()];
+    }
+
+    Ok((
+        domain_id,
+        posemesh_domain_http::domain_data::DownloadQuery {
+            ids,
+            name,
+            data_type,
+        },
+    ))
 }
 
 // no parse_disposition_params; headers are parsed in posemesh-domain-http

@@ -15,16 +15,19 @@ async fn token_rotation_applies_to_subsequent_requests() {
 
     // First request should use Bearer tA
     let boundary = "BOUNDARY";
+    let created_at = "2025-01-01T00:00:00Z";
+    let updated_at = "2025-01-01T00:00:00Z";
     let body = format!(
         "--{boundary}\r\n\
 Content-Type: application/octet-stream\r\n\
-Content-Disposition: form-data; name=\"scan\"; data-type=\"refined_scan\"; id=\"c1\"; domain-id=\"dom1\"\r\n\r\n\
+Content-Disposition: form-data; name=\"scan\"; data-type=\"refined_scan\"; id=\"c1\"; domain-id=\"dom1\"; size=\"7\"; created-at=\"{created_at}\"; updated-at=\"{updated_at}\"\r\n\r\n\
 payload\r\n\
 --{boundary}--\r\n"
     );
     let m1 = server.mock(|when, then| {
         when.method(GET)
-            .path("/api/v1/domains/dom1/data/c1")
+            .path("/api/v1/domains/dom1/data")
+            .query_param("ids", "c1")
             .header("authorization", "Bearer tA")
             .header("accept", "multipart/form-data");
         then.status(200)
@@ -45,13 +48,14 @@ payload\r\n\
     let body2 = format!(
         "--{boundary}\r\n\
 Content-Type: application/octet-stream\r\n\
-Content-Disposition: form-data; name=\"scan\"; data-type=\"refined_scan\"; id=\"c2\"; domain-id=\"dom1\"\r\n\r\n\
+Content-Disposition: form-data; name=\"scan\"; data-type=\"refined_scan\"; id=\"c2\"; domain-id=\"dom1\"; size=\"7\"; created-at=\"{created_at}\"; updated-at=\"{updated_at}\"\r\n\r\n\
 payload\r\n\
 --{boundary}--\r\n"
     );
     let m2 = server.mock(|when, then| {
         when.method(GET)
-            .path("/api/v1/domains/dom1/data/c2")
+            .path("/api/v1/domains/dom1/data")
+            .query_param("ids", "c2")
             .header("authorization", "Bearer tB")
             .header("accept", "multipart/form-data");
         then.status(200)
@@ -73,7 +77,7 @@ payload\r\n\
             .body_contains("file_bin");
         then.status(200)
             .header("content-type", "application/json")
-            .body(r#"{"data":[{"id":"data-1"}]}"#);
+            .body(r#"{"data":[{"id":"data-1","domain_id":"dom1","name":"file_bin","data_type":"binary","size":3,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
     });
     client
         .upload_artifact(UploadRequest {

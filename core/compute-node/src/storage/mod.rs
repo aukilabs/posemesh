@@ -49,13 +49,13 @@ pub fn build_ports(lease: &LeaseEnvelope, token: TokenRef) -> Result<Ports> {
     let uploads = Arc::new(Mutex::new(HashMap::new()));
     let output = DomainOutput::with_store(
         client.clone(),
-        domain_id,
+        domain_id.clone(),
         outputs_prefix,
         task_id,
         Arc::clone(&uploads),
     );
     Ok(Ports {
-        input: Box::new(input::DomainInput::new(client.clone())),
+        input: Box::new(input::DomainInput::new(client.clone(), domain_id)),
         output: Box::new(output),
         uploads,
     })

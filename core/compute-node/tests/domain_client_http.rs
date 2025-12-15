@@ -16,28 +16,33 @@ async fn download_cid_and_upload_bytes() {
     let zip_bytes = build_zip(&payload);
     let manifest_bytes = br#"{"example":true}"#.to_vec();
     let boundary = "BOUNDARY";
+    let created_at = "2025-01-01T00:00:00Z";
+    let updated_at = "2025-01-01T00:00:00Z";
     let mut body = Vec::new();
     body.extend_from_slice(
-        format!(
-            "--{boundary}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"scan_2024-01-02_03-04-05\"; data-type=\"refined_scan_zip\"; id=\"bafy-123\"; domain-id=\"dom1\"\r\n\r\n"
-        )
-        .as_bytes(),
-    );
+	        format!(
+	            "--{boundary}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"scan_2024-01-02_03-04-05\"; data-type=\"refined_scan_zip\"; id=\"bafy-123\"; domain-id=\"dom1\"; size=\"{}\"; created-at=\"{created_at}\"; updated-at=\"{updated_at}\"\r\n\r\n",
+	            zip_bytes.len()
+	        )
+	        .as_bytes(),
+	    );
     body.extend_from_slice(&zip_bytes);
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(
-        format!(
-            "--{boundary}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"manifest\"; data-type=\"dmt_manifest_json\"; domain-id=\"dom1\"\r\n\r\n"
-        )
-        .as_bytes(),
-    );
+	        format!(
+	            "--{boundary}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"manifest\"; data-type=\"dmt_manifest_json\"; id=\"manifest-1\"; domain-id=\"dom1\"; size=\"{}\"; created-at=\"{created_at}\"; updated-at=\"{updated_at}\"\r\n\r\n",
+	            manifest_bytes.len()
+	        )
+	        .as_bytes(),
+	    );
     body.extend_from_slice(&manifest_bytes);
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
     let get_mock = server.mock(|when, then| {
         when.method(GET)
-            .path("/api/v1/domains/dom1/data/bafy-123")
+            .path("/api/v1/domains/dom1/data")
+            .query_param("ids", "bafy-123")
             .header("authorization", "Bearer tkn")
             .header("accept", "multipart/form-data");
         then.status(200)
@@ -67,10 +72,8 @@ async fn download_cid_and_upload_bytes() {
             .body_contains("job_manifest_");
         then.status(200)
             .header("content-type", "application/json")
-            .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
-            );
-    });
+	            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json","size":3,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
+	    });
 
     let put_mock = server.mock(|when, then| {
         when.method(PUT)
@@ -79,17 +82,15 @@ async fn download_cid_and_upload_bytes() {
             .body_contains("id=\"data-123\"");
         then.status(200)
             .header("content-type", "application/json")
-            .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
-            );
-    });
+	            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json","size":7,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
+	    });
 
     let base: url::Url = server.base_url().parse().unwrap();
     let token = TokenRef::new("tkn".into());
     let client = DomainClient::new(base, token.clone()).unwrap();
 
     // InputSource
-    let input = DomainInput::new(client.clone());
+    let input = DomainInput::new(client.clone(), "dom1".into());
     let bytes = input.get_bytes_by_cid(&cid).await.unwrap();
     assert_eq!(bytes, zip_bytes);
     get_mock.assert();
@@ -149,20 +150,18 @@ async fn upload_manifest_with_existing_id_uses_put_via_lookup() {
             .header("accept", "application/json");
         then.status(200)
             .header("content-type", "application/json")
-            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"out_job_manifest_json_task-456","data_type":"json"}]}"#);
+            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"out_job_manifest_json_task-456","data_type":"json","size":7,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
     });
 
     let put_mock = server.mock(|when, then| {
-        when.method(PUT)
-            .path("/api/v1/domains/dom1/data")
-            .header("authorization", "Bearer tkn")
-            .body_contains("id=\"data-123\"");
-        then.status(200)
-            .header("content-type", "application/json")
-            .body(
-                r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json"}]}"#,
-            );
-    });
+	        when.method(PUT)
+	            .path("/api/v1/domains/dom1/data")
+	            .header("authorization", "Bearer tkn")
+	            .body_contains("id=\"data-123\"");
+	        then.status(200)
+	            .header("content-type", "application/json")
+	            .body(r#"{"data":[{"id":"data-123","domain_id":"dom1","name":"job_manifest_task-456","data_type":"job_manifest_json","size":7,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
+	    });
 
     let token = TokenRef::new("tkn".into());
     let base: url::Url = server.base_url().parse().unwrap();
@@ -193,15 +192,15 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
             .body(r#"{"data":[]}"#);
     });
     let upload = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/v1/domains/dom1/data")
-            .header("authorization", "Bearer tkn")
-            .body_contains("data-type=\"zip_data\"")
-            .body_contains("name=\"out_refined_local_scan_a_RefinedScan_zip_");
-        then.status(200)
-            .header("content-type", "application/json")
-            .body(r#"{"data":[{"id":"data-zip"}]}"#);
-    });
+	        when.method(POST)
+	            .path("/api/v1/domains/dom1/data")
+	            .header("authorization", "Bearer tkn")
+	            .body_contains("data-type=\"zip_data\"")
+	            .body_contains("name=\"out_refined_local_scan_a_RefinedScan_zip_");
+	        then.status(200)
+	            .header("content-type", "application/json")
+	            .body(r#"{"data":[{"id":"data-zip","domain_id":"dom1","name":"out_refined_local_scan_a_RefinedScan_zip_task-456","data_type":"zip_data","size":7,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
+	    });
 
     let token = TokenRef::new("tkn".into());
     let base: url::Url = server.base_url().parse().unwrap();
