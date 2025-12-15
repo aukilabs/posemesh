@@ -76,7 +76,7 @@ publish-domain-http:
 			exit 1; \
 		fi; \
 	fi; \
-	if npm view posemesh-domain-http@$$VERSION > /dev/null 2>&1; then \
+	if npm view @auki/domain-client@$$VERSION > /dev/null 2>&1; then \
 		echo "ERROR: Version $$VERSION is already published on npm."; \
 		exit 1; \
 	fi; \
@@ -91,27 +91,17 @@ publish-domain-http:
 			echo "Unit tests failed. Aborting publish."; \
 			exit 1; \
 		fi; \
-	fi
-	@cargo publish -p posemesh-domain-http
-	@cd domain-http/bindings/javascript/pkg && \
+	fi; \
+	cargo publish -p posemesh-domain-http; \
+	make build-domain-http-wasm; \
+	cd domain-http/bindings/javascript/pkg && \
 	if [ -z "$$IS_UNSTABLE" ]; then \
-		npm publish --tag "v$$VERSION"; \
+		npm publish --access public --tag stable; \
 	else \
 		npm publish; \
-	fi
+	fi;
 
 publish-utils:
 	@VERSION=`grep '^version =' utils/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \
 	echo "posemesh-utils version: $$VERSION, will be published to crates.io"; \
-	if curl -s -o /dev/null -w "%{http_code}" "https://crates.io/api/v1/crates/posemesh-utils/$$VERSION" | grep -q "200"; then \
-		echo "Warning: Version $$VERSION is already published on crates.io."; \
-		exit 0; \
-	fi || exit 0; \
-	if [ -z "$$CI" ]; then \
-		read -p "Continue with publish v$$VERSION? [y/N]: " CONFIRM; \
-		if [ "$$CONFIRM" != "y" ] && [ "$$CONFIRM" != "Y" ]; then \
-			echo "Publish cancelled."; \
-			exit 1; \
-		fi; \
-	fi; \
 	cargo publish -p posemesh-utils
