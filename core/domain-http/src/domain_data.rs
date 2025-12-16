@@ -552,7 +552,7 @@ pub async fn upload_v1_stream(
         .unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep the existing streaming behavior.
-    if request_max_bytes <= 0 {
+    if request_max_bytes <= 0 || !multipart_enabled {
         let (mut create_tx, create_rx) = mpsc::channel(100);
         let (mut update_tx, update_rx) = mpsc::channel(100);
 
