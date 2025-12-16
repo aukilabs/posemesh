@@ -941,7 +941,7 @@ pub async fn upload_v1(
         .unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep existing single-request behavior.
-    if request_max_bytes <= 0 {
+    if request_max_bytes <= 0 || !multipart_enabled {
         let mut create_body = Vec::new();
         let mut update_body = Vec::new();
         let mut to_update = false;
