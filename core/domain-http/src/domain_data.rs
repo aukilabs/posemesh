@@ -1,45 +1,90 @@
 use bytes::Bytes;
 use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
+use futures::lock::Mutex;
 use reqwest::{Body, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_futures::spawn_local as spawn;
 
+use posemesh_utils::now_unix_secs;
+
 use crate::errors::{AukiErrorResponse, DomainError};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct InfoResponse {
     upload: InfoUpload,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct InfoUpload {
     request_max_bytes: i64,
     multipart: InfoMultipart,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct InfoMultipart {
     enabled: bool,
 }
 
-async fn try_get_info_v1(url: &str) -> Option<InfoResponse> {
+#[derive(Debug, Clone)]
+struct InfoCacheEntry {
+    value: Option<InfoResponse>,
+    expires_at: u64,
+}
+
+const INFO_CACHE_TTL_SECS: u64 = 60;
+static INFO_CACHE: OnceLock<Mutex<HashMap<String, InfoCacheEntry>>> = OnceLock::new();
+
+fn info_cache() -> &'static Mutex<HashMap<String, InfoCacheEntry>> {
+    INFO_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+async fn fetch_info_v1(url: &str) -> Result<Option<InfoResponse>, ()> {
     let resp = Client::new()
         .get(&format!("{}/api/v1/info", url))
         .send()
         .await
-        .ok()?;
+        .map_err(|_| ())?;
 
     if resp.status() == StatusCode::NOT_FOUND {
-        return None;
+        return Ok(None);
     }
     if !resp.status().is_success() {
-        return None;
+        return Err(());
     }
-    resp.json::<InfoResponse>().await.ok()
+    resp.json::<InfoResponse>().await.map(Some).map_err(|_| ())
+}
+
+async fn get_info_v1(url: &str) -> Option<InfoResponse> {
+    let now = now_unix_secs();
+    {
+        let cache = info_cache().lock().await;
+        if let Some(entry) = cache.get(url) {
+            if entry.expires_at > now {
+                return entry.value.clone();
+            }
+        }
+    }
+
+    let fetched = match fetch_info_v1(url).await {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let mut cache = info_cache().lock().await;
+    cache.retain(|_, entry| entry.expires_at > now);
+    cache.insert(
+        url.to_string(),
+        InfoCacheEntry {
+            value: fetched.clone(),
+            expires_at: now.saturating_add(INFO_CACHE_TTL_SECS),
+        },
+    );
+    fetched
 }
 
 fn is_unsupported_endpoint_status(status: StatusCode) -> bool {
@@ -541,7 +586,7 @@ pub async fn upload_v1_stream(
 
     let boundary = "boundary";
 
-    let info = try_get_info_v1(url).await;
+    let info = get_info_v1(url).await;
     let request_max_bytes = info
         .as_ref()
         .map(|i| i.upload.request_max_bytes)
@@ -930,7 +975,7 @@ pub async fn upload_v1(
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let boundary = "boundary";
 
-    let info = try_get_info_v1(url).await;
+    let info = get_info_v1(url).await;
     let request_max_bytes = info
         .as_ref()
         .map(|i| i.upload.request_max_bytes)
