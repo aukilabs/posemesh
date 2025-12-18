@@ -6,7 +6,7 @@ use regex::Regex;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::fs;
@@ -34,6 +34,16 @@ pub struct UploadRequest<'a> {
     pub data_type: &'a str,
     pub logical_path: &'a str,
     pub bytes: &'a [u8],
+    pub existing_id: Option<&'a str>,
+}
+
+#[derive(Debug)]
+pub struct UploadFileRequest<'a> {
+    pub domain_id: &'a str,
+    pub name: &'a str,
+    pub data_type: &'a str,
+    pub logical_path: &'a str,
+    pub path: &'a Path,
     pub existing_id: Option<&'a str>,
 }
 
@@ -348,6 +358,60 @@ impl DomainClient {
         Ok(items.into_iter().next().map(|d| d.id))
     }
 
+    pub async fn upload_artifact_file(
+        &self,
+        request: UploadFileRequest<'_>,
+    ) -> std::result::Result<Option<String>, StorageError> {
+        let domain_id = request.domain_id.trim();
+        if domain_id.is_empty() {
+            return Err(StorageError::Other(
+                "missing domain_id for artifact upload".into(),
+            ));
+        }
+
+        let base = self.base.as_str().trim_end_matches('/');
+
+        let mut file = fs::File::open(request.path)
+            .await
+            .map_err(|e| StorageError::Other(format!("open upload file: {}", e)))?;
+
+        let file_size = match file.metadata().await {
+            Ok(meta) => {
+                if meta.len() == 0 {
+                    return Err(StorageError::BadRequest);
+                }
+                i64::try_from(meta.len()).ok()
+            }
+            Err(_) => None,
+        };
+
+        match self
+            .upload_artifact_v1_multipart_file(base, domain_id, &request, &mut file, file_size)
+            .await
+        {
+            Ok(v) => Ok(v),
+            Err(UploadFileFallback::UnsupportedEndpoint) => {
+                // Fall back to legacy multipart/form-data upload (in-memory) for older servers.
+                let bytes_owned = fs::read(request.path)
+                    .await
+                    .map_err(|e| StorageError::Other(format!("read upload file: {}", e)))?;
+                if bytes_owned.is_empty() {
+                    return Err(StorageError::BadRequest);
+                }
+                self.upload_artifact(UploadRequest {
+                    domain_id: request.domain_id,
+                    name: request.name,
+                    data_type: request.data_type,
+                    logical_path: request.logical_path,
+                    bytes: bytes_owned.as_slice(),
+                    existing_id: request.existing_id,
+                })
+                .await
+            }
+            Err(UploadFileFallback::Error(e)) => Err(e),
+        }
+    }
+
     async fn upload_artifact_v1_multipart(
         &self,
         base: &str,
@@ -544,6 +608,228 @@ impl DomainClient {
         upload_res.map(|meta| Some(meta.id))
     }
 
+    async fn upload_artifact_v1_multipart_file(
+        &self,
+        base: &str,
+        domain_id: &str,
+        request: &UploadFileRequest<'_>,
+        file: &mut fs::File,
+        file_size: Option<i64>,
+    ) -> std::result::Result<Option<String>, UploadFileFallback> {
+        use tokio::io::AsyncReadExt;
+
+        let client = reqwest::Client::new();
+        let initiate_endpoint = format!(
+            "{}/api/v1/domains/{}/data/multipart?uploads",
+            base, domain_id
+        );
+
+        let init_req = InitiateMultipartRequestV1 {
+            name: request.name.to_string(),
+            data_type: request.data_type.to_string(),
+            size: file_size,
+            content_type: Some("application/octet-stream".to_string()),
+            existing_id: request.existing_id.map(|id| id.to_string()),
+        };
+
+        tracing::debug!(
+            target: "posemesh_compute_node::storage::client",
+            method = "POST",
+            url = %initiate_endpoint,
+            logical_path = request.logical_path,
+            name = request.name,
+            data_type = request.data_type,
+            has_existing_id = request.existing_id.is_some(),
+            "Initiating multipart file upload"
+        );
+
+        let init_resp = client
+            .post(&initiate_endpoint)
+            .bearer_auth(self.token.get())
+            .header("posemesh-client-id", self.client_id.as_str())
+            .header("Content-Type", "application/json")
+            .json(&init_req)
+            .send()
+            .await
+            .map_err(|e| UploadFileFallback::Error(StorageError::Network(e.to_string())))?;
+
+        if !init_resp.status().is_success() {
+            let status = init_resp.status();
+            let err = init_resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::warn!(
+                target: "posemesh_compute_node::storage::client",
+                %status,
+                error = %err,
+                "Multipart file initiation failed"
+            );
+            if is_unsupported_endpoint_status(status) {
+                return Err(UploadFileFallback::UnsupportedEndpoint);
+            }
+            return Err(UploadFileFallback::Error(map_status(status)));
+        }
+
+        let init: InitiateMultipartResponseV1 = init_resp.json().await.map_err(|e| {
+            UploadFileFallback::Error(StorageError::Other(format!(
+                "invalid initiate response: {}",
+                e
+            )))
+        })?;
+
+        let part_size = usize::try_from(init.part_size).map_err(|_| {
+            UploadFileFallback::Error(StorageError::Other("invalid multipart part_size".into()))
+        })?;
+        if part_size == 0 {
+            return Err(UploadFileFallback::Error(StorageError::Other(
+                "invalid multipart part_size".into(),
+            )));
+        }
+
+        let upload_id = init.upload_id;
+        let mut completed_parts: Vec<CompletedPartV1> = Vec::new();
+
+        let upload_res: std::result::Result<DomainDataMetadataV1, StorageError> = async {
+            let mut part_number: i32 = 1;
+            loop {
+                let mut chunk = vec![0u8; part_size];
+                let mut read = 0usize;
+                while read < part_size {
+                    let n = file
+                        .read(&mut chunk[read..])
+                        .await
+                        .map_err(|e| StorageError::Other(format!("read upload file: {}", e)))?;
+                    if n == 0 {
+                        break;
+                    }
+                    read += n;
+                }
+                if read == 0 {
+                    break;
+                }
+                chunk.truncate(read);
+
+                let part_endpoint = format!(
+                    "{}/api/v1/domains/{}/data/multipart?uploadId={}&partNumber={}",
+                    base, domain_id, upload_id, part_number
+                );
+                tracing::debug!(
+                    target: "posemesh_compute_node::storage::client",
+                    method = "PUT",
+                    url = %part_endpoint,
+                    part_number,
+                    part_bytes = chunk.len(),
+                    "Uploading multipart file part"
+                );
+
+                let resp = client
+                    .put(&part_endpoint)
+                    .bearer_auth(self.token.get())
+                    .header("posemesh-client-id", self.client_id.as_str())
+                    .header("Content-Type", "application/octet-stream")
+                    .body(chunk)
+                    .send()
+                    .await
+                    .map_err(|e| StorageError::Network(e.to_string()))?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let err = resp
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    tracing::warn!(
+                        target: "posemesh_compute_node::storage::client",
+                        %status,
+                        error = %err,
+                        part_number,
+                        "Multipart file part upload failed"
+                    );
+                    return Err(map_status(status));
+                }
+
+                let res: UploadPartResultV1 = resp
+                    .json()
+                    .await
+                    .map_err(|e| StorageError::Other(format!("invalid part response: {}", e)))?;
+
+                completed_parts.push(CompletedPartV1 {
+                    part_number,
+                    etag: res.etag,
+                });
+
+                part_number = part_number
+                    .checked_add(1)
+                    .ok_or_else(|| StorageError::Other("multipart upload too many parts".into()))?;
+            }
+
+            if completed_parts.is_empty() {
+                return Err(StorageError::BadRequest);
+            }
+
+            let complete_endpoint = format!(
+                "{}/api/v1/domains/{}/data/multipart?uploadId={}",
+                base, domain_id, upload_id
+            );
+            tracing::debug!(
+                target: "posemesh_compute_node::storage::client",
+                method = "POST",
+                url = %complete_endpoint,
+                parts = completed_parts.len(),
+                "Completing multipart file upload"
+            );
+            let resp = client
+                .post(&complete_endpoint)
+                .bearer_auth(self.token.get())
+                .header("posemesh-client-id", self.client_id.as_str())
+                .header("Content-Type", "application/json")
+                .json(&CompleteMultipartRequestV1 {
+                    parts: completed_parts,
+                })
+                .send()
+                .await
+                .map_err(|e| StorageError::Network(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let err = resp
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                tracing::warn!(
+                    target: "posemesh_compute_node::storage::client",
+                    %status,
+                    error = %err,
+                    "Multipart file completion failed"
+                );
+                return Err(map_status(status));
+            }
+
+            resp.json::<DomainDataMetadataV1>()
+                .await
+                .map_err(|e| StorageError::Other(format!("invalid complete response: {}", e)))
+        }
+        .await;
+
+        if upload_res.is_err() {
+            let abort_endpoint = format!(
+                "{}/api/v1/domains/{}/data/multipart?uploadId={}",
+                base, domain_id, upload_id
+            );
+            let _ = client
+                .delete(&abort_endpoint)
+                .bearer_auth(self.token.get())
+                .header("posemesh-client-id", self.client_id.as_str())
+                .send()
+                .await;
+        }
+
+        upload_res
+            .map(|meta| Some(meta.id))
+            .map_err(UploadFileFallback::Error)
+    }
+
     pub async fn find_artifact_id(
         &self,
         domain_id: &str,
@@ -604,7 +890,7 @@ impl DomainClient {
 
 async fn fetch_info_v1(base: &str) -> Result<Option<UploadInfoV1>, ()> {
     let resp = reqwest::Client::new()
-        .get(&format!("{}/api/v1/info", base))
+        .get(format!("{}/api/v1/info", base))
         .send()
         .await
         .map_err(|_| ())?;
@@ -671,7 +957,7 @@ fn fits_single_upload_request(
         )
     };
     let closing = format!("--{}--\r\n", boundary);
-    let part_len = header.as_bytes().len() + data_len + 2;
+    let part_len = header.len() + data_len + 2;
     (part_len + closing.len()) as i64 <= request_max_bytes
 }
 
@@ -684,6 +970,17 @@ fn map_status(status: reqwest::StatusCode) -> StorageError {
         n if (500..=599).contains(&n) => StorageError::Server(n),
         other => StorageError::Other(format!("unexpected status: {}", other)),
     }
+}
+
+fn is_unsupported_endpoint_status(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::NOT_FOUND
+        || status == reqwest::StatusCode::METHOD_NOT_ALLOWED
+        || status == reqwest::StatusCode::NOT_IMPLEMENTED
+}
+
+enum UploadFileFallback {
+    UnsupportedEndpoint,
+    Error(StorageError),
 }
 
 fn map_domain_error(err: posemesh_domain_http::errors::DomainError) -> StorageError {

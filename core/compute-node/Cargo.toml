@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-compute-node"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 license = "MIT"
 description = "Posemesh compute node engine: config, DDS/DMS, heartbeat, storage (no persistence)."
@@ -29,7 +29,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time", "macros", "fs", "signal"] }
+tokio = { workspace = true, features = ["sync", "time", "macros", "fs", "signal", "io-util"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tower = { workspace = true, features = ["util"] }
 tracing = { workspace = true }

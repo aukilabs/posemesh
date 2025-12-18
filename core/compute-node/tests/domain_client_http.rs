@@ -191,16 +191,37 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
             .header("content-type", "application/json")
             .body(r#"{"data":[]}"#);
     });
-    let upload = server.mock(|when, then| {
-	        when.method(POST)
-	            .path("/api/v1/domains/dom1/data")
-	            .header("authorization", "Bearer tkn")
-	            .body_contains("data-type=\"zip_data\"")
-	            .body_contains("name=\"out_refined_local_scan_a_RefinedScan_zip_");
-	        then.status(200)
-	            .header("content-type", "application/json")
-	            .body(r#"{"data":[{"id":"data-zip","domain_id":"dom1","name":"out_refined_local_scan_a_RefinedScan_zip_task-456","data_type":"zip_data","size":7,"created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}]}"#);
-	    });
+    let initiate = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .header("authorization", "Bearer tkn")
+            .body_contains("\"name\":\"out_refined_local_scan_a_RefinedScan_zip_task-456\"")
+            .body_contains("\"data_type\":\"zip_data\"");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"upload_id":"up1","part_size":1024}"#);
+    });
+    let put_part = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up1")
+            .query_param("partNumber", "1")
+            .header("authorization", "Bearer tkn")
+            .body("zipdata");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"etag":"etag-1"}"#);
+    });
+    let complete = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/v1/domains/dom1/data/multipart")
+            .query_param("uploadId", "up1")
+            .header("authorization", "Bearer tkn")
+            .body_contains("\"parts\"");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"id":"data-zip"}"#);
+    });
 
     let token = TokenRef::new("tkn".into());
     let base: url::Url = server.base_url().parse().unwrap();
@@ -214,7 +235,9 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
         .put_file("refined/local/scan_a/RefinedScan.zip", tmp.path())
         .await
         .unwrap();
-    upload.assert();
+    initiate.assert();
+    put_part.assert();
+    complete.assert();
     lookup.assert();
 
     let artifacts = output.uploaded_artifacts();

@@ -1,4 +1,4 @@
-use super::client::{DomainClient, UploadRequest};
+use super::client::{DomainClient, UploadFileRequest, UploadRequest};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -6,7 +6,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::fs;
 
 use compute_runner_api::runner::{DomainArtifactContent, DomainArtifactRequest};
 #[derive(Clone, Debug)]
@@ -151,29 +150,36 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
                 .map_err(|e| anyhow!(e))?;
         }
 
-        let bytes_owned;
-        let bytes = match request.content {
-            DomainArtifactContent::Bytes(b) => b,
+        let maybe_id = match request.content {
+            DomainArtifactContent::Bytes(bytes) => {
+                let upload_req = UploadRequest {
+                    domain_id: &self.domain_id,
+                    name: request.name,
+                    data_type: request.data_type,
+                    logical_path: &logical_path,
+                    bytes,
+                    existing_id: existing_id.as_deref(),
+                };
+                self.client
+                    .upload_artifact(upload_req)
+                    .await
+                    .map_err(|e| anyhow!(e))?
+            }
             DomainArtifactContent::File(path) => {
-                bytes_owned = fs::read(path).await?;
-                bytes_owned.as_slice()
+                let upload_req = UploadFileRequest {
+                    domain_id: &self.domain_id,
+                    name: request.name,
+                    data_type: request.data_type,
+                    logical_path: &logical_path,
+                    path,
+                    existing_id: existing_id.as_deref(),
+                };
+                self.client
+                    .upload_artifact_file(upload_req)
+                    .await
+                    .map_err(|e| anyhow!(e))?
             }
         };
-
-        let upload_req = UploadRequest {
-            domain_id: &self.domain_id,
-            name: request.name,
-            data_type: request.data_type,
-            logical_path: &logical_path,
-            bytes,
-            existing_id: existing_id.as_deref(),
-        };
-
-        let maybe_id = self
-            .client
-            .upload_artifact(upload_req)
-            .await
-            .map_err(|e| anyhow!(e))?;
         let final_id = maybe_id.or(existing_id);
 
         let mut uploads = self.uploads.lock();
