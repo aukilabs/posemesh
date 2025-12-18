@@ -43,3 +43,4 @@ node_modules
 .env.local
 domain-service/
 core/.cargo-home/
+.env

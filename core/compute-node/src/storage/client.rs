@@ -4,7 +4,10 @@ use anyhow::Result;
 use futures::StreamExt;
 use regex::Regex;
 use reqwest::Method;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::fs;
 use url::Url;
@@ -32,6 +35,85 @@ pub struct UploadRequest<'a> {
     pub logical_path: &'a str,
     pub bytes: &'a [u8],
     pub existing_id: Option<&'a str>,
+}
+
+#[derive(Debug, Clone)]
+struct UploadInfoV1 {
+    request_max_bytes: i64,
+    multipart_enabled: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct InfoResponseV1 {
+    upload: InfoUploadV1,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct InfoUploadV1 {
+    request_max_bytes: i64,
+    multipart: InfoMultipartV1,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct InfoMultipartV1 {
+    enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct InitiateMultipartRequestV1 {
+    name: String,
+    data_type: String,
+    size: Option<i64>,
+    content_type: Option<String>,
+    existing_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InitiateMultipartResponseV1 {
+    upload_id: String,
+    part_size: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadPartResultV1 {
+    etag: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CompletedPartV1 {
+    part_number: i32,
+    etag: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CompleteMultipartRequestV1 {
+    parts: Vec<CompletedPartV1>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DomainDataMetadataV1 {
+    id: String,
+}
+
+#[derive(Debug, Clone)]
+struct InfoCacheEntryV1 {
+    value: Option<UploadInfoV1>,
+    expires_at: u64,
+}
+
+const INFO_CACHE_TTL_SECS: u64 = 60;
+static INFO_CACHE_V1: OnceLock<parking_lot::Mutex<HashMap<String, InfoCacheEntryV1>>> =
+    OnceLock::new();
+
+fn info_cache_v1() -> &'static parking_lot::Mutex<HashMap<String, InfoCacheEntryV1>> {
+    INFO_CACHE_V1.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
+}
+
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_secs()
 }
 
 /// Domain server HTTP client (skeleton; HTTP added later).
@@ -206,6 +288,25 @@ impl DomainClient {
                 "missing domain_id for artifact upload".into(),
             ));
         }
+
+        let base = self.base.as_str().trim_end_matches('/');
+        if let Some(info) = get_upload_info_v1(base).await {
+            if info.multipart_enabled && info.request_max_bytes > 0 {
+                let fits_alone = fits_single_upload_request(
+                    info.request_max_bytes,
+                    request.name,
+                    request.data_type,
+                    request.existing_id,
+                    request.bytes.len(),
+                );
+                if !fits_alone {
+                    return self
+                        .upload_artifact_v1_multipart(base, domain_id, request)
+                        .await;
+                }
+            }
+        }
+
         let action = if let Some(id) = request.existing_id {
             posemesh_domain_http::domain_data::DomainAction::Update { id: id.to_string() }
         } else {
@@ -219,8 +320,6 @@ impl DomainClient {
             action,
             data: request.bytes.to_vec(),
         };
-
-        let base = self.base.as_str().trim_end_matches('/');
         let method = if request.existing_id.is_some() {
             Method::PUT
         } else {
@@ -247,6 +346,202 @@ impl DomainClient {
         .map_err(map_domain_error)?;
 
         Ok(items.into_iter().next().map(|d| d.id))
+    }
+
+    async fn upload_artifact_v1_multipart(
+        &self,
+        base: &str,
+        domain_id: &str,
+        request: UploadRequest<'_>,
+    ) -> std::result::Result<Option<String>, StorageError> {
+        if request.bytes.is_empty() {
+            return Err(StorageError::BadRequest);
+        }
+
+        let client = reqwest::Client::new();
+        let initiate_endpoint = format!(
+            "{}/api/v1/domains/{}/data/multipart?uploads",
+            base, domain_id
+        );
+
+        let init_req = InitiateMultipartRequestV1 {
+            name: request.name.to_string(),
+            data_type: request.data_type.to_string(),
+            size: Some(request.bytes.len() as i64),
+            content_type: Some("application/octet-stream".to_string()),
+            existing_id: request.existing_id.map(|id| id.to_string()),
+        };
+
+        tracing::debug!(
+            target: "posemesh_compute_node::storage::client",
+            method = "POST",
+            url = %initiate_endpoint,
+            logical_path = request.logical_path,
+            name = request.name,
+            data_type = request.data_type,
+            has_existing_id = request.existing_id.is_some(),
+            "Initiating multipart upload"
+        );
+
+        let init_resp = client
+            .post(&initiate_endpoint)
+            .bearer_auth(self.token.get())
+            .header("posemesh-client-id", self.client_id.as_str())
+            .header("Content-Type", "application/json")
+            .json(&init_req)
+            .send()
+            .await
+            .map_err(|e| StorageError::Network(e.to_string()))?;
+
+        if !init_resp.status().is_success() {
+            let status = init_resp.status();
+            let err = init_resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::warn!(
+                target: "posemesh_compute_node::storage::client",
+                %status,
+                error = %err,
+                "Multipart initiation failed"
+            );
+            return Err(map_status(status));
+        }
+
+        let init: InitiateMultipartResponseV1 = init_resp
+            .json()
+            .await
+            .map_err(|e| StorageError::Other(format!("invalid initiate response: {}", e)))?;
+
+        let part_size = usize::try_from(init.part_size)
+            .map_err(|_| StorageError::Other("invalid multipart part_size".into()))?;
+        if part_size == 0 {
+            return Err(StorageError::Other("invalid multipart part_size".into()));
+        }
+
+        let upload_id = init.upload_id;
+        let mut completed_parts: Vec<CompletedPartV1> = Vec::new();
+
+        let upload_res: std::result::Result<DomainDataMetadataV1, StorageError> = async {
+            let mut offset: usize = 0;
+            let mut part_number: i32 = 1;
+            while offset < request.bytes.len() {
+                let end = std::cmp::min(offset + part_size, request.bytes.len());
+                let chunk = request.bytes[offset..end].to_vec();
+
+                let part_endpoint = format!(
+                    "{}/api/v1/domains/{}/data/multipart?uploadId={}&partNumber={}",
+                    base, domain_id, upload_id, part_number
+                );
+                tracing::debug!(
+                    target: "posemesh_compute_node::storage::client",
+                    method = "PUT",
+                    url = %part_endpoint,
+                    part_number,
+                    part_bytes = chunk.len(),
+                    "Uploading multipart part"
+                );
+
+                let resp = client
+                    .put(&part_endpoint)
+                    .bearer_auth(self.token.get())
+                    .header("posemesh-client-id", self.client_id.as_str())
+                    .header("Content-Type", "application/octet-stream")
+                    .body(chunk)
+                    .send()
+                    .await
+                    .map_err(|e| StorageError::Network(e.to_string()))?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let err = resp
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    tracing::warn!(
+                        target: "posemesh_compute_node::storage::client",
+                        %status,
+                        error = %err,
+                        part_number,
+                        "Multipart part upload failed"
+                    );
+                    return Err(map_status(status));
+                }
+
+                let res: UploadPartResultV1 = resp
+                    .json()
+                    .await
+                    .map_err(|e| StorageError::Other(format!("invalid part response: {}", e)))?;
+
+                completed_parts.push(CompletedPartV1 {
+                    part_number,
+                    etag: res.etag,
+                });
+
+                offset = end;
+                part_number = part_number
+                    .checked_add(1)
+                    .ok_or_else(|| StorageError::Other("multipart upload too many parts".into()))?;
+            }
+
+            let complete_endpoint = format!(
+                "{}/api/v1/domains/{}/data/multipart?uploadId={}",
+                base, domain_id, upload_id
+            );
+            tracing::debug!(
+                target: "posemesh_compute_node::storage::client",
+                method = "POST",
+                url = %complete_endpoint,
+                parts = completed_parts.len(),
+                "Completing multipart upload"
+            );
+            let resp = client
+                .post(&complete_endpoint)
+                .bearer_auth(self.token.get())
+                .header("posemesh-client-id", self.client_id.as_str())
+                .header("Content-Type", "application/json")
+                .json(&CompleteMultipartRequestV1 {
+                    parts: completed_parts,
+                })
+                .send()
+                .await
+                .map_err(|e| StorageError::Network(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let err = resp
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                tracing::warn!(
+                    target: "posemesh_compute_node::storage::client",
+                    %status,
+                    error = %err,
+                    "Multipart completion failed"
+                );
+                return Err(map_status(status));
+            }
+
+            resp.json::<DomainDataMetadataV1>()
+                .await
+                .map_err(|e| StorageError::Other(format!("invalid complete response: {}", e)))
+        }
+        .await;
+
+        if upload_res.is_err() {
+            let abort_endpoint = format!(
+                "{}/api/v1/domains/{}/data/multipart?uploadId={}",
+                base, domain_id, upload_id
+            );
+            let _ = client
+                .delete(&abort_endpoint)
+                .bearer_auth(self.token.get())
+                .header("posemesh-client-id", self.client_id.as_str())
+                .send()
+                .await;
+        }
+
+        upload_res.map(|meta| Some(meta.id))
     }
 
     pub async fn find_artifact_id(
@@ -305,6 +600,79 @@ impl DomainClient {
             .find(|item| item.name == name && item.data_type == data_type)
             .map(|item| item.id))
     }
+}
+
+async fn fetch_info_v1(base: &str) -> Result<Option<UploadInfoV1>, ()> {
+    let resp = reqwest::Client::new()
+        .get(&format!("{}/api/v1/info", base))
+        .send()
+        .await
+        .map_err(|_| ())?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(());
+    }
+
+    let info = resp.json::<InfoResponseV1>().await.map_err(|_| ())?;
+    Ok(Some(UploadInfoV1 {
+        request_max_bytes: info.upload.request_max_bytes,
+        multipart_enabled: info.upload.multipart.enabled,
+    }))
+}
+
+async fn get_upload_info_v1(base: &str) -> Option<UploadInfoV1> {
+    let now = now_unix_secs();
+    {
+        let cache = info_cache_v1().lock();
+        if let Some(entry) = cache.get(base) {
+            if entry.expires_at > now {
+                return entry.value.clone();
+            }
+        }
+    }
+
+    let fetched = match fetch_info_v1(base).await {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let mut cache = info_cache_v1().lock();
+    cache.retain(|_, entry| entry.expires_at > now);
+    cache.insert(
+        base.to_string(),
+        InfoCacheEntryV1 {
+            value: fetched.clone(),
+            expires_at: now.saturating_add(INFO_CACHE_TTL_SECS),
+        },
+    );
+    fetched
+}
+
+fn fits_single_upload_request(
+    request_max_bytes: i64,
+    name: &str,
+    data_type: &str,
+    existing_id: Option<&str>,
+    data_len: usize,
+) -> bool {
+    let boundary = "boundary";
+    let header = if let Some(id) = existing_id {
+        format!(
+            "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
+            boundary, id
+        )
+    } else {
+        format!(
+            "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
+            boundary, name, data_type
+        )
+    };
+    let closing = format!("--{}--\r\n", boundary);
+    let part_len = header.as_bytes().len() + data_len + 2;
+    (part_len + closing.len()) as i64 <= request_max_bytes
 }
 
 fn map_status(status: reqwest::StatusCode) -> StorageError {
