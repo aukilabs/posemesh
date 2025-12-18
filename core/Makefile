@@ -48,7 +48,7 @@ build-domain-http-uniffi:
 		cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR; \
 	fi
 
-unit-tests:
+unit-tests: ci-compute-node
 	@make build-domain-http-wasm
 	@cd domain-http/bindings/javascript/tests && npm install && npx playwright install chromium && npm run test:all
 	@make build-domain-http-uniffi LANG=python
@@ -61,6 +61,18 @@ unit-tests:
 		fi; \
 		. .venv/bin/activate && pytest -v -s
 	@cargo test --release --all-features -- --test-threads=1
+
+fmt-compute-node:
+	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -- --check
+
+clippy-compute-node:
+	cargo clippy --no-deps -p posemesh-compute-node-runner-api -p posemesh-compute-node --all-targets -- -D warnings
+
+test-compute-node:
+	cargo test -p posemesh-compute-node-runner-api
+	cargo test -p posemesh-compute-node
+
+ci-compute-node: fmt-compute-node clippy-compute-node test-compute-node
 
 publish-domain-http:
 	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \

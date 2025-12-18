@@ -8,6 +8,9 @@ members = [
     "examples/test-concurrent",
     "utils",
     "domain-http",
+    "compute-node-runner-api",
+    "compute-node-runner-api/examples/hello-runner",
+    "compute-node",
     "node-registration", "uniffi-bindgen",
 ]
 resolver = "2"
@@ -37,6 +40,7 @@ quick-protobuf-codec = "0.3.1"
 console_error_panic_hook = "0.1.7"
 posemesh-networking = { path = "networking" }
 posemesh-domain = { path = "domain" }
+posemesh-domain-http = { path = "domain-http", version = "1.5.0" }
 posemesh-utils = "0.1.3"
 async-trait = "0.1.88"
 thiserror = "2.0.12"
@@ -47,17 +51,26 @@ anyhow = "1.0.95"
 axum = "0.7.5"
 chrono = { version = "0.4.38", features = ["serde"] }
 hex = "0.4.3"
+k256 = { version = "0.13.4", features = ["ecdsa"] }
+regex = "1.11.2"
 rand = "0.8.5"
 reqwest = { version = "0.12.8", default-features = false, features = ["json", "rustls-tls"] }
+semver = "1.0.26"
 secp256k1 = { version = "0.28.2", features = ["recovery"] }
 sha2 = "0.10.8"
 sha3 = "0.10.8"
+tokio-util = "0.7.16"
 tower = "0.4.13"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
-uuid = { version = "1.10.1", features = ["v4"] }
+url = "2.5.7"
+uuid = { version = "1.10.1", features = ["v4", "serde"] }
 parking_lot = "0.12.3"
 scopeguard = "1.2.0"
 uniffi = { version = "0.30", features = [ "cli" ] }
+httpmock = "0.7.0"
+once_cell = "1.21.3"
+tempfile = "3.21.0"
+zip = "0.6.6"
 
 [profile.release]
 strip = true
