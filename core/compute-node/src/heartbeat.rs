@@ -3,11 +3,11 @@ use serde_json::Value;
 use tokio::sync::watch;
 use tokio::time::{sleep, Duration};
 
-/// Payload carried by heartbeats: last progress and small event map.
+/// Payload carried by heartbeats: last progress and buffered events list.
 #[derive(Clone, Debug, Default)]
 pub struct HeartbeatData {
     pub progress: Value,
-    pub events: Value,
+    pub events: Vec<Value>,
 }
 
 /// Sender side of the progress channel.
@@ -26,7 +26,7 @@ pub fn progress_channel() -> (ProgressSender, ProgressReceiver) {
 
 impl ProgressSender {
     /// Replace the current progress/events state.
-    pub fn update(&self, progress: Value, events: Value) {
+    pub fn update(&self, progress: Value, events: Vec<Value>) {
         let _ = self
             .0
             .send_replace(Some(HeartbeatData { progress, events }));

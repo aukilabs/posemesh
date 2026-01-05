@@ -71,7 +71,7 @@ async fn heartbeat_driver_triggers_on_ttl() {
     let token_ref = TokenRef::new(lease.access_token.clone().unwrap());
     let (progress_tx, progress_rx) = progress_channel();
     let control_state = Arc::new(Mutex::new(ControlState::default()));
-    progress_tx.update(json!({}), json!({}));
+    progress_tx.update(json!({}), Vec::new());
     let runner_cancel = CancellationToken::new();
     let shutdown = CancellationToken::new();
 
@@ -134,7 +134,7 @@ async fn heartbeat_driver_triggers_on_progress() {
     );
 
     let handle = tokio::spawn(async move { driver.run().await });
-    progress_tx.update(json!({"pct": 10}), json!({}));
+    progress_tx.update(json!({"pct": 10}), Vec::new());
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     shutdown.cancel();
     let result = handle.await.unwrap();
@@ -183,7 +183,7 @@ async fn heartbeat_driver_signals_cancellation() {
     );
 
     let handle = tokio::spawn(async move { driver.run().await });
-    progress_tx.update(json!({"pct": 10}), json!({}));
+    progress_tx.update(json!({"pct": 10}), Vec::new());
     let result = handle.await.unwrap();
     assert!(matches!(result, HeartbeatLoopResult::Cancelled));
     assert!(runner_cancel.is_cancelled());
@@ -225,7 +225,7 @@ async fn heartbeat_driver_reports_lost_lease() {
     );
 
     let handle = tokio::spawn(async move { driver.run().await });
-    progress_tx.update(json!({"pct": 30}), json!({}));
+    progress_tx.update(json!({"pct": 30}), Vec::new());
     let result = handle.await.unwrap();
     assert!(matches!(result, HeartbeatLoopResult::LostLease(_)));
     assert!(runner_cancel.is_cancelled());

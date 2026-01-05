@@ -293,7 +293,7 @@ pub async fn run_cycle_with_dms(
             lease.task.id,
             &HeartbeatRequest {
                 progress: json!({}),
-                events: json!({}),
+                events: Vec::new(),
             },
         )
         .await?;
@@ -317,7 +317,7 @@ pub async fn run_cycle_with_dms(
     {
         let mut guard = control_state.lock().await;
         guard.progress = json!({});
-        guard.events = json!({});
+        guard.events = Vec::new();
     }
 
     let runner_cancel = CancellationToken::new();
@@ -330,7 +330,7 @@ pub async fn run_cycle_with_dms(
     );
 
     // Trigger an immediate heartbeat once the loop starts to refresh tokens.
-    progress_tx.update(json!({}), json!({}));
+    progress_tx.update(json!({}), Vec::new());
 
     let heartbeat_driver = HeartbeatDriver::new(
         dms.clone(),
@@ -403,6 +403,10 @@ pub async fn run_cycle_with_dms(
             })
         })
         .collect();
+    let output_cids: Vec<String> = uploaded_artifacts
+        .iter()
+        .filter_map(|artifact| artifact.id.clone())
+        .collect();
     let job_info = json!({
         "task_id": lease.task.id,
         "job_id": lease.task.job_id,
@@ -414,8 +418,8 @@ pub async fn run_cycle_with_dms(
     match run_res {
         Ok(()) => {
             let body = CompleteTaskRequest {
-                outputs_index: json!({ "artifacts": artifacts_json.clone() }),
-                result: json!({
+                output_cids,
+                meta: json!({
                     "job": job_info,
                     "artifacts": artifacts_json,
                 }),
@@ -450,7 +454,7 @@ pub async fn run_cycle_with_dms(
 #[derive(Default)]
 pub struct ControlState {
     progress: Value,
-    events: Value,
+    events: Vec<Value>,
 }
 
 struct EngineControlPlane {
@@ -490,12 +494,12 @@ impl ControlPlane for EngineControlPlane {
     }
 
     async fn log_event(&self, fields: Value) -> Result<()> {
-        let progress = {
+        let (progress, events) = {
             let mut state = self.state.lock().await;
-            state.events = fields.clone();
-            state.progress.clone()
+            state.events.push(fields.clone());
+            (state.progress.clone(), state.events.clone())
         };
-        self.progress_tx.update(progress, fields);
+        self.progress_tx.update(progress, events);
         Ok(())
     }
 }
@@ -638,7 +642,7 @@ where
         self.send_and_update(progress, events).await
     }
 
-    async fn snapshot_state(&self) -> (Value, Value) {
+    async fn snapshot_state(&self) -> (Value, Vec<Value>) {
         let state = self.state.lock().await;
         (state.progress.clone(), state.events.clone())
     }
@@ -646,7 +650,7 @@ where
     async fn send_and_update(
         &mut self,
         progress: Value,
-        events: Value,
+        events: Vec<Value>,
     ) -> Option<HeartbeatLoopResult> {
         let request = crate::dms::types::HeartbeatRequest {
             progress: progress.clone(),
@@ -655,6 +659,14 @@ where
 
         match self.transport.post_heartbeat(self.task_id, &request).await {
             Ok(update) => {
+                if !events.is_empty() {
+                    let mut state = self.state.lock().await;
+                    if state.events.len() >= events.len()
+                        && state.events[..events.len()] == events[..]
+                    {
+                        state.events.drain(0..events.len());
+                    }
+                }
                 apply_heartbeat_token_update(&self.token_ref, &update);
                 if let Some(task) = &update.task {
                     self.task_id = task.id;

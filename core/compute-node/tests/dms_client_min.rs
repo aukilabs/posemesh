@@ -122,8 +122,8 @@ async fn lease_by_capability_and_complete_fail() {
         .complete(
             task_id,
             &CompleteTaskRequest {
-                outputs_index: json!({}),
-                result: json!({}),
+                output_cids: Vec::new(),
+                meta: json!({}),
             },
         )
         .await

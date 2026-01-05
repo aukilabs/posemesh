@@ -109,7 +109,8 @@ pub trait ControlPlane: Send + Sync {
     /// Report progress to the engine; opaque JSON accepted to avoid coupling.
     async fn progress(&self, value: serde_json::Value) -> Result<()>;
 
-    /// Log an event with fields to be attached to heartbeats.
+    /// Log an event with fields to be attached to the next heartbeat.
+    /// Events are buffered and sent as an array in order; each call appends.
     async fn log_event(&self, fields: serde_json::Value) -> Result<()>;
 }
 

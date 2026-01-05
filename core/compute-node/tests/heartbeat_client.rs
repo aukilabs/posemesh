@@ -65,7 +65,7 @@ async fn heartbeat_returns_new_token_and_engine_applies_swap() {
             task_id,
             &HeartbeatRequest {
                 progress: json!({"p":1}),
-                events: json!({}),
+                events: Vec::new(),
             },
         )
         .await

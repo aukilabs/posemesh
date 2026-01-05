@@ -23,7 +23,8 @@ runner needs in order to receive work, download inputs, and upload artifacts.
 - `ArtifactSink` — abstraction over uploading result artifacts; supports bytes,
   files, and optional multipart streaming.
 - `ControlPlane` — lets runners observe cancellation and push progress / log
-  events that will get relayed via heartbeats.
+  events that will get relayed via heartbeats. Each `log_event` call appends
+  to an in-memory list that is sent on the next heartbeat.
 
 ```rust
 use anyhow::Result;

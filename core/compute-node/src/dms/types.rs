@@ -42,14 +42,16 @@ pub struct HeartbeatResponse {
 pub struct HeartbeatRequest {
     pub progress: serde_json::Value,
     #[serde(default)]
-    pub events: serde_json::Value,
+    pub events: Vec<serde_json::Value>,
 }
 
 /// Complete task request payload (shape is intentionally minimal here).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CompleteTaskRequest {
-    pub outputs_index: serde_json::Value,
-    pub result: serde_json::Value,
+    #[serde(default)]
+    pub output_cids: Vec<String>,
+    #[serde(default)]
+    pub meta: serde_json::Value,
 }
 
 /// Fail task request payload.

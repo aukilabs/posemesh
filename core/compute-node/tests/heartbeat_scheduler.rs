@@ -25,10 +25,10 @@ async fn coalesces_updates_and_sends_last() {
         .unwrap();
     });
 
-    ptx.update(json!("a"), json!({}));
+    ptx.update(json!("a"), Vec::new());
     // Second update comes shortly after; should be coalesced into single heartbeat delivering "b"
     sleep(Duration::from_millis(5)).await;
-    ptx.update(json!("b"), json!({}));
+    ptx.update(json!("b"), Vec::new());
 
     // Wait for one heartbeat
     let start = Instant::now();
@@ -81,7 +81,7 @@ async fn jitter_within_upper_bound() {
     });
 
     let t0 = Instant::now();
-    ptx.update(json!("p"), json!({}));
+    ptx.update(json!("p"), Vec::new());
 
     // Wait for first heartbeat
     loop {
