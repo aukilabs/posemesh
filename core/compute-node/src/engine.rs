@@ -634,7 +634,8 @@ where
         data: crate::heartbeat::HeartbeatData,
     ) -> Option<HeartbeatLoopResult> {
         self.last_progress = data.progress.clone();
-        self.send_and_update(data.progress, data.events).await
+        let (progress, events) = self.snapshot_state().await;
+        self.send_and_update(progress, events).await
     }
 
     async fn handle_ttl(&mut self) -> Option<HeartbeatLoopResult> {
