@@ -103,6 +103,14 @@ impl DmsClient {
             return Ok(None);
         }
         let body_preview = String::from_utf8_lossy(&bytes);
+        if status == StatusCode::CONFLICT {
+            tracing::debug!(
+                status = %status,
+                body = %body_preview,
+                "DMS lease returned conflict (busy); treating as no work"
+            );
+            return Ok(None);
+        }
         if !status.is_success() {
             tracing::warn!(
                 status = %status,

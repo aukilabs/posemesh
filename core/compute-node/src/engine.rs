@@ -274,10 +274,39 @@ pub async fn run_cycle_with_dms(
     let session = SessionManager::new(selector);
     let policy = HeartbeatPolicy::default_policy();
     let mut rng = StdRng::from_entropy();
-    let snapshot = session
+    let task_id = lease.task.id;
+    let report_setup_failure = |stage: &'static str, err: &anyhow::Error| {
+        let details = json!({
+            "stage": stage,
+            "error": err.to_string(),
+        });
+        async move {
+            let body = FailTaskRequest {
+                reason: "node_setup_failed".into(),
+                details,
+            };
+            dms.fail(task_id, &body).await
+        }
+    };
+
+    let snapshot = match session
         .start_session(&lease, Instant::now(), &policy, &mut rng)
         .await
-        .map_err(|err| anyhow!("failed to initialise session: {err}"))?;
+    {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            let original = anyhow!("failed to initialise session: {err}");
+            if let Err(fail_err) = report_setup_failure("start_session", &original).await {
+                warn!(
+                    error = %fail_err,
+                    task_id = %task_id,
+                    "failed to report setup failure"
+                );
+                return Err(original);
+            }
+            return Ok(true);
+        }
+    };
     if snapshot.cancel() {
         warn!(
             task_id = %snapshot.task_id(),
@@ -288,7 +317,7 @@ pub async fn run_cycle_with_dms(
 
     let token_ref = crate::storage::TokenRef::new(lease.access_token.clone().unwrap_or_default());
 
-    let heartbeat_initial = dms
+    let heartbeat_initial = match dms
         .heartbeat(
             lease.task.id,
             &HeartbeatRequest {
@@ -296,7 +325,21 @@ pub async fn run_cycle_with_dms(
                 events: Vec::new(),
             },
         )
-        .await?;
+        .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            if let Err(fail_err) = report_setup_failure("initial_heartbeat", &err).await {
+                warn!(
+                    error = %fail_err,
+                    task_id = %task_id,
+                    "failed to report setup failure"
+                );
+                return Err(err);
+            }
+            return Ok(true);
+        }
+    };
     apply_heartbeat_token_update(&token_ref, &heartbeat_initial);
     merge_heartbeat_into_lease(&mut lease, &heartbeat_initial);
     session
@@ -310,7 +353,20 @@ pub async fn run_cycle_with_dms(
         .await
         .map_err(|err| anyhow!("failed to refresh session after heartbeat: {err}"))?;
 
-    let ports = crate::storage::build_ports(&lease, token_ref.clone())?;
+    let ports = match crate::storage::build_ports(&lease, token_ref.clone()) {
+        Ok(ports) => ports,
+        Err(err) => {
+            if let Err(fail_err) = report_setup_failure("build_ports", &err).await {
+                warn!(
+                    error = %fail_err,
+                    task_id = %task_id,
+                    "failed to report setup failure"
+                );
+                return Err(err);
+            }
+            return Ok(true);
+        }
+    };
 
     let (progress_tx, progress_rx) = progress_channel();
     let control_state = Arc::new(Mutex::new(ControlState::default()));
