@@ -28,12 +28,32 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish JS and Rust Packages
     needs: run_test
+    defaults:
+      run:
+        working-directory: core
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@auki'
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Publish JS and Rust packages
         env:
           CI: true
         run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           mkdir -p ~/.cargo
           echo "[registry]" > ~/.cargo/credentials.toml
           echo 'token = "${{ secrets.CARGO_TOKEN }}"' >> ~/.cargo/credentials.toml
@@ -106,4 +126,6 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
 
