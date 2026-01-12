@@ -46,17 +46,20 @@ server on behalf of capability-specific runners.
 ## Configuration surface
 
 Required environment variables:
-- `DMS_BASE_URL` — base URL of the DMS REST API.
-- `REQUEST_TIMEOUT_SECS` — per-request timeout applied to DMS calls.
-- `NODE_VERSION` — optional override for the advertised node version; defaults
-  to the crate version when unset or blank.
-- `DDS_BASE_URL` — base URL of the DDS API (used for SIWE authentication).
 - `NODE_URL` — externally reachable URL of this node; sent to DDS.
 - `REG_SECRET` — shared secret issued by DDS during provisioning.
 - `SECP256K1_PRIVHEX` — 32-byte hex-encoded private key used to sign SIWE
   messages.
 
 Optional environment variables:
+- `DMS_BASE_URL` (default `https://dms.auki.network/v1`) — base URL of the DMS
+  REST API.
+- `DDS_BASE_URL` (default `https://dds.auki.network`) — base URL of the DDS API
+  (used for SIWE authentication).
+- `REQUEST_TIMEOUT_SECS` (default `60`) — per-request timeout applied to DMS
+  calls.
+- `NODE_VERSION` (default crate version) — optional override for the advertised
+  node version.
 - `HEARTBEAT_JITTER_MS` (default `250`) — backoff applied when coalescing
   heartbeat updates for the legacy scheduler in `heartbeat::run_scheduler`.
 - `POLL_BACKOFF_MS_MIN` / `POLL_BACKOFF_MS_MAX` (defaults `1000` / `30000`) —

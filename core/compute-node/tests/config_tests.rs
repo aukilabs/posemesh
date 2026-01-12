@@ -35,20 +35,17 @@ fn loads_required_siwe_defaults() {
         "REG_SECRET",
     ]);
 
-    std::env::set_var("DMS_BASE_URL", "https://dms.example");
-    std::env::set_var("REQUEST_TIMEOUT_SECS", "15");
-    std::env::set_var("DDS_BASE_URL", "https://dds.example");
     std::env::set_var("NODE_URL", "https://node.example");
     std::env::set_var("REG_SECRET", "super-secret");
     std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
 
     let cfg = NodeConfig::from_env().expect("config");
-    assert_eq!(cfg.dms_base_url.as_str(), "https://dms.example/");
+    assert_eq!(cfg.dms_base_url.as_str(), "https://dms.auki.network/v1");
     assert_eq!(cfg.node_version, env!("CARGO_PKG_VERSION"));
-    assert_eq!(cfg.request_timeout_secs, 15);
+    assert_eq!(cfg.request_timeout_secs, 60);
     assert_eq!(
         cfg.dds_base_url.as_ref().unwrap().as_str(),
-        "https://dds.example/"
+        "https://dds.auki.network/"
     );
     assert_eq!(
         cfg.node_url.as_ref().unwrap().as_str(),
@@ -62,8 +59,8 @@ fn loads_required_siwe_defaults() {
     assert!((cfg.token_safety_ratio - 0.75).abs() < f32::EPSILON);
     assert_eq!(cfg.token_reauth_max_retries, 3);
     assert_eq!(cfg.token_reauth_jitter_ms, 500);
-    assert_eq!(cfg.register_interval_secs, None);
-    assert_eq!(cfg.register_max_retry, None);
+    assert_eq!(cfg.register_interval_secs, Some(120));
+    assert_eq!(cfg.register_max_retry, Some(-1));
     assert_eq!(cfg.max_concurrency, 1);
     assert_eq!(cfg.log_format, LogFormat::Json);
     assert!(!cfg.enable_noop);
@@ -82,12 +79,12 @@ fn missing_siwe_fields_fails() {
         "REG_SECRET",
     ]);
 
-    std::env::set_var("DMS_BASE_URL", "https://dms.example");
-    std::env::set_var("REQUEST_TIMEOUT_SECS", "10");
+    std::env::set_var("REG_SECRET", "super-secret");
+    std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
 
     let err = NodeConfig::from_env().expect_err("should error");
     let msg = format!("{}", err);
-    assert!(msg.contains("DDS_BASE_URL required"));
+    assert!(msg.contains("NODE_URL required"));
 }
 
 #[test]

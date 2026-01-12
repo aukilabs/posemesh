@@ -3,6 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use url::Url;
 
+const DEFAULT_DMS_BASE_URL: &str = "https://dms.auki.network/v1";
+const DEFAULT_DDS_BASE_URL: &str = "https://dds.auki.network";
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 60;
+const DEFAULT_REGISTER_INTERVAL_SECS: u64 = 120;
+const DEFAULT_REGISTER_MAX_RETRY: i32 = -1;
+
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -15,7 +21,7 @@ pub enum LogFormat {
 /// Node configuration loaded from environment (SPECS §8 Configuration).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeConfig {
-    // Required
+    // Core settings (defaults available).
     pub dms_base_url: Url,
     pub node_version: String,
     pub request_timeout_secs: u64,
@@ -44,20 +50,17 @@ pub struct NodeConfig {
 impl NodeConfig {
     /// Load configuration from environment variables.
     pub fn from_env() -> Result<Self> {
-        // Required
-        let dms_base_url = parse_url_req("DMS_BASE_URL")?;
-        let request_timeout_secs = parse_u64_req("REQUEST_TIMEOUT_SECS")?;
+        // Core settings (defaults when unset).
+        let dms_base_url = parse_url_default("DMS_BASE_URL", DEFAULT_DMS_BASE_URL)?;
+        let request_timeout_secs =
+            parse_u64_default("REQUEST_TIMEOUT_SECS", DEFAULT_REQUEST_TIMEOUT_SECS)?;
         let node_version = env::var("NODE_VERSION")
             .ok()
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
         // Auth options
-        let dds_base_url = Url::parse(
-            &env::var("DDS_BASE_URL")
-                .with_context(|| "DDS_BASE_URL required for DDS SIWE authentication")?,
-        )
-        .with_context(|| "invalid URL in DDS_BASE_URL")?;
+        let dds_base_url = parse_url_default("DDS_BASE_URL", DEFAULT_DDS_BASE_URL)?;
         let node_url = Url::parse(
             &env::var("NODE_URL")
                 .with_context(|| "NODE_URL required for DDS SIWE authentication")?,
@@ -85,8 +88,14 @@ impl NodeConfig {
         let token_safety_ratio = parse_f32_opt("TOKEN_SAFETY_RATIO", 0.75)?;
         let token_reauth_max_retries = parse_u32_opt("TOKEN_REAUTH_MAX_RETRIES", 3)?;
         let token_reauth_jitter_ms = parse_u64_opt("TOKEN_REAUTH_JITTER_MS", 500)?;
-        let register_interval_secs = parse_u64_maybe("REGISTER_INTERVAL_SECS")?;
-        let register_max_retry = parse_i32_maybe("REGISTER_MAX_RETRY")?;
+        let register_interval_secs = Some(parse_u64_default(
+            "REGISTER_INTERVAL_SECS",
+            DEFAULT_REGISTER_INTERVAL_SECS,
+        )?);
+        let register_max_retry = Some(parse_i32_default(
+            "REGISTER_MAX_RETRY",
+            DEFAULT_REGISTER_MAX_RETRY,
+        )?);
         let max_concurrency = parse_u32_opt("MAX_CONCURRENCY", 1)?;
         let log_format = parse_log_format("LOG_FORMAT").unwrap_or_default();
         let enable_noop = parse_bool_opt("ENABLE_NOOP", false)?;
@@ -116,15 +125,29 @@ impl NodeConfig {
     }
 }
 
-fn parse_url_req(key: &str) -> Result<Url> {
-    let raw = env::var(key).with_context(|| format!("missing required env {key}"))?;
+fn env_var_trimmed(key: &str) -> Option<String> {
+    env::var(key).ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn parse_url_default(key: &str, default: &str) -> Result<Url> {
+    let raw = env_var_trimmed(key).unwrap_or_else(|| default.to_string());
     Url::parse(&raw).with_context(|| format!("invalid URL in {key}"))
 }
 
-fn parse_u64_req(key: &str) -> Result<u64> {
-    let raw = env::var(key).with_context(|| format!("missing required env {key}"))?;
-    raw.parse()
-        .with_context(|| format!("invalid integer in {key}"))
+fn parse_u64_default(key: &str, default: u64) -> Result<u64> {
+    match env_var_trimmed(key) {
+        Some(value) => value
+            .parse()
+            .with_context(|| format!("invalid integer in {key}")),
+        None => Ok(default),
+    }
 }
 
 fn parse_u64_opt(key: &str, default: u64) -> Result<u64> {
@@ -145,28 +168,18 @@ fn parse_u32_opt(key: &str, default: u32) -> Result<u32> {
     }
 }
 
-fn parse_u64_maybe(key: &str) -> Result<Option<u64>> {
-    match env::var(key) {
-        Ok(v) if !v.is_empty() => Ok(Some(
-            v.parse()
-                .with_context(|| format!("invalid integer in {key}"))?,
-        )),
-        _ => Ok(None),
-    }
-}
-
-fn parse_i32_maybe(key: &str) -> Result<Option<i32>> {
-    match env::var(key) {
-        Ok(v) if !v.is_empty() => {
-            let value: i32 = v
+fn parse_i32_default(key: &str, default: i32) -> Result<i32> {
+    match env_var_trimmed(key) {
+        Some(value) => {
+            let parsed: i32 = value
                 .parse()
                 .with_context(|| format!("invalid integer in {key}"))?;
-            if value < -1 {
-                bail!("{key} must be -1 or a non-negative integer, got {value}");
+            if parsed < -1 {
+                bail!("{key} must be -1 or a non-negative integer, got {parsed}");
             }
-            Ok(Some(value))
+            Ok(parsed)
         }
-        _ => Ok(None),
+        None => Ok(default),
     }
 }
 
