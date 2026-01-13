@@ -5,9 +5,7 @@ use futures::StreamExt;
 use regex::Regex;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::fs;
 use url::Url;
@@ -47,28 +45,6 @@ pub struct UploadFileRequest<'a> {
     pub existing_id: Option<&'a str>,
 }
 
-#[derive(Debug, Clone)]
-struct UploadInfoV1 {
-    request_max_bytes: i64,
-    multipart_enabled: bool,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct InfoResponseV1 {
-    upload: InfoUploadV1,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct InfoUploadV1 {
-    request_max_bytes: i64,
-    multipart: InfoMultipartV1,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct InfoMultipartV1 {
-    enabled: bool,
-}
-
 #[derive(Debug, Serialize)]
 struct InitiateMultipartRequestV1 {
     name: String,
@@ -103,27 +79,6 @@ struct CompleteMultipartRequestV1 {
 #[derive(Debug, Deserialize)]
 struct DomainDataMetadataV1 {
     id: String,
-}
-
-#[derive(Debug, Clone)]
-struct InfoCacheEntryV1 {
-    value: Option<UploadInfoV1>,
-    expires_at: u64,
-}
-
-const INFO_CACHE_TTL_SECS: u64 = 60;
-static INFO_CACHE_V1: OnceLock<parking_lot::Mutex<HashMap<String, InfoCacheEntryV1>>> =
-    OnceLock::new();
-
-fn info_cache_v1() -> &'static parking_lot::Mutex<HashMap<String, InfoCacheEntryV1>> {
-    INFO_CACHE_V1.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
-}
-
-fn now_unix_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_secs()
 }
 
 /// Domain server HTTP client (skeleton; HTTP added later).
@@ -300,7 +255,7 @@ impl DomainClient {
         }
 
         let base = self.base.as_str().trim_end_matches('/');
-        if let Some(info) = get_upload_info_v1(base).await {
+        if let Some(info) = posemesh_domain_http::domain_data::get_upload_info_v1(base).await {
             if info.multipart_enabled && info.request_max_bytes > 0 {
                 let fits_alone = fits_single_upload_request(
                     info.request_max_bytes,
@@ -886,55 +841,6 @@ impl DomainClient {
             .find(|item| item.name == name && item.data_type == data_type)
             .map(|item| item.id))
     }
-}
-
-async fn fetch_info_v1(base: &str) -> Result<Option<UploadInfoV1>, ()> {
-    let resp = reqwest::Client::new()
-        .get(format!("{}/api/v1/info", base))
-        .send()
-        .await
-        .map_err(|_| ())?;
-
-    if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(None);
-    }
-    if !resp.status().is_success() {
-        return Err(());
-    }
-
-    let info = resp.json::<InfoResponseV1>().await.map_err(|_| ())?;
-    Ok(Some(UploadInfoV1 {
-        request_max_bytes: info.upload.request_max_bytes,
-        multipart_enabled: info.upload.multipart.enabled,
-    }))
-}
-
-async fn get_upload_info_v1(base: &str) -> Option<UploadInfoV1> {
-    let now = now_unix_secs();
-    {
-        let cache = info_cache_v1().lock();
-        if let Some(entry) = cache.get(base) {
-            if entry.expires_at > now {
-                return entry.value.clone();
-            }
-        }
-    }
-
-    let fetched = match fetch_info_v1(base).await {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let mut cache = info_cache_v1().lock();
-    cache.retain(|_, entry| entry.expires_at > now);
-    cache.insert(
-        base.to_string(),
-        InfoCacheEntryV1 {
-            value: fetched.clone(),
-            expires_at: now.saturating_add(INFO_CACHE_TTL_SECS),
-        },
-    );
-    fetched
 }
 
 fn fits_single_upload_request(
