@@ -41,3 +41,6 @@ node_modules
 /sdk/src/Protobuf
 
 .env.local
+domain-service/
+core/.cargo-home/
+.env

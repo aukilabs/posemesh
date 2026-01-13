@@ -31,8 +31,14 @@ struct InfoMultipart {
 }
 
 #[derive(Debug, Clone)]
+pub struct UploadInfoV1 {
+    pub request_max_bytes: i64,
+    pub multipart_enabled: bool,
+}
+
+#[derive(Debug, Clone)]
 struct InfoCacheEntry {
-    value: Option<InfoResponse>,
+    value: Option<UploadInfoV1>,
     expires_at: u64,
 }
 
@@ -43,7 +49,7 @@ fn info_cache() -> &'static Mutex<HashMap<String, InfoCacheEntry>> {
     INFO_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-async fn fetch_info_v1(url: &str) -> Result<Option<InfoResponse>, ()> {
+async fn fetch_info_v1(url: &str) -> Result<Option<UploadInfoV1>, ()> {
     let resp = Client::new()
         .get(&format!("{}/api/v1/info", url))
         .send()
@@ -56,10 +62,14 @@ async fn fetch_info_v1(url: &str) -> Result<Option<InfoResponse>, ()> {
     if !resp.status().is_success() {
         return Err(());
     }
-    resp.json::<InfoResponse>().await.map(Some).map_err(|_| ())
+    let info = resp.json::<InfoResponse>().await.map_err(|_| ())?;
+    Ok(Some(UploadInfoV1 {
+        request_max_bytes: info.upload.request_max_bytes,
+        multipart_enabled: info.upload.multipart.enabled,
+    }))
 }
 
-async fn get_info_v1(url: &str) -> Option<InfoResponse> {
+pub async fn get_upload_info_v1(url: &str) -> Option<UploadInfoV1> {
     let now = now_unix_secs();
     {
         let cache = info_cache().lock().await;
@@ -586,14 +596,14 @@ pub async fn upload_v1_stream(
 
     let boundary = "boundary";
 
-    let info = get_info_v1(url).await;
+    let info = get_upload_info_v1(url).await;
     let request_max_bytes = info
         .as_ref()
-        .map(|i| i.upload.request_max_bytes)
+        .map(|i| i.request_max_bytes)
         .unwrap_or(0);
     let multipart_enabled = info
         .as_ref()
-        .map(|i| i.upload.multipart.enabled)
+        .map(|i| i.multipart_enabled)
         .unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep the existing streaming behavior.
@@ -975,14 +985,14 @@ pub async fn upload_v1(
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let boundary = "boundary";
 
-    let info = get_info_v1(url).await;
+    let info = get_upload_info_v1(url).await;
     let request_max_bytes = info
         .as_ref()
-        .map(|i| i.upload.request_max_bytes)
+        .map(|i| i.request_max_bytes)
         .unwrap_or(0);
     let multipart_enabled = info
         .as_ref()
-        .map(|i| i.upload.multipart.enabled)
+        .map(|i| i.multipart_enabled)
         .unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep existing single-request behavior.
