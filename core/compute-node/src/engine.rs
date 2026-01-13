@@ -10,7 +10,7 @@ use std::time::{Duration as StdDuration, Instant};
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -152,7 +152,7 @@ pub async fn run_node_with_shutdown(
             }
             Ok(false) => {
                 let delay_ms = jittered_delay_ms(poll_cfg);
-                info!(delay_ms, "No lease available; backing off before next poll");
+                debug!(delay_ms, "No lease available; backing off before next poll");
                 tokio::select! {
                     _ = shutdown.cancelled() => break,
                     _ = sleep(StdDuration::from_millis(delay_ms)) => {}
