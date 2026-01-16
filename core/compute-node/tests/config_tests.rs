@@ -30,12 +30,10 @@ fn loads_required_siwe_defaults() {
         "ENABLE_NOOP",
         "NOOP_SLEEP_SECS",
         "DDS_BASE_URL",
-        "NODE_URL",
         "SECP256K1_PRIVHEX",
         "REG_SECRET",
     ]);
 
-    std::env::set_var("NODE_URL", "https://node.example");
     std::env::set_var("REG_SECRET", "super-secret");
     std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
 
@@ -46,10 +44,6 @@ fn loads_required_siwe_defaults() {
     assert_eq!(
         cfg.dds_base_url.as_ref().unwrap().as_str(),
         "https://dds.auki.network/"
-    );
-    assert_eq!(
-        cfg.node_url.as_ref().unwrap().as_str(),
-        "https://node.example/"
     );
     assert_eq!(cfg.reg_secret.as_deref(), Some("super-secret"));
     assert_eq!(cfg.secp256k1_privhex.as_deref(), Some("abcdef"));
@@ -74,17 +68,15 @@ fn missing_siwe_fields_fails() {
         "DMS_BASE_URL",
         "REQUEST_TIMEOUT_SECS",
         "DDS_BASE_URL",
-        "NODE_URL",
         "SECP256K1_PRIVHEX",
         "REG_SECRET",
     ]);
 
-    std::env::set_var("REG_SECRET", "super-secret");
     std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
 
     let err = NodeConfig::from_env().expect_err("should error");
     let msg = format!("{}", err);
-    assert!(msg.contains("NODE_URL required"));
+    assert!(msg.contains("REG_SECRET required"));
 }
 
 #[test]
@@ -95,7 +87,6 @@ fn log_format_text_is_parsed() {
         "REQUEST_TIMEOUT_SECS",
         "LOG_FORMAT",
         "DDS_BASE_URL",
-        "NODE_URL",
         "SECP256K1_PRIVHEX",
         "REG_SECRET",
     ]);
@@ -104,7 +95,6 @@ fn log_format_text_is_parsed() {
     std::env::set_var("REQUEST_TIMEOUT_SECS", "10");
     std::env::set_var("LOG_FORMAT", "text");
     std::env::set_var("DDS_BASE_URL", "https://dds.example");
-    std::env::set_var("NODE_URL", "https://node.example");
     std::env::set_var("REG_SECRET", "secret");
     std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
 

@@ -12,7 +12,7 @@ server on behalf of capability-specific runners.
 - Telemetry bootstrap (`telemetry`) that installs a `tracing` subscriber and
   exposes helper spans.
 - DDS registration helpers (`dds::register`) and the in-memory persistence stub
-  used by the registration callback (`dds::persist`).
+  used by legacy registration callbacks (`dds::persist`).
 - Authentication state machine for SIWE after registration (`auth` module).
 - DMS HTTP client (`dms::client`) plus request/response data contracts.
 - Storage façade that turns leases into runner-facing input/output ports
@@ -20,33 +20,30 @@ server on behalf of capability-specific runners.
 - Session lifecycle management and heartbeat scheduling (`session`, `heartbeat`,
   `engine::HeartbeatDriver`).
 - Poller backoff helpers (`poller`) and top-level execution loop (`engine`).
-- Lightweight HTTP server exposing `/health` and the registration callback used
-  by DDS (`http`).
+- (Legacy) HTTP router for DDS callbacks (`http`); compute nodes no longer
+  need to expose inbound endpoints.
 
 ## Runtime flow (engine overview)
 1. `telemetry::init_from_env()` installs logging based on `LOG_FORMAT`.
-2. The HTTP router is started so DDS can POST the registration secret once the
-   node signs in.
-3. `NodeConfig::from_env()` loads operational settings. The node currently
+2. `NodeConfig::from_env()` loads operational settings. The node currently
    requires DDS configuration (see below) because SIWE tokens are mandatory.
-4. Runners are registered in a `RunnerRegistry`; the binary decides which
+3. Runners are registered in a `RunnerRegistry`; the binary decides which
    capabilities to advertise.
-5. `dds::register::spawn_registration_if_configured()` starts the outbound
-   registration loop, and `auth::SiweAfterRegistration` blocks until the DDS
-   callback persists the registration secret.
-6. The main `run_node` loop obtains an access token from DDS, builds a DMS
+4. `dds::register::spawn_registration_if_configured()` starts the outbound
+   SIWE-based registration loop, and `auth::SiweAfterRegistration` waits for a
+   successful registration before requesting access tokens.
+5. The main `run_node` loop obtains an access token from DDS, builds a DMS
    client, leases tasks, initializes session state, and dispatches to the
    correct runner via `RunnerRegistry::run_for_lease`.
-7. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
+6. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
    schedule computed by `session::HeartbeatPolicy`, refreshing storage tokens
    when DDS returns new ones.
-8. When a runner finishes, artifacts discovered by the storage layer are
+7. When a runner finishes, artifacts discovered by the storage layer are
    reported to DMS via `complete` or `fail`, and the cycle restarts.
 
 ## Configuration surface
 
 Required environment variables:
-- `NODE_URL` — externally reachable URL of this node; sent to DDS.
 - `REG_SECRET` — shared secret issued by DDS during provisioning.
 - `SECP256K1_PRIVHEX` — 32-byte hex-encoded private key used to sign SIWE
   messages.
@@ -78,8 +75,8 @@ Optional environment variables:
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
 
 ## Notable modules
-- `auth::siwe_after_registration` — waits for DDS registration to persist a
-  secret, then spins up the SIWE token manager and refresh loop.
+- `auth::siwe_after_registration` — waits for DDS registration, then spins up
+  the SIWE token manager and refresh loop.
 - `dds::register` — normalizes versions (stripping leading `v`), validates the
   secp256k1 key, and launches the registration task using `posemesh-node-registration`.
 - `engine` — orchestrates leasing, cancellation, heartbeat posting, and
@@ -96,5 +93,4 @@ Optional environment variables:
 - The crate uses Tokio throughout; tests rely on the multi-threaded runtime,
   so avoid enabling the single-threaded scheduler when adding new async tests.
 - `LOG_FORMAT=text` is useful during local development to keep logs readable.
-- The HTTP router is minimal by design. If you extend it, keep the registration
-  handler backwards compatible with the DDS callback contract.
+- The HTTP router is legacy; compute nodes do not require inbound callbacks.

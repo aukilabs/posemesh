@@ -92,14 +92,6 @@ async fn main() -> Result<()> {
 
     telemetry::init_from_env()?;
 
-    let app = posemesh_compute_node::http::router();
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-    let addr = listener.local_addr()?;
-    println!("http listening on {}", addr);
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
     let cfg = posemesh_compute_node::config::NodeConfig::from_env()?;
 
     let registry = RunnerRegistry::new().register(HelloRunner);

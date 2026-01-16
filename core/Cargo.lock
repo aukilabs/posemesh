@@ -3958,7 +3958,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
  "dotenvy",
  "posemesh-compute-node",
  "posemesh-compute-node-runner-api",

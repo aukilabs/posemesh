@@ -228,7 +228,6 @@ mod tests {
             node_version: "1.0.0".into(),
             request_timeout_secs: 10,
             dds_base_url: None,
-            node_url: None,
             reg_secret: None,
             secp256k1_privhex: None,
             heartbeat_jitter_ms: 250,

@@ -1,79 +1,139 @@
-use crate::crypto::{
-    format_timestamp_nanos, load_secp256k1_privhex, secp256k1_pubkey_uncompressed_hex,
-    sign_recoverable_keccak_hex,
-};
+use crate::crypto::{derive_eth_address, load_secp256k1_privhex, sign_eip191_recoverable_hex};
 use crate::state::{
-    read_state, set_status, touch_healthcheck_now, LockGuard, RegistrationState,
-    STATUS_DISCONNECTED, STATUS_REGISTERED, STATUS_REGISTERING,
+    read_state, set_status, LockGuard, RegistrationState, STATUS_DISCONNECTED, STATUS_REGISTERED,
+    STATUS_REGISTERING,
 };
 use anyhow::{anyhow, Context, Result};
-use chrono::Utc;
 use rand::Rng;
 use reqwest::Client;
 use secp256k1::SecretKey;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Serialize)]
-pub struct NodeRegistrationRequest {
-    pub url: String,
-    pub version: String,
-    pub registration_credentials: String,
+pub struct NodeRegisterWalletRequest {
+    pub message: String,
     pub signature: String,
-    pub timestamp: String,
-    pub public_key: String,
+    pub registration_credentials: String,
     pub capabilities: Vec<String>,
+    pub version: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SiweRequestMeta {
+    pub nonce: Option<String>,
+    pub domain: Option<String>,
+    pub uri: Option<String>,
+    pub version: Option<String>,
+    #[serde(rename = "chainId")]
+    pub chain_id: Option<i64>,
+    #[serde(rename = "issuedAt")]
+    pub issued_at: Option<String>,
 }
 
 fn registration_endpoint(dds_base_url: &str) -> String {
     let base = dds_base_url.trim_end_matches('/');
-    format!("{}/internal/v1/nodes/register", base)
+    format!("{}/internal/v1/nodes/register-wallet", base)
 }
 
-fn build_registration_request(
-    node_url: &str,
-    node_version: &str,
-    reg_secret: &str,
-    sk: &SecretKey,
-    capabilities: &[String],
-) -> NodeRegistrationRequest {
-    let ts = format_timestamp_nanos(Utc::now());
-    let msg = format!("{}{}", node_url, ts);
-    let signature = sign_recoverable_keccak_hex(sk, msg.as_bytes());
-    let public_key = secp256k1_pubkey_uncompressed_hex(sk);
-    let registration_credentials = reg_secret.to_owned();
-    NodeRegistrationRequest {
-        url: node_url.to_owned(),
-        version: node_version.to_owned(),
-        registration_credentials,
-        signature,
-        timestamp: ts,
-        public_key,
-        capabilities: capabilities.to_vec(),
+fn siwe_request_endpoint(dds_base_url: &str) -> String {
+    let base = dds_base_url.trim_end_matches('/');
+    format!("{}/internal/v1/auth/siwe/request", base)
+}
+
+async fn request_siwe_meta(
+    dds_base_url: &str,
+    wallet: &str,
+    client: &Client,
+) -> Result<SiweRequestMeta> {
+    let endpoint = siwe_request_endpoint(dds_base_url);
+    let res = client
+        .post(&endpoint)
+        .json(&serde_json::json!({ "wallet": wallet }))
+        .send()
+        .await
+        .with_context(|| format!("POST {} failed", endpoint))?
+        .error_for_status()
+        .with_context(|| format!("POST {} returned error", endpoint))?;
+    let body: SiweRequestMeta = res.json().await?;
+    if body.nonce.as_deref().unwrap_or("").is_empty() {
+        return Err(anyhow!("siwe nonce missing in response"));
     }
+    Ok(body)
+}
+
+fn compose_message(meta: &SiweRequestMeta, address: &str) -> Result<String> {
+    let domain = meta
+        .domain
+        .as_deref()
+        .ok_or_else(|| anyhow!("siwe domain missing"))?;
+    let uri = meta
+        .uri
+        .as_deref()
+        .ok_or_else(|| anyhow!("siwe uri missing"))?;
+    let version = meta
+        .version
+        .as_deref()
+        .ok_or_else(|| anyhow!("siwe version missing"))?;
+    let chain_id = meta.chain_id.ok_or_else(|| anyhow!("siwe chain id missing"))?;
+    let nonce = meta
+        .nonce
+        .as_deref()
+        .ok_or_else(|| anyhow!("siwe nonce missing"))?;
+    let issued_at = meta
+        .issued_at
+        .as_deref()
+        .ok_or_else(|| anyhow!("siwe issued_at missing"))?;
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{} wants you to sign in with your Ethereum account:\n",
+        domain
+    ));
+    out.push_str(address);
+    out.push_str("\n\n");
+    out.push_str(&format!("URI: {}\n", uri));
+    out.push_str(&format!("Version: {}\n", version));
+    out.push_str(&format!("Chain ID: {}\n", chain_id));
+    out.push_str(&format!("Nonce: {}\n", nonce));
+    out.push_str(&format!("Issued At: {}", issued_at));
+    Ok(out)
 }
 
 pub async fn register_once(
     dds_base_url: &str,
-    node_url: &str,
     node_version: &str,
     reg_secret: &str,
     sk: &SecretKey,
     client: &Client,
     capabilities: &[String],
 ) -> Result<()> {
-    let req = build_registration_request(node_url, node_version, reg_secret, sk, capabilities);
-    let endpoint = registration_endpoint(dds_base_url);
-
-    let pk_short = req.public_key.get(0..16).unwrap_or(&req.public_key);
+    if capabilities.is_empty() {
+        return Err(anyhow!(
+            "capabilities must be non-empty for DDS registration"
+        ));
+    }
+    let wallet = derive_eth_address(sk);
+    let wallet_prefix = wallet.get(0..10).unwrap_or(&wallet);
     info!(
-        url = req.url,
-        version = req.version,
-        public_key_prefix = pk_short,
-        capabilities = ?req.capabilities,
-        "Registering node with DDS"
+        wallet_prefix = wallet_prefix,
+        version = node_version,
+        capabilities = ?capabilities,
+        "Registering node with DDS (SIWE)"
     );
+
+    let meta = request_siwe_meta(dds_base_url, &wallet, client).await?;
+    let message = compose_message(&meta, &wallet)?;
+    let signature = sign_eip191_recoverable_hex(sk, &message);
+    let req = NodeRegisterWalletRequest {
+        message,
+        signature,
+        registration_credentials: reg_secret.to_owned(),
+        capabilities: capabilities.to_vec(),
+        version: node_version.to_owned(),
+    };
+    let endpoint = registration_endpoint(dds_base_url);
 
     let res = client
         .post(&endpoint)
@@ -108,7 +168,6 @@ pub async fn register_once(
 #[derive(Debug)]
 pub struct RegistrationConfig {
     pub dds_base_url: String,
-    pub node_url: String,
     pub node_version: String,
     pub reg_secret: String,
     pub secp256k1_privhex: String,
@@ -121,7 +180,6 @@ pub struct RegistrationConfig {
 pub async fn run_registration_loop(cfg: RegistrationConfig) {
     let RegistrationConfig {
         dds_base_url,
-        node_url,
         node_version,
         reg_secret,
         secp256k1_privhex,
@@ -138,9 +196,9 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
         }
     };
 
-    let healthcheck_ttl = Duration::from_secs(register_interval_secs.max(1));
+    let register_interval = Duration::from_secs(register_interval_secs.max(1));
     let lock_stale_after = {
-        let base = healthcheck_ttl.saturating_mul(2);
+        let base = register_interval.saturating_mul(2);
         let min = Duration::from_secs(30);
         let max = Duration::from_secs(600);
         if base < min {
@@ -167,21 +225,17 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
 
     info!(
         event = "registration.loop.start",
-        healthcheck_ttl_sec = healthcheck_ttl.as_secs() as i64,
-        node_url = %node_url,
+        register_interval_sec = register_interval.as_secs() as i64,
         node_version = %node_version,
         "registration loop started"
     );
 
     loop {
         tokio::time::sleep(next_sleep).await;
-        let RegistrationState {
-            status,
-            last_healthcheck,
-        } = read_state().unwrap_or_default();
+        let RegistrationState { status, .. } = read_state().unwrap_or_default();
 
         match status.as_str() {
-            STATUS_DISCONNECTED | STATUS_REGISTERING => {
+            STATUS_DISCONNECTED | STATUS_REGISTERING | STATUS_REGISTERED => {
                 let lock_guard = match LockGuard::try_acquire(lock_stale_after) {
                     Ok(Some(g)) => {
                         info!(event = "lock.acquired", "registration lock acquired");
@@ -189,12 +243,12 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                     }
                     Ok(None) => {
                         debug!(event = "lock.busy", "another registrar is active");
-                        next_sleep = healthcheck_ttl;
+                        next_sleep = register_interval;
                         continue;
                     }
                     Err(e) => {
                         warn!(event = "lock.error", error = %e, "could not acquire lock");
-                        next_sleep = healthcheck_ttl;
+                        next_sleep = register_interval;
                         continue;
                     }
                 };
@@ -210,6 +264,17 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                             "moved to registering"
                         );
                     }
+                } else if status.as_str() == STATUS_REGISTERED {
+                    if let Err(e) = set_status(STATUS_REGISTERING) {
+                        warn!(event = "status.transition.error", error = %e);
+                    } else {
+                        info!(
+                            event = "status.transition",
+                            from = STATUS_REGISTERED,
+                            to = STATUS_REGISTERING,
+                            "refreshing registration"
+                        );
+                    }
                 }
 
                 attempt += 1;
@@ -217,7 +282,6 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                 let start = Instant::now();
                 let res = register_once(
                     &dds_base_url,
-                    &node_url,
                     &node_version,
                     &reg_secret,
                     &sk,
@@ -230,14 +294,13 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                 match res {
                     Ok(()) => {
                         let _ = set_status(STATUS_REGISTERED);
-                        let _ = touch_healthcheck_now();
                         info!(
                             event = "registration.success",
                             elapsed_ms = elapsed_ms as i64,
                             "successfully registered to DDS"
                         );
                         attempt = 0;
-                        next_sleep = healthcheck_ttl;
+                        next_sleep = register_interval;
                         drop(lock_guard);
                     }
                     Err(e) => {
@@ -256,7 +319,7 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                                 "max retry reached; pausing until next TTL window"
                             );
                             attempt = 0;
-                            next_sleep = healthcheck_ttl;
+                            next_sleep = register_interval;
                             drop(lock_guard);
                             continue;
                         }
@@ -266,24 +329,6 @@ pub async fn run_registration_loop(cfg: RegistrationConfig) {
                             Duration::from_secs_f64(base.as_secs_f64() * jitter_factor.max(0.1));
                         drop(lock_guard);
                     }
-                }
-            }
-            STATUS_REGISTERED => {
-                let elapsed = last_healthcheck
-                    .map(|t| Utc::now() - t)
-                    .map(|d| d.to_std().unwrap_or_default())
-                    .unwrap_or_else(|| Duration::from_secs(u64::MAX / 2));
-
-                if elapsed > healthcheck_ttl {
-                    info!(
-                        event = "healthcheck.expired",
-                        elapsed_since_healthcheck_sec = elapsed.as_secs() as i64,
-                        "healthcheck TTL exceeded; re-entering registering"
-                    );
-                    let _ = set_status(STATUS_REGISTERING);
-                    next_sleep = Duration::from_secs(1);
-                } else {
-                    next_sleep = healthcheck_ttl;
                 }
             }
             other => {
@@ -340,7 +385,6 @@ mod tests {
 
         let secret = "my-super-secret";
         let dds = "http://127.0.0.1:9";
-        let url = "https://node.example.com";
         let version = "1.2.3";
         let sk = load_secp256k1_privhex(
             "e331b6d69882b4ed5bb7f55b585d7d0f7dc3aeca4a3deee8d16bde3eca51aace",
@@ -356,7 +400,7 @@ mod tests {
             "/reconstruction/local-refinement/v1".to_string(),
         ];
 
-        let _ = register_once(dds, url, version, secret, &sk, &client, &capabilities).await;
+        let _ = register_once(dds, version, secret, &sk, &client, &capabilities).await;
 
         let captured = String::from_utf8(buf.lock().clone()).unwrap_or_default();
         assert!(captured.contains("Registering node with DDS"));
