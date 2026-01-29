@@ -18,6 +18,8 @@ fn loads_required_siwe_defaults() {
         "REQUEST_TIMEOUT_SECS",
         "NODE_VERSION",
         "HEARTBEAT_JITTER_MS",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
         "POLL_BACKOFF_MS_MIN",
         "POLL_BACKOFF_MS_MAX",
         "TOKEN_SAFETY_RATIO",
@@ -54,6 +56,8 @@ fn loads_required_siwe_defaults() {
     assert_eq!(cfg.reg_secret.as_deref(), Some("super-secret"));
     assert_eq!(cfg.secp256k1_privhex.as_deref(), Some("abcdef"));
     assert_eq!(cfg.heartbeat_jitter_ms, 250);
+    assert!((cfg.heartbeat_min_ratio - 0.25).abs() < f64::EPSILON);
+    assert!((cfg.heartbeat_max_ratio - 0.35).abs() < f64::EPSILON);
     assert_eq!(cfg.poll_backoff_ms_min, 1000);
     assert_eq!(cfg.poll_backoff_ms_max, 30000);
     assert!((cfg.token_safety_ratio - 0.75).abs() < f32::EPSILON);
@@ -77,6 +81,8 @@ fn missing_siwe_fields_fails() {
         "NODE_URL",
         "SECP256K1_PRIVHEX",
         "REG_SECRET",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
     ]);
 
     std::env::set_var("REG_SECRET", "super-secret");
@@ -98,6 +104,8 @@ fn log_format_text_is_parsed() {
         "NODE_URL",
         "SECP256K1_PRIVHEX",
         "REG_SECRET",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
     ]);
 
     std::env::set_var("DMS_BASE_URL", "https://dms.example");
