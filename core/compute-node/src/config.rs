@@ -30,7 +30,6 @@ pub struct NodeConfig {
 
     // Auth: either static node identity or SIWE via DDS
     pub dds_base_url: Option<Url>,
-    pub node_url: Option<Url>,
     pub reg_secret: Option<String>,
     pub secp256k1_privhex: Option<String>,
 
@@ -65,11 +64,6 @@ impl NodeConfig {
 
         // Auth options
         let dds_base_url = parse_url_default("DDS_BASE_URL", DEFAULT_DDS_BASE_URL)?;
-        let node_url = Url::parse(
-            &env::var("NODE_URL")
-                .with_context(|| "NODE_URL required for DDS SIWE authentication")?,
-        )
-        .with_context(|| "invalid URL in NODE_URL")?;
         let reg_secret = env::var("REG_SECRET")
             .with_context(|| "REG_SECRET required for DDS SIWE authentication")?
             .trim()
@@ -114,7 +108,6 @@ impl NodeConfig {
             node_version,
             request_timeout_secs,
             dds_base_url: Some(dds_base_url),
-            node_url: Some(node_url),
             reg_secret: Some(reg_secret),
             secp256k1_privhex: Some(secp256k1_privhex),
             heartbeat_jitter_ms,

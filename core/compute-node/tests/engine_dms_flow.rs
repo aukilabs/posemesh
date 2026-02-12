@@ -18,7 +18,6 @@ fn base_cfg() -> NodeConfig {
         node_version: "1.0.0".into(),
         request_timeout_secs: 10,
         dds_base_url: None,
-        node_url: None,
         reg_secret: None,
         secp256k1_privhex: None,
         heartbeat_jitter_ms: 250,
@@ -464,7 +463,6 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         node_version: "1.0.0".into(),
         request_timeout_secs: 5,
         dds_base_url: Some(server.base_url().parse().unwrap()),
-        node_url: Some(server.base_url().parse().unwrap()),
         reg_secret: Some("reg-secret".into()),
         secp256k1_privhex: Some(
             "4c0883a69102937d6231471b5dbb6204fe5129617082798ce3f4fdf2548b6f90".into(),

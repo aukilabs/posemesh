@@ -23,6 +23,18 @@ pub fn secp256k1_pubkey_uncompressed_hex(sk: &SecretKey) -> String {
     hex::encode(uncompressed)
 }
 
+/// Derive the Ethereum address (0x-prefixed, lowercase) from a secp256k1 secret key.
+pub fn derive_eth_address(sk: &SecretKey) -> String {
+    let secp = Secp256k1::new();
+    let pk = PublicKey::from_secret_key(&secp, sk);
+    let uncompressed = pk.serialize_uncompressed(); // 65 bytes, leading 0x04
+    let mut hasher = Keccak256::new();
+    hasher.update(&uncompressed[1..]);
+    let hash = hasher.finalize();
+    let address = &hash[12..];
+    format!("0x{}", hex::encode(address))
+}
+
 /// Sign arbitrary message bytes using RFC6979 deterministic ECDSA over SHA-256.
 /// Returns the compact 64-byte signature as lowercase hex (r||s).
 pub fn sign_compact_hex(sk: &SecretKey, msg: &[u8]) -> String {
@@ -48,6 +60,23 @@ pub fn sign_recoverable_keccak_hex(sk: &SecretKey, msg: &[u8]) -> String {
     out[..64].copy_from_slice(&sig_bytes);
     out[64] = rid.to_i32() as u8; // 0 or 1
     hex::encode(out)
+}
+
+/// Sign using Ethereum EIP-191 message prefix and return 65-byte (r||s||v) hex with 0x prefix.
+pub fn sign_eip191_recoverable_hex(sk: &SecretKey, message: &str) -> String {
+    let prefix = format!("\u{19}Ethereum Signed Message:\n{}", message.len());
+    let mut hasher = Keccak256::new();
+    hasher.update(prefix.as_bytes());
+    hasher.update(message.as_bytes());
+    let hash = hasher.finalize();
+    let message = Message::from_digest_slice(&hash).expect("keccak256 is 32 bytes");
+    let secp = Secp256k1::new();
+    let rsig = secp.sign_ecdsa_recoverable(&message, sk);
+    let (rid, sig_bytes) = rsig.serialize_compact();
+    let mut out = [0u8; 65];
+    out[..64].copy_from_slice(&sig_bytes);
+    out[64] = rid.to_i32() as u8 + 27; // Ethereum v in {27, 28}
+    format!("0x{}", hex::encode(out))
 }
 
 /// RFC3339 with nanoseconds and Z suffix.
@@ -86,5 +115,26 @@ mod tests {
         assert!(sig
             .chars()
             .all(|c| c.is_ascii_hexdigit() && c.is_ascii_lowercase() || c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn derive_eth_address_matches_expected_value() {
+        let sk = load_secp256k1_privhex(
+            "4c0883a69102937d6231471b5dbb6204fe5129617082798ce3f4fdf2548b6f90",
+        )
+        .expect("key");
+        let addr = derive_eth_address(&sk);
+        assert_eq!(addr, "0xfdbb6caf01414300c16ea14859fec7736d95355f");
+    }
+
+    #[test]
+    fn sign_eip191_recoverable_has_expected_shape() {
+        let sk = load_secp256k1_privhex(
+            "4c0883a69102937d6231471b5dbb6204fe5129617082798ce3f4fdf2548b6f90",
+        )
+        .expect("key");
+        let sig = sign_eip191_recoverable_hex(&sk, "hello");
+        assert!(sig.starts_with("0x"));
+        assert_eq!(sig.len(), 132);
     }
 }

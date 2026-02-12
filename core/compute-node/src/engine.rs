@@ -104,7 +104,7 @@ pub async fn run_node_with_shutdown(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let siwe = crate::auth::SiweAfterRegistration::from_config(&cfg)?;
-    info!("DDS SIWE authentication configured; waiting for DDS registration callback");
+    info!("DDS SIWE authentication configured; waiting for DDS registration");
     let siwe_handle = siwe.start().await?;
     info!("DDS SIWE token manager started");
 

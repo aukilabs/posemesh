@@ -4,10 +4,10 @@ This crate packages the logic required for nodes to register with the discovery 
 
 ## Modules
 
-- `crypto`: helpers for secp256k1 key loading, signature generation, and timestamp formatting.
-- `http`: an `axum` router that handles DDS callbacks (e.g. `/internal/v1/registrations`) and the DDS health probe.
-- `state`: in-memory secret cache plus persistence primitives for registration status, last DDS health check, and a lock.
-- `register`: async registration client that periodically signs and submits node metadata to DDS.
+- `crypto`: helpers for secp256k1 key loading, Ethereum address derivation, and SIWE signature generation.
+- `http`: an `axum` router that handles legacy DDS callbacks (e.g. `/internal/v1/registrations`) and health probes.
+- `state`: in-memory cache plus persistence primitives for registration status and a cross-process lock.
+- `register`: async registration client that periodically signs and submits SIWE-based registration payloads to DDS.
 
 ## Adding the Dependency
 
@@ -46,7 +46,6 @@ async fn spawn_registration(config: RegistrationConfig) {
 fn build_registration_config() -> RegistrationConfig {
     RegistrationConfig {
         dds_base_url: "https://dds.auki.network".into(),
-        node_url: "https://node.example.com".into(),
         node_version: "1.0.0".into(),
         reg_secret: "my-reg-secret".into(),
         secp256k1_privhex: std::env::var("SECP256K1_PRIVHEX").expect("missing key"),
@@ -66,7 +65,7 @@ fn build_registration_config() -> RegistrationConfig {
 
 `run_registration_loop` takes care of:
 
-- Deriving the secp256k1 public key and signatures for registration payloads.
-- Persisting registration state and last health-check timestamps.
+- Generating SIWE messages/signatures for registration payloads.
+- Persisting registration state for downstream consumers.
 - Enforcing a cross-process file lock so that only one registrar runs at a time.
 - Exponential backoff with jitter when DDS requests fail.

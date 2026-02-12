@@ -1,4 +1,4 @@
-//! DDS registration loop wiring (outbound `/internal/v1/nodes/register`).
+//! DDS registration loop wiring (outbound `/internal/v1/nodes/register-wallet`).
 
 use std::time::Duration;
 
@@ -15,7 +15,6 @@ use crate::config::NodeConfig;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RegistrationSettings {
     dds_base_url: String,
-    node_url: String,
     node_version: String,
     reg_secret: String,
     secp256k1_privhex: String,
@@ -30,7 +29,6 @@ fn registration_settings(
     capabilities: &[String],
 ) -> Option<RegistrationSettings> {
     let dds_base = cfg.dds_base_url.as_ref()?;
-    let node_url = cfg.node_url.as_ref()?;
     let reg_secret = cfg.reg_secret.as_ref()?;
     let privhex = cfg.secp256k1_privhex.as_ref()?;
 
@@ -41,7 +39,6 @@ fn registration_settings(
 
     Some(RegistrationSettings {
         dds_base_url: dds_base.to_string(),
-        node_url: node_url.to_string(),
         node_version,
         reg_secret: reg_secret.clone(),
         secp256k1_privhex: privhex.clone(),
@@ -91,7 +88,7 @@ fn normalize_node_version(raw: &str) -> String {
 /// Spawn the DDS registration loop when all required configuration is available.
 pub fn spawn_registration_if_configured(cfg: &NodeConfig, capabilities: &[String]) -> Result<()> {
     let Some(settings) = registration_settings(cfg, capabilities) else {
-        warn!("DDS registration disabled: missing DDS_BASE_URL, NODE_URL, REG_SECRET, or SECP256K1_PRIVHEX");
+        warn!("DDS registration disabled: missing DDS_BASE_URL, REG_SECRET, or SECP256K1_PRIVHEX");
         return Ok(());
     };
 
@@ -115,7 +112,6 @@ pub fn spawn_registration_if_configured(cfg: &NodeConfig, capabilities: &[String
 
     let RegistrationSettings {
         dds_base_url,
-        node_url,
         node_version,
         reg_secret,
         secp256k1_privhex,
@@ -127,7 +123,6 @@ pub fn spawn_registration_if_configured(cfg: &NodeConfig, capabilities: &[String
 
     info!(
         dds_base = %dds_base_url,
-        node_url = %node_url,
         register_interval_secs,
         max_retry,
         "Starting DDS registration loop"
@@ -135,7 +130,6 @@ pub fn spawn_registration_if_configured(cfg: &NodeConfig, capabilities: &[String
 
     let cfg = RegistrationConfig {
         dds_base_url,
-        node_url,
         node_version,
         reg_secret,
         secp256k1_privhex,
@@ -166,7 +160,6 @@ mod tests {
             node_version: "1.0.0".into(),
             request_timeout_secs: 10,
             dds_base_url: None,
-            node_url: None,
             reg_secret: None,
             secp256k1_privhex: None,
             heartbeat_jitter_ms: 250,
@@ -196,7 +189,6 @@ mod tests {
     fn settings_present_when_all_fields_available() {
         let mut cfg = base_cfg();
         cfg.dds_base_url = Some(Url::parse("https://dds.example").unwrap());
-        cfg.node_url = Some(Url::parse("https://node.example").unwrap());
         cfg.reg_secret = Some("super-secret".into());
         cfg.secp256k1_privhex =
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
@@ -206,7 +198,6 @@ mod tests {
 
         let settings = registration_settings(&cfg, &[MOCK_CAPABILITY.into()]).expect("settings");
         assert_eq!(settings.dds_base_url, "https://dds.example/");
-        assert_eq!(settings.node_url, "https://node.example/");
         assert_eq!(settings.node_version, "1.0.0");
         assert_eq!(settings.reg_secret, "super-secret");
         assert_eq!(
@@ -223,7 +214,6 @@ mod tests {
     fn node_version_normalized_without_leading_v() {
         let mut cfg = base_cfg();
         cfg.dds_base_url = Some(Url::parse("https://dds.example").unwrap());
-        cfg.node_url = Some(Url::parse("https://node.example").unwrap());
         cfg.reg_secret = Some("secret".into());
         cfg.secp256k1_privhex =
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
@@ -237,7 +227,6 @@ mod tests {
     fn node_version_falls_back_when_invalid() {
         let mut cfg = base_cfg();
         cfg.dds_base_url = Some(Url::parse("https://dds.example").unwrap());
-        cfg.node_url = Some(Url::parse("https://node.example").unwrap());
         cfg.reg_secret = Some("secret".into());
         cfg.secp256k1_privhex =
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
@@ -252,7 +241,6 @@ mod tests {
     fn negative_one_max_retry_interpreted_as_infinite() {
         let mut cfg = base_cfg();
         cfg.dds_base_url = Some(Url::parse("https://dds.example").unwrap());
-        cfg.node_url = Some(Url::parse("https://node.example").unwrap());
         cfg.reg_secret = Some("secret".into());
         cfg.secp256k1_privhex =
             Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
@@ -273,7 +261,6 @@ mod tests {
     async fn spawn_returns_ok_when_key_invalid() {
         let mut cfg = base_cfg();
         cfg.dds_base_url = Some(Url::parse("https://dds.example").unwrap());
-        cfg.node_url = Some(Url::parse("https://node.example").unwrap());
         cfg.reg_secret = Some("super-secret".into());
         cfg.secp256k1_privhex = Some("not-a-hex-key".into());
 
