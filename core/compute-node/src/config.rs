@@ -8,6 +8,8 @@ const DEFAULT_DDS_BASE_URL: &str = "https://dds.auki.network";
 const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 60;
 const DEFAULT_REGISTER_INTERVAL_SECS: u64 = 120;
 const DEFAULT_REGISTER_MAX_RETRY: i32 = -1;
+const DEFAULT_HEARTBEAT_MIN_RATIO: f64 = 0.25;
+const DEFAULT_HEARTBEAT_MAX_RATIO: f64 = 0.35;
 
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -33,6 +35,8 @@ pub struct NodeConfig {
 
     // Optional
     pub heartbeat_jitter_ms: u64,
+    pub heartbeat_min_ratio: f64,
+    pub heartbeat_max_ratio: f64,
     pub poll_backoff_ms_min: u64,
     pub poll_backoff_ms_max: u64,
     pub token_safety_ratio: f32,
@@ -77,6 +81,10 @@ impl NodeConfig {
 
         // Optional
         let heartbeat_jitter_ms = parse_u64_opt("HEARTBEAT_JITTER_MS", 250)?;
+        let heartbeat_min_ratio =
+            parse_f64_opt("HEARTBEAT_MIN_RATIO", DEFAULT_HEARTBEAT_MIN_RATIO)?;
+        let heartbeat_max_ratio =
+            parse_f64_opt("HEARTBEAT_MAX_RATIO", DEFAULT_HEARTBEAT_MAX_RATIO)?;
         let poll_backoff_ms_min = parse_u64_opt("POLL_BACKOFF_MS_MIN", 1000)?;
         let poll_backoff_ms_max = parse_u64_opt("POLL_BACKOFF_MS_MAX", 30000)?;
         let token_safety_ratio = parse_f32_opt("TOKEN_SAFETY_RATIO", 0.75)?;
@@ -103,6 +111,8 @@ impl NodeConfig {
             reg_secret: Some(reg_secret),
             secp256k1_privhex: Some(secp256k1_privhex),
             heartbeat_jitter_ms,
+            heartbeat_min_ratio,
+            heartbeat_max_ratio,
             poll_backoff_ms_min,
             poll_backoff_ms_max,
             token_safety_ratio,
@@ -177,6 +187,13 @@ fn parse_i32_default(key: &str, default: i32) -> Result<i32> {
 }
 
 fn parse_f32_opt(key: &str, default: f32) -> Result<f32> {
+    match env::var(key) {
+        Ok(v) => v.parse().with_context(|| format!("invalid float in {key}")),
+        Err(_) => Ok(default),
+    }
+}
+
+fn parse_f64_opt(key: &str, default: f64) -> Result<f64> {
     match env::var(key) {
         Ok(v) => v.parse().with_context(|| format!("invalid float in {key}")),
         Err(_) => Ok(default),

@@ -59,6 +59,8 @@ Optional environment variables:
   node version.
 - `HEARTBEAT_JITTER_MS` (default `250`) — backoff applied when coalescing
   heartbeat updates for the legacy scheduler in `heartbeat::run_scheduler`.
+- `HEARTBEAT_MIN_RATIO` / `HEARTBEAT_MAX_RATIO` (defaults `0.25` / `0.35`) —
+  fraction of the lease TTL after which the engine schedules the next heartbeat.
 - `POLL_BACKOFF_MS_MIN` / `POLL_BACKOFF_MS_MAX` (defaults `1000` / `30000`) —
   jitter range used between idle lease polls.
 - `TOKEN_SAFETY_RATIO` (default `0.75`) — SIWE token renewal threshold.

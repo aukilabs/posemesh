@@ -163,6 +163,8 @@ mod tests {
             reg_secret: None,
             secp256k1_privhex: None,
             heartbeat_jitter_ms: 250,
+            heartbeat_min_ratio: 0.25,
+            heartbeat_max_ratio: 0.35,
             poll_backoff_ms_min: 1000,
             poll_backoff_ms_max: 30000,
             token_safety_ratio: 0.75,

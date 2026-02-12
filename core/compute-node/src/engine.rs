@@ -243,7 +243,7 @@ pub fn merge_heartbeat_into_lease(
 /// Run a single poll→run→complete/fail cycle using DMS client and the runner registry.
 /// This is a minimal integration used by tests; `run_node` wiring remains separate.
 pub async fn run_cycle_with_dms(
-    _cfg: &crate::config::NodeConfig,
+    cfg: &crate::config::NodeConfig,
     dms: &DmsClient,
     reg: &RunnerRegistry,
 ) -> Result<bool> {
@@ -272,7 +272,7 @@ pub async fn run_cycle_with_dms(
     // Initialise session state for heartbeats and token rotation.
     let selector = CapabilitySelector::new(capabilities.clone());
     let session = SessionManager::new(selector);
-    let policy = HeartbeatPolicy::default_policy();
+    let policy = HeartbeatPolicy::new(cfg.heartbeat_min_ratio, cfg.heartbeat_max_ratio);
     let mut rng = StdRng::from_entropy();
     let task_id = lease.task.id;
     let report_setup_failure = |stage: &'static str, err: &anyhow::Error| {

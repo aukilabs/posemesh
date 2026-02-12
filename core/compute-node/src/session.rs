@@ -134,8 +134,8 @@ impl HeartbeatPolicy {
 
     pub const fn default_policy() -> Self {
         Self {
-            min_ratio: 0.55,
-            max_ratio: 0.65,
+            min_ratio: 0.25,
+            max_ratio: 0.35,
         }
     }
 
