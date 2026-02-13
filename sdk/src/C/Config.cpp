@@ -62,6 +62,9 @@ const char* const* psm_config_get_bootstraps(const psm_config_t* config, uint32_
         buffer_size += bootstrap.size() + 1;
     }
     char* buffer = new (std::nothrow) char[buffer_size];
+    if (!buffer) {
+        return nullptr;
+    }
     char** prefix_ptr = reinterpret_cast<char**>(buffer);
     char* content_ptr = buffer + prefix_offset;
     for (const auto& bootstrap : bootstraps) {
@@ -128,6 +131,9 @@ const char* const* psm_config_get_relays(const psm_config_t* config, uint32_t* o
         buffer_size += relay.size() + 1;
     }
     char* buffer = new (std::nothrow) char[buffer_size];
+    if (!buffer) {
+        return nullptr;
+    }
     char** prefix_ptr = reinterpret_cast<char**>(buffer);
     char* content_ptr = buffer + prefix_offset;
     for (const auto& relay : relays) {
@@ -195,6 +201,12 @@ const uint8_t* psm_config_get_private_key(const psm_config_t* config, uint32_t* 
     }
 
     auto* result = new (std::nothrow) std::uint8_t[private_key.size()];
+    if (!result) {
+        if (out_private_key_size) {
+            *out_private_key_size = 0;
+        }
+        return nullptr;
+    }
     std::memcpy(result, private_key.data(), private_key.size());
     if (out_private_key_size) {
         *out_private_key_size = static_cast<std::uint32_t>(private_key.size());
@@ -217,6 +229,10 @@ void psm_config_set_private_key(psm_config_t* config, const uint8_t* private_key
         assert(!"psm_config_set_private_key(): private_key is null and private_key_size is non-zero");
         return;
     }
+    if (!private_key || private_key_size == 0) {
+        config->setPrivateKey(std::vector<std::uint8_t> {});
+        return;
+    }
     config->setPrivateKey(std::vector<std::uint8_t> { private_key, private_key + private_key_size });
 }
 
@@ -234,6 +250,9 @@ const char* PSM_API psm_config_get_private_key_path(const psm_config_t* config)
     }
 
     auto* result = new (std::nothrow) char[private_key_path.size() + 1];
+    if (!result) {
+        return nullptr;
+    }
     std::memcpy(result, private_key_path.c_str(), private_key_path.size() + 1);
     return result;
 }
@@ -284,6 +303,9 @@ const char* PSM_API psm_config_get_name(const psm_config_t* config)
     }
 
     auto* result = new (std::nothrow) char[name.size() + 1];
+    if (!result) {
+        return nullptr;
+    }
     std::memcpy(result, name.c_str(), name.size() + 1);
     return result;
 }

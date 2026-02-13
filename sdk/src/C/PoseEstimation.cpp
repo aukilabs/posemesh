@@ -10,13 +10,29 @@ enum psm_pose_estimation_solve_pnp_result psm_pose_estimation_solve_pnp(
     psm_pose_t* out_pose,
     psm_solve_pnp_method_e method)
 {
+    if (!landmarks || landmarks_count <= 0) {
+        return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+    }
+    if (!landmark_observations || landmark_observations_count <= 0) {
+        return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+    }
+    if (!camera_matrix || !out_pose) {
+        return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+    }
+
     std::vector<psm::Landmark> l(landmarks_count);
     for (int i = 0; i < landmarks_count; i++) {
+        if (!landmarks[i]) {
+            return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+        }
         l[i] = *(landmarks[i]);
     }
 
     std::vector<psm::LandmarkObservation> lo(landmark_observations_count);
     for (int i = 0; i < landmark_observations_count; i++) {
+        if (!landmark_observations[i]) {
+            return PSM_POSE_ESTIMATION_SOLVE_PNP_RESULT_FAILED;
+        }
         lo[i] = *(landmark_observations[i]);
     }
 
