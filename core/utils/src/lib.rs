@@ -1,8 +1,8 @@
-use std::time::Duration;
-use std::io;
 use futures::{self, Future};
 #[cfg(not(target_family = "wasm"))]
 use once_cell::sync::Lazy;
+use std::io;
+use std::time::Duration;
 #[cfg(not(target_family = "wasm"))]
 use tokio::runtime::Runtime;
 
@@ -20,12 +20,12 @@ pub async fn sleep(duration: Duration) {
 pub const INFINITE_RETRIES: u32 = 0;
 
 /// Retries an async operation with a delay between attempts.
-/// 
+///
 /// # Arguments
 /// * `f` - The async function to retry
 /// * `max_attempts` - Maximum number of attempts, 0 means infinite retries, 1 means only one attempt
 /// * `delay` - Duration to wait between retries
-/// 
+///
 /// # Returns
 /// * `Ok(T)` - The successful result
 /// * `Err(E)` - The error from the last attempt if all attempts failed
@@ -43,14 +43,24 @@ where
                 if max_attempts != INFINITE_RETRIES && retries >= max_attempts {
                     return Err(e);
                 }
-                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries, max_attempts, delay, e);
+                tracing::warn!(
+                    "Retry {}/{} after {:?}: {:?}",
+                    retries,
+                    max_attempts,
+                    delay,
+                    e
+                );
                 sleep(delay).await;
             }
         }
     }
 }
 
-pub async fn retry_with_increasing_delay<F, T, E>(mut f: F, max_retries: u32, initial_delay: Duration) -> Result<T, E>
+pub async fn retry_with_increasing_delay<F, T, E>(
+    mut f: F,
+    max_retries: u32,
+    initial_delay: Duration,
+) -> Result<T, E>
 where
     F: FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, E>> + Send>>,
     E: std::fmt::Debug,
@@ -65,7 +75,13 @@ where
                 if retries >= max_retries {
                     return Err(e);
                 }
-                tracing::warn!("Retry {}/{} after {:?}: {:?}", retries, max_retries, delay, e);
+                tracing::warn!(
+                    "Retry {}/{} after {:?}: {:?}",
+                    retries,
+                    max_retries,
+                    delay,
+                    e
+                );
                 sleep(delay).await;
                 delay *= 2;
             }
@@ -120,12 +136,11 @@ pub fn now_unix_secs() -> u64 {
 }
 
 #[cfg(not(target_family = "wasm"))]
-static GLOBAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
-    Runtime::new().expect("Failed to create Tokio runtime")
-});
+static GLOBAL_RUNTIME: Lazy<Runtime> =
+    Lazy::new(|| Runtime::new().expect("Failed to create Tokio runtime"));
 
 #[cfg(not(target_family = "wasm"))]
 /// Expose a function to get the global Tokio runtime.
 pub fn get_runtime() -> &'static Runtime {
-    &*GLOBAL_RUNTIME
+    &GLOBAL_RUNTIME
 }

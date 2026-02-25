@@ -1,3 +1,8 @@
+## v1.5.2
+
+### Features
+- List domains by domain server id
+
 ## v1.4.0
 
 ### Features

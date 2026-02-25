@@ -152,11 +152,19 @@ dictionary ListDomainsResponse {
 /// Used to filter which domains to retrieve.
 dictionary ListDomainsQuery {
     /// Organization ID to filter domains by (required)
+    ///  - "own": returns domains in your own organization.
+    ///  - a UUID: returns domains in that specific organization.
+    ///  - "all": returns domains across all organizations. When filtering by
+    ///           portal, this works without restrictions. Otherwise, domain_server_id
+    ///           is required and the domain server must belong to your org.
+    ///           Not available for app tokens without a portal filter.
     string org;
     /// Optional portal ID filter
     string? portal_id;
     /// Optional portal short ID filter
     string? portal_short_id;
+    /// Domain server ID
+    string? domain_server_id;
 };
 
 /// Main client interface for interacting with domain services.
@@ -170,7 +178,7 @@ interface DomainClient {
     ///     dds_url: The URL for the Domain Data Service
     ///     client_id: The client identifier
     constructor([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id);
-    
+
     /// Creates a new DomainClient instance with an OIDC access token.
     /// This method clones the current client and sets the provided access token for authentication.
     ///
@@ -180,7 +188,7 @@ interface DomainClient {
     /// Returns:
     ///     A new DomainClient instance with the access token set
     DomainClient with_oidc_access_token([ByRef] string token);
-    
+
     /// Downloads domain data matching the query criteria.
     /// Retrieves both metadata and data payload for matching entries.
     ///

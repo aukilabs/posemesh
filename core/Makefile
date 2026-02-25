@@ -29,7 +29,7 @@ build-domain-http-wasm:
 	@rm -rf domain-http/bindings/javascript/pkg
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http OUT_DIR=bindings/javascript/pkg ./build-wasm.sh
 
-build-domain-http-uniffi:	
+build-domain-http-uniffi:
 	@rm -rf domain-http/bindings/python/pkg
 	@if [ -z "$(LANG)" ]; then \
 		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \
@@ -60,19 +60,19 @@ unit-tests: ci-compute-node
 			set -o allexport; . ../../../.env.local; set +o allexport; \
 		fi; \
 		. .venv/bin/activate && pytest -v -s
-	@cargo test --release --all-features -- --test-threads=1
+	@cargo test -p posemesh-domain-http -p posemesh-utils --release --all-features -- --test-threads=1
 
-fmt-compute-node:
-	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -- --check
+fmt-rust:
+	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils -- --check
 
-clippy-compute-node:
-	cargo clippy --no-deps -p posemesh-compute-node-runner-api -p posemesh-compute-node --all-targets -- -D warnings
+clippy-rust:
+	cargo clippy --no-deps -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils --all-targets -- -D warnings
 
 test-compute-node:
 	cargo test -p posemesh-compute-node-runner-api
 	cargo test -p posemesh-compute-node
 
-ci-compute-node: fmt-compute-node clippy-compute-node test-compute-node
+ci-compute-node: fmt-rust clippy-rust test-compute-node
 
 publish-domain-http:
 	@VERSION=`grep '^version =' domain-http/Cargo.toml | head -n 1 | sed -E 's/version = "(.*)"/\1/'`; \

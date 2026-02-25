@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
 use futures::lock::Mutex;
+use futures::{SinkExt, Stream, channel::mpsc, stream::StreamExt};
 use reqwest::{Body, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,7 +51,7 @@ fn info_cache() -> &'static Mutex<HashMap<String, InfoCacheEntry>> {
 
 async fn fetch_info_v1(url: &str) -> Result<Option<UploadInfoV1>, ()> {
     let resp = Client::new()
-        .get(&format!("{}/api/v1/info", url))
+        .get(format!("{}/api/v1/info", url))
         .send()
         .await
         .map_err(|_| ())?;
@@ -73,10 +73,10 @@ pub async fn get_upload_info_v1(url: &str) -> Option<UploadInfoV1> {
     let now = now_unix_secs();
     {
         let cache = info_cache().lock().await;
-        if let Some(entry) = cache.get(url) {
-            if entry.expires_at > now {
-                return entry.value.clone();
-            }
+        if let Some(entry) = cache.get(url)
+            && entry.expires_at > now
+        {
+            return entry.value.clone();
         }
     }
 
@@ -142,13 +142,8 @@ pub struct CreateDomainData {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DomainAction {
-    Create {
-        name: String,
-        data_type: String,
-    },
-    Update {
-        id: String,
-    },
+    Create { name: String, data_type: String },
+    Update { id: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -209,7 +204,7 @@ pub async fn download_by_id(
     id: &str,
 ) -> Result<Vec<u8>, DomainError> {
     let response = Client::new()
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/domains/{}/data/{}?raw=true",
             url, domain_id, id
         ))
@@ -223,8 +218,15 @@ pub async fn download_by_id(
         Ok(data.to_vec())
     } else {
         let status = response.status();
-        let error = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data by id. {}", error) }.into())
+        let error = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download data by id. {}", error),
+        }
+        .into())
     }
 }
 
@@ -245,7 +247,11 @@ pub async fn download_metadata_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download metadata. {}", text) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download metadata. {}", text),
+        }
+        .into())
     }
 }
 
@@ -271,7 +277,7 @@ pub async fn download_v1(
             if params.is_empty() {
                 &format!("?ids={}", ids)
             } else {
-                &format!("?ids={}", ids)
+                &format!("&ids={}", ids)
             }
         } else {
             ""
@@ -279,7 +285,7 @@ pub async fn download_v1(
     };
 
     let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
+        .get(format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
         .bearer_auth(access_token)
         .header(
             "Accept",
@@ -302,7 +308,11 @@ pub async fn download_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to download data. {}", text) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to download data. {}", text),
+        }
+        .into())
     }
 }
 
@@ -312,14 +322,10 @@ pub async fn download_v1_stream(
     access_token: &str,
     domain_id: &str,
     query: &DownloadQuery,
-) -> Result<
-    mpsc::Receiver<Result<DomainData, DomainError>>,
-    DomainError,
-> {
+) -> Result<mpsc::Receiver<Result<DomainData, DomainError>>, DomainError> {
     let response = download_v1(url, client_id, access_token, domain_id, query, true).await?;
 
-    let (mut tx, rx) =
-        mpsc::channel::<Result<DomainData, DomainError>>(100);
+    let (mut tx, rx) = mpsc::channel::<Result<DomainData, DomainError>>(100);
 
     let boundary = match response
         .headers()
@@ -336,7 +342,7 @@ pub async fn download_v1_stream(
         None => {
             tracing::error!("Invalid content-type header");
             let _ = tx.close().await;
-            return Err(DomainError::InvalidContentTypeHeader.into());
+            return Err(DomainError::InvalidContentTypeHeader);
         }
     };
 
@@ -370,7 +376,11 @@ pub async fn delete_by_id(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to delete data by id. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to delete data by id. {}", err),
+        }
+        .into())
     }
 }
 
@@ -382,7 +392,7 @@ async fn initiate_domain_data_multipart_upload(
     req: &InitiateMultipartRequest,
 ) -> Result<InitiateMultipartResponse, DomainError> {
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/api/v1/domains/{}/data/multipart?uploads",
             url, domain_id
         ))
@@ -400,7 +410,11 @@ async fn initiate_domain_data_multipart_upload(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to initiate multipart upload. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to initiate multipart upload. {}", err),
+        }
+        .into())
     }
 }
 
@@ -414,7 +428,7 @@ async fn upload_domain_data_multipart_part(
     bytes: Bytes,
 ) -> Result<UploadPartResult, DomainError> {
     let resp = client
-        .put(&format!(
+        .put(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}&partNumber={}",
             url, domain_id, upload_id, part_number
         ))
@@ -432,7 +446,11 @@ async fn upload_domain_data_multipart_part(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to upload multipart part. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to upload multipart part. {}", err),
+        }
+        .into())
     }
 }
 
@@ -445,7 +463,7 @@ async fn complete_domain_data_multipart_upload(
     parts: Vec<CompletedPart>,
 ) -> Result<DomainDataMetadata, DomainError> {
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}",
             url, domain_id, upload_id
         ))
@@ -463,7 +481,11 @@ async fn complete_domain_data_multipart_upload(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to complete multipart upload. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to complete multipart upload. {}", err),
+        }
+        .into())
     }
 }
 
@@ -475,7 +497,7 @@ async fn abort_domain_data_multipart_upload(
     upload_id: &str,
 ) -> Result<(), DomainError> {
     let resp = client
-        .delete(&format!(
+        .delete(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}",
             url, domain_id, upload_id
         ))
@@ -491,7 +513,11 @@ async fn abort_domain_data_multipart_upload(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to abort multipart upload. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to abort multipart upload. {}", err),
+        }
+        .into())
     }
 }
 
@@ -503,7 +529,9 @@ async fn upload_domain_data_multipart_bytes(
     bytes: Bytes,
 ) -> Result<DomainDataMetadata, DomainError> {
     if bytes.is_empty() {
-        return Err(DomainError::InvalidRequest("multipart upload requires non-empty data"));
+        return Err(DomainError::InvalidRequest(
+            "multipart upload requires non-empty data",
+        ));
     }
 
     let (name, data_type, existing_id) = match action {
@@ -563,7 +591,9 @@ async fn upload_domain_data_multipart_bytes(
             offset = end;
             part_number = part_number
                 .checked_add(1)
-                .ok_or(DomainError::InvalidRequest("multipart upload too many parts"))?;
+                .ok_or(DomainError::InvalidRequest(
+                    "multipart upload too many parts",
+                ))?;
         }
 
         complete_domain_data_multipart_upload(
@@ -579,7 +609,9 @@ async fn upload_domain_data_multipart_bytes(
     .await;
 
     if upload_res.is_err() {
-        let _ = abort_domain_data_multipart_upload(&client, url, access_token, domain_id, &upload_id).await;
+        let _ =
+            abort_domain_data_multipart_upload(&client, url, access_token, domain_id, &upload_id)
+                .await;
     }
 
     upload_res
@@ -597,14 +629,8 @@ pub async fn upload_v1_stream(
     let boundary = "boundary";
 
     let info = get_upload_info_v1(url).await;
-    let request_max_bytes = info
-        .as_ref()
-        .map(|i| i.request_max_bytes)
-        .unwrap_or(0);
-    let multipart_enabled = info
-        .as_ref()
-        .map(|i| i.multipart_enabled)
-        .unwrap_or(false);
+    let request_max_bytes = info.as_ref().map(|i| i.request_max_bytes).unwrap_or(0);
+    let multipart_enabled = info.as_ref().map(|i| i.multipart_enabled).unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep the existing streaming behavior.
     if request_max_bytes <= 0 || !multipart_enabled {
@@ -621,12 +647,10 @@ pub async fn upload_v1_stream(
         let access_token_2 = access_token.clone();
         let domain_id_2 = domain_id.clone();
 
-        let (create_signal, create_signal_rx) = oneshot::channel::<
-            Result<Vec<DomainDataMetadata>, DomainError>,
-        >();
-        let (update_signal, update_signal_rx) = oneshot::channel::<
-            Result<Vec<DomainDataMetadata>, DomainError>,
-        >();
+        let (create_signal, create_signal_rx) =
+            oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
+        let (update_signal, update_signal_rx) =
+            oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
 
         spawn(async move {
             let create_response =
@@ -647,11 +671,16 @@ pub async fn upload_v1_stream(
         while let Some(datum) = rx.next().await {
             match datum.action {
                 DomainAction::Create { name, data_type } => {
-                    let create_data = write_create_body(boundary, &CreateDomainData { name, data_type }, &datum.data);
+                    let create_data = write_create_body(
+                        boundary,
+                        &CreateDomainData { name, data_type },
+                        &datum.data,
+                    );
                     create_tx.clone().send(create_data).await?;
                 }
                 DomainAction::Update { id } => {
-                    let update_data = write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
+                    let update_data =
+                        write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
                     update_tx.send(update_data).await?;
                 }
             }
@@ -705,27 +734,37 @@ pub async fn upload_v1_stream(
     let spawn_create_batch = |url: String, access_token: String, domain_id: String| {
         let (tx, rx) = mpsc::channel(100);
         let body = Body::wrap_stream(rx.map(Ok::<Vec<u8>, std::io::Error>));
-        let (signal, signal_rx) = oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
+        let (signal, signal_rx) =
+            oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
         spawn(async move {
             let create_response = create_v1(&url, &access_token, &domain_id, boundary, body).await;
             if let Err(Err(e)) = signal.send(create_response) {
                 tracing::error!("Failed to send create response: {}", e);
             }
         });
-        Batch { tx, done: signal_rx, size: 0 }
+        Batch {
+            tx,
+            done: signal_rx,
+            size: 0,
+        }
     };
 
     let spawn_update_batch = |url: String, access_token: String, domain_id: String| {
         let (tx, rx) = mpsc::channel(100);
         let body = Body::wrap_stream(rx.map(Ok::<Vec<u8>, std::io::Error>));
-        let (signal, signal_rx) = oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
+        let (signal, signal_rx) =
+            oneshot::channel::<Result<Vec<DomainDataMetadata>, DomainError>>();
         spawn(async move {
             let update_response = update_v1(&url, &access_token, &domain_id, boundary, body).await;
             if let Err(Err(e)) = signal.send(update_response) {
                 tracing::error!("Failed to send update response: {}", e);
             }
         });
-        Batch { tx, done: signal_rx, size: 0 }
+        Batch {
+            tx,
+            done: signal_rx,
+            size: 0,
+        }
     };
 
     let base_url = url.to_string();
@@ -740,7 +779,7 @@ pub async fn upload_v1_stream(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
                     boundary, name, data_type
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
 
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
                 if multipart_enabled && !fits_alone {
@@ -768,7 +807,9 @@ pub async fn upload_v1_stream(
                                 body.extend_from_slice(bytes.as_ref());
                                 body.extend_from_slice("\r\n".as_bytes());
                                 body.extend_from_slice(&closing);
-                                let res = create_v1(&base_url, &token, &did, boundary, Body::from(body)).await?;
+                                let res =
+                                    create_v1(&base_url, &token, &did, boundary, Body::from(body))
+                                        .await?;
                                 create_res.extend(res);
                                 continue;
                             }
@@ -778,10 +819,16 @@ pub async fn upload_v1_stream(
                 }
 
                 if create_batch.is_none() {
-                    create_batch = Some(spawn_create_batch(base_url.clone(), token.clone(), did.clone()));
+                    create_batch = Some(spawn_create_batch(
+                        base_url.clone(),
+                        token.clone(),
+                        did.clone(),
+                    ));
                 }
                 let mut batch = create_batch.take().unwrap();
-                if batch.size > 0 && (batch.size + part_len + closing_len) as i64 > request_max_bytes {
+                if batch.size > 0
+                    && (batch.size + part_len + closing_len) as i64 > request_max_bytes
+                {
                     batch.tx.send(closing.clone()).await?;
                     batch.tx.close().await?;
                     create_done.push(batch.done);
@@ -800,7 +847,7 @@ pub async fn upload_v1_stream(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
                     boundary, id
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
 
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
                 if multipart_enabled && !fits_alone {
@@ -824,7 +871,9 @@ pub async fn upload_v1_stream(
                                 body.extend_from_slice(bytes.as_ref());
                                 body.extend_from_slice("\r\n".as_bytes());
                                 body.extend_from_slice(&closing);
-                                let res = update_v1(&base_url, &token, &did, boundary, Body::from(body)).await?;
+                                let res =
+                                    update_v1(&base_url, &token, &did, boundary, Body::from(body))
+                                        .await?;
                                 update_res.extend(res);
                                 continue;
                             }
@@ -834,10 +883,16 @@ pub async fn upload_v1_stream(
                 }
 
                 if update_batch.is_none() {
-                    update_batch = Some(spawn_update_batch(base_url.clone(), token.clone(), did.clone()));
+                    update_batch = Some(spawn_update_batch(
+                        base_url.clone(),
+                        token.clone(),
+                        did.clone(),
+                    ));
                 }
                 let mut batch = update_batch.take().unwrap();
-                if batch.size > 0 && (batch.size + part_len + closing_len) as i64 > request_max_bytes {
+                if batch.size > 0
+                    && (batch.size + part_len + closing_len) as i64 > request_max_bytes
+                {
                     batch.tx.send(closing.clone()).await?;
                     batch.tx.close().await?;
                     update_done.push(batch.done);
@@ -895,7 +950,7 @@ async fn update_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let update_response = Client::new()
-        .put(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .put(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -917,7 +972,11 @@ async fn update_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to update data. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to update data. {}", err),
+        }
+        .into())
     }
 }
 
@@ -929,7 +988,7 @@ async fn create_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let create_response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .post(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -951,7 +1010,11 @@ async fn create_v1(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        Err(AukiErrorResponse { status, error: format!("Failed to create data. {}", err) }.into())
+        Err(AukiErrorResponse {
+            status,
+            error: format!("Failed to create data. {}", err),
+        }
+        .into())
     }
 }
 
@@ -986,14 +1049,8 @@ pub async fn upload_v1(
     let boundary = "boundary";
 
     let info = get_upload_info_v1(url).await;
-    let request_max_bytes = info
-        .as_ref()
-        .map(|i| i.request_max_bytes)
-        .unwrap_or(0);
-    let multipart_enabled = info
-        .as_ref()
-        .map(|i| i.multipart_enabled)
-        .unwrap_or(false);
+    let request_max_bytes = info.as_ref().map(|i| i.request_max_bytes).unwrap_or(0);
+    let multipart_enabled = info.as_ref().map(|i| i.multipart_enabled).unwrap_or(false);
 
     // If we can't determine a meaningful request size limit, keep existing single-request behavior.
     if request_max_bytes <= 0 || !multipart_enabled {
@@ -1006,12 +1063,17 @@ pub async fn upload_v1(
             match datum.action {
                 DomainAction::Create { name, data_type } => {
                     to_create = true;
-                    let create_data = write_create_body(boundary, &CreateDomainData { name, data_type }, &datum.data);
+                    let create_data = write_create_body(
+                        boundary,
+                        &CreateDomainData { name, data_type },
+                        &datum.data,
+                    );
                     create_body.extend_from_slice(&create_data);
                 }
                 DomainAction::Update { id } => {
                     to_update = true;
-                    let update_data = write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
+                    let update_data =
+                        write_update_body(boundary, &UpdateDomainData { id }, &datum.data);
                     update_body.extend_from_slice(&update_data);
                 }
             }
@@ -1058,14 +1120,17 @@ pub async fn upload_v1(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
                     boundary, name, data_type
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
 
                 if multipart_enabled && !fits_alone {
                     if !create_batch.is_empty() {
                         let mut body = std::mem::take(&mut create_batch);
                         body.extend_from_slice(&closing);
-                        create_res.extend(create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                        create_res.extend(
+                            create_v1(url, access_token, domain_id, boundary, Body::from(body))
+                                .await?,
+                        );
                         create_size = 0;
                     }
                     match upload_domain_data_multipart_bytes(
@@ -1091,7 +1156,16 @@ pub async fn upload_v1(
                                 body.extend_from_slice(bytes.as_ref());
                                 body.extend_from_slice("\r\n".as_bytes());
                                 body.extend_from_slice(&closing);
-                                create_res.extend(create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                                create_res.extend(
+                                    create_v1(
+                                        url,
+                                        access_token,
+                                        domain_id,
+                                        boundary,
+                                        Body::from(body),
+                                    )
+                                    .await?,
+                                );
                             } else {
                                 return Err(e);
                             }
@@ -1105,7 +1179,9 @@ pub async fn upload_v1(
                 {
                     let mut body = std::mem::take(&mut create_batch);
                     body.extend_from_slice(&closing);
-                    create_res.extend(create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                    create_res.extend(
+                        create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?,
+                    );
                     create_size = 0;
                 }
                 create_batch.extend_from_slice(header.as_bytes());
@@ -1118,14 +1194,17 @@ pub async fn upload_v1(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
                     boundary, id
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
 
                 if multipart_enabled && !fits_alone {
                     if !update_batch.is_empty() {
                         let mut body = std::mem::take(&mut update_batch);
                         body.extend_from_slice(&closing);
-                        update_res.extend(update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                        update_res.extend(
+                            update_v1(url, access_token, domain_id, boundary, Body::from(body))
+                                .await?,
+                        );
                         update_size = 0;
                     }
                     match upload_domain_data_multipart_bytes(
@@ -1147,7 +1226,16 @@ pub async fn upload_v1(
                                 body.extend_from_slice(bytes.as_ref());
                                 body.extend_from_slice("\r\n".as_bytes());
                                 body.extend_from_slice(&closing);
-                                update_res.extend(update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                                update_res.extend(
+                                    update_v1(
+                                        url,
+                                        access_token,
+                                        domain_id,
+                                        boundary,
+                                        Body::from(body),
+                                    )
+                                    .await?,
+                                );
                             } else {
                                 return Err(e);
                             }
@@ -1161,7 +1249,9 @@ pub async fn upload_v1(
                 {
                     let mut body = std::mem::take(&mut update_batch);
                     body.extend_from_slice(&closing);
-                    update_res.extend(update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+                    update_res.extend(
+                        update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?,
+                    );
                     update_size = 0;
                 }
                 update_batch.extend_from_slice(header.as_bytes());
@@ -1175,12 +1265,14 @@ pub async fn upload_v1(
     if !create_batch.is_empty() {
         let mut body = create_batch;
         body.extend_from_slice(&closing);
-        create_res.extend(create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+        create_res
+            .extend(create_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
     }
     if !update_batch.is_empty() {
         let mut body = update_batch;
         body.extend_from_slice(&closing);
-        update_res.extend(update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
+        update_res
+            .extend(update_v1(url, access_token, domain_id, boundary, Body::from(body)).await?);
     }
 
     let mut res = Vec::new();
@@ -1261,10 +1353,8 @@ fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
 fn find_headers_end(data: &[u8]) -> Option<usize> {
     if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
         Some(i + 4) // body starts after \r\n\r\n
-    } else if let Some(i) = data.windows(2).position(|w| w == b"\n\n") {
-        Some(i + 2) // body starts after \n\n
     } else {
-        None
+        data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
     }
 }
 
@@ -1315,13 +1405,7 @@ async fn handle_domain_data_stream(
         }
 
         // Process all boundaries in the current buffer
-        loop {
-            // Find the next boundary in the buffer
-            let boundary_pos = match find_boundary(&buffer, &boundary_bytes) {
-                Some(pos) => pos,
-                None => break, // No more boundaries found in current buffer
-            };
-
+        while let Some(boundary_pos) = find_boundary(&buffer, &boundary_bytes) {
             // Look for header end after boundary
             let header_end = match find_headers_end(&buffer[boundary_pos..]) {
                 Some(end) => end,
@@ -1355,16 +1439,14 @@ async fn handle_domain_data_stream(
                 current_domain_data = Some(domain_data);
                 break;
             }
-
-            // Continue to process the next boundary in the same buffer
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use bytes::Bytes;
     use super::*;
+    use bytes::Bytes;
 
     #[test]
     fn test_find_boundary_found() {

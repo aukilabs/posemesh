@@ -226,7 +226,7 @@ class TestAppCredential:
 
     def test_list_domains(self, app_client):
         """Test listing domains."""
-        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None)
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=None)
         res = app_client.list_domains(query)
         assert res is not None
         assert isinstance(res, ListDomainsResponse)
@@ -234,6 +234,18 @@ class TestAppCredential:
         for domain in res.domains:
             assert domain.id is not None
             assert domain.name is not None
+
+        """Test listing domains by domain server id."""
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=res.domains[0].domain_server_id)
+        res = app_client.list_domains(query)
+        assert res is not None
+        assert isinstance(res, ListDomainsResponse)
+        assert len(res.domains) > 0
+        for domain in res.domains:
+            assert domain.id is not None
+            assert domain.name is not None
+            assert domain.domain_server_id is not None
+            assert domain.domain_server_id == res.domains[0].domain_server_id
 
 class TestUserCredential:
     """Tests for user credential authentication."""
@@ -289,6 +301,28 @@ class TestUserCredential:
         assert len(filtered_data) > 0
         assert all(item.metadata.name == test_name for item in filtered_data)
 
+    def test_list_domains_by_domain_server_id(self, user_client):
+        """Test listing domains by domain server id."""
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=None)
+        res = user_client.list_domains(query)
+        assert res is not None
+        assert isinstance(res, ListDomainsResponse)
+        assert len(res.domains) > 0
+
+        if len(res.domains) == 0:
+            pytest.skip("No domains found to test list by domain server id")
+
+        domain_server_id = res.domains[0].domain_server_id
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=domain_server_id)
+        res = user_client.list_domains(query)
+        assert res is not None
+        assert isinstance(res, ListDomainsResponse)
+        assert len(res.domains) > 0
+        for domain in res.domains:
+            assert domain.id is not None
+            assert domain.name is not None
+            assert domain.domain_server_id is not None
+            assert domain.domain_server_id == domain_server_id
 
 @pytest.mark.skipif(
     not config.get('AUTH_TEST_TOKEN') or config['AUTH_TEST_TOKEN'] == '',

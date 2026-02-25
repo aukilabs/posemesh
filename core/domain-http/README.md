@@ -9,7 +9,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 ### 1. Sign in with App Credentials
 
 - **How:** Use your app's key and secret to authenticate.
-- **Access:**  
+- **Access:**
   - **Read access** to **all domains**.
   - **No write access**—app credentials are intended for read-only operations.
 - **Use case:** Suitable for backend services or applications that need to fetch domain data but do not need to modify it.
@@ -17,7 +17,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 ### 2. Sign in with Auki User Credentials
 
 - **How:** Authenticate using a user's email and password.
-- **Access:**  
+- **Access:**
   - **Write access** to domains **owned by the user** within the same organization.
   - **Read access** to **all domains**.
 - **Use case:** Use this mode when you need to allow users to manage (create, update, or delete) their own domains, as well as view other domains in the organization.
@@ -25,7 +25,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 ### 3. Authenticate with OIDC Access Token
 
 - **How:** Provide a valid OIDC (OpenID Connect) access token obtained from the authentication service.
-- **Access:**  
+- **Access:**
   - Grants **read and write access** to domains, according to the roles assigned to the user.
 - **Use case:** Enables single sign-on and fine-grained access control. Permissions are determined by the user’s assigned roles.
 
@@ -37,7 +37,7 @@ posemesh-domain-http supports multiple authentication methods, each providing di
 
 ## Usage
 
-The `client_id` parameter must not be empty. 
+The `client_id` parameter must not be empty.
 
 - **Frontend applications:** Use the device ID or user ID as the `client_id`.
 - **Backend environments:** Use a unique identifier that represents your service or application.
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // List domains in the given organization, `all`, `own` or an organization id
-    let query = ListDomainsQuery { org: "own".to_string(), portal_id: None, portal_short_id: None };
+    let query = ListDomainsQuery { org: "own".to_string(), portal_id: None, portal_short_id: None, domain_server_id: None };
     let domains = client.list_domains(query)?;
     println!("Domains: {:?}", domains);
 
@@ -89,7 +89,7 @@ client = DomainClient.new_with_user_credential(
 )
 
 # List domains in the given organization, `all`, `own` or an organization id
-query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None)
+query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=None)
 response = client.list_domains(query)
 print("Domains:", response.domains)
 
@@ -110,10 +110,10 @@ for data in domain_data:
 For more examples, check `/bindings/javascript/tests/basic.test.ts`
 
 ```js
-import { DomainClient, DownloadQuery, ListDomainsQuery } from "@auki/domain-client";
+import { DomainClient, DownloadQuery, ListDomainsQuery, signInWithUserCredential } from "@auki/domain-client";
 
 // Authenticate using user credentials
-const client = await DomainClient.new_with_user_credential(
+const client = await signInWithUserCredential(
   apiUrl,
   ddsUrl,
   clientId,
@@ -133,6 +133,8 @@ const domainData = await client.downloadDomainData(domainId, {ids:[]});
 domainData.forEach((data) => {
   console.log(`Name: ${data.metadata.name}, Size: ${data.metadata.size}`);
 });
+
+client.free();
 
 ```
 

@@ -17,33 +17,37 @@ use wasm_streams::readable::sys;
 const TS_APPEND_CONTENT: &'static str = r#"
 
 export type DownloadQuery = { ids: string[], name: string | null, data_type: string | null };
-/**
- * UploadDomainData is a union of CreateDomainData and UpdateDomainData
- * CreateDomainData is an object with the following fields:
- * - name: string
- * - data_type: string
- * - data: Uint8Array
- * UpdateDomainData is an object with the following fields:
- * - id: string
- */
 export type UploadDomainData = { id?: string, name?: string, data_type?: string, data: Uint8Array };
 export type DomainDataMetadata = { id: string, name: string, data_type: string, size: number, created_at: string, updated_at: string };
 export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
 export type DomainServer = { id: string, url: string, organization_id: string, name: string };
 export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
 export type JobRequest = { data_ids: string[], processing_type: string, server_api_key: string, server_url: string };
-export type ListDomainsQuery = { portal_id: string | null, portal_short_id: string | null, org: string };
+/**
+ * ListDomainsQuery specifies the parameters for listing domains the caller has access to.
+ *
+ * - org: (required) The organization to list domains from:
+ *   - "own": returns domains in your own organization.
+ *   - a UUID: returns domains in that specific organization.
+ *   - "all": returns domains across all organizations. When filtering by 'portal' (see below), this works without restrictions.
+ *     Otherwise, 'domain_server_id' is required and the domain server must belong to your org.
+ *     Not available for app tokens without a portal filter.
+ * - portal_id: (optional) Full UUID of a portal to filter domains. Mutually exclusive with 'portal_short_id'.
+ * - portal_short_id: (optional) Short ID of a portal to filter domains. Mutually exclusive with 'portal_id'.
+ * - domain_server_id: (optional) UUID of the domain server to filter domains. Ignored if a portal filter is active.
+ */
+export type ListDomainsQuery = { portal_id?: string | null, portal_short_id?: string | null, org: string, domain_server_id?: string | null };
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
- * 
+ *
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
  * @param client_id - Unique identifier for this client.
  * @param app_key - Application key for authentication.
  * @param app_secret - Application secret for authentication.
  * @returns Promise that resolves to a DomainClient instance.
- * 
+ *
  * @example
  * const client = await signInWithAppCredential(
  *   "https://api.auki.network",
@@ -64,7 +68,7 @@ export function signInWithAppCredential(
 
 /**
  * Signs in with user credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
- * 
+ *
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
  * @param client_id - Unique identifier for this client.
@@ -72,7 +76,7 @@ export function signInWithAppCredential(
  * @param password - User's password.
  * @param remember_password - Set to `true` if you want to automatically relogin with the same credentials after refreshtoken expires, it is NOT recommended to set to `true` in client side as storing credentials in the browser increases security risks (e.g., XSS attacks).
  * @returns Promise that resolves to a DomainClient instance.
- * 
+ *
  * @example
  * const client = await signInWithUserCredential(
  *   "https://api.auki.network",
@@ -180,11 +184,11 @@ impl DomainClient {
     ///     "https://dds.example.com".to_string(),
     ///     "my-client-id".to_string()
     /// );
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client.free();
     /// ```
-    /// 
+    ///
     #[wasm_bindgen(constructor)]
     pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
         Self {
@@ -203,14 +207,16 @@ impl DomainClient {
     /// # Example
     /// ```javascript
     /// const client_with_token = client.withOIDCAccessToken("your-oidc-token");
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client_with_token.free();
     /// ```
     #[wasm_bindgen(js_name = "withOIDCAccessToken")]
     pub fn with_oidc_access_token(&self, oidc_access_token: String) -> Self {
         Self {
-            domain_client: self.domain_client.with_oidc_access_token(&oidc_access_token),
+            domain_client: self
+                .domain_client
+                .with_oidc_access_token(&oidc_access_token),
         }
     }
 
@@ -280,7 +286,7 @@ impl DomainClient {
             if let Err(e) = res {
                 return Err(JsError::new(&e.to_string()).into());
             }
-            let response = res.unwrap(); 
+            let response = res.unwrap();
 
             to_value(&response).map_err(|e| JsError::new(&e.to_string()).into())
         };
@@ -323,7 +329,9 @@ impl DomainClient {
                     return;
                 }
             };
-            let res = domain_client.download_domain_data_stream(&domain_id, &query).await;
+            let res = domain_client
+                .download_domain_data_stream(&domain_id, &query)
+                .await;
             if let Ok(mut download_rx) = res {
                 while let Some(result) = download_rx.next().await {
                     match result {
@@ -478,10 +486,14 @@ impl DomainClient {
         let future = async move {
             match from_value::<r_JobRequest>(request) {
                 Ok(process_request) => {
-                    let res = domain_client.submit_job_request_v1(&domain_id, &process_request).await;
+                    let res = domain_client
+                        .submit_job_request_v1(&domain_id, &process_request)
+                        .await;
                     match res {
                         Ok(response) => {
-                            let body = response.text().await
+                            let body = response
+                                .text()
+                                .await
                                 .map_err(|e| JsError::new(&e.to_string()))?;
                             Ok(JsValue::from_str(&body))
                         }
@@ -493,18 +505,18 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-          
-    /// Lists domains for the given organization.
+
+    /// # ListDomains returns a list of domains the caller has access to.
     ///
     /// # Arguments
-    /// * `org` - The organization ID or `own` to get the domains for the current organization.
+    /// * `query` - The `ListDomainsQuery` object containing the query parameters.
     ///
     /// # Returns
     /// * `Promise<ListDomainsResponse>` - Resolves to a ListDomainsResponse object.
     ///
     /// # Example
     /// ```javascript
-    /// let domains: ListDomainsResponse = await client.listDomains({ org: "organization-123" });
+    /// let domains: ListDomainsResponse = await client.listDomains({ org: "own", domain_server_id: "domain-server-123" });
     /// ```
     #[wasm_bindgen(js_name = "listDomains")]
     pub fn list_domains(&self, query: JsValue) -> Promise {
@@ -527,9 +539,9 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-    
+
     /// Creates domain
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the domain.
     /// * `domain_server_id` - The ID of the domain server.
@@ -544,10 +556,18 @@ impl DomainClient {
     /// let domain: DomainWithServer = await client.createDomain("test domain", "domain-server-id", "https://domain-server.example.com", "https://redirect.example.com");
     /// ```
     #[wasm_bindgen(js_name = "createDomain")]
-    pub fn create_domain(&self, name: String, domain_server_id: Option<String>, domain_server_url: Option<String>, redirect_url: Option<String>) -> Promise {
+    pub fn create_domain(
+        &self,
+        name: String,
+        domain_server_id: Option<String>,
+        domain_server_url: Option<String>,
+        redirect_url: Option<String>,
+    ) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.create_domain(&name, domain_server_id, domain_server_url, redirect_url).await;
+            let res = domain_client
+                .create_domain(&name, domain_server_id, domain_server_url, redirect_url)
+                .await;
             match res {
                 Ok(domain) => match to_value(&domain.domain) {
                     Ok(value) => Ok(value),
@@ -560,7 +580,7 @@ impl DomainClient {
     }
 
     /// Deletes a domain
-    /// 
+    ///
     /// # Arguments
     /// * `domain_id` - The ID of the domain to delete.
     ///

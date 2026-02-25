@@ -30,7 +30,7 @@ const deleteTestDomain = async (client: DomainClient, domainId: string) => {
 describe('Posemesh Domain HTTP', async() => {
     let domainId: string;
     const userClient: DomainClient = await signInWithUserCredential(config.API_URL, config.DDS_URL, config.CLIENT_ID, config.POSEMESH_EMAIL, config.POSEMESH_PASSWORD, true);
-    
+
     beforeAll(async () => {
         domainId = await createTestDomain(userClient);
     });
@@ -206,7 +206,7 @@ describe('Posemesh Domain HTTP', async() => {
                 expect(domain.domain_server.url).toBeDefined();
                 expect(domain.domain_server.organization_id).toBeDefined();
                 expect(domain.domain_server.name).toBeDefined();
-            } 
+            }
         });
 
         it('should list no domains if organization is not found', async () => {
@@ -214,6 +214,26 @@ describe('Posemesh Domain HTTP', async() => {
             expect(domains).toBeDefined();
             expect(Array.isArray(domains)).toBe(true);
             expect(domains.length).toBe(0);
+        });
+
+        it('should list domains by domain server id', async () => {
+            const domains = await client.listDomains({ org: "own" } as ListDomainsQuery);
+            expect(domains).toBeDefined();
+            expect(Array.isArray(domains)).toBe(true);
+
+            if (domains.length === 0) {
+                console.warn('No domains found to test list by domain server id');
+                return;
+            }
+
+            let domainServerId = domains[0].domain_server_id;
+            const filteredDomains = await client.listDomains({ org: "own", portal_id: null, portal_short_id: null, domain_server_id: domainServerId } as ListDomainsQuery);
+            expect(filteredDomains).toBeDefined();
+            expect(Array.isArray(filteredDomains)).toBe(true);
+            expect(filteredDomains.length).toBeGreaterThan(0);
+            for (const domain of filteredDomains) {
+                expect(domain.domain_server_id).toEqual(domainServerId);
+            }
         });
 
         it('should return auth error for submitting job request with app credential', async () => {
@@ -334,6 +354,26 @@ describe('Posemesh Domain HTTP', async() => {
                 processing_type: "invalid_processing_type"
             })).rejects.toThrow(/Auki response - status: 400 Bad Request, error: Failed to process domain. invalid processing type/);
         });
+
+        it('should list domains by domain server id', async () => {
+            const domains = await client.listDomains({ org: "own" } as ListDomainsQuery);
+            expect(domains).toBeDefined();
+            expect(Array.isArray(domains)).toBe(true);
+
+            if (domains.length === 0) {
+                console.warn('No domains found to test list by domain server id');
+                return;
+            }
+
+            let domainServerId = domains[0].domain_server_id;
+            const filteredDomains = await client.listDomains({ org: "own", portal_id: null, portal_short_id: null, domain_server_id: domainServerId } as ListDomainsQuery);
+            expect(filteredDomains).toBeDefined();
+            expect(Array.isArray(filteredDomains)).toBe(true);
+            expect(filteredDomains.length).toBeGreaterThan(0);
+            for (const domain of filteredDomains) {
+                expect(domain.domain_server_id).toEqual(domainServerId);
+            }
+        });
     });
 
     describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_access_token', () => {
@@ -348,7 +388,7 @@ describe('Posemesh Domain HTTP', async() => {
             clientWithOIDCAccessToken.free();
             client.free();
         });
-        
+
         it('should download domain data', async () => {
             const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(domainId, {
                 ids: [],
