@@ -74,9 +74,10 @@ pub async fn get_upload_info_v1(url: &str) -> Option<UploadInfoV1> {
     {
         let cache = info_cache().lock().await;
         if let Some(entry) = cache.get(url)
-            && entry.expires_at > now {
-                return entry.value.clone();
-            }
+            && entry.expires_at > now
+        {
+            return entry.value.clone();
+        }
     }
 
     let fetched = match fetch_info_v1(url).await {
@@ -1352,7 +1353,9 @@ fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
 fn find_headers_end(data: &[u8]) -> Option<usize> {
     if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
         Some(i + 4) // body starts after \r\n\r\n
-    } else { data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2) }
+    } else {
+        data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
+    }
 }
 
 async fn handle_domain_data_stream(
