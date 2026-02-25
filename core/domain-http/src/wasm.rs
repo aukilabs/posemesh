@@ -210,7 +210,9 @@ impl DomainClient {
     #[wasm_bindgen(js_name = "withOIDCAccessToken")]
     pub fn with_oidc_access_token(&self, oidc_access_token: String) -> Self {
         Self {
-            domain_client: self.domain_client.with_oidc_access_token(&oidc_access_token),
+            domain_client: self
+                .domain_client
+                .with_oidc_access_token(&oidc_access_token),
         }
     }
 
@@ -323,7 +325,9 @@ impl DomainClient {
                     return;
                 }
             };
-            let res = domain_client.download_domain_data_stream(&domain_id, &query).await;
+            let res = domain_client
+                .download_domain_data_stream(&domain_id, &query)
+                .await;
             if let Ok(mut download_rx) = res {
                 while let Some(result) = download_rx.next().await {
                     match result {
@@ -478,10 +482,14 @@ impl DomainClient {
         let future = async move {
             match from_value::<r_JobRequest>(request) {
                 Ok(process_request) => {
-                    let res = domain_client.submit_job_request_v1(&domain_id, &process_request).await;
+                    let res = domain_client
+                        .submit_job_request_v1(&domain_id, &process_request)
+                        .await;
                     match res {
                         Ok(response) => {
-                            let body = response.text().await
+                            let body = response
+                                .text()
+                                .await
                                 .map_err(|e| JsError::new(&e.to_string()))?;
                             Ok(JsValue::from_str(&body))
                         }
@@ -551,10 +559,18 @@ impl DomainClient {
     /// let domain: DomainWithServer = await client.createDomain("test domain", "domain-server-id", "https://domain-server.example.com", "https://redirect.example.com");
     /// ```
     #[wasm_bindgen(js_name = "createDomain")]
-    pub fn create_domain(&self, name: String, domain_server_id: Option<String>, domain_server_url: Option<String>, redirect_url: Option<String>) -> Promise {
+    pub fn create_domain(
+        &self,
+        name: String,
+        domain_server_id: Option<String>,
+        domain_server_url: Option<String>,
+        redirect_url: Option<String>,
+    ) -> Promise {
         let domain_client = self.domain_client.clone();
         let future = async move {
-            let res = domain_client.create_domain(&name, domain_server_id, domain_server_url, redirect_url).await;
+            let res = domain_client
+                .create_domain(&name, domain_server_id, domain_server_url, redirect_url)
+                .await;
             match res {
                 Ok(domain) => match to_value(&domain.domain) {
                     Ok(value) => Ok(value),
