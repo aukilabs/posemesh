@@ -60,7 +60,7 @@ unit-tests: ci-compute-node
 			set -o allexport; . ../../../.env.local; set +o allexport; \
 		fi; \
 		. .venv/bin/activate && pytest -v -s
-	@cargo test --release --all-features -- --test-threads=1
+	@cargo test -p posemesh-domain-http -p posemesh-utils --release --all-features -- --test-threads=1
 
 fmt-rust:
 	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils -- --check

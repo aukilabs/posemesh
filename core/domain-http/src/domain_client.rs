@@ -202,6 +202,34 @@ impl DomainClient {
         .await
     }
 
+    /// Lists domains the caller has access to.
+    ///
+    /// # Arguments
+    /// * `query` - The `ListDomainsQuery` object containing the query parameters.
+    ///
+    /// - org: (required) The organization to list domains from:
+    ///   - "own": returns domains in your own organization.
+    ///   - a UUID: returns domains in that specific organization.
+    ///   - "all": returns domains across all organizations. When filtering by 'portal' (see below), this works without restrictions.
+    ///     Otherwise, 'domain_server_id' is required and the domain server must belong to your org.
+    ///     Not available for app tokens without a portal filter.
+    /// - portal_id: (optional) Full UUID of a portal to filter domains. Mutually exclusive with 'portal_short_id'.
+    /// - portal_short_id: (optional) Short ID of a portal to filter domains. Mutually exclusive with 'portal_id'.
+    /// - domain_server_id: (optional) UUID of the domain server to filter domains. Ignored if a portal filter is active.
+    ///
+    /// # Returns
+    /// * `ListDomainsResponse` - The list of domains the caller has access to.
+    ///
+    /// # Example
+    /// ```rust
+    /// let query = ListDomainsQuery {
+    ///     org: "own".to_string(),
+    ///     portal_id: None,
+    ///     portal_short_id: None,
+    ///     domain_server_id: None,
+    /// };
+    /// let domains = client.list_domains(&query).await?;
+    /// ```
     pub async fn list_domains(
         &self,
         query: &ListDomainsQuery,

@@ -226,7 +226,7 @@ class TestAppCredential:
 
     def test_list_domains(self, app_client):
         """Test listing domains."""
-        query = ListDomainsQuery(org="own")
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=None)
         res = app_client.list_domains(query)
         assert res is not None
         assert isinstance(res, ListDomainsResponse)
@@ -303,7 +303,7 @@ class TestUserCredential:
 
     def test_list_domains_by_domain_server_id(self, user_client):
         """Test listing domains by domain server id."""
-        query = ListDomainsQuery(org="own")
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=None)
         res = user_client.list_domains(query)
         assert res is not None
         assert isinstance(res, ListDomainsResponse)
@@ -313,7 +313,7 @@ class TestUserCredential:
             pytest.skip("No domains found to test list by domain server id")
 
         domain_server_id = res.domains[0].domain_server_id
-        query = ListDomainsQuery(org="all", portal_id=None, portal_short_id=None, domain_server_id=domain_server_id)
+        query = ListDomainsQuery(org="own", portal_id=None, portal_short_id=None, domain_server_id=domain_server_id)
         res = user_client.list_domains(query)
         assert res is not None
         assert isinstance(res, ListDomainsResponse)

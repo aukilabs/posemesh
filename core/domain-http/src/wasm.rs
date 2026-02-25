@@ -17,22 +17,26 @@ use wasm_streams::readable::sys;
 const TS_APPEND_CONTENT: &'static str = r#"
 
 export type DownloadQuery = { ids: string[], name: string | null, data_type: string | null };
-/**
- * UploadDomainData is a union of CreateDomainData and UpdateDomainData
- * CreateDomainData is an object with the following fields:
- * - name: string
- * - data_type: string
- * - data: Uint8Array
- * UpdateDomainData is an object with the following fields:
- * - id: string
- */
 export type UploadDomainData = { id?: string, name?: string, data_type?: string, data: Uint8Array };
 export type DomainDataMetadata = { id: string, name: string, data_type: string, size: number, created_at: string, updated_at: string };
 export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
 export type DomainServer = { id: string, url: string, organization_id: string, name: string };
 export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
 export type JobRequest = { data_ids: string[], processing_type: string, server_api_key: string, server_url: string };
-export type ListDomainsQuery = { portal_id: string | null, portal_short_id: string | null, org: string, domain_server_id: string | null };
+/**
+ * ListDomainsQuery specifies the parameters for listing domains the caller has access to.
+ *
+ * - org: (required) The organization to list domains from:
+ *   - "own": returns domains in your own organization.
+ *   - a UUID: returns domains in that specific organization.
+ *   - "all": returns domains across all organizations. When filtering by 'portal' (see below), this works without restrictions.
+ *     Otherwise, 'domain_server_id' is required and the domain server must belong to your org.
+ *     Not available for app tokens without a portal filter.
+ * - portal_id: (optional) Full UUID of a portal to filter domains. Mutually exclusive with 'portal_short_id'.
+ * - portal_short_id: (optional) Short ID of a portal to filter domains. Mutually exclusive with 'portal_id'.
+ * - domain_server_id: (optional) UUID of the domain server to filter domains. Ignored if a portal filter is active.
+ */
+export type ListDomainsQuery = { portal_id?: string | null, portal_short_id?: string | null, org: string, domain_server_id?: string | null };
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
@@ -502,24 +506,17 @@ impl DomainClient {
         future_to_promise(future)
     }
 
-    /// Lists domains
-    ///
-    /// If `portal_id` or `portal_short_id` is provided, the domains will be filtered by the portal ID or short ID and the organization.
-    /// If `domain_server_id` is provided, the domains will be filtered by the domain server ID and the organization.
-    /// If neither `domain_server_id` nor `portal_id` or `portal_short_id` is provided, the domains will be filtered by the organization.
+    /// # ListDomains returns a list of domains the caller has access to.
     ///
     /// # Arguments
-    /// * `org` - The organization ID or `own` to get the domains for the current organization. required.
-    /// * `domain_server_id` - The ID of the domain server to filter domains by. optional.
-    /// * `portal_id` - The ID of the portal to filter domains by. optional.
-    /// * `portal_short_id` - The short ID of the portal to filter domains by. optional.
+    /// * `query` - The `ListDomainsQuery` object containing the query parameters.
     ///
     /// # Returns
     /// * `Promise<ListDomainsResponse>` - Resolves to a ListDomainsResponse object.
     ///
     /// # Example
     /// ```javascript
-    /// let domains: ListDomainsResponse = await client.listDomains({ org: "organization-123", domain_server_id: "domain-server-123" });
+    /// let domains: ListDomainsResponse = await client.listDomains({ org: "own", domain_server_id: "domain-server-123" });
     /// ```
     #[wasm_bindgen(js_name = "listDomains")]
     pub fn list_domains(&self, query: JsValue) -> Promise {

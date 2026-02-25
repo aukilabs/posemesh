@@ -95,6 +95,22 @@ impl DiscoveryService {
     }
 
     /// List domains with domain server without issue token
+    ///
+    /// - org: (required) The organization to list domains from:
+    ///   - "own": returns domains in your own organization.
+    ///   - a UUID: returns domains in that specific organization.
+    ///   - "all": returns domains across all organizations.
+    ///     Otherwise, 'domain_server_id' is required and the domain server must belong to your org.
+    ///     Not available for app tokens.
+    /// - domain_server_id: (optional) UUID of the domain server to filter domains. Ignored if a portal filter is active.
+    ///
+    /// # Access control
+    ///   - App tokens can only see domains where the app is on the domain's app allowlist
+    ///     (or the domain has no app allowlist).
+    ///   - User tokens can see all domains in their own org. When requesting domains outside
+    ///     their org, they can only see domains where their org is on the domain's user-org
+    ///     allowlist (or the domain has no user-org allowlist).
+    ///
     pub async fn list_domains(
         &self,
         org: &str,

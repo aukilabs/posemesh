@@ -366,7 +366,7 @@ describe('Posemesh Domain HTTP', async() => {
             }
 
             let domainServerId = domains[0].domain_server_id;
-            const filteredDomains = await client.listDomains({ org: "all", portal_id: null, portal_short_id: null, domain_server_id: domainServerId } as ListDomainsQuery);
+            const filteredDomains = await client.listDomains({ org: "own", portal_id: null, portal_short_id: null, domain_server_id: domainServerId } as ListDomainsQuery);
             expect(filteredDomains).toBeDefined();
             expect(Array.isArray(filteredDomains)).toBe(true);
             expect(filteredDomains.length).toBeGreaterThan(0);

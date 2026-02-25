@@ -152,6 +152,12 @@ dictionary ListDomainsResponse {
 /// Used to filter which domains to retrieve.
 dictionary ListDomainsQuery {
     /// Organization ID to filter domains by (required)
+    ///  - "own": returns domains in your own organization.
+    ///  - a UUID: returns domains in that specific organization.
+    ///  - "all": returns domains across all organizations. When filtering by
+    ///           portal, this works without restrictions. Otherwise, domain_server_id
+    ///           is required and the domain server must belong to your org.
+    ///           Not available for app tokens without a portal filter.
     string org;
     /// Optional portal ID filter
     string? portal_id;
