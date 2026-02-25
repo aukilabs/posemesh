@@ -51,7 +51,7 @@ fn info_cache() -> &'static Mutex<HashMap<String, InfoCacheEntry>> {
 
 async fn fetch_info_v1(url: &str) -> Result<Option<UploadInfoV1>, ()> {
     let resp = Client::new()
-        .get(&format!("{}/api/v1/info", url))
+        .get(format!("{}/api/v1/info", url))
         .send()
         .await
         .map_err(|_| ())?;
@@ -73,11 +73,10 @@ pub async fn get_upload_info_v1(url: &str) -> Option<UploadInfoV1> {
     let now = now_unix_secs();
     {
         let cache = info_cache().lock().await;
-        if let Some(entry) = cache.get(url) {
-            if entry.expires_at > now {
+        if let Some(entry) = cache.get(url)
+            && entry.expires_at > now {
                 return entry.value.clone();
             }
-        }
     }
 
     let fetched = match fetch_info_v1(url).await {
@@ -204,7 +203,7 @@ pub async fn download_by_id(
     id: &str,
 ) -> Result<Vec<u8>, DomainError> {
     let response = Client::new()
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/domains/{}/data/{}?raw=true",
             url, domain_id, id
         ))
@@ -277,7 +276,7 @@ pub async fn download_v1(
             if params.is_empty() {
                 &format!("?ids={}", ids)
             } else {
-                &format!("?ids={}", ids)
+                &format!("&ids={}", ids)
             }
         } else {
             ""
@@ -285,7 +284,7 @@ pub async fn download_v1(
     };
 
     let response = Client::new()
-        .get(&format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
+        .get(format!("{}/api/v1/domains/{}/data{}", url, domain_id, ids))
         .bearer_auth(access_token)
         .header(
             "Accept",
@@ -342,7 +341,7 @@ pub async fn download_v1_stream(
         None => {
             tracing::error!("Invalid content-type header");
             let _ = tx.close().await;
-            return Err(DomainError::InvalidContentTypeHeader.into());
+            return Err(DomainError::InvalidContentTypeHeader);
         }
     };
 
@@ -392,7 +391,7 @@ async fn initiate_domain_data_multipart_upload(
     req: &InitiateMultipartRequest,
 ) -> Result<InitiateMultipartResponse, DomainError> {
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/api/v1/domains/{}/data/multipart?uploads",
             url, domain_id
         ))
@@ -428,7 +427,7 @@ async fn upload_domain_data_multipart_part(
     bytes: Bytes,
 ) -> Result<UploadPartResult, DomainError> {
     let resp = client
-        .put(&format!(
+        .put(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}&partNumber={}",
             url, domain_id, upload_id, part_number
         ))
@@ -463,7 +462,7 @@ async fn complete_domain_data_multipart_upload(
     parts: Vec<CompletedPart>,
 ) -> Result<DomainDataMetadata, DomainError> {
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}",
             url, domain_id, upload_id
         ))
@@ -497,7 +496,7 @@ async fn abort_domain_data_multipart_upload(
     upload_id: &str,
 ) -> Result<(), DomainError> {
     let resp = client
-        .delete(&format!(
+        .delete(format!(
             "{}/api/v1/domains/{}/data/multipart?uploadId={}",
             url, domain_id, upload_id
         ))
@@ -779,7 +778,7 @@ pub async fn upload_v1_stream(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
                     boundary, name, data_type
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
 
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
                 if multipart_enabled && !fits_alone {
@@ -847,7 +846,7 @@ pub async fn upload_v1_stream(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
                     boundary, id
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
 
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
                 if multipart_enabled && !fits_alone {
@@ -950,7 +949,7 @@ async fn update_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let update_response = Client::new()
-        .put(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .put(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -988,7 +987,7 @@ async fn create_v1(
     body: Body,
 ) -> Result<Vec<DomainDataMetadata>, DomainError> {
     let create_response = Client::new()
-        .post(&format!("{}/api/v1/domains/{}/data", url, domain_id))
+        .post(format!("{}/api/v1/domains/{}/data", url, domain_id))
         .bearer_auth(access_token)
         .header(
             "Content-Type",
@@ -1120,7 +1119,7 @@ pub async fn upload_v1(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"{}\"; data-type=\"{}\"\r\n\r\n",
                     boundary, name, data_type
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
 
                 if multipart_enabled && !fits_alone {
@@ -1194,7 +1193,7 @@ pub async fn upload_v1(
                     "--{}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; id=\"{}\"\r\n\r\n",
                     boundary, id
                 );
-                let part_len = header.as_bytes().len() + bytes.len() + 2;
+                let part_len = header.len() + bytes.len() + 2;
                 let fits_alone = (part_len + closing_len) as i64 <= request_max_bytes;
 
                 if multipart_enabled && !fits_alone {
@@ -1353,11 +1352,7 @@ fn find_boundary(data: &[u8], boundary: &[u8]) -> Option<usize> {
 fn find_headers_end(data: &[u8]) -> Option<usize> {
     if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
         Some(i + 4) // body starts after \r\n\r\n
-    } else if let Some(i) = data.windows(2).position(|w| w == b"\n\n") {
-        Some(i + 2) // body starts after \n\n
-    } else {
-        None
-    }
+    } else { data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2) }
 }
 
 async fn handle_domain_data_stream(
@@ -1407,13 +1402,7 @@ async fn handle_domain_data_stream(
         }
 
         // Process all boundaries in the current buffer
-        loop {
-            // Find the next boundary in the buffer
-            let boundary_pos = match find_boundary(&buffer, &boundary_bytes) {
-                Some(pos) => pos,
-                None => break, // No more boundaries found in current buffer
-            };
-
+        while let Some(boundary_pos) = find_boundary(&buffer, &boundary_bytes) {
             // Look for header end after boundary
             let header_end = match find_headers_end(&buffer[boundary_pos..]) {
                 Some(end) => end,
@@ -1447,8 +1436,6 @@ async fn handle_domain_data_stream(
                 current_domain_data = Some(domain_data);
                 break;
             }
-
-            // Continue to process the next boundary in the same buffer
         }
     }
 }

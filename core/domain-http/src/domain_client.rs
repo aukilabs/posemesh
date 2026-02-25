@@ -339,7 +339,7 @@ mod tests {
             .await
             .expect("Failed to get DDS access token");
         let claims = auth::parse_jwt(&token).expect("Failed to parse JWT");
-        assert_ne!(claims.org.is_some(), false);
+        assert!(claims.org.is_some());
     }
 
     #[tokio::test]
@@ -382,7 +382,7 @@ mod tests {
         assert!(result.is_ok(), "error message : {:?}", result.err());
 
         let results = result.unwrap();
-        assert!(results.len() > 0);
+        assert!(!results.is_empty());
         for result in results {
             assert_eq!(result.metadata.data_type, "test");
         }
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(ids.len(), 2);
         // Create a test query
         let query = DownloadQuery {
-            ids: ids,
+            ids,
             name: None,
             data_type: None,
         };
@@ -478,7 +478,7 @@ mod tests {
             to_delete = Some(result.metadata.id.clone());
         }
         assert_eq!(count, 2);
-        assert_eq!(to_delete.is_some(), true);
+        assert!(to_delete.is_some());
 
         // Delete the one whose id is not "a8"
         let delete_result = client
@@ -582,7 +582,7 @@ mod tests {
             result.err()
         );
         let result = result.unwrap();
-        assert!(result.len() > 0);
+        assert!(!result.is_empty());
         for meta in result {
             assert!(!meta.id.is_empty());
             assert_eq!(meta.domain_id, domain_id);
@@ -636,12 +636,12 @@ mod tests {
             .list_domains(&ListDomainsQuery {
                 portal_id: None,
                 portal_short_id: None,
-                org: org,
+                org,
                 domain_server_id: None,
             })
             .await
             .unwrap();
-        assert!(result.domains.len() > 0, "No domains found");
+        assert!(!result.domains.is_empty(), "No domains found");
     }
 
     #[tokio::test]
@@ -708,8 +708,10 @@ mod tests {
         .await
         .expect("Failed to create client");
 
-        let mut job_request = JobRequest::default();
-        job_request.processing_type = "invalid_processing_type".to_string();
+        let job_request = JobRequest {
+            processing_type: "invalid_processing_type".to_string(),
+            ..Default::default()
+        };
         let res = client
             .submit_job_request_v1(&config.1, &job_request)
             .await

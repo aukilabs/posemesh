@@ -142,5 +142,5 @@ static GLOBAL_RUNTIME: Lazy<Runtime> =
 #[cfg(not(target_family = "wasm"))]
 /// Expose a function to get the global Tokio runtime.
 pub fn get_runtime() -> &'static Runtime {
-    &*GLOBAL_RUNTIME
+    &GLOBAL_RUNTIME
 }

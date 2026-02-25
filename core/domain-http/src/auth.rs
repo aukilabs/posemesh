@@ -205,7 +205,7 @@ impl AuthClient {
                 let client_id = self.client_id.clone();
                 async move {
                     let response = client
-                        .post(&format!("{}/service/domains-access-token", api_url))
+                        .post(format!("{}/service/domains-access-token", api_url))
                         .basic_auth(app_key, Some(app_secret))
                         .header("Content-Type", "application/json")
                         .header("posemesh-client-id", client_id)
@@ -278,7 +278,7 @@ impl AuthClient {
                 let user_token_cache =
                     get_cached_or_fresh_token(&user_token_cache.unwrap(), || async move {
                         let response = client_clone
-                            .post(&format!("{}/user/refresh", api_url_clone))
+                            .post(format!("{}/user/refresh", api_url_clone))
                             .header("Content-Type", "application/json")
                             .header("posemesh-client-id", client_id_clone)
                             .header("Authorization", format!("Bearer {}", refresh_token))
@@ -350,7 +350,7 @@ impl AuthClient {
 
         let response = self
             .client
-            .post(&format!("{}/user/login", &self.api_url))
+            .post(format!("{}/user/login", &self.api_url))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
             .json(&credentials)
@@ -397,7 +397,7 @@ impl AuthClient {
     async fn get_dds_token_by_token(&self, token: &str) -> Result<DdsTokenResponse, DomainError> {
         let dds_response = self
             .client
-            .post(&format!("{}/service/domains-access-token", &self.api_url))
+            .post(format!("{}/service/domains-access-token", &self.api_url))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
@@ -456,7 +456,7 @@ pub struct JwtClaim {
 pub fn parse_jwt(token: &str) -> Result<JwtClaim, AuthError> {
     let parts = token.split('.').collect::<Vec<&str>>();
     if parts.len() != 3 {
-        return Err(AuthError::Unauthorized("Invalid JWT token").into());
+        return Err(AuthError::Unauthorized("Invalid JWT token"));
     }
     let payload = parts[1];
     let decoded = general_purpose::URL_SAFE_NO_PAD.decode(payload)?;

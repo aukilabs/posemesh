@@ -40,7 +40,7 @@ pub async fn forward_job_request_v1(
     request: &JobRequest,
 ) -> Result<Response, DomainError> {
     let response = Client::new()
-        .post(&format!(
+        .post(format!(
             "{}/api/v1/domains/{}/process",
             domain_server_url, domain_id
         ))
@@ -77,7 +77,7 @@ mod tests {
         assert!(json.contains("test-id-1"));
         assert!(json.contains("https://example.com"));
 
-        let deserialized: JobRequest = serde_json::from_str(&json).unwrap();
+        let deserialized: JobRequest = serde_json::from_str(json).unwrap();
         assert_eq!(deserialized.data_ids.len(), 2);
         assert_eq!(deserialized.processing_type, "local_and_global_refinement");
         assert_eq!(deserialized.server_api_key, "aukilabs123");

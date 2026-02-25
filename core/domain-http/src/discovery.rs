@@ -197,11 +197,10 @@ impl DiscoveryService {
     }
 
     pub fn with_oidc_access_token(&self, oidc_access_token: &str) -> Self {
-        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref() {
-            if cached_oidc_access_token == oidc_access_token {
+        if let Some(cached_oidc_access_token) = self.oidc_access_token.as_deref()
+            && cached_oidc_access_token == oidc_access_token {
                 return self.clone();
             }
-        }
         Self {
             dds_url: self.dds_url.clone(),
             client: self.client.clone(),
@@ -245,7 +244,7 @@ impl DiscoveryService {
             let client_id = self.api_client.client_id.clone();
             async move {
                 let response = client
-                    .post(&format!("{}/api/v1/domains/{}/auth", dds_url, domain_id))
+                    .post(format!("{}/api/v1/domains/{}/auth", dds_url, domain_id))
                     .bearer_auth(access_token)
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)
@@ -300,7 +299,7 @@ impl DiscoveryService {
             .await?;
         let response = self
             .client
-            .post(&format!("{}/api/v1/domains?issue_token=true", self.dds_url))
+            .post(format!("{}/api/v1/domains?issue_token=true", self.dds_url))
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
@@ -360,7 +359,7 @@ impl DiscoveryService {
         let id = portal_id.or(portal_short_id).unwrap();
         let response = self
             .client
-            .get(&format!(
+            .get(format!(
                 "{}/api/v1/lighthouses/{}/domains?with=domain_server,lighthouse&org={}",
                 self.dds_url, id, org
             ))
@@ -394,7 +393,7 @@ impl DiscoveryService {
     ) -> Result<(), DomainError> {
         let response = self
             .client
-            .delete(&format!("{}/api/v1/domains/{}", self.dds_url, domain_id))
+            .delete(format!("{}/api/v1/domains/{}", self.dds_url, domain_id))
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
