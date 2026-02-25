@@ -32,18 +32,18 @@ export type DomainData = { metadata: DomainDataMetadata, data: Uint8Array };
 export type DomainServer = { id: string, url: string, organization_id: string, name: string };
 export type DomainWithServer = { id: string, name: string, organization_id: string, domain_server_id: string, redirect_url: string | null, domain_server: DomainServer };
 export type JobRequest = { data_ids: string[], processing_type: string, server_api_key: string, server_url: string };
-export type ListDomainsQuery = { portal_id: string | null, portal_short_id: string | null, org: string };
+export type ListDomainsQuery = { portal_id: string | null, portal_short_id: string | null, org: string, domain_server_id: string | null };
 
 /**
  * Signs in with application credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
- * 
+ *
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
  * @param client_id - Unique identifier for this client.
  * @param app_key - Application key for authentication.
  * @param app_secret - Application secret for authentication.
  * @returns Promise that resolves to a DomainClient instance.
- * 
+ *
  * @example
  * const client = await signInWithAppCredential(
  *   "https://api.auki.network",
@@ -64,7 +64,7 @@ export function signInWithAppCredential(
 
 /**
  * Signs in with user credentials to obtain a DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
- * 
+ *
  * @param api_url - The base URL for the API service.
  * @param dds_url - The URL for the Domain Discovery Service.
  * @param client_id - Unique identifier for this client.
@@ -72,7 +72,7 @@ export function signInWithAppCredential(
  * @param password - User's password.
  * @param remember_password - Set to `true` if you want to automatically relogin with the same credentials after refreshtoken expires, it is NOT recommended to set to `true` in client side as storing credentials in the browser increases security risks (e.g., XSS attacks).
  * @returns Promise that resolves to a DomainClient instance.
- * 
+ *
  * @example
  * const client = await signInWithUserCredential(
  *   "https://api.auki.network",
@@ -180,11 +180,11 @@ impl DomainClient {
     ///     "https://dds.example.com".to_string(),
     ///     "my-client-id".to_string()
     /// );
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client.free();
     /// ```
-    /// 
+    ///
     #[wasm_bindgen(constructor)]
     pub fn new(api_url: String, dds_url: String, client_id: String) -> Self {
         Self {
@@ -203,7 +203,7 @@ impl DomainClient {
     /// # Example
     /// ```javascript
     /// const client_with_token = client.withOIDCAccessToken("your-oidc-token");
-    /// 
+    ///
     /// // free the memory when you are done with the client
     /// client_with_token.free();
     /// ```
@@ -280,7 +280,7 @@ impl DomainClient {
             if let Err(e) = res {
                 return Err(JsError::new(&e.to_string()).into());
             }
-            let response = res.unwrap(); 
+            let response = res.unwrap();
 
             to_value(&response).map_err(|e| JsError::new(&e.to_string()).into())
         };
@@ -493,18 +493,25 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-          
-    /// Lists domains for the given organization.
+
+    /// Lists domains
+    ///
+    /// If `portal_id` or `portal_short_id` is provided, the domains will be filtered by the portal ID or short ID and the organization.
+    /// If `domain_server_id` is provided, the domains will be filtered by the domain server ID and the organization.
+    /// If neither `domain_server_id` nor `portal_id` or `portal_short_id` is provided, the domains will be filtered by the organization.
     ///
     /// # Arguments
-    /// * `org` - The organization ID or `own` to get the domains for the current organization.
+    /// * `org` - The organization ID or `own` to get the domains for the current organization. required.
+    /// * `domain_server_id` - The ID of the domain server to filter domains by. optional.
+    /// * `portal_id` - The ID of the portal to filter domains by. optional.
+    /// * `portal_short_id` - The short ID of the portal to filter domains by. optional.
     ///
     /// # Returns
     /// * `Promise<ListDomainsResponse>` - Resolves to a ListDomainsResponse object.
     ///
     /// # Example
     /// ```javascript
-    /// let domains: ListDomainsResponse = await client.listDomains({ org: "organization-123" });
+    /// let domains: ListDomainsResponse = await client.listDomains({ org: "organization-123", domain_server_id: "domain-server-123" });
     /// ```
     #[wasm_bindgen(js_name = "listDomains")]
     pub fn list_domains(&self, query: JsValue) -> Promise {
@@ -527,9 +534,9 @@ impl DomainClient {
         };
         future_to_promise(future)
     }
-    
+
     /// Creates domain
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the domain.
     /// * `domain_server_id` - The ID of the domain server.
@@ -560,7 +567,7 @@ impl DomainClient {
     }
 
     /// Deletes a domain
-    /// 
+    ///
     /// # Arguments
     /// * `domain_id` - The ID of the domain to delete.
     ///

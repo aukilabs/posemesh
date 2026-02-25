@@ -29,7 +29,7 @@ build-domain-http-wasm:
 	@rm -rf domain-http/bindings/javascript/pkg
 	@CRATE_NAME=posemesh-domain-http CRATE_DIR=domain-http OUT_DIR=bindings/javascript/pkg ./build-wasm.sh
 
-build-domain-http-uniffi:	
+build-domain-http-uniffi:
 	@rm -rf domain-http/bindings/python/pkg
 	@if [ -z "$(LANG)" ]; then \
 		echo "Please specify LANG. Usage: make build-domain-http-uniffi LANG=python"; \

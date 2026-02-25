@@ -16,6 +16,7 @@ pub struct ListDomainsQuery {
     pub portal_id: Option<String>,
     pub portal_short_id: Option<String>,
     pub org: String,
+    pub domain_server_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -205,13 +206,13 @@ impl DomainClient {
         )
         .await
     }
-  
+
     pub async fn list_domains(
         &self,
         query: &ListDomainsQuery,
     ) -> Result<ListDomainsResponse, DomainError> {
         if query.portal_id.is_none() && query.portal_short_id.is_none() {
-            self.discovery_client.list_domains(&query.org).await
+            self.discovery_client.list_domains(&query.org, query.domain_server_id.as_deref()).await
         } else {
             self.discovery_client.list_domains_by_portal(query.portal_id.as_deref(), query.portal_short_id.as_deref(), &query.org).await
         }
@@ -239,7 +240,7 @@ impl DomainClient {
 #[cfg(not(target_family = "wasm"))]
 #[cfg(test)]
 mod tests {
-    use crate::{auth::AuthClient, domain_data::{DomainAction, UploadDomainData}};
+    use crate::{auth::AuthClient, discovery::OWN_DOMAINS_ORG, domain_data::{DomainAction, UploadDomainData}};
 
     use super::*;
     use futures::channel::mpsc;
@@ -592,8 +593,55 @@ mod tests {
             portal_id: None,
             portal_short_id: None,
             org: org,
+            domain_server_id: None,
         }).await.unwrap();
         assert!(result.domains.len() > 0, "No domains found");
+    }
+
+    #[tokio::test]
+    async fn test_list_domains_by_domain_server_id() {
+        let config = get_config();
+        let client = DomainClient::new_with_app_credential(
+            &config.0.api_url,
+            &config.0.dds_url,
+            &config.0.client_id,
+            &config.0.app_key.clone().unwrap(),
+            &config.0.app_secret.clone().unwrap(),
+        )
+        .await
+        .expect("Failed to create client");
+
+        // Use a known domain_server_id from one of the domains
+        let all_domains = client.list_domains(&ListDomainsQuery {
+            portal_id: None,
+            portal_short_id: None,
+            org: OWN_DOMAINS_ORG.to_string(),
+            domain_server_id: None,
+        }).await.expect("Failed to list all domains");
+        assert!(!all_domains.domains.is_empty(), "No domains found");
+
+        let domain_server_id = &all_domains.domains[0].domain_server_id;
+
+        let filtered_domains = client.list_domains(&ListDomainsQuery {
+            portal_id: None,
+            portal_short_id: None,
+            org: OWN_DOMAINS_ORG.to_string(),
+            domain_server_id: Some(domain_server_id.clone()),
+        })
+        .await
+        .expect("Failed to list domains by domain_server_id");
+
+        // Make sure every returned domain matches the domain_server_id
+        assert!(
+            !filtered_domains.domains.is_empty(),
+            "Filtered domains should not be empty"
+        );
+        for domain in &filtered_domains.domains {
+            assert_eq!(
+                &domain.domain_server_id, domain_server_id,
+                "Domain server id should match the filter"
+            );
+        }
     }
 
     #[tokio::test]

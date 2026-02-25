@@ -95,17 +95,19 @@ impl DiscoveryService {
     pub async fn list_domains(
         &self,
         org: &str,
+        domain_server_id: Option<&str>,
     ) -> Result<ListDomainsResponse, DomainError> {
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
             .await?;
+        let mut url = format!("{}/api/v1/domains?org={}&with=domain_server", self.dds_url, org);
+        if let Some(domain_server_id) = domain_server_id {
+            url.push_str(&format!("&domain_server_id={}", domain_server_id));
+        }
         let response = self
             .client
-            .get(&format!(
-                "{}/api/v1/domains?org={}&with=domain_server",
-                self.dds_url, org
-            ))
+            .get(&url)
             .bearer_auth(access_token)
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())

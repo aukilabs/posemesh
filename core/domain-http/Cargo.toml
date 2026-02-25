@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-domain-http"
-version = "1.5.1"
+version = "1.5.2"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
@@ -31,7 +31,7 @@ console_error_panic_hook = { workspace = true }
 wasm-streams = "0.4.2"
 
 [build-dependencies]
-uniffi = {workspace = true, features = ["build"]} 
+uniffi = {workspace = true, features = ["build"]}
 
 [dev-dependencies]
 dotenvy = "0.15.7"
