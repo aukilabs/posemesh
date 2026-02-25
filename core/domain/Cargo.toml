@@ -15,7 +15,7 @@ serde_json = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
 async-trait = {workspace = true} 
-jsonwebtoken = "9.3.0"
+jsonwebtoken = "10.3.0"
 tracing = { workspace = true }
 posemesh-networking = { workspace = true }
 rs_merkle = "1.5.0"
