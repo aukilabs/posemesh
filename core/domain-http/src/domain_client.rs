@@ -220,16 +220,6 @@ impl DomainClient {
     /// # Returns
     /// * `ListDomainsResponse` - The list of domains the caller has access to.
     ///
-    /// # Example
-    /// ```rust
-    /// let query = ListDomainsQuery {
-    ///     org: "own".to_string(),
-    ///     portal_id: None,
-    ///     portal_short_id: None,
-    ///     domain_server_id: None,
-    /// };
-    /// let domains = client.list_domains(&query).await?;
-    /// ```
     pub async fn list_domains(
         &self,
         query: &ListDomainsQuery,
