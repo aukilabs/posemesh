@@ -1,10 +1,10 @@
-## The Posemesh - The DePIN for AI perception.
+## The Real World Web.
 
-The posemesh is a decentralized machine perception network and collaborative spatial computing protocol for the next 100 billion robots, devices and AI on Earth and beyond.
+The posemesh underpins the real world web - a decentralized machine perception network and collaborative spatial computing protocol for the next 100 billion robots, devices and AI on Earth and beyond.
 
-Our mission is to help machines see the world, to enable the future of AI, robotics and the metaverse. To this end, we aim to develop and deploy civilization-scale network infrastructure funded, owned and operated by the people. We build together in public, with the support of our community and backers. This is how we win.
+Our mission is to help machines browse, search and navigate the physical world, to enable the future of AI, robotics and the metaverse. To this end, we aim to develop and deploy civilization-scale network infrastructure funded, owned and operated by the people. We build together in public, with the support of our community and backers. This is how we win.
 
-To learn more about this vision, read the [whitepaper](https://auki.ai/whitepaper).
+To learn more about this vision, read the [whitepaper](https://auki.com/whitepaper).
 
 ## Getting Started:
 
@@ -12,13 +12,13 @@ To get started building on the posemesh, check out the [Examples](https://github
 
 ## Contributors:
 
-The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.ai). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
+The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.com). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
 
 **- Fork the Repository:** Start by forking the repository and creating a new branch for your feature or bugfix.
 
 **- Create a Pull Request:** Once your changes are ready, submit a pull request.
 
-**- Discuss:** We encourage discussions about this project to happen on the [posemesh community Discord server](https://discord.gg/aukiverse).
+**- Discuss:** We encourage discussions about this project to happen on the [posemesh community Discord server](https://discord.gg/auki).
 
 ### Conventions
 - Coding: [WebKit code style guidelines](https://webkit.org/code-style-guidelines/) (`.clang-format` file in root of the project, can be used by IDEs e.g. in Visual Studio Code if the `C_Cpp: Clang_format_style` setting is set to `file`).
