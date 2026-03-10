@@ -18,7 +18,7 @@ The posemesh is an open protocol built by the community. It is currently managed
 
 **- Create a Pull Request:** Once your changes are ready, submit a pull request.
 
-**- Discuss:** We encourage discussions about this project to happen on the [posemesh community Discord server](https://discord.gg/auki).
+**- Discuss:** We encourage discussions about this project to happen on the [Auki community Discord server](https://discord.gg/auki).
 
 ### Conventions
 - Coding: [WebKit code style guidelines](https://webkit.org/code-style-guidelines/) (`.clang-format` file in root of the project, can be used by IDEs e.g. in Visual Studio Code if the `C_Cpp: Clang_format_style` setting is set to `file`).
@@ -32,7 +32,7 @@ The posemesh is an open protocol built by the community. It is currently managed
 
 ## Contact:
 
-For any questions or support, please open an issue, or reach out to Auki Labs via [Discord](https://discord.gg/aukiverse) or [email](mailto:contact@aukilabs.com).
+For any questions or support, please open an issue, or reach out to Auki Labs via [Discord](https://discord.gg/auki) or [email](mailto:contact@aukilabs.com).
 If you believe you have found a vulnerability/security issue, please send details of it to security@aukilabs.com. Please do not open an issue on GitHub
 for it or spread info about it publicly.
 
