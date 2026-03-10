@@ -4,6 +4,7 @@
   "title": "Posemesh GenTool enum/interface schema",
   "type": "object",
   "description": "Schema for Posemesh GenTool enum and interface JSON definitions.",
+  "markdownDescription": "Schema for Posemesh GenTool enum and interface JSON definitions.",
   "oneOf": [
     { "$ref": "#/$defs/EnumDef" },
     { "$ref": "#/$defs/InterfaceDef" }
@@ -18,32 +19,24 @@
     },
     "TypeKey": {
       "description": "Valid type key for properties (see GenTool README valid types).",
+      "markdownDescription": "Valid type key for properties. **Primitives:** `int8`, `float`, `string`, etc. **Parameterized:** `CLASS_MIX:Vector3`, `ENUM:SolvePnPMethod`, `ARRAY_REF:float`.",
       "oneOf": [
         {
           "type": "string",
           "enum": ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double", "boolean", "string", "string_ref", "string_mix", "data"]
         },
-        {
-          "type": "string",
-          "pattern": "^(ENUM:[A-Za-z0-9_]+|CLASS(?:_(REF|MIX|PTR|PTR_REF|PTR_MIX))?:[A-Za-z0-9_]+|ARRAY(?:_(REF|MIX|PTR|PTR_REF|PTR_MIX))?:(int8|int16|int32|int64|uint8|uint16|uint32|uint64|float|double|boolean|string|[A-Za-z0-9_]+))$"
-        }
+        { "$ref": "gentool.schema.generated.json#/$defs/ParameterizedTypeKey" }
       ]
     },
     "ParamTypeKey": {
       "description": "Valid type key for method/constructor parameters and return types (excludes string_mix, CLASS_MIX, ARRAY_MIX).",
-      "allOf": [
+      "markdownDescription": "Valid type for parameters/return. Excludes `string_mix`, `CLASS_MIX`, `ARRAY_MIX`.",
+      "oneOf": [
         {
-          "oneOf": [
-            {
-              "type": "string",
-              "enum": ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double", "boolean", "string", "string_ref", "data"]
-            },
-            {
-              "type": "string",
-              "pattern": "^(ENUM:[A-Za-z0-9_]+|CLASS(?:_(REF|PTR|PTR_REF))?:[A-Za-z0-9_]+|ARRAY(?:_(REF|PTR|PTR_REF))?:(int8|int16|int32|int64|uint8|uint16|uint32|uint64|float|double|boolean|string|[A-Za-z0-9_]+))$"
-            }
-          ]
-        }
+          "type": "string",
+          "enum": ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double", "boolean", "string", "string_ref", "data"]
+        },
+        { "$ref": "gentool.schema.generated.json#/$defs/ParameterizedParamTypeKey" }
       ]
     },
     "Alias": {
@@ -64,27 +57,27 @@
         ".*\\.gen$": { "type": "boolean" }
       },
       "properties": {
-        "name": { "type": "string", "description": "Property name" },
-        "type": { "$ref": "#/$defs/TypeKey", "description": "Property type" },
-        "static": { "type": "boolean", "description": "Static property" },
-        "hasGetter": { "type": "boolean", "description": "Generate getter" },
-        "getterConst": { "type": "boolean", "description": "Getter is const" },
-        "getterNoexcept": { "type": "boolean", "description": "Getter is noexcept" },
-        "getterName": { "type": "string", "description": "Custom getter name" },
-        "getterMode": { "$ref": "#/$defs/MethodMode", "description": "Getter mode" },
-        "getterCustom": { "type": "boolean", "description": "Custom getter implementation" },
-        "getterVisibility": { "$ref": "#/$defs/Visibility", "description": "Getter visibility" },
-        "hasSetter": { "type": "boolean", "description": "Generate setter" },
-        "setterConst": { "type": "boolean", "description": "Setter is const" },
-        "setterNoexcept": { "type": "boolean", "description": "Setter is noexcept" },
-        "setterName": { "type": "string", "description": "Custom setter name" },
-        "setterArgName": { "type": "string", "description": "Setter argument name" },
-        "setterMode": { "$ref": "#/$defs/MethodMode", "description": "Setter mode" },
-        "setterCustom": { "type": "boolean", "description": "Custom setter implementation" },
-        "setterVisibility": { "$ref": "#/$defs/Visibility", "description": "Setter visibility" },
-        "hasMemberVar": { "type": "boolean", "description": "Has backing member variable" },
-        "defaultValue": { "type": "string", "description": "Default value" },
-        "partOfIdentity": { "type": "boolean", "description": "Include in equality/hash" }
+        "name": { "type": "string", "description": "Property name", "markdownDescription": "**Property name** (e.g. `X`, `Position`)" },
+        "type": { "$ref": "#/$defs/TypeKey", "description": "Property type", "markdownDescription": "**Property type** — primitive or `CLASS_MIX:Name`, `ENUM:Name`, `ARRAY_REF:type`" },
+        "static": { "type": "boolean", "description": "Static property", "markdownDescription": "**Static** — class-level property" },
+        "hasGetter": { "type": "boolean", "description": "Generate getter", "markdownDescription": "**Generate getter** — default `true`" },
+        "getterConst": { "type": "boolean", "description": "Getter is const", "markdownDescription": "**Getter is const**" },
+        "getterNoexcept": { "type": "boolean", "description": "Getter is noexcept", "markdownDescription": "**Getter is noexcept**" },
+        "getterName": { "type": "string", "description": "Custom getter name", "markdownDescription": "**Custom getter name** — override default" },
+        "getterMode": { "$ref": "#/$defs/MethodMode", "description": "Getter mode", "markdownDescription": "**Getter mode** — `regular`, `virtual`, `pureVirtual`, `override`" },
+        "getterCustom": { "type": "boolean", "description": "Custom getter implementation", "markdownDescription": "**Custom getter** — you implement; use with `hasMemberVar: false` for computed props" },
+        "getterVisibility": { "$ref": "#/$defs/Visibility", "description": "Getter visibility", "markdownDescription": "**Getter visibility** — `public`, `protected`, `private`" },
+        "hasSetter": { "type": "boolean", "description": "Generate setter", "markdownDescription": "**Generate setter** — default `true`; set `false` for read-only" },
+        "setterConst": { "type": "boolean", "description": "Setter is const", "markdownDescription": "**Setter is const**" },
+        "setterNoexcept": { "type": "boolean", "description": "Setter is noexcept", "markdownDescription": "**Setter is noexcept**" },
+        "setterName": { "type": "string", "description": "Custom setter name", "markdownDescription": "**Custom setter name**" },
+        "setterArgName": { "type": "string", "description": "Setter argument name", "markdownDescription": "**Setter argument name**" },
+        "setterMode": { "$ref": "#/$defs/MethodMode", "description": "Setter mode", "markdownDescription": "**Setter mode**" },
+        "setterCustom": { "type": "boolean", "description": "Custom setter implementation", "markdownDescription": "**Custom setter** — you implement" },
+        "setterVisibility": { "$ref": "#/$defs/Visibility", "description": "Setter visibility", "markdownDescription": "**Setter visibility**" },
+        "hasMemberVar": { "type": "boolean", "description": "Has backing member variable", "markdownDescription": "**Has member var** — `false` for computed-only (e.g. `Length` from X,Y,Z)" },
+        "defaultValue": { "type": "string", "description": "Default value", "markdownDescription": "**Default value** — for constructors" },
+        "partOfIdentity": { "type": "boolean", "description": "Include in equality/hash", "markdownDescription": "**Part of identity** — include in `==` and `hash`; default `true`" }
       },
       "required": ["name", "type"]
     },
