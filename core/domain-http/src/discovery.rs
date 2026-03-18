@@ -81,6 +81,25 @@ pub struct CreateDomainRequest {
     domain_server_url: String,
 }
 
+/// Returns the gateway MAC address on native targets. On WASM/browser this always returns
+/// empty string — browsers cannot access network interfaces, gateway, or MAC addresses.
+fn get_mac_address() -> Result<String, DomainError> {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        match default_net::get_default_gateway() {
+            Ok(gateway) => Ok(gateway.mac_addr.to_string()),
+            Err(_) => return Err(DomainError::InvalidRequest("No gateway found")),
+        }
+    }
+
+    #[cfg(target_family = "wasm")]
+    {
+        // Browsers cannot access network interfaces, gateway IP, or MAC addresses.
+        // Return empty string so auth still works; server may use other identifiers.
+        Ok(String::new())
+    }
+}
+
 impl DiscoveryService {
     pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         let api_client = AuthClient::new(api_url, client_id);
@@ -134,6 +153,7 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
+            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
             .send()
             .await?;
 
@@ -260,12 +280,14 @@ impl DiscoveryService {
             let dds_url = self.dds_url.clone();
             let client_id = self.api_client.client_id.clone();
             async move {
+                let mac_address = get_mac_address().unwrap_or_default();
                 let response = client
                     .post(format!("{}/api/v1/domains/{}/auth", dds_url, domain_id))
                     .bearer_auth(access_token)
                     .header("Content-Type", "application/json")
                     .header("posemesh-client-id", client_id)
                     .header("posemesh-sdk-version", crate::VERSION)
+                    .header("posemesh-gateway-mac", mac_address)
                     .send()
                     .await?;
 
@@ -321,6 +343,7 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
+            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
             .json(&CreateDomainRequest {
                 name: name.to_string(),
                 domain_server_id: domain_server_id.to_string(),
@@ -384,6 +407,7 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
+            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
             .send()
             .await?;
         if response.status().is_success() {
@@ -415,6 +439,7 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
+            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
             .send()
             .await?;
         if response.status().is_success() {
