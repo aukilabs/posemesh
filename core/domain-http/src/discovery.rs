@@ -88,7 +88,7 @@ fn get_mac_address() -> Result<String, DomainError> {
     {
         match default_net::get_default_gateway() {
             Ok(gateway) => Ok(gateway.mac_addr.to_string()),
-            Err(_) => return Err(DomainError::InvalidRequest("No gateway found")),
+            Err(_) => Err(DomainError::InvalidRequest("No gateway found")),
         }
     }
 
