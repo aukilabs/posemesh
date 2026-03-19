@@ -153,7 +153,10 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
-            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
+            .header(
+                "posemesh-gateway-mac",
+                get_mac_address().unwrap_or_default(),
+            )
             .send()
             .await?;
 
@@ -343,7 +346,10 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
-            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
+            .header(
+                "posemesh-gateway-mac",
+                get_mac_address().unwrap_or_default(),
+            )
             .json(&CreateDomainRequest {
                 name: name.to_string(),
                 domain_server_id: domain_server_id.to_string(),
@@ -407,7 +413,10 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
-            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
+            .header(
+                "posemesh-gateway-mac",
+                get_mac_address().unwrap_or_default(),
+            )
             .send()
             .await?;
         if response.status().is_success() {
@@ -439,7 +448,10 @@ impl DiscoveryService {
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", self.api_client.client_id.clone())
             .header("posemesh-sdk-version", crate::VERSION)
-            .header("posemesh-gateway-mac", get_mac_address().unwrap_or_default())
+            .header(
+                "posemesh-gateway-mac",
+                get_mac_address().unwrap_or_default(),
+            )
             .send()
             .await?;
         if response.status().is_success() {
