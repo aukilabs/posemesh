@@ -19,7 +19,6 @@ bytes = "1.10.1"
 thiserror.workspace = true
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
-pnet = "0.35.0"
 default-net = "0.22.0"
 tokio = { workspace = true, features = ["full"] }
 uniffi = { workspace = true, optional = true }
