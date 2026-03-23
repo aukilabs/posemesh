@@ -7,7 +7,10 @@ use crate::config::NodeConfig;
 use crate::dds::persist as dds_state;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use posemesh_node_registration::state::read_state;
+use posemesh_node_registration::state::{
+    read_state, set_status, STATUS_DISCONNECTED, STATUS_REGISTERED,
+};
+use reqwest::StatusCode;
 use sha3::{Digest, Keccak256};
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,13 +45,47 @@ impl AccessAuthenticator for DdsAuthenticator {
         let meta = siwe::request_nonce(self.base_url.as_str(), self.address.as_str()).await?;
         let message = siwe::compose_message(&meta, self.address.as_str(), None)?;
         let signature = siwe::sign_message(self.priv_hex.as_str(), &message)?;
-        siwe::verify(
+        match siwe::verify(
             self.base_url.as_str(),
             self.address.as_str(),
             &message,
             &signature,
         )
         .await
+        {
+            Ok(bundle) => Ok(bundle),
+            Err(err) => {
+                rearm_registration_if_invalid(&err);
+                Err(err)
+            }
+        }
+    }
+}
+
+fn rearm_registration_if_invalid(err: &siwe::SiweError) {
+    let Some(status) = err.status_code() else {
+        return;
+    };
+    if status != StatusCode::FORBIDDEN && status != StatusCode::NOT_FOUND {
+        return;
+    }
+
+    if let Ok(state) = read_state() {
+        if state.status == STATUS_DISCONNECTED {
+            return;
+        }
+    }
+
+    match set_status(STATUS_DISCONNECTED) {
+        Ok(()) => warn!(
+            status = %status,
+            "DDS SIWE verification indicates registration is no longer valid; re-arming registration"
+        ),
+        Err(set_err) => warn!(
+            status = %status,
+            error = %set_err,
+            "failed to re-arm registration after DDS SIWE verification invalidation"
+        ),
     }
 }
 
@@ -132,10 +169,10 @@ impl SiweAfterRegistration {
         loop {
             // Prefer the explicit registration state first.
             match read_state() {
-                Ok(state)
-                    if state.status == posemesh_node_registration::state::STATUS_REGISTERED =>
-                {
-                    info!("DDS registration confirmed (status=registered); starting SIWE token manager");
+                Ok(state) if state.status == STATUS_REGISTERED => {
+                    info!(
+                        "DDS registration confirmed (status=registered); starting SIWE token manager"
+                    );
                     return Ok(());
                 }
                 Ok(_) => {
@@ -220,7 +257,15 @@ fn derive_eth_address(priv_hex: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use posemesh_node_registration::state::{write_state, RegistrationState};
+    use reqwest::StatusCode;
+    use std::sync::{Mutex, OnceLock};
     use url::Url;
+
+    fn test_lock() -> &'static Mutex<()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn base_cfg() -> NodeConfig {
         NodeConfig {
@@ -268,5 +313,33 @@ mod tests {
             Some("4c0883a69102937d6231471b5dbb6204fe5129617082798ce3f4fdf2548b6f90".into());
 
         assert!(SiweAfterRegistration::from_config(&cfg).is_ok());
+    }
+
+    #[test]
+    fn forbidden_siwe_verify_rearms_registration() {
+        let _guard = test_lock().lock().unwrap();
+        write_state(&RegistrationState {
+            status: STATUS_REGISTERED.to_string(),
+            last_healthcheck: None,
+        })
+        .unwrap();
+
+        rearm_registration_if_invalid(&siwe::SiweError::UpstreamStatus(StatusCode::FORBIDDEN));
+
+        assert_eq!(read_state().unwrap().status, STATUS_DISCONNECTED);
+    }
+
+    #[test]
+    fn unrelated_siwe_error_keeps_registration_state() {
+        let _guard = test_lock().lock().unwrap();
+        write_state(&RegistrationState {
+            status: STATUS_REGISTERED.to_string(),
+            last_healthcheck: None,
+        })
+        .unwrap();
+
+        rearm_registration_if_invalid(&siwe::SiweError::UpstreamStatus(StatusCode::BAD_GATEWAY));
+
+        assert_eq!(read_state().unwrap().status, STATUS_REGISTERED);
     }
 }

@@ -3,6 +3,7 @@ use hex::FromHexError;
 use k256::ecdsa::{self, SigningKey};
 use k256::FieldBytes;
 use reqwest::Client;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use thiserror::Error;
@@ -23,6 +24,8 @@ pub enum SiweError {
     Signing(ecdsa::Error),
     #[error(transparent)]
     Request(#[from] reqwest::Error),
+    #[error("dds siwe upstream returned status {0}")]
+    UpstreamStatus(StatusCode),
     #[error(transparent)]
     InvalidExpiration(#[from] chrono::ParseError),
     #[error("missing field '{0}' in response")]
@@ -51,6 +54,16 @@ impl AccessBundle {
 
     pub fn expires_at(&self) -> DateTime<Utc> {
         self.expires_at
+    }
+}
+
+impl SiweError {
+    pub fn status_code(&self) -> Option<StatusCode> {
+        match self {
+            SiweError::Request(err) => err.status(),
+            SiweError::UpstreamStatus(status) => Some(*status),
+            _ => None,
+        }
     }
 }
 
@@ -92,8 +105,10 @@ pub async fn request_nonce(base_url: &str, wallet: &str) -> Result<SiweRequestMe
         .post(url)
         .json(&serde_json::json!({ "wallet": wallet }))
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+    if !response.status().is_success() {
+        return Err(SiweError::UpstreamStatus(response.status()));
+    }
     let body: SiweRequestMeta = response.json().await?;
     if body.nonce.as_deref().unwrap_or("").is_empty() {
         return Err(SiweError::MissingField("nonce"));
@@ -128,12 +143,10 @@ pub async fn verify(
         message,
         signature,
     };
-    let response = client
-        .post(url)
-        .json(&payload)
-        .send()
-        .await?
-        .error_for_status()?;
+    let response = client.post(url).json(&payload).send().await?;
+    if !response.status().is_success() {
+        return Err(SiweError::UpstreamStatus(response.status()));
+    }
     let body: VerifyResponse = response.json().await?;
     let token = body
         .access_token

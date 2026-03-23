@@ -30,8 +30,9 @@ server on behalf of capability-specific runners.
 3. Runners are registered in a `RunnerRegistry`; the binary decides which
    capabilities to advertise.
 4. `dds::register::spawn_registration_if_configured()` starts the outbound
-   SIWE-based registration loop, and `auth::SiweAfterRegistration` waits for a
-   successful registration before requesting access tokens.
+   SIWE-based registration bootstrap/recovery loop, and
+   `auth::SiweAfterRegistration` waits for a successful registration before
+   requesting access tokens.
 5. The main `run_node` loop obtains an access token from DDS, builds a DMS
    client, leases tasks, initializes session state, and dispatches to the
    correct runner via `RunnerRegistry::run_for_lease`.
@@ -67,9 +68,10 @@ Optional environment variables:
 - `TOKEN_REAUTH_MAX_RETRIES` (default `3`) — retries before bailing on token
   refresh.
 - `TOKEN_REAUTH_JITTER_MS` (default `500`) — jitter applied between retries.
-- `REGISTER_INTERVAL_SECS` (default `120`) — DDS registration loop cadence.
-- `REGISTER_MAX_RETRY` (default `-1`, meaning infinite retries) — DDS
-  registration retry cap.
+- `REGISTER_INTERVAL_SECS` (default `120`) — cooldown between registration
+  attempts while the node is not yet registered or is recovering.
+- `REGISTER_MAX_RETRY` (default `-1`, meaning infinite retries) — retry cap for
+  transient registration failures before falling back to the regular cooldown.
 - `MAX_CONCURRENCY` (default `1`) — staging knob for future multi-runner
   concurrency.
 - `LOG_FORMAT` (default `json`) — set to `text` for pretty console logs.
@@ -80,7 +82,9 @@ Optional environment variables:
 - `auth::siwe_after_registration` — waits for DDS registration, then spins up
   the SIWE token manager and refresh loop.
 - `dds::register` — normalizes versions (stripping leading `v`), validates the
-  secp256k1 key, and launches the registration task using `posemesh-node-registration`.
+  secp256k1 key, and launches the registration task using
+  `posemesh-node-registration`. Once acquired, registration is parked until the
+  runtime needs recovery instead of being refreshed on a fixed cadence.
 - `engine` — orchestrates leasing, cancellation, heartbeat posting, and
   completion/failure reporting. The `RunnerRegistry` façade makes it easy to add
   new capabilities.

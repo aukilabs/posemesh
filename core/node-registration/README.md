@@ -14,7 +14,7 @@ This crate packages the logic required for nodes to register with the discovery 
 ```toml
 # Cargo.toml
 [dependencies]
-posemesh-node-registration = "0.1.0"
+posemesh-node-registration = "0.2.1"
 ```
 
 ## Example: Mounting the HTTP Routes
@@ -67,5 +67,6 @@ fn build_registration_config() -> RegistrationConfig {
 
 - Generating SIWE messages/signatures for registration payloads.
 - Persisting registration state for downstream consumers.
-- Enforcing a cross-process file lock so that only one registrar runs at a time.
-- Exponential backoff with jitter when DDS requests fail.
+- Parking once the runtime has successfully acquired registration, then re-arming only on recovery signals.
+- Enforcing a process-local lock so that only one registrar task runs at a time.
+- Exponential backoff with jitter when DDS requests fail, while rate-limiting repeated `409 Conflict` warnings.

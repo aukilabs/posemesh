@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-node-registration"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Posemesh node registration client and Axum handlers for DDS callbacks."
 license = "MIT"
