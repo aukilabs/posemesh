@@ -11,7 +11,7 @@ quick-protobuf = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
-jsonwebtoken = "9.3.0"
+jsonwebtoken = "10.3.0"
 uuid = "1.13.2"
 posemesh-domain = {workspace = true}
 tracing = {workspace = true}
