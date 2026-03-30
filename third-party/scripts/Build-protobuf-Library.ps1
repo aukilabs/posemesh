@@ -20,8 +20,40 @@ Param(
         $PossibleValues = @('Debug', 'Release')
         return $PossibleValues | ForEach-Object { $_ }
     })]
-    [String]$BuildType
+    [String]$BuildType,
+
+    [Parameter()]
+    [switch]$DryRun
 )
+
+ $ValidPlatforms = @('macOS', 'Mac-Catalyst', 'iOS', 'iOS-Simulator', 'Web', 'Linux')
+$ValidArchitectures = @('AMD64', 'ARM64', 'WASM32')
+$ValidBuildTypes = @('Debug', 'Release')
+
+function Normalize-Argument {
+    param(
+        [string]$Value,
+        [string[]]$ValidValues,
+        [string]$Name
+    )
+
+    if (-not $Value) {
+        Write-Error "$Name is required. Allowed values: $($ValidValues -join ', ')."
+        exit 1
+    }
+
+    $Match = $ValidValues | Where-Object { $_.ToLower() -eq $Value.ToLower() }
+    if (-not $Match) {
+        Write-Error "Invalid $Name '$Value'. Allowed values: $($ValidValues -join ', ')."
+        exit 1
+    }
+
+    return $Match
+}
+
+$Platform = Normalize-Argument -Value $Platform -ValidValues $ValidPlatforms -Name 'Platform'
+$Architecture = Normalize-Argument -Value $Architecture -ValidValues $ValidArchitectures -Name 'Architecture'
+$BuildType = Normalize-Argument -Value $BuildType -ValidValues $ValidBuildTypes -Name 'BuildType'
 
 $ProtobufSource = Join-Path $PSScriptRoot "../protobuf"
 $BuildDir = "../build-protobuf-$Platform-$Architecture-$BuildType"
@@ -41,6 +73,11 @@ $InstallPath = (Resolve-Path -Path $InstallPathRel).Path
 
 Write-Host "BuildPath = $BuildPath"
 Write-Host "InstallPath = $InstallPath"
+
+if ($DryRun) {
+    Write-Host "Dry run requested, skipping build steps."
+    exit 0
+}
 
 $CMakeArgs = @(
     "-DCMAKE_BUILD_TYPE=$BuildType",
