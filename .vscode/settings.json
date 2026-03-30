@@ -24,5 +24,14 @@
         "**/sdk/platform/Web/src/**/*.hpp": "cpp",
         "**/sdk/platform/Web/src/**/*.c": "c",
         "**/sdk/platform/Web/src/**/*.cpp": "cpp"
-    }
+    },
+    "json.schemas": [
+        {
+            "fileMatch": [
+                "**/enum/*.json",
+                "**/interface/*.json"
+            ],
+            "url": "./sdk/gentool/gentool.schema.json"
+        }
+    ]
 }
