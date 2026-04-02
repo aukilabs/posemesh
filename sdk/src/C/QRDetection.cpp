@@ -24,6 +24,19 @@ bool PSM_API psm_qr_detection_detect_qr(
         assert(!"psm_qr_detection_detect_qr(): out_corners is null");
         return false;
     }
+    *out_contents = nullptr;
+    if (out_contents_count) {
+        *out_contents_count = 0;
+    }
+    *out_corners = nullptr;
+    if (out_corners_count) {
+        *out_corners_count = 0;
+    }
+    if (!image_bytes && image_bytes_size != 0) {
+        assert(!"psm_qr_detection_detect_qr(): image_bytes is null and image_bytes_size is non-zero");
+        return false;
+    }
+
     std::vector<std::string> contents;
     std::vector<psm::Vector2> corners;
     const bool result = psm::QRDetection::detectQRFromLuminance(image_bytes, image_bytes_size, width, height, contents, corners);
@@ -42,12 +55,15 @@ bool PSM_API psm_qr_detection_detect_qr(
         contents_buffer_size += content.size() + 1;
     }
     std::unique_ptr<char[]> contents_buffer(new (std::nothrow) char[contents_buffer_size]);
+    if (!contents_buffer) {
+        return false;
+    }
     char** contents_prefix_ptr = reinterpret_cast<char**>(contents_buffer.get());
     char* contents_content_ptr = contents_buffer.get() + contents_prefix_offset;
     for (const auto& content : contents) {
         *contents_prefix_ptr = contents_content_ptr;
         contents_prefix_ptr++;
-        std::memcpy(contents_content_ptr, content.data(), content.size() + 1);
+        std::memcpy(contents_content_ptr, content.c_str(), content.size() + 1);
         contents_content_ptr += content.size() + 1;
     }
     *contents_prefix_ptr = nullptr;
@@ -62,6 +78,9 @@ bool PSM_API psm_qr_detection_detect_qr(
     const auto corners_prefix_offset = corners_buffer_size;
     corners_buffer_size += corners.size() * sizeof(psm_vector2_t);
     std::unique_ptr<char[]> corners_buffer(new (std::nothrow) char[corners_buffer_size]);
+    if (!corners_buffer) {
+        return false;
+    }
     psm_vector2_t** corners_prefix_ptr = reinterpret_cast<psm_vector2_t**>(corners_buffer.get());
     psm_vector2_t* corners_content_ptr = reinterpret_cast<psm_vector2_t*>(corners_buffer.get() + corners_prefix_offset);
     for (auto& corner : corners) {
@@ -106,9 +125,19 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
         assert(!"psm_qr_detection_detect_qr_landmark_observations(): out_observations is null");
         return false;
     }
-    std::vector<std::string> contents;
-    std::vector<psm::Vector2> corners;
-    std::vector<uint8_t> image_bytes_vector(image_bytes, image_bytes + image_bytes_size);
+    *out_observations = nullptr;
+    if (out_observations_count) {
+        *out_observations_count = 0;
+    }
+    if (!image_bytes && image_bytes_size != 0) {
+        assert(!"psm_qr_detection_detect_qr_landmark_observations(): image_bytes is null and image_bytes_size is non-zero");
+        return false;
+    }
+
+    std::vector<uint8_t> image_bytes_vector;
+    if (image_bytes_size > 0) {
+        image_bytes_vector.assign(image_bytes, image_bytes + image_bytes_size);
+    }
     const std::vector<psm::LandmarkObservation> observations = psm::QRDetection::detectQRFromLuminance(image_bytes_vector, width, height);
     if (observations.size() == 0) {
         return false;
@@ -124,7 +153,10 @@ bool PSM_API psm_qr_detection_detect_qr_landmark_observations(
     landmark_observation_buffer_size = ((landmark_observation_buffer_size + alignof(psm_landmark_observation_t) - 1) / alignof(psm_landmark_observation_t)) * alignof(psm_landmark_observation_t); // Ensure alignment
     const auto landmark_observation_prefix_offset = landmark_observation_buffer_size;
     landmark_observation_buffer_size += observations.size() * sizeof(psm_landmark_observation_t);
-    std::unique_ptr<psm_landmark_observation_t[]> landmark_observation_buffer(new (std::nothrow) psm_landmark_observation_t[landmark_observation_buffer_size]);
+    std::unique_ptr<char[]> landmark_observation_buffer(new (std::nothrow) char[landmark_observation_buffer_size]);
+    if (!landmark_observation_buffer) {
+        return false;
+    }
     psm_landmark_observation_t** landmark_observation_prefix_ptr = reinterpret_cast<psm_landmark_observation_t**>(landmark_observation_buffer.get());
     psm_landmark_observation_t* landmark_observation_content_ptr = reinterpret_cast<psm_landmark_observation_t*>(landmark_observation_buffer.get() + landmark_observation_prefix_offset);
     for (auto& observation : observations) {
@@ -148,6 +180,6 @@ void PSM_API psm_qr_detection_detect_qr_landmark_observations_free(const psm_lan
         for (const auto* const* observation = observations; *observation; ++observation) {
             (*observation)->~LandmarkObservation();
         }
-        delete[] const_cast<psm_landmark_observation_t*>(reinterpret_cast<const psm_landmark_observation_t*>(observations));
+        delete[] const_cast<char*>(reinterpret_cast<const char*>(observations));
     }
 }

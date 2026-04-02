@@ -2,6 +2,7 @@
 #define __PORTALS_HPP__
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 
 namespace psm {
@@ -24,7 +25,19 @@ public:
 
     static std::string extractShortId(const std::string& portalContents)
     {
-        return portalContents.substr(m_aukiLighthousePrefix.size());
+        auto it = std::search(
+            portalContents.begin(),
+            portalContents.end(),
+            m_aukiLighthousePrefix.begin(),
+            m_aukiLighthousePrefix.end(),
+            [](unsigned char ch1, unsigned char ch2) {
+                return std::toupper(ch1) == std::toupper(ch2);
+            });
+        if (it == portalContents.end()) {
+            return portalContents;
+        }
+        it += m_aukiLighthousePrefix.size();
+        return std::string(it, portalContents.end());
     }
 
 private:

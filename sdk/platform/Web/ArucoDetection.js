@@ -41,11 +41,11 @@ __internalPosemeshAPI.builderFunctions.push(function() {
     };
 
     __internalPosemesh.ArucoDetection.detectArucoFromLuminanceLandmarkObservations = function(imageBytes, width, height, markerFormat) {
-        let imageBytesVector = undefined;
+        let imageBytesVector = undefined, observations = undefined;
         try {
             imageBytesVector = __internalPosemeshAPI.toVectorUint8(imageBytes)
             let result = []
-            let observations = __internalPosemesh.ArucoDetection.__detectArucoFromLuminanceLandmarkObservations(imageBytesVector, width, height, markerFormat)
+            observations = __internalPosemesh.ArucoDetection.__detectArucoFromLuminanceLandmarkObservations(imageBytesVector, width, height, markerFormat)
 
             for (let i = 0; i < observations.size(); i++) {
                 result.push(observations.get(i))
@@ -53,6 +53,9 @@ __internalPosemeshAPI.builderFunctions.push(function() {
 
             return result;
         } finally {
+            if (observations) {
+                observations.delete();
+            }
             if (imageBytesVector) {
                 imageBytesVector.delete();
             }

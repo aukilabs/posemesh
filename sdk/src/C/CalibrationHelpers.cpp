@@ -6,9 +6,16 @@
 
 const psm_matrix4x4_t* psm_calibration_helpers_get_calibration_matrix(psm_pose_t* domain, psm_pose_t* observed, bool only_rotate_around_y)
 {
+    if (!domain || !observed) {
+        return nullptr;
+    }
+
     psm::Matrix4x4 calibrationMatrix = psm::CalibrationHelpers::getCalibrationMatrix(*static_cast<const psm::Pose*>(domain), *static_cast<const psm::Pose*>(observed), only_rotate_around_y);
 
     psm_matrix4x4_t* result = psm_matrix4x4_create();
+    if (!result) {
+        return nullptr;
+    }
     psm_matrix4x4_set_m00(result, calibrationMatrix.getM00());
     psm_matrix4x4_set_m10(result, calibrationMatrix.getM10());
     psm_matrix4x4_set_m20(result, calibrationMatrix.getM20());
