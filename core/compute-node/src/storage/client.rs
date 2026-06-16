@@ -955,15 +955,11 @@ fn parse_download_target(
                     .filter(|s| !s.is_empty())
                     .map(|s| s.to_string()),
             ),
-            "name" => {
-                if name.is_none() {
-                    name = Some(value.to_string());
-                }
+            "name" if name.is_none() => {
+                name = Some(value.to_string());
             }
-            "data_type" => {
-                if data_type.is_none() {
-                    data_type = Some(value.to_string());
-                }
+            "data_type" if data_type.is_none() => {
+                data_type = Some(value.to_string());
             }
             _ => {}
         }
