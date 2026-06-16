@@ -75,6 +75,16 @@ impl DomainClient {
         }
     }
 
+    /// Like `with_oidc_access_token` but the OIDC token is forwarded directly to
+    /// DDS without being exchanged via `/service/domains-access-token`.
+    /// Use this when DDS is configured to validate OIDC tokens natively.
+    pub fn with_oidc_token_direct(&self, token: &str) -> Self {
+        Self {
+            discovery_client: self.discovery_client.with_oidc_token_direct(token),
+            client_id: self.client_id.clone(),
+        }
+    }
+
     pub async fn download_domain_data_stream(
         &self,
         domain_id: &str,

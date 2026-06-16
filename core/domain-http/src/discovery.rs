@@ -250,6 +250,22 @@ impl DiscoveryService {
         }
     }
 
+    /// Like `with_oidc_access_token` but the token is forwarded to DDS as-is
+    /// without exchanging it via `/service/domains-access-token`.
+    /// Use this when DDS is configured to validate OIDC tokens natively.
+    pub fn with_oidc_token_direct(&self, oidc_access_token: &str) -> Self {
+        Self {
+            dds_url: self.dds_url.clone(),
+            client: self.client.clone(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            api_client: AuthClient::new_oidc_direct(
+                &self.api_client.api_url,
+                &self.api_client.client_id,
+            ),
+            oidc_access_token: Some(oidc_access_token.to_string()),
+        }
+    }
+
     pub async fn auth_domain(&self, domain_id: &str) -> Result<DomainWithToken, DomainError> {
         let access_token = self
             .api_client

@@ -17,6 +17,10 @@ pub struct AuthClient {
     pub client_id: String,
     app_key: Option<String>,
     app_secret: Option<String>,
+    /// When `true`, an OIDC token passed to `get_dds_access_token` is returned
+    /// as-is without exchanging it via `/service/domains-access-token`.
+    /// DDS must be configured to accept the OIDC token directly.
+    pub oidc_direct: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +97,17 @@ impl AuthClient {
             client_id: client_id.to_string(),
             app_key: None,
             app_secret: None,
+            oidc_direct: false,
+        }
+    }
+
+    /// Create an `AuthClient` that passes OIDC tokens directly to DDS
+    /// without exchanging them via `/service/domains-access-token`.
+    /// Use this when DDS is configured to validate OIDC tokens natively.
+    pub fn new_oidc_direct(api_url: &str, client_id: &str) -> Self {
+        Self {
+            oidc_direct: true,
+            ..Self::new(api_url, client_id)
         }
     }
 
@@ -138,6 +153,14 @@ impl AuthClient {
         &self,
         oidc_access_token: Option<&str>,
     ) -> Result<String, DomainError> {
+        // In oidc_direct mode the caller's OIDC token is forwarded to DDS as-is.
+        // No token exchange via /service/domains-access-token is performed.
+        if self.oidc_direct {
+            if let Some(token) = oidc_access_token {
+                return Ok(token.to_string());
+            }
+        }
+
         let result = if let Some(oidc_access_token) = oidc_access_token {
             self.get_dds_access_token_with_oidc_access_token(oidc_access_token)
                 .await
@@ -574,5 +597,36 @@ mod tests {
         );
         // Should have same expiration
         assert_eq!(result.expires_at, not_expiring);
+    }
+
+    #[tokio::test]
+    async fn test_oidc_direct_returns_token_as_is() {
+        // new_oidc_direct: get_dds_access_token with oidc_direct=true must return the
+        // raw OIDC token without any network exchange.
+        let client = AuthClient::new_oidc_direct("https://api.example.com", "test-client");
+        assert!(client.oidc_direct);
+
+        let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJleHAiOjk5OTk5OTk5OTl9.sig";
+        let result = client.get_dds_access_token(Some(token)).await;
+        assert!(result.is_ok(), "expected ok, got {:?}", result.err());
+        assert_eq!(result.unwrap(), token);
+    }
+
+    #[tokio::test]
+    async fn test_oidc_direct_falls_through_without_token() {
+        // When oidc_direct=true but no OIDC token is supplied, it falls through to the
+        // normal path (which will fail with Unauthorized since no creds are set — that's
+        // expected and correct behaviour).
+        let client = AuthClient::new_oidc_direct("https://api.example.com", "test-client");
+        let result = client.get_dds_access_token(None).await;
+        assert!(result.is_err(), "expected err when no token and no creds");
+    }
+
+    #[test]
+    fn test_new_oidc_direct_sets_flag() {
+        let client = AuthClient::new_oidc_direct("https://api.example.com", "test-client");
+        assert!(client.oidc_direct);
+        let client_default = AuthClient::new("https://api.example.com", "test-client");
+        assert!(!client_default.oidc_direct);
     }
 }
