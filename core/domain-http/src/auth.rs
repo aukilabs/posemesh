@@ -155,10 +155,8 @@ impl AuthClient {
     ) -> Result<String, DomainError> {
         // In oidc_direct mode the caller's OIDC token is forwarded to DDS as-is.
         // No token exchange via /service/domains-access-token is performed.
-        if self.oidc_direct {
-            if let Some(token) = oidc_access_token {
-                return Ok(token.to_string());
-            }
+        if let (true, Some(token)) = (self.oidc_direct, oidc_access_token) {
+            return Ok(token.to_string());
         }
 
         let result = if let Some(oidc_access_token) = oidc_access_token {
