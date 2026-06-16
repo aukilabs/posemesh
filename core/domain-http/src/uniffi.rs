@@ -59,6 +59,13 @@ impl DomainClient {
         Arc::new(DomainClient(dc))
     }
 
+    /// Like `with_oidc_access_token` but the token is forwarded directly to DDS as
+    /// the Bearer token without the `/service/domains-access-token` exchange step.
+    pub fn with_oidc_token_direct(&self, token: &str) -> Arc<Self> {
+        let dc = self.0.with_oidc_token_direct(token);
+        Arc::new(DomainClient(dc))
+    }
+
     pub fn download_domain_data(
         &self,
         domain_id: &str,

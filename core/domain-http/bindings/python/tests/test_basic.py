@@ -366,3 +366,46 @@ class TestOIDCAccessToken:
         with pytest.raises(DomainError):
             invalid_client.download_domain_data(test_domain_id, query)
 
+
+@pytest.mark.skipif(
+    not config.get('AUTH_TEST_TOKEN') or config['AUTH_TEST_TOKEN'] == '',
+    reason="AUTH_TEST_TOKEN environment variable not set"
+)
+class TestOIDCTokenDirect:
+    """Tests for the oidc_token_direct mode — token forwarded directly to DDS without exchange."""
+
+    @pytest.fixture(scope="class")
+    def base_client(self):
+        """Create a base client for direct OIDC token tests."""
+        return DomainClient(
+            config['API_URL'],
+            config['DDS_URL'],
+            config['CLIENT_ID']
+        )
+
+    @pytest.fixture(scope="class")
+    def direct_client(self, base_client):
+        """Create a client that forwards the OIDC token directly to DDS."""
+        return base_client.with_oidc_token_direct(config['AUTH_TEST_TOKEN'])
+
+    def test_download_domain_data_with_direct_oidc_token(self, direct_client, test_domain_id):
+        """Test downloading domain data using direct OIDC token (no exchange)."""
+        query = DownloadQuery(ids=[], name=None, data_type="test")
+        data = direct_client.download_domain_data(test_domain_id, query)
+
+        assert len(data) > 0
+        for item in data:
+            assert len(item.data) > 0
+            assert item.metadata.data_type == "test"
+            assert item.metadata.id is not None
+            assert item.metadata.name is not None
+            assert item.metadata.size > 0
+
+    def test_invalid_direct_oidc_token(self, base_client, test_domain_id):
+        """Test that an invalid direct OIDC token raises an error."""
+        invalid_client = base_client.with_oidc_token_direct("invalid_token")
+        query = DownloadQuery(ids=[], name=None, data_type="test")
+
+        with pytest.raises(DomainError):
+            invalid_client.download_domain_data(test_domain_id, query)
+

@@ -220,6 +220,28 @@ impl DomainClient {
         }
     }
 
+    /// Returns a new DomainClient that forwards the OIDC token directly to DDS as
+    /// the Bearer token, bypassing the `/service/domains-access-token` exchange.
+    /// Use this when the caller's OIDC token is already accepted natively by DDS
+    /// (e.g. compute nodes, service accounts). Make sure to call .free() when done.
+    ///
+    /// # Arguments
+    /// * `oidc_token` - The OIDC access token to forward directly to DDS.
+    ///
+    /// # Example
+    /// ```javascript
+    /// const client = new DomainClient(apiUrl, ddsUrl, clientId);
+    /// const directClient = client.withOIDCTokenDirect("your-oidc-token");
+    /// // directClient sends the token as-is to DDS, no exchange step
+    /// directClient.free();
+    /// ```
+    #[wasm_bindgen(js_name = "withOIDCTokenDirect")]
+    pub fn with_oidc_token_direct(&self, oidc_token: String) -> Self {
+        Self {
+            domain_client: self.domain_client.with_oidc_token_direct(&oidc_token),
+        }
+    }
+
     /// Downloads metadata for domain data matching the query.
     ///
     /// # Arguments

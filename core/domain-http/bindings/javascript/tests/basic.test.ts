@@ -378,7 +378,6 @@ describe('Posemesh Domain HTTP', async() => {
 
     describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_access_token', () => {
         const oidcAccessToken = config.AUTH_TEST_TOKEN;
-        let client: DomainClient;
         let clientWithOIDCAccessToken: DomainClient;
         beforeAll(() => {
             client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
@@ -471,6 +470,67 @@ describe('Posemesh Domain HTTP', async() => {
                     data_type: "test",
                     data: dataBytes,
                 } as UploadDomainData]);
+            }).rejects.toThrow();
+
+            invalidClient.free();
+        });
+    });
+
+    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_token_direct', () => {
+        let baseClient: DomainClient;
+        let directClient: DomainClient;
+        beforeAll(() => {
+            baseClient = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
+            directClient = baseClient.withOIDCTokenDirect(config.AUTH_TEST_TOKEN);
+        });
+        afterAll(() => {
+            directClient.free();
+            baseClient.free();
+        });
+
+        it('should download domain data with direct OIDC token', async () => {
+            const data: DomainData[] = await directClient.downloadDomainData(domainId, {
+                ids: [],
+                name: null,
+                data_type: "test"
+            } as DownloadQuery);
+
+            expect(data.length).toBeGreaterThan(0);
+            for (const item of data) {
+                expect(item.data.length).greaterThan(0);
+                expect(item.metadata.data_type).toBe("test");
+                expect(item.metadata.id).toBeDefined();
+                expect(item.metadata.name).toBeDefined();
+                expect(item.metadata.size).greaterThan(0);
+            }
+        });
+
+        it('should upload domain data with direct OIDC token', async () => {
+            const data = `{"oidc_direct": "token test"}`;
+            const dataBytes = new TextEncoder().encode(data);
+            let res: DomainDataMetadata[] = await directClient.uploadDomainData(domainId, [{
+                name: "oidc_token_direct test",
+                data_type: "test",
+                data: dataBytes,
+            } as UploadDomainData]);
+
+            expect(res.length).toBe(1);
+            expect(res[0].name).toBe("oidc_token_direct test");
+            expect(res[0].data_type).toBe("test");
+            expect(res[0].size).toBe(dataBytes.length);
+
+            await directClient.deleteDomainDataById(domainId, res[0].id);
+        });
+
+        it('should throw error if direct OIDC token is not valid', async () => {
+            const invalidClient = baseClient.withOIDCTokenDirect("invalid-token");
+
+            await expect(async () => {
+                await invalidClient.downloadDomainData(domainId, {
+                    ids: [],
+                    name: null,
+                    data_type: "test"
+                } as DownloadQuery);
             }).rejects.toThrow();
 
             invalidClient.free();
