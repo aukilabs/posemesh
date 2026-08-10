@@ -956,14 +956,10 @@ fn parse_download_target(
                     .map(|s| s.to_string()),
             ),
             "name" => {
-                if name.is_none() {
-                    name = Some(value.to_string());
-                }
+                name.get_or_insert_with(|| value.to_string());
             }
             "data_type" => {
-                if data_type.is_none() {
-                    data_type = Some(value.to_string());
-                }
+                data_type.get_or_insert_with(|| value.to_string());
             }
             _ => {}
         }
