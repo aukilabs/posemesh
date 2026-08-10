@@ -14,7 +14,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    auth::token_manager::TokenProvider,
+    auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
     config::{NodeConfig, RobotNodeConfig},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
@@ -197,9 +197,15 @@ async fn run_authenticated_node_loop(
         if let Err(err) = bearer {
             warn!(auth_kind, error = %err, "Failed to obtain bearer token; backing off");
             let delay_ms = jittered_delay_ms(poll_cfg);
+            let delay = StdDuration::from_millis(delay_ms);
+            let delay = if interrupt_on_shutdown {
+                delay.max(AUTH_FAILURE_BACKOFF)
+            } else {
+                delay
+            };
             tokio::select! {
                 _ = shutdown.cancelled() => break,
-                _ = sleep(StdDuration::from_millis(delay_ms)) => continue,
+                _ = sleep(delay) => continue,
             }
         }
 

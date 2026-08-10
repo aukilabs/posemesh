@@ -647,7 +647,7 @@ async fn run_robot_node_refreshes_after_dms_401_and_retries_with_machine_token()
 }
 
 #[tokio::test]
-async fn run_robot_node_does_not_fall_back_to_siwe_when_verify_fails() {
+async fn run_robot_node_backs_off_without_siwe_fallback_when_verify_fails() {
     let server = MockServer::start();
     let robot_id = Uuid::new_v4();
     let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
@@ -693,6 +693,22 @@ async fn run_robot_node_does_not_fall_back_to_siwe_when_verify_fails() {
     while verify_mock.hits() == 0 && started.elapsed() < Duration::from_secs(3) {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    assert_eq!(
+        verify_mock.hits(),
+        1,
+        "robot verify should be attempted once"
+    );
+
+    // The foreground engine used to retry at the one-second poll floor here,
+    // bypassing the token manager's background cooldown and eventually
+    // triggering DDS rate limiting. It must share the same minimum cadence.
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(
+        verify_mock.hits(),
+        1,
+        "robot verify must not repeat before the authentication backoff elapses"
+    );
+
     shutdown.cancel();
     tokio::time::timeout(Duration::from_secs(2), run_task)
         .await
@@ -702,7 +718,7 @@ async fn run_robot_node_does_not_fall_back_to_siwe_when_verify_fails() {
 
     register_mock.assert_hits(1);
     stale_lease_mock.assert_hits(1);
-    assert!(verify_mock.hits() >= 1, "robot verify should be attempted");
+    verify_mock.assert_hits(1);
     siwe_request_mock.assert_hits(0);
     siwe_verify_mock.assert_hits(0);
 }
