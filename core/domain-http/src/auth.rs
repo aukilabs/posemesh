@@ -350,7 +350,7 @@ impl AuthClient {
 
         let response = self
             .client
-            .post(format!("{}/user/login", &self.api_url))
+            .post(format!("{}/user/login", self.api_url))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
             .json(&credentials)
@@ -397,7 +397,7 @@ impl AuthClient {
     async fn get_dds_token_by_token(&self, token: &str) -> Result<DdsTokenResponse, DomainError> {
         let dds_response = self
             .client
-            .post(format!("{}/service/domains-access-token", &self.api_url))
+            .post(format!("{}/service/domains-access-token", self.api_url))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .header("posemesh-client-id", &self.client_id)
