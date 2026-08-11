@@ -16,7 +16,7 @@ endif
 
 build-domain-wasm:
 	wasm-pack build --target bundler --release domain
-	sed -i '' 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json
+	sed -i.bak 's/"name": "posemesh-domain"/"name": "@aukilabs\/posemesh-domain"/' domain/pkg/package.json && rm -f domain/pkg/package.json.bak
 
 build-domain-http:
 ifeq ($(TARGET),wasm)
