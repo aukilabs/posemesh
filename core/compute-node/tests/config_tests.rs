@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use posemesh_compute_node::config::{LogFormat, NodeConfig, RobotNodeConfig};
 use std::sync::Mutex;
+use tempfile::NamedTempFile;
 
 static ENV_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
@@ -131,6 +132,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
         "NOOP_SLEEP_SECS",
         "DDS_BASE_URL",
         "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "REG_SECRET",
         "SECP256K1_PRIVHEX",
     ]);
@@ -186,6 +188,7 @@ fn robot_credentials_are_required_and_must_not_be_blank() {
         "REQUEST_TIMEOUT_SECS",
         "DDS_BASE_URL",
         "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
     ]);
@@ -199,6 +202,85 @@ fn robot_credentials_are_required_and_must_not_be_blank() {
 }
 
 #[test]
+fn loads_robot_credentials_from_file_and_trims_newline() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "DMS_BASE_URL",
+        "REQUEST_TIMEOUT_SECS",
+        "DDS_BASE_URL",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
+    ]);
+
+    let credentials = "opaque-file-robot-credentials";
+    let file = NamedTempFile::new().expect("credential file");
+    std::fs::write(file.path(), format!("{credentials}\n")).expect("write credential file");
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS_FILE", file.path());
+
+    let cfg = RobotNodeConfig::from_env().expect("robot file config");
+    let expected = RobotNodeConfig::new(
+        "https://dds.auki.network".parse().unwrap(),
+        "https://dms.auki.network/v1".parse().unwrap(),
+        credentials,
+    )
+    .expect("expected robot config");
+    assert_eq!(cfg, expected);
+    let debug = format!("{cfg:?}");
+    assert!(debug.contains("[REDACTED]"));
+    assert!(!debug.contains(credentials));
+}
+
+#[test]
+fn robot_credential_sources_are_mutually_exclusive() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "DMS_BASE_URL",
+        "REQUEST_TIMEOUT_SECS",
+        "DDS_BASE_URL",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
+    ]);
+
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "inline-credentials");
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS_FILE", "/not/read");
+
+    let err = RobotNodeConfig::from_env().expect_err("ambiguous credentials must fail");
+    assert!(err.to_string().contains("mutually exclusive"));
+}
+
+#[test]
+fn robot_credential_file_must_be_readable_and_nonempty() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "DMS_BASE_URL",
+        "REQUEST_TIMEOUT_SECS",
+        "DDS_BASE_URL",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+        "HEARTBEAT_MIN_RATIO",
+        "HEARTBEAT_MAX_RATIO",
+    ]);
+
+    std::env::set_var(
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+        "/definitely/missing/robot-credentials",
+    );
+    let err = RobotNodeConfig::from_env().expect_err("missing file must fail");
+    assert!(err
+        .to_string()
+        .contains("read robot registration credentials file"));
+
+    let file = NamedTempFile::new().expect("empty credential file");
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS_FILE", file.path());
+    let err = RobotNodeConfig::from_env().expect_err("empty file must fail");
+    assert!(err.to_string().contains("file must not be empty"));
+}
+
+#[test]
 fn robot_credentials_do_not_switch_the_existing_siwe_loader() {
     let _g = ENV_GUARD.lock().unwrap();
     clear(&[
@@ -206,6 +288,7 @@ fn robot_credentials_do_not_switch_the_existing_siwe_loader() {
         "REQUEST_TIMEOUT_SECS",
         "DDS_BASE_URL",
         "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "REG_SECRET",
         "SECP256K1_PRIVHEX",
         "HEARTBEAT_MIN_RATIO",

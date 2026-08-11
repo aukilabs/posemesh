@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{env, fmt};
+use std::{env, fmt, fs};
 use url::Url;
 
 const DEFAULT_DMS_BASE_URL: &str = "https://dms.auki.network/v1";
@@ -224,18 +224,12 @@ impl RobotNodeConfig {
     /// Load the robot entrypoint configuration from environment variables.
     ///
     /// Unlike [`NodeConfig::from_env`], this requires only opaque robot
-    /// credentials. It never reads or falls back to the legacy SIWE secret or
-    /// secp256k1 private key.
+    /// credentials, supplied either inline or through a file. It never reads
+    /// or falls back to the legacy SIWE secret or secp256k1 private key.
     pub fn from_env() -> Result<Self> {
         let dms_base_url = parse_url_default("DMS_BASE_URL", DEFAULT_DMS_BASE_URL)?;
         let dds_base_url = parse_url_default("DDS_BASE_URL", DEFAULT_DDS_BASE_URL)?;
-        let registration_credentials =
-            env::var("ROBOT_REGISTRATION_CREDENTIALS").with_context(|| {
-                "ROBOT_REGISTRATION_CREDENTIALS required for robot machine authentication"
-            })?;
-        if registration_credentials.trim().is_empty() {
-            bail!("ROBOT_REGISTRATION_CREDENTIALS required for robot machine authentication");
-        }
+        let registration_credentials = robot_registration_credentials_from_env()?;
 
         let mut cfg = Self::new(dds_base_url, dms_base_url, registration_credentials)?;
         cfg.request_timeout_secs =
@@ -290,6 +284,41 @@ impl RobotNodeConfig {
             enable_noop: self.enable_noop,
             noop_sleep_secs: self.noop_sleep_secs,
         }
+    }
+}
+
+fn robot_registration_credentials_from_env() -> Result<String> {
+    let inline = env::var("ROBOT_REGISTRATION_CREDENTIALS").ok();
+    let file = env::var("ROBOT_REGISTRATION_CREDENTIALS_FILE").ok();
+
+    match (inline, file) {
+        (Some(_), Some(_)) => bail!(
+            "ROBOT_REGISTRATION_CREDENTIALS and ROBOT_REGISTRATION_CREDENTIALS_FILE are mutually exclusive"
+        ),
+        (Some(credentials), None) => {
+            let credentials = credentials.trim().to_string();
+            if credentials.is_empty() {
+                bail!("ROBOT_REGISTRATION_CREDENTIALS must not be empty");
+            }
+            Ok(credentials)
+        }
+        (None, Some(path)) => {
+            let path = path.trim();
+            if path.is_empty() {
+                bail!("ROBOT_REGISTRATION_CREDENTIALS_FILE must not be empty");
+            }
+            let credentials = fs::read_to_string(path).with_context(|| {
+                format!("read robot registration credentials file {path}")
+            })?;
+            let credentials = credentials.trim().to_string();
+            if credentials.is_empty() {
+                bail!("robot registration credentials file must not be empty");
+            }
+            Ok(credentials)
+        }
+        (None, None) => bail!(
+            "ROBOT_REGISTRATION_CREDENTIALS or ROBOT_REGISTRATION_CREDENTIALS_FILE required for robot machine authentication"
+        ),
     }
 }
 

@@ -53,10 +53,17 @@ Required environment variables for the legacy SIWE entrypoint:
 - `SECP256K1_PRIVHEX` — 32-byte hex-encoded private key used to sign SIWE
   messages.
 
-Required environment variable for the explicit robot entrypoint:
+Required credential source for the explicit robot entrypoint (configure exactly
+one):
 - `ROBOT_REGISTRATION_CREDENTIALS` — the complete opaque credential returned
-  once when DDS provisions or rotates the robot. Do not decode, split, log, or
-  commit it.
+  once when DDS provisions or rotates the robot.
+- `ROBOT_REGISTRATION_CREDENTIALS_FILE` — path to a file containing that opaque
+  credential. This is the preferred handoff from an enrollment wrapper or
+  container init step using a persistent secret volume.
+
+Do not decode, split, log, or commit the credential. The file loader trims a
+trailing newline and fails closed when the path is unreadable or the file is
+empty. Updating the file requires restarting the compute node.
 
 Optional environment variables:
 - `DMS_BASE_URL` (default `https://dms.auki.network/v1`) — base URL of the DMS
@@ -112,10 +119,9 @@ that capability catalogued with `public_url_required = false` and the robot
 must be provisioned with the same capability. The example does not add or
 enable a production DDS capability.
 
-Choosing a binary is the authentication-mode switch. Supplying
-`ROBOT_REGISTRATION_CREDENTIALS` to the default SIWE binary does not select
-robot mode, and the robot binary does not read `REG_SECRET` or
-`SECP256K1_PRIVHEX`.
+Choosing a binary is the authentication-mode switch. Supplying either robot
+credential source to the default SIWE binary does not select robot mode, and
+the robot binary does not read `REG_SECRET` or `SECP256K1_PRIVHEX`.
 
 ## Notable modules
 - `auth::siwe_after_registration` — waits for DDS registration, then spins up
