@@ -10,6 +10,8 @@ To learn more about this vision, read the [whitepaper](https://auki.com/whitepap
 
 To get started building on the posemesh, check out the [Examples](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md) for sample code, or [build the Posemesh SDK](https://github.com/aukilabs/posemesh/tree/main/sdk) for your platform of choice.
 
+If you want to build the Rust core, see [docs/BUILDING.md](docs/BUILDING.md) for prerequisites and platform notes.
+
 ## Contributors:
 
 The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.com). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
