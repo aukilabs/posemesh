@@ -1,3 +1,11 @@
+## v1.6.0
+
+### Features
+- Robot auth via `new_with_robot_credential` / `signInWithRobotCredential` (DDS verify + bound-domain token exchange)
+- Load portal poses from Domain Server (`list_poses`, `get_pose`; lighthouse UUID or short id)
+- UniFFI + WASM bindings for robot auth and lighthouse poses
+- Wiremock coverage for the robot auth/poses path only
+
 ## v1.5.3
 
 ### Features

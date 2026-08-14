@@ -4,6 +4,7 @@ use crate::{
     discovery::{DomainWithServer, ListDomainsResponse},
     domain_data::{DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData},
     errors::DomainError,
+    portals::Pose,
 };
 use posemesh_utils::get_runtime;
 use std::sync::Arc;
@@ -49,6 +50,22 @@ pub fn new_with_user_credential(
     })
 }
 
+pub fn new_with_robot_credential(
+    dds_url: &str,
+    client_id: &str,
+    registration_credentials: &str,
+) -> Result<Arc<DomainClient>, DomainError> {
+    get_runtime().block_on(async move {
+        let dc = r_DomainClient::new_with_robot_credential(
+            dds_url,
+            client_id,
+            registration_credentials,
+        )
+        .await?;
+        Ok(Arc::new(DomainClient(dc)))
+    })
+}
+
 impl DomainClient {
     pub fn new(api_url: &str, dds_url: &str, client_id: &str) -> Self {
         Self(r_DomainClient::new(api_url, dds_url, client_id))
@@ -57,6 +74,26 @@ impl DomainClient {
     pub fn with_oidc_access_token(&self, token: &str) -> Arc<Self> {
         let dc = self.0.with_oidc_access_token(token);
         Arc::new(DomainClient(dc))
+    }
+
+    pub fn assigned_domain_id(&self) -> Option<String> {
+        get_runtime().block_on(async move { self.0.assigned_domain_id().await })
+    }
+
+    pub fn robot_id(&self) -> Option<String> {
+        get_runtime().block_on(async move { self.0.robot_id().await })
+    }
+
+    pub fn list_poses(&self, domain_id: &str) -> Result<Vec<Pose>, DomainError> {
+        get_runtime().block_on(async move { self.0.list_poses(domain_id).await })
+    }
+
+    pub fn get_pose(
+        &self,
+        domain_id: &str,
+        lighthouse_id: &str,
+    ) -> Result<Pose, DomainError> {
+        get_runtime().block_on(async move { self.0.get_pose(domain_id, lighthouse_id).await })
     }
 
     pub fn download_domain_data(

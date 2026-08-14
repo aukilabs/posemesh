@@ -29,6 +29,13 @@ posemesh-domain-http supports multiple authentication methods, each providing di
   - Grants **read and write access** to domains, according to the roles assigned to the user.
 - **Use case:** Enables single sign-on and fine-grained access control. Permissions are determined by the user’s assigned roles.
 
+### 4. Sign in with Robot Registration Credentials
+
+- **How:** Use opaque DDS robot `registration_credentials` (`new_with_robot_credential` / `signInWithRobotCredential`).
+- **Flow:** `POST /internal/v1/auth/robot/verify` → robot JWT (`assigned_domain_id`) → `POST /internal/v1/auth/robot/domain-token` (`domain:r` + Domain Server URL).
+- **Access:** Bound-domain read access for Domain Server resources (e.g. portal poses via `list_poses` / `get_pose`). Robot domain-token returns **403** if the requested `domain_id` is not the bound assignment (or the robot is unassigned).
+- **Use case:** On-robot clients that hold only `REG_SECRET` / registration credentials (no wallet, app key, or user password).
+
 **Key Features:**
 - Secure authentication and authorization with the Auki Network.
 - (not supported in Python) Efficient streaming download of domain data, enabling seamless handling of large datasets.
@@ -43,6 +50,103 @@ The `client_id` parameter must not be empty.
 - **Backend environments:** Use a unique identifier that represents your service or application.
 
 The purpose of `client_id` is to distinguish whether multiple accesses to a domain originate from the same client (for example, the same app instance on the same device). When this is the case, network credits will only be deducted once for repeated calls from the same client.
+
+### Load portal poses (robot / app / OIDC)
+
+Portal poses live on the Domain Server (`GET /api/v1/domains/{domainID}/lighthouses`), not in domain-data download. `domain_id` is always required. `get_pose` accepts a lighthouse **UUID or 11-character short id**.
+
+Robot clients still pass `domain_id`. DDS `POST /internal/v1/auth/robot/domain-token` returns **403** if that id is not the bound assignment, or the robot is unassigned.
+
+#### Rust
+
+```rust
+use posemesh_domain_http::domain_client::DomainClient;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Robot: REG_SECRET / registration_credentials only.
+    let robot = DomainClient::new_with_robot_credential(
+        &dds_url,
+        &client_id,
+        &registration_credentials,
+    )
+    .await?;
+    let domain_id = robot.assigned_domain_id().await.expect("robot must be assigned");
+    let poses = robot.list_poses(&domain_id).await?;
+    let pose = robot.get_pose(&domain_id, "SHORTID0001").await?; // UUID or short id
+    println!("robot {} portal {} at ({}, {}, {})", robot.robot_id().await.unwrap(), pose.short_id, pose.px, pose.py, pose.pz);
+
+    // App credentials: read-only across domains the app is allowed to see.
+    let app = DomainClient::new_with_app_credential(
+        &api_url,
+        &dds_url,
+        &client_id,
+        &app_key,
+        &app_secret,
+    )
+    .await?;
+    let poses = app.list_poses(&domain_id).await?;
+    let pose = app.get_pose(&domain_id, &poses[0].id).await?;
+
+    // OIDC: user/app token from the auth service.
+    let oidc = DomainClient::new(&api_url, &dds_url, &client_id)
+        .with_oidc_access_token(&oidc_access_token);
+    let poses = oidc.list_poses(&domain_id).await?;
+    let pose = oidc.get_pose(&domain_id, &lighthouse_id).await?;
+    Ok(())
+}
+```
+
+#### Python
+
+```python
+from auki_domain_client import DomainClient, new_with_app_credential, new_with_robot_credential
+
+# Robot
+robot = new_with_robot_credential(dds_url, client_id, registration_credentials)
+domain_id = robot.assigned_domain_id()
+poses = robot.list_poses(domain_id)
+pose = robot.get_pose(domain_id, "SHORTID0001")  # UUID or short id
+
+# App
+app = new_with_app_credential(api_url, dds_url, client_id, app_key, app_secret)
+poses = app.list_poses(domain_id)
+pose = app.get_pose(domain_id, poses[0].id)
+
+# OIDC
+oidc = DomainClient(api_url, dds_url, client_id).with_oidc_access_token(oidc_access_token)
+poses = oidc.list_poses(domain_id)
+pose = oidc.get_pose(domain_id, lighthouse_id)
+```
+
+#### JavaScript / TypeScript
+
+```js
+import {
+  DomainClient,
+  signInWithAppCredential,
+  signInWithRobotCredential,
+} from "@auki/domain-client";
+
+// Robot
+const robot = await signInWithRobotCredential(ddsUrl, clientId, registrationCredentials);
+const domainId = await robot.assignedDomainId();
+const robotPoses = await robot.listPoses(domainId);
+const robotPose = await robot.getPose(domainId, "SHORTID0001"); // UUID or short id
+robot.free();
+
+// App
+const app = await signInWithAppCredential(apiUrl, ddsUrl, clientId, appKey, appSecret);
+const appPoses = await app.listPoses(domainId);
+const appPose = await app.getPose(domainId, appPoses[0].id);
+app.free();
+
+// OIDC
+const oidc = new DomainClient(apiUrl, ddsUrl, clientId).withOIDCAccessToken(oidcAccessToken);
+const oidcPoses = await oidc.listPoses(domainId);
+const oidcPose = await oidc.getPose(domainId, lighthouseId);
+oidc.free();
+```
 
 ### Rust Examples
 For more examples, check `/src/domain_client.rs`.

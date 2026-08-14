@@ -18,6 +18,7 @@ use tokio::time::sleep;
 use crate::{
     auth::{AuthClient, REFRESH_CACHE_TIME, TokenCache, get_cached_or_fresh_token, parse_jwt},
     errors::{AukiErrorResponse, DomainError},
+    robot_auth::RobotAuthClient,
 };
 pub const ALL_DOMAINS_ORG: &str = "all";
 pub const OWN_DOMAINS_ORG: &str = "own";
@@ -36,7 +37,17 @@ pub struct DomainWithToken {
     pub domain: DomainWithServer,
     #[serde(skip)]
     pub expires_at: u64,
-    access_token: String,
+    pub(crate) access_token: String,
+}
+
+impl DomainWithToken {
+    pub(crate) fn new(domain: DomainWithServer, access_token: String, expires_at: u64) -> Self {
+        Self {
+            domain,
+            expires_at,
+            access_token,
+        }
+    }
 }
 
 impl TokenCache for DomainWithToken {
@@ -66,6 +77,7 @@ pub struct DiscoveryService {
     cache: Arc<Mutex<HashMap<String, DomainWithToken>>>,
     api_client: AuthClient,
     oidc_access_token: Option<String>,
+    robot_auth: Option<RobotAuthClient>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +122,45 @@ impl DiscoveryService {
             cache: Arc::new(Mutex::new(HashMap::new())),
             api_client,
             oidc_access_token: None,
+            robot_auth: None,
+        }
+    }
+
+    pub fn new_for_robot(dds_url: &str, client_id: &str) -> Self {
+        Self {
+            dds_url: dds_url.trim_end_matches('/').to_string(),
+            client: Client::new(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            api_client: AuthClient::new("", client_id),
+            oidc_access_token: None,
+            robot_auth: Some(RobotAuthClient::new(dds_url, client_id)),
+        }
+    }
+
+    pub async fn sign_in_as_robot(
+        &mut self,
+        registration_credentials: &str,
+    ) -> Result<crate::robot_auth::RobotSession, DomainError> {
+        self.cache.lock().await.clear();
+        self.oidc_access_token = None;
+        let robot_auth = self
+            .robot_auth
+            .as_mut()
+            .ok_or(DomainError::InvalidRequest("robot auth is not configured"))?;
+        robot_auth.sign_in(registration_credentials).await
+    }
+
+    pub async fn assigned_domain_id(&self) -> Option<String> {
+        match &self.robot_auth {
+            Some(robot) => robot.assigned_domain_id().await,
+            None => None,
+        }
+    }
+
+    pub async fn robot_id(&self) -> Option<String> {
+        match &self.robot_auth {
+            Some(robot) => robot.robot_id().await,
+            None => None,
         }
     }
 
@@ -247,10 +298,18 @@ impl DiscoveryService {
             cache: Arc::new(Mutex::new(HashMap::new())),
             api_client: AuthClient::new(&self.api_client.api_url, &self.api_client.client_id),
             oidc_access_token: Some(oidc_access_token.to_string()),
+            robot_auth: None,
         }
     }
 
     pub async fn auth_domain(&self, domain_id: &str) -> Result<DomainWithToken, DomainError> {
+        if let Some(robot_auth) = &self.robot_auth {
+            let domain = robot_auth.auth_bound_domain(domain_id).await?;
+            let mut cache = self.cache.lock().await;
+            cache.insert(domain_id.to_string(), domain.clone());
+            return Ok(domain);
+        }
+
         let access_token = self
             .api_client
             .get_dds_access_token(self.oidc_access_token.as_deref())
@@ -259,8 +318,8 @@ impl DiscoveryService {
         let cache = if let Some(cached_domain) = self.cache.lock().await.get(domain_id) {
             cached_domain.clone()
         } else {
-            DomainWithToken {
-                domain: DomainWithServer {
+            DomainWithToken::new(
+                DomainWithServer {
                     id: domain_id.to_string(),
                     name: "".to_string(),
                     organization_id: "".to_string(),
@@ -273,9 +332,9 @@ impl DiscoveryService {
                         url: "".to_string(),
                     },
                 },
-                expires_at: 0,
-                access_token: "".to_string(),
-            }
+                "".to_string(),
+                0,
+            )
         };
 
         let cached = get_cached_or_fresh_token(&cache, || {

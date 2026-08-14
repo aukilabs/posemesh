@@ -35,6 +35,21 @@ namespace domain_client {
     ///     DomainError: If authentication fails or connection cannot be established
     [Throws=DomainError]
     DomainClient new_with_user_credential([ByRef] string api_url, [ByRef] string dds_url, [ByRef] string client_id, [ByRef] string email, [ByRef] string password, boolean remember_password);
+
+    /// Creates a DomainClient authenticated as a DDS robot via opaque registration credentials.
+    ///
+    /// Args:
+    ///     dds_url: The Domain Discovery Service URL
+    ///     client_id: The client identifier
+    ///     registration_credentials: Opaque robot credential (base64 robot_id:secret)
+    ///
+    /// Returns:
+    ///     A robot-authenticated DomainClient
+    ///
+    /// Throws:
+    ///     DomainError: If verification fails
+    [Throws=DomainError]
+    DomainClient new_with_robot_credential([ByRef] string dds_url, [ByRef] string client_id, [ByRef] string registration_credentials);
 };
 
 /// Error types that can be raised by DomainClient operations.
@@ -167,6 +182,31 @@ dictionary ListDomainsQuery {
     string? domain_server_id;
 };
 
+/// Pose from Domain Server `GET /api/v1/domains/{domainID}/lighthouses` (`PoseView`).
+dictionary Pose {
+    string id;
+    string short_id;
+    string domain_id;
+    f64 reported_size;
+    f64 px;
+    f64 py;
+    f64 pz;
+    f64 rx;
+    f64 ry;
+    f64 rz;
+    f64 rw;
+    f64? latitude;
+    f64? longitude;
+    f64? altitude;
+    f64? vertical_accuracy;
+    f64? horizontal_accuracy;
+    f64? gps_timestamp;
+    string scanner_device_id;
+    string scanner_device_name;
+    string scanner_device_model;
+    string placed_at;
+};
+
 /// Main client interface for interacting with domain services.
 /// Provides methods to manage domains and their data.
 interface DomainClient {
@@ -188,6 +228,22 @@ interface DomainClient {
     /// Returns:
     ///     A new DomainClient instance with the access token set
     DomainClient with_oidc_access_token([ByRef] string token);
+
+    /// Bound domain id from the robot JWT, when authenticated as a robot.
+    string? assigned_domain_id();
+
+    /// Robot id from the robot JWT / verify response, when authenticated as a robot.
+    string? robot_id();
+
+    /// Lists poses in a domain (`GET /api/v1/domains/{domainID}/lighthouses`).
+    /// Robot credentials: DDS returns 403 if domain_id is not the bound assignment.
+    [Throws=DomainError]
+    sequence<Pose> list_poses([ByRef] string domain_id);
+
+    /// Gets a pose by lighthouse UUID or short id
+    /// (`GET /api/v1/domains/{domainID}/lighthouses/{lighthouseID}`).
+    [Throws=DomainError]
+    Pose get_pose([ByRef] string domain_id, [ByRef] string lighthouse_id);
 
     /// Downloads domain data matching the query criteria.
     /// Retrieves both metadata and data payload for matching entries.

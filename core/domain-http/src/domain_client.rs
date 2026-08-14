@@ -10,6 +10,7 @@ use crate::auth::TokenCache;
 pub use crate::config;
 use crate::discovery::{DiscoveryService, DomainWithToken, ListDomainsResponse};
 use crate::errors::DomainError;
+pub use crate::portals::Pose;
 pub use crate::reconstruction::JobRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +67,82 @@ impl DomainClient {
             .sign_in_with_auki_account(email, password, remember_password)
             .await?;
         Ok(dc)
+    }
+
+    /// Authenticate as a DDS robot using opaque registration credentials.
+    ///
+    /// Calls `POST /internal/v1/auth/robot/verify`, binds `assigned_domain_id`
+    /// from the robot JWT, and uses `/internal/v1/auth/robot/domain-token` for
+    /// Domain Server access (`domain:r` + DS URL).
+    pub async fn new_with_robot_credential(
+        dds_url: &str,
+        client_id: &str,
+        registration_credentials: &str,
+    ) -> Result<Self, DomainError> {
+        if client_id.is_empty() {
+            panic!("client_id is empty");
+        }
+        let mut discovery_client = DiscoveryService::new_for_robot(dds_url, client_id);
+        discovery_client
+            .sign_in_as_robot(registration_credentials)
+            .await?;
+        Ok(Self {
+            discovery_client,
+            client_id: client_id.to_string(),
+        })
+    }
+
+    pub async fn assigned_domain_id(&self) -> Option<String> {
+        self.discovery_client.assigned_domain_id().await
+    }
+
+    pub async fn robot_id(&self) -> Option<String> {
+        self.discovery_client.robot_id().await
+    }
+
+    /// List poses in a domain (`GET /api/v1/domains/{domainID}/lighthouses`).
+    ///
+    /// Robot credentials: DDS domain-token returns 403 when `domain_id` is not
+    /// the bound assignment, or the robot is unassigned.
+    pub async fn list_poses(&self, domain_id: &str) -> Result<Vec<Pose>, DomainError> {
+        if domain_id.is_empty() {
+            return Err(DomainError::InvalidRequest("domain_id is required"));
+        }
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        crate::portals::list_poses(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            &self.client_id,
+            domain_id,
+        )
+        .await
+    }
+
+    /// Get a pose by lighthouse UUID or short id
+    /// (`GET /api/v1/domains/{domainID}/lighthouses/{lighthouseID}`).
+    ///
+    /// `lighthouse_id` may be a UUID or an 11-character short id (DS uppercases
+    /// short ids). Robot credentials: same 403 rule as [`list_poses`].
+    pub async fn get_pose(
+        &self,
+        domain_id: &str,
+        lighthouse_id: &str,
+    ) -> Result<Pose, DomainError> {
+        if domain_id.is_empty() {
+            return Err(DomainError::InvalidRequest("domain_id is required"));
+        }
+        if lighthouse_id.is_empty() {
+            return Err(DomainError::InvalidRequest("lighthouse_id is required"));
+        }
+        let domain = self.discovery_client.auth_domain(domain_id).await?;
+        crate::portals::get_pose(
+            &domain.domain.domain_server.url,
+            &domain.get_access_token(),
+            &self.client_id,
+            domain_id,
+            lighthouse_id,
+        )
+        .await
     }
 
     pub fn with_oidc_access_token(&self, token: &str) -> Self {

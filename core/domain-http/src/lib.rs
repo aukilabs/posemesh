@@ -4,7 +4,9 @@ pub mod discovery;
 pub mod domain_client;
 pub mod domain_data;
 pub mod errors;
+pub mod portals;
 pub mod reconstruction;
+pub mod robot_auth;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -17,13 +19,16 @@ use crate::{
     domain_client::ListDomainsQuery,
     domain_data::{DomainAction, DomainData, DomainDataMetadata, DownloadQuery, UploadDomainData},
     errors::DomainError,
+    portals::Pose,
 };
 
 #[cfg(feature = "uniffi")]
 pub mod uniffi;
 
 #[cfg(feature = "uniffi")]
-use crate::uniffi::{DomainClient, new_with_app_credential, new_with_user_credential};
+use crate::uniffi::{
+    DomainClient, new_with_app_credential, new_with_robot_credential, new_with_user_credential,
+};
 
 #[cfg(feature = "uniffi")]
 ::uniffi::include_scaffolding!("domain-client");

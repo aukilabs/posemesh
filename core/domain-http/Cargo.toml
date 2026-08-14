@@ -1,6 +1,6 @@
 [package]
 name = "posemesh-domain-http"
-version = "1.5.3"
+version = "1.6.0"
 edition = "2024"
 repository = "https://github.com/aukilabs/posemesh/tree/main/core"
 description = "HTTP client library for interacting with AukiLabs domain data services, supporting both native and WebAssembly targets."
@@ -39,6 +39,9 @@ dotenvy = "0.15.7"
 tokio-stream = "0.1.17"
 wasm-bindgen-test.workspace = true
 uuid.workspace = true
+wiremock = "0.6.2"
+serde_json = { workspace = true }
+base64 = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]

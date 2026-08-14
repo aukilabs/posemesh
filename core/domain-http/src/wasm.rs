@@ -97,6 +97,44 @@ export function signInWithUserCredential(
     logout: boolean
 ): Promise<DomainClient>;
 
+export type Pose = {
+  id: string;
+  short_id: string;
+  domain_id: string;
+  reported_size: number;
+  px: number;
+  py: number;
+  pz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  rw: number;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  vertical_accuracy: number | null;
+  horizontal_accuracy: number | null;
+  gps_timestamp: number | null;
+  scanner_device_id: string;
+  scanner_device_name: string;
+  scanner_device_model: string;
+  placed_at: string;
+};
+
+/**
+ * Signs in with opaque DDS robot registration credentials.
+ *
+ * @param dds_url - The Domain Discovery Service URL.
+ * @param client_id - Unique identifier for this client.
+ * @param registration_credentials - Opaque robot credential.
+ * @returns Promise that resolves to a DomainClient instance.
+ */
+export function signInWithRobotCredential(
+    dds_url: string,
+    client_id: string,
+    registration_credentials: string
+): Promise<DomainClient>;
+
 "#;
 
 /// WASM wrapper for DomainClient that provides JavaScript bindings
@@ -165,6 +203,27 @@ pub fn sign_in_with_user_credential(
     future_to_promise(future)
 }
 
+#[wasm_bindgen(js_name = "signInWithRobotCredential")]
+pub fn sign_in_with_robot_credential(
+    dds_url: String,
+    client_id: String,
+    registration_credentials: String,
+) -> Promise {
+    let future = async move {
+        let res = r_DomainClient::new_with_robot_credential(
+            &dds_url,
+            &client_id,
+            &registration_credentials,
+        )
+        .await;
+        match res {
+            Ok(domain_client) => Ok(JsValue::from(DomainClient { domain_client })),
+            Err(e) => Err(JsError::new(&e.to_string()).into()),
+        }
+    };
+    future_to_promise(future)
+}
+
 #[wasm_bindgen]
 impl DomainClient {
     /// Constructs a new DomainClient instance. Make sure to call .free() to free the memory when you are done with the client.
@@ -218,6 +277,51 @@ impl DomainClient {
                 .domain_client
                 .with_oidc_access_token(&oidc_access_token),
         }
+    }
+
+    #[wasm_bindgen(js_name = "assignedDomainId")]
+    pub fn assigned_domain_id(&self) -> Promise {
+        let domain_client = self.domain_client.clone();
+        future_to_promise(async move {
+            Ok(JsValue::from(
+                domain_client.assigned_domain_id().await.unwrap_or_default(),
+            ))
+        })
+    }
+
+    #[wasm_bindgen(js_name = "robotId")]
+    pub fn robot_id(&self) -> Promise {
+        let domain_client = self.domain_client.clone();
+        future_to_promise(async move {
+            Ok(JsValue::from(
+                domain_client.robot_id().await.unwrap_or_default(),
+            ))
+        })
+    }
+
+    /// Lists poses (`GET /api/v1/domains/{domainID}/lighthouses`).
+    /// Robot credentials: DDS returns 403 if domain_id is not the bound assignment.
+    #[wasm_bindgen(js_name = "listPoses")]
+    pub fn list_poses(&self, domain_id: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        future_to_promise(async move {
+            match domain_client.list_poses(&domain_id).await {
+                Ok(poses) => to_value(&poses).map_err(|e| JsError::new(&e.to_string()).into()),
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        })
+    }
+
+    /// Gets a pose by lighthouse UUID or short id.
+    #[wasm_bindgen(js_name = "getPose")]
+    pub fn get_pose(&self, domain_id: String, lighthouse_id: String) -> Promise {
+        let domain_client = self.domain_client.clone();
+        future_to_promise(async move {
+            match domain_client.get_pose(&domain_id, &lighthouse_id).await {
+                Ok(pose) => to_value(&pose).map_err(|e| JsError::new(&e.to_string()).into()),
+                Err(e) => Err(JsError::new(&e.to_string()).into()),
+            }
+        })
     }
 
     /// Downloads metadata for domain data matching the query.
