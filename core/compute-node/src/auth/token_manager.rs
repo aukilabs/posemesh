@@ -20,6 +20,7 @@ use super::siwe::{AccessBundle, SiweError};
 
 const DEFAULT_RATIO: f64 = 0.75;
 const MIN_DURATION: Duration = Duration::from_millis(1);
+pub(crate) const AUTH_FAILURE_BACKOFF: Duration = Duration::from_secs(30);
 
 #[async_trait]
 pub trait AccessAuthenticator: Send + Sync {
@@ -79,6 +80,8 @@ pub enum TokenManagerError {
         #[source]
         last_error: SiweError,
     },
+    #[error("authentication retry is backing off")]
+    AuthenticationBackoff,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -146,6 +149,7 @@ where
 struct State {
     token: Option<TokenEntry>,
     inflight: Option<Arc<Notify>>,
+    retry_not_before: Option<Instant>,
 }
 
 #[derive(Clone)]
@@ -179,6 +183,7 @@ where
             state: Arc::new(Mutex::new(State {
                 token: None,
                 inflight: None,
+                retry_not_before: None,
             })),
             stopped: Arc::new(AtomicBool::new(false)),
             stop_notify: Arc::new(Notify::new()),
@@ -198,6 +203,12 @@ where
                     if entry.is_valid(now) {
                         return Ok(entry.value.clone());
                     }
+                }
+                if let Some(retry_not_before) = state.retry_not_before {
+                    if now < retry_not_before {
+                        return Err(TokenManagerError::AuthenticationBackoff);
+                    }
+                    state.retry_not_before = None;
                 }
                 match state.inflight.clone() {
                     Some(existing) => (existing, false),
@@ -219,10 +230,14 @@ where
                         Ok(entry) => {
                             let token = entry.value.clone();
                             state.token = Some(entry);
+                            state.retry_not_before = None;
                             refreshed = true;
                             Ok(token)
                         }
-                        Err(err) => Err(err),
+                        Err(err) => {
+                            state.retry_not_before = Some(now + AUTH_FAILURE_BACKOFF);
+                            Err(err)
+                        }
                     };
                     (notify_opt, outcome)
                 };
@@ -242,12 +257,14 @@ where
     pub async fn clear(&self) {
         let mut state = self.state.lock().await;
         state.token = None;
+        state.retry_not_before = None;
         drop(state);
         self.state_notify.notify_waiters();
     }
 
     pub async fn on_unauthorized_retry(&self) {
         let mut state = self.state.lock().await;
+        state.retry_not_before = None;
         if let Some(entry) = &mut state.token {
             let now = self.clock.now_instant();
             entry.refresh_at = now.checked_sub(MIN_DURATION).unwrap_or(now);
@@ -262,6 +279,7 @@ where
         let notify = {
             let mut state = self.state.lock().await;
             state.token = None;
+            state.retry_not_before = None;
             let inflight = state.inflight.take();
             drop(state);
             self.state_notify.notify_waiters();
@@ -328,12 +346,12 @@ where
                         return Ok(entry);
                     }
                     Err(err) => {
-                        warn!(attempt, error = %err, "DDS SIWE response invalid");
+                        warn!(attempt, error = %err, "DDS authentication response invalid");
                         last_error = Some(err);
                     }
                 },
                 Err(err) => {
-                    warn!(attempt, error = %err, "DDS SIWE login failed");
+                    warn!(attempt, error = %err, "DDS authentication failed");
                     last_error = Some(err);
                 }
             }
@@ -440,7 +458,14 @@ where
                     let now = self.clock.now_instant();
                     if target <= now {
                         if let Err(err) = self.get_access(now).await {
-                            warn!(error = %err, "Background reauth attempt failed");
+                            warn!(
+                                error = %err,
+                                retry_in_ms = AUTH_FAILURE_BACKOFF.as_millis(),
+                                "Background DDS authentication attempt failed"
+                            );
+                            if !self.wait_after_background_failure().await {
+                                break;
+                            }
                         }
                         continue;
                     }
@@ -459,7 +484,14 @@ where
 
                     let now = self.clock.now_instant();
                     if let Err(err) = self.get_access(now).await {
-                        warn!(error = %err, "Background reauth attempt failed");
+                        warn!(
+                            error = %err,
+                            retry_in_ms = AUTH_FAILURE_BACKOFF.as_millis(),
+                            "Background DDS authentication attempt failed"
+                        );
+                        if !self.wait_after_background_failure().await {
+                            break;
+                        }
                     }
                 }
                 None => {
@@ -469,6 +501,18 @@ where
                     }
                 }
             }
+        }
+    }
+
+    async fn wait_after_background_failure(&self) -> bool {
+        if self.stopped.load(Ordering::SeqCst) {
+            return false;
+        }
+
+        tokio::select! {
+            _ = self.stop_notify.notified() => false,
+            _ = self.state_notify.notified() => true,
+            _ = sleep(AUTH_FAILURE_BACKOFF) => true,
         }
     }
 
@@ -593,6 +637,39 @@ mod tests {
         counter: AtomicUsize,
     }
 
+    struct SuccessThenFailAuthenticator {
+        clock: Arc<TokioTestClock>,
+        calls: AtomicUsize,
+    }
+
+    impl SuccessThenFailAuthenticator {
+        fn new(clock: Arc<TokioTestClock>) -> Self {
+            Self {
+                clock,
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(AtomicOrdering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl AccessAuthenticator for SuccessThenFailAuthenticator {
+        async fn login(&self) -> Result<AccessBundle, SiweError> {
+            let call = self.calls.fetch_add(1, AtomicOrdering::SeqCst);
+            if call == 0 {
+                return Ok(AccessBundle::new(
+                    "initial-token",
+                    self.clock.now_utc() + chrono::Duration::seconds(10),
+                ));
+            }
+
+            Err(SiweError::MissingField("access_token"))
+        }
+    }
+
     impl RecordingAuthenticator {
         fn new(clock: Arc<TokioTestClock>, ttl: chrono::Duration) -> Self {
             Self {
@@ -647,6 +724,48 @@ mod tests {
         let tokens: Vec<_> = futures::future::join_all(tasks).await;
         assert!(tokens.iter().all(|t| t == "token-1"));
         assert_eq!(auth.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_failed_access_shares_backoff_without_reauthenticating() {
+        let responses = VecDeque::from([
+            Err(SiweError::MissingField("access_token")),
+            Ok(access_bundle("recovered-token", 3600)),
+        ]);
+        let auth = Arc::new(QueueAuthenticator::new(responses));
+        let clock = Arc::new(TestClock::new());
+        let manager = TokenManager::with_rng(
+            auth.clone(),
+            clock.clone(),
+            TokenManagerConfig {
+                safety_ratio: 1.0,
+                max_retries: 0,
+                jitter: Duration::ZERO,
+            },
+            StdRng::seed_from_u64(43),
+        );
+
+        let now = clock.now_instant();
+        let tasks = (0..5).map(|_| {
+            let manager = manager.clone();
+            async move { manager.get_access(now).await }
+        });
+        let results: Vec<_> = futures::future::join_all(tasks).await;
+
+        assert!(results.iter().all(Result::is_err));
+        assert_eq!(auth.calls(), 1);
+        assert!(matches!(
+            manager.get_access(now).await,
+            Err(TokenManagerError::AuthenticationBackoff)
+        ));
+        assert_eq!(auth.calls(), 1);
+
+        *clock.instant_offset.lock().unwrap() += AUTH_FAILURE_BACKOFF;
+        assert_eq!(
+            manager.get_access(clock.now_instant()).await.unwrap(),
+            "recovered-token"
+        );
+        assert_eq!(auth.calls(), 2);
     }
 
     #[tokio::test]
@@ -835,6 +954,58 @@ mod tests {
         let elapsed_std = Duration::from_secs_f64(elapsed.as_secs_f64());
         assert!(elapsed_std >= expected);
         assert!(elapsed_std <= expected + Duration::from_millis(10));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn background_refresh_failure_waits_before_retrying() {
+        let clock = Arc::new(TokioTestClock::new());
+        let auth = Arc::new(SuccessThenFailAuthenticator::new(clock.clone()));
+        let manager = TokenManager::with_rng(
+            auth.clone(),
+            clock.clone(),
+            TokenManagerConfig {
+                safety_ratio: 0.5,
+                max_retries: 0,
+                jitter: Duration::ZERO,
+            },
+            StdRng::seed_from_u64(456),
+        );
+
+        manager.start_bg().await;
+        for _ in 0..3 {
+            yield_now().await;
+        }
+        assert_eq!(
+            manager.get_access(clock.now_instant()).await.unwrap(),
+            "initial-token"
+        );
+        for _ in 0..3 {
+            yield_now().await;
+        }
+
+        manager.on_unauthorized_retry().await;
+        for _ in 0..5 {
+            yield_now().await;
+            if auth.calls() >= 2 {
+                break;
+            }
+        }
+        assert_eq!(auth.calls(), 2);
+
+        advance(AUTH_FAILURE_BACKOFF - Duration::from_millis(1)).await;
+        yield_now().await;
+        assert_eq!(auth.calls(), 2);
+
+        advance(Duration::from_millis(1)).await;
+        for _ in 0..5 {
+            yield_now().await;
+            if auth.calls() >= 3 {
+                break;
+            }
+        }
+        assert_eq!(auth.calls(), 3);
+
+        manager.stop_bg().await;
     }
 
     #[tokio::test(start_paused = true)]

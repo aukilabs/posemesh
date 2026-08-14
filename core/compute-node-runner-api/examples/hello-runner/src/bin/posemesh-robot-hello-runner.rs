@@ -1,5 +1,6 @@
 use anyhow::Result;
-use posemesh_compute_node::engine::RunnerRegistry;
+use posemesh_compute_node::config::RobotNodeConfig;
+use posemesh_compute_node::engine::{run_robot_node, RunnerRegistry};
 use posemesh_compute_node::telemetry;
 use posemesh_hello_runner::HelloRunner;
 use tracing::info;
@@ -12,15 +13,13 @@ async fn main() -> Result<()> {
 
     telemetry::init_from_env()?;
 
-    let cfg = posemesh_compute_node::config::NodeConfig::from_env()?;
+    let cfg = RobotNodeConfig::from_env()?;
 
     let registry = RunnerRegistry::new().register(HelloRunner);
     let capabilities = registry.capabilities();
+    info!(?capabilities, "robot hello runner registered capabilities");
 
-    posemesh_compute_node::dds::register::spawn_registration_if_configured(&cfg, &capabilities)?;
-    info!(?capabilities, "hello runner registered capabilities");
-
-    posemesh_compute_node::engine::run_node(cfg, registry).await?;
+    run_robot_node(cfg, registry).await?;
 
     Ok(())
 }

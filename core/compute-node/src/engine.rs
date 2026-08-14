@@ -14,6 +14,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
+    auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
+    config::{NodeConfig, RobotNodeConfig},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
     poller::{jittered_delay_ms, PollerConfig},
@@ -108,6 +110,71 @@ pub async fn run_node_with_shutdown(
     let siwe_handle = siwe.start().await?;
     info!("DDS SIWE token manager started");
 
+    let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
+    let result = run_authenticated_node_loop(&cfg, &runners, auth, shutdown, "SIWE", false).await;
+
+    siwe_handle.shutdown().await;
+    info!("Shutdown signal received; exiting run_node loop");
+
+    result
+}
+
+/// Run a robot-authenticated node until interrupted.
+pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Result<()> {
+    let shutdown = CancellationToken::new();
+    let signal_token = shutdown.clone();
+    let signal_task = tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal_token.cancel();
+        }
+    });
+
+    let result = run_robot_node_with_shutdown(cfg, runners, shutdown.clone()).await;
+
+    shutdown.cancel();
+    signal_task.abort();
+    let _ = signal_task.await;
+
+    result
+}
+
+/// Run a robot-authenticated node until the supplied cancellation token fires.
+pub async fn run_robot_node_with_shutdown(
+    cfg: RobotNodeConfig,
+    runners: RunnerRegistry,
+    shutdown: CancellationToken,
+) -> Result<()> {
+    let runtime_cfg = cfg.runtime_config();
+    let robot = crate::auth::RobotMachineAuth::from_config(&cfg, runners.capabilities())?;
+    info!("DDS robot authentication configured");
+    let robot_handle = tokio::select! {
+        result = robot.start() => result?,
+        _ = shutdown.cancelled() => {
+            robot.shutdown().await;
+            info!("Shutdown signal received before robot authentication completed");
+            return Ok(());
+        }
+    };
+    info!("DDS robot token manager started");
+
+    let auth: Arc<dyn TokenProvider> = Arc::new(robot_handle.clone());
+    let result =
+        run_authenticated_node_loop(&runtime_cfg, &runners, auth, shutdown, "robot", true).await;
+
+    robot_handle.shutdown().await;
+    info!("Shutdown signal received; exiting robot node loop");
+
+    result
+}
+
+async fn run_authenticated_node_loop(
+    cfg: &NodeConfig,
+    runners: &RunnerRegistry,
+    auth: Arc<dyn TokenProvider>,
+    shutdown: CancellationToken,
+    auth_kind: &'static str,
+    interrupt_on_shutdown: bool,
+) -> Result<()> {
     let poll_cfg = PollerConfig {
         backoff_ms_min: cfg.poll_backoff_ms_min,
         backoff_ms_max: cfg.poll_backoff_ms_max,
@@ -118,13 +185,27 @@ pub async fn run_node_with_shutdown(
             break;
         }
 
-        // Ensure SIWE token is available before attempting DMS operations
-        if let Err(err) = siwe_handle.bearer().await {
-            warn!(error = %err, "Failed to obtain SIWE bearer token; backing off");
+        // Ensure a token is available before attempting DMS operations.
+        let bearer = if interrupt_on_shutdown {
+            tokio::select! {
+                result = auth.bearer() => result,
+                _ = shutdown.cancelled() => break,
+            }
+        } else {
+            auth.bearer().await
+        };
+        if let Err(err) = bearer {
+            warn!(auth_kind, error = %err, "Failed to obtain bearer token; backing off");
             let delay_ms = jittered_delay_ms(poll_cfg);
+            let delay = StdDuration::from_millis(delay_ms);
+            let delay = if interrupt_on_shutdown {
+                delay.max(AUTH_FAILURE_BACKOFF)
+            } else {
+                delay
+            };
             tokio::select! {
                 _ = shutdown.cancelled() => break,
-                _ = sleep(StdDuration::from_millis(delay_ms)) => continue,
+                _ = sleep(delay) => continue,
             }
         }
 
@@ -132,7 +213,7 @@ pub async fn run_node_with_shutdown(
         let dms_client = match crate::dms::client::DmsClient::new(
             cfg.dms_base_url.clone(),
             timeout,
-            std::sync::Arc::new(siwe_handle.clone()),
+            auth.clone(),
         ) {
             Ok(client) => client,
             Err(err) => {
@@ -145,7 +226,24 @@ pub async fn run_node_with_shutdown(
             }
         };
 
-        match run_cycle_with_dms(&cfg, &dms_client, &runners).await {
+        let cycle = if interrupt_on_shutdown {
+            let acquired = tokio::select! {
+                biased;
+                result = acquire_lease_with_dms(&dms_client, runners) => result,
+                _ = shutdown.cancelled() => break,
+            };
+            match acquired {
+                Ok(Some(acquired)) => {
+                    run_leased_cycle_with_dms(cfg, &dms_client, runners, acquired).await
+                }
+                Ok(None) => Ok(false),
+                Err(err) => Err(err),
+            }
+        } else {
+            run_cycle_with_dms(cfg, &dms_client, runners).await
+        };
+
+        match cycle {
             Ok(true) => {
                 // Successful task execution; immediately attempt next poll.
                 continue;
@@ -168,9 +266,6 @@ pub async fn run_node_with_shutdown(
             }
         }
     }
-
-    siwe_handle.shutdown().await;
-    info!("Shutdown signal received; exiting run_node loop");
 
     Ok(())
 }
@@ -247,22 +342,50 @@ pub async fn run_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
 ) -> Result<bool> {
-    use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
-    use serde_json::json;
+    let Some(acquired) = acquire_lease_with_dms(dms, reg).await? else {
+        return Ok(false);
+    };
+    run_leased_cycle_with_dms(cfg, dms, reg, acquired).await
+}
 
+struct AcquiredLease {
+    capabilities: Vec<String>,
+    lease: LeaseEnvelope,
+}
+
+async fn acquire_lease_with_dms(
+    dms: &DmsClient,
+    reg: &RunnerRegistry,
+) -> Result<Option<AcquiredLease>> {
     let capabilities = reg.capabilities();
     let capability = capabilities
         .first()
         .cloned()
         .ok_or_else(|| anyhow!("no runners registered"))?;
 
-    // Lease a task from DMS
-    let mut lease = match dms.lease_by_capability(&capability).await? {
-        Some(lease) => lease,
-        None => {
-            return Ok(false);
-        }
+    let Some(lease) = dms.lease_by_capability(&capability).await? else {
+        return Ok(None);
     };
+
+    Ok(Some(AcquiredLease {
+        capabilities,
+        lease,
+    }))
+}
+
+async fn run_leased_cycle_with_dms(
+    cfg: &crate::config::NodeConfig,
+    dms: &DmsClient,
+    reg: &RunnerRegistry,
+    acquired: AcquiredLease,
+) -> Result<bool> {
+    use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
+    use serde_json::json;
+
+    let AcquiredLease {
+        capabilities,
+        mut lease,
+    } = acquired;
     if lease.access_token.is_none() {
         tracing::warn!(
             "Lease missing access token; storage client will fall back to legacy token flow"

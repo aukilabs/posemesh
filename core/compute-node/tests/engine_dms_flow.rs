@@ -3,12 +3,16 @@ mod support;
 use async_trait::async_trait;
 use httpmock::prelude::*;
 use posemesh_compute_node::auth::token_manager::{TokenProvider, TokenProviderResult};
-use posemesh_compute_node::config::{LogFormat, NodeConfig};
+use posemesh_compute_node::config::{LogFormat, NodeConfig, RobotNodeConfig};
 use posemesh_compute_node::dms::client::DmsClient;
-use posemesh_compute_node::engine::{run_cycle_with_dms, run_node_with_shutdown, RunnerRegistry};
+use posemesh_compute_node::engine::{
+    run_cycle_with_dms, run_node_with_shutdown, run_robot_node_with_shutdown, RunnerRegistry,
+};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -35,6 +39,21 @@ fn base_cfg() -> NodeConfig {
         enable_noop: true,
         noop_sleep_secs: 1,
     }
+}
+
+fn robot_cfg(server: &MockServer) -> RobotNodeConfig {
+    let base_url: url::Url = server.base_url().parse().unwrap();
+    let mut cfg = RobotNodeConfig::new(base_url.clone(), base_url, "robot-test-credentials")
+        .expect("robot test configuration");
+    cfg.node_version = "robot-test-version".to_string();
+    cfg.request_timeout_secs = 2;
+    cfg.heartbeat_jitter_ms = 0;
+    cfg.poll_backoff_ms_min = 1000;
+    cfg.poll_backoff_ms_max = 1000;
+    cfg.token_reauth_max_retries = 0;
+    cfg.token_reauth_jitter_ms = 0;
+    cfg.noop_sleep_secs = 0;
+    cfg
 }
 
 #[derive(Clone)]
@@ -490,9 +509,13 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         shutdown.clone(),
     ));
 
-    // Allow the node to process at least one lease.
+    // Allow the node to acquire the lease and enter the heartbeat-backed
+    // execution path. A lease hit alone does not mean the async heartbeat
+    // request has reached the mock server yet.
     let start = Instant::now();
-    while lease_mock.hits() == 0 && start.elapsed() < Duration::from_millis(500) {
+    while (lease_mock.hits() == 0 || heartbeat_mock.hits() == 0)
+        && start.elapsed() < Duration::from_secs(2)
+    {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -535,4 +558,377 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         .expect("run_node_with_shutdown should exit cleanly after cancellation");
 
     posemesh_compute_node::dds::persist::clear_node_secret().unwrap();
+}
+
+#[tokio::test]
+async fn run_robot_node_refreshes_after_dms_401_and_retries_with_machine_token() {
+    let server = MockServer::start();
+    let robot_id = Uuid::new_v4();
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+
+    let register_mock = server.mock({
+        let expires_at = expires_at.clone();
+        move |when, then| {
+            when.method(POST)
+                .path("/internal/v1/robots/register")
+                .body_contains("\"registration_credentials\":\"robot-test-credentials\"")
+                .body_contains("\"version\":\"robot-test-version\"")
+                .body_contains(support::mock_runner::MOCK_CAPABILITY);
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "robot_id": robot_id,
+                    "access_token": "robot-token-a",
+                    "access_expires_at": expires_at,
+                }));
+        }
+    });
+    let verify_mock = server.mock({
+        let expires_at = expires_at.clone();
+        move |when, then| {
+            when.method(POST)
+                .path("/internal/v1/auth/robot/verify")
+                .body_contains("\"registration_credentials\":\"robot-test-credentials\"");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "robot_id": robot_id,
+                    "access_token": "robot-token-b",
+                    "access_expires_at": expires_at,
+                }));
+        }
+    });
+    let stale_lease_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/tasks")
+            .header("authorization", "Bearer robot-token-a");
+        then.status(401);
+    });
+    let refreshed_lease_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/tasks")
+            .header("authorization", "Bearer robot-token-b");
+        then.status(204);
+    });
+    let siwe_request_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/request");
+        then.status(500);
+    });
+    let siwe_verify_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/verify");
+        then.status(500);
+    });
+
+    let cfg = robot_cfg(&server);
+    let shutdown = CancellationToken::new();
+    let run_task = tokio::spawn(run_robot_node_with_shutdown(
+        cfg,
+        support::mock_runner::registry_with_mock(),
+        shutdown.clone(),
+    ));
+
+    let started = Instant::now();
+    while refreshed_lease_mock.hits() == 0 && started.elapsed() < Duration::from_secs(3) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    shutdown.cancel();
+    tokio::time::timeout(Duration::from_secs(2), run_task)
+        .await
+        .expect("robot engine should stop promptly")
+        .expect("robot engine task join")
+        .expect("robot engine should shut down cleanly");
+
+    register_mock.assert_hits(1);
+    stale_lease_mock.assert_hits(1);
+    verify_mock.assert_hits(1);
+    refreshed_lease_mock.assert_hits(1);
+    siwe_request_mock.assert_hits(0);
+    siwe_verify_mock.assert_hits(0);
+}
+
+#[tokio::test]
+async fn run_robot_node_backs_off_without_siwe_fallback_when_verify_fails() {
+    let server = MockServer::start();
+    let robot_id = Uuid::new_v4();
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+
+    let register_mock = server.mock(move |when, then| {
+        when.method(POST).path("/internal/v1/robots/register");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "robot_id": robot_id,
+                "access_token": "robot-token-a",
+                "access_expires_at": expires_at,
+            }));
+    });
+    let verify_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/robot/verify");
+        then.status(403);
+    });
+    let stale_lease_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/tasks")
+            .header("authorization", "Bearer robot-token-a");
+        then.status(401);
+    });
+    let siwe_request_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/request");
+        then.status(200);
+    });
+    let siwe_verify_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/verify");
+        then.status(200);
+    });
+
+    let cfg = robot_cfg(&server);
+    let shutdown = CancellationToken::new();
+    let run_task = tokio::spawn(run_robot_node_with_shutdown(
+        cfg,
+        support::mock_runner::registry_with_mock(),
+        shutdown.clone(),
+    ));
+
+    let started = Instant::now();
+    while verify_mock.hits() == 0 && started.elapsed() < Duration::from_secs(3) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        verify_mock.hits(),
+        1,
+        "robot verify should be attempted once"
+    );
+
+    // The foreground engine used to retry at the one-second poll floor here,
+    // bypassing the token manager's background cooldown and eventually
+    // triggering DDS rate limiting. It must share the same minimum cadence.
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(
+        verify_mock.hits(),
+        1,
+        "robot verify must not repeat before the authentication backoff elapses"
+    );
+
+    shutdown.cancel();
+    tokio::time::timeout(Duration::from_secs(2), run_task)
+        .await
+        .expect("robot engine should stop promptly after failed verification")
+        .expect("robot engine task join")
+        .expect("robot engine should shut down cleanly");
+
+    register_mock.assert_hits(1);
+    stale_lease_mock.assert_hits(1);
+    verify_mock.assert_hits(1);
+    siwe_request_mock.assert_hits(0);
+    siwe_verify_mock.assert_hits(0);
+}
+
+#[tokio::test]
+async fn run_robot_node_cancels_while_initial_dds_authentication_hangs() {
+    let server = MockServer::start();
+    let register_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/robots/register");
+        then.delay(Duration::from_secs(5)).status(503);
+    });
+
+    let cfg = robot_cfg(&server);
+    let shutdown = CancellationToken::new();
+    let run_task = tokio::spawn(run_robot_node_with_shutdown(
+        cfg,
+        support::mock_runner::registry_with_mock(),
+        shutdown.clone(),
+    ));
+
+    let started = Instant::now();
+    while register_mock.hits() == 0 && started.elapsed() < Duration::from_secs(2) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(register_mock.hits(), 1, "robot registration should start");
+
+    shutdown.cancel();
+    tokio::time::timeout(Duration::from_millis(500), run_task)
+        .await
+        .expect("hanging DDS authentication must not delay shutdown")
+        .expect("robot engine task join")
+        .expect("robot engine should shut down cleanly");
+}
+
+#[tokio::test]
+async fn run_robot_node_cancels_while_forced_dds_refresh_hangs() {
+    let server = MockServer::start();
+    let robot_id = Uuid::new_v4();
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+
+    let register_mock = server.mock(move |when, then| {
+        when.method(POST).path("/internal/v1/robots/register");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "robot_id": robot_id,
+                "access_token": "robot-token-before-refresh",
+                "access_expires_at": expires_at,
+            }));
+    });
+    let lease_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/tasks")
+            .header("authorization", "Bearer robot-token-before-refresh");
+        then.status(401);
+    });
+    let verify_mock = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/robot/verify");
+        then.delay(Duration::from_secs(5)).status(503);
+    });
+
+    let cfg = robot_cfg(&server);
+    let shutdown = CancellationToken::new();
+    let run_task = tokio::spawn(run_robot_node_with_shutdown(
+        cfg,
+        support::mock_runner::registry_with_mock(),
+        shutdown.clone(),
+    ));
+
+    let started = Instant::now();
+    while verify_mock.hits() == 0 && started.elapsed() < Duration::from_secs(2) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(register_mock.hits(), 1);
+    assert_eq!(lease_mock.hits(), 1);
+    assert_eq!(verify_mock.hits(), 1, "forced robot refresh should start");
+
+    shutdown.cancel();
+    tokio::time::timeout(Duration::from_millis(500), run_task)
+        .await
+        .expect("hanging forced refresh must not delay robot shutdown")
+        .expect("robot engine task join")
+        .expect("robot engine should shut down cleanly");
+}
+
+struct BlockingRunner {
+    started: Arc<AtomicBool>,
+    release: Arc<Notify>,
+}
+
+#[async_trait]
+impl compute_runner_api::Runner for BlockingRunner {
+    fn capability(&self) -> &'static str {
+        "/posemesh/blocking/v1"
+    }
+
+    async fn run(&self, _ctx: compute_runner_api::TaskCtx<'_>) -> anyhow::Result<()> {
+        let release = self.release.notified();
+        self.started.store(true, Ordering::Release);
+        release.await;
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn run_robot_node_finishes_an_active_lease_before_shutdown() {
+    let server = MockServer::start();
+    let robot_id = Uuid::new_v4();
+    let task_id = Uuid::new_v4();
+    let domain_id = Uuid::new_v4();
+    let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let lease_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(30)).to_rfc3339();
+
+    let register_mock = server.mock(move |when, then| {
+        when.method(POST).path("/internal/v1/robots/register");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "robot_id": robot_id,
+                "access_token": "robot-active-token",
+                "access_expires_at": expires_at,
+            }));
+    });
+    let lease_mock = server.mock({
+        let base_url = server.base_url();
+        let lease_expires_at = lease_expires_at.clone();
+        move |when, then| {
+            when.method(GET)
+                .path("/tasks")
+                .header("authorization", "Bearer robot-active-token");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "access_token": "active-session-token",
+                    "lease_expires_at": lease_expires_at,
+                    "domain_id": domain_id,
+                    "domain_server_url": base_url,
+                    "task": {
+                        "id": task_id,
+                        "capability": "/posemesh/blocking/v1",
+                        "outputs_prefix": "out"
+                    }
+                }));
+        }
+    });
+    let heartbeat_mock = server.mock({
+        let base_url = server.base_url();
+        move |when, then| {
+            when.method(POST)
+                .path(format!("/tasks/{task_id}/heartbeat"))
+                .header("authorization", "Bearer robot-active-token");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "access_token": "active-session-token",
+                    "lease_expires_at": (chrono::Utc::now()
+                        + chrono::Duration::seconds(30))
+                        .to_rfc3339(),
+                    "cancel": false,
+                    "status": "running",
+                    "domain_id": domain_id,
+                    "domain_server_url": base_url,
+                    "task_id": task_id
+                }));
+        }
+    });
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path(format!("/tasks/{task_id}/complete"))
+            .header("authorization", "Bearer robot-active-token");
+        then.status(200);
+    });
+
+    let started = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(Notify::new());
+    let runners = RunnerRegistry::new().register(BlockingRunner {
+        started: started.clone(),
+        release: release.clone(),
+    });
+    let cfg = robot_cfg(&server);
+    let shutdown = CancellationToken::new();
+    let mut run_task = tokio::spawn(run_robot_node_with_shutdown(cfg, runners, shutdown.clone()));
+
+    let wait_started = Instant::now();
+    while !started.load(Ordering::Acquire) && wait_started.elapsed() < Duration::from_secs(2) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        started.load(Ordering::Acquire),
+        "runner should start after a lease is acquired"
+    );
+
+    shutdown.cancel();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut run_task)
+            .await
+            .is_err(),
+        "shutdown must not drop an active leased cycle"
+    );
+    complete_mock.assert_hits(0);
+
+    release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), run_task)
+        .await
+        .expect("active cycle should finish after the runner is released")
+        .expect("robot engine task join")
+        .expect("robot engine should shut down after completing the lease");
+
+    register_mock.assert_hits(1);
+    lease_mock.assert_hits(1);
+    assert!(heartbeat_mock.hits() >= 1, "heartbeat should remain active");
+    complete_mock.assert_hits(1);
 }

@@ -8,7 +8,6 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     StatusCode,
 };
-use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::Level;
@@ -80,10 +79,8 @@ impl DmsClient {
         let mut bytes = res.bytes().await.context("read lease body")?;
         // Retry once on 401
         if status == StatusCode::UNAUTHORIZED {
-            let body_preview = String::from_utf8_lossy(&bytes);
             tracing::warn!(
                 status = %status,
-                body = %body_preview,
                 "DMS lease unauthorized; refreshing token and retrying"
             );
             self.auth.on_unauthorized().await;
@@ -102,11 +99,9 @@ impl DmsClient {
             tracing::debug!("DMS lease returned 204 (no work available)");
             return Ok(None);
         }
-        let body_preview = String::from_utf8_lossy(&bytes);
         if status == StatusCode::CONFLICT {
             tracing::debug!(
                 status = %status,
-                body = %body_preview,
                 "DMS lease returned conflict (busy); treating as no work"
             );
             return Ok(None);
@@ -114,7 +109,6 @@ impl DmsClient {
         if !status.is_success() {
             tracing::warn!(
                 status = %status,
-                body = %body_preview,
                 "DMS lease request returned non-success status"
             );
             return Err(anyhow!("/tasks status: {}", status));
@@ -122,8 +116,8 @@ impl DmsClient {
         let lease: LeaseResponse = serde_json::from_slice(&bytes)
             .map_err(|err| {
                 tracing::error!(
+                    status = %status,
                     error = %err,
-                    body = %body_preview,
                     "Failed to decode DMS lease response"
                 );
                 err
@@ -133,7 +127,9 @@ impl DmsClient {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 status = %status,
-                body = %body_preview,
+                task_id = %lease.task.id,
+                capability = %lease.task.capability,
+                access_token_updated = lease.access_token.is_some(),
                 "Decoded DMS lease response"
             );
         }
@@ -148,11 +144,10 @@ impl DmsClient {
             .context("join /complete")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Some(preview) = json_debug_preview(body) {
+        if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 endpoint = %url,
                 task_id = %task_id,
-                body = %preview,
                 "Sending DMS complete request"
             );
         }
@@ -166,15 +161,10 @@ impl DmsClient {
             .await
             .context("send POST /complete")?;
         let mut status = res.status();
-        let mut body_text = res
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        let _ = res.bytes().await;
         if status == StatusCode::UNAUTHORIZED {
-            let preview = truncate_preview(&body_text);
             tracing::warn!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS complete unauthorized; refreshing token and retrying"
             );
@@ -189,16 +179,11 @@ impl DmsClient {
                 .await
                 .context("retry POST /complete")?;
             status = res.status();
-            body_text = res
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read body (retry): {e}>"));
+            let _ = res.bytes().await;
         }
-        let preview = truncate_preview(&body_text);
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS complete response"
             );
@@ -206,13 +191,10 @@ impl DmsClient {
         if !status.is_success() {
             tracing::error!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS complete endpoint returned non-success status"
             );
-            return Err(anyhow!(
-                "POST /tasks/{task_id}/complete status {status}; body: {preview}"
-            ));
+            return Err(anyhow!("POST /tasks/{task_id}/complete status {status}"));
         }
         Ok(())
     }
@@ -224,11 +206,10 @@ impl DmsClient {
             .context("join /fail")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Some(preview) = json_debug_preview(body) {
+        if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 endpoint = %url,
                 task_id = %task_id,
-                body = %preview,
                 "Sending DMS fail request"
             );
         }
@@ -242,15 +223,10 @@ impl DmsClient {
             .await
             .context("send POST /fail")?;
         let mut status = res.status();
-        let mut body_text = res
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
+        let _ = res.bytes().await;
         if status == StatusCode::UNAUTHORIZED {
-            let preview = truncate_preview(&body_text);
             tracing::warn!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS fail unauthorized; refreshing token and retrying"
             );
@@ -265,16 +241,11 @@ impl DmsClient {
                 .await
                 .context("retry POST /fail")?;
             status = res.status();
-            body_text = res
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read body (retry): {e}>"));
+            let _ = res.bytes().await;
         }
-        let preview = truncate_preview(&body_text);
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS fail response"
             );
@@ -282,13 +253,10 @@ impl DmsClient {
         if !status.is_success() {
             tracing::error!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS fail endpoint returned non-success status"
             );
-            return Err(anyhow!(
-                "POST /tasks/{task_id}/fail status {status}; body: {preview}"
-            ));
+            return Err(anyhow!("POST /tasks/{task_id}/fail status {status}"));
         }
         Ok(())
     }
@@ -305,11 +273,10 @@ impl DmsClient {
             .context("join /heartbeat")?;
         let mut headers = self.auth_headers().await?;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Some(preview) = json_debug_preview(body) {
+        if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 endpoint = %url,
                 task_id = %task_id,
-                body = %preview,
                 "Sending DMS heartbeat request"
             );
         }
@@ -325,10 +292,8 @@ impl DmsClient {
         let mut status = res.status();
         let mut bytes = res.bytes().await.context("read heartbeat response body")?;
         if status == StatusCode::UNAUTHORIZED {
-            let preview = truncate_preview(&String::from_utf8_lossy(&bytes));
             tracing::warn!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
                 "DMS heartbeat unauthorized; refreshing token and retrying"
             );
@@ -348,42 +313,34 @@ impl DmsClient {
                 .await
                 .context("read heartbeat response body (retry)")?;
         }
-        let preview = truncate_preview(&String::from_utf8_lossy(&bytes));
+        if !status.is_success() {
+            tracing::warn!(
+                status = %status,
+                task_id = %task_id,
+                "DMS heartbeat endpoint returned non-success status"
+            );
+            return Err(anyhow!("POST /tasks/{task_id}/heartbeat status {status}"));
+        }
+        let hb = serde_json::from_slice::<HeartbeatResponse>(&bytes)
+            .map_err(|err| {
+                tracing::error!(
+                    status = %status,
+                    task_id = %task_id,
+                    error = %err,
+                    "Failed to decode DMS heartbeat response"
+                );
+                err
+            })
+            .context("decode heartbeat response")?;
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!(
                 status = %status,
-                body = %preview,
                 task_id = %task_id,
-                "DMS heartbeat response"
+                access_token_updated = hb.access_token.is_some(),
+                cancel = ?hb.cancel,
+                "Decoded DMS heartbeat response"
             );
         }
-        if !status.is_success() {
-            return Err(anyhow!(
-                "POST /tasks/{task_id}/heartbeat status {status}; body: {preview}"
-            ));
-        }
-        let hb = serde_json::from_slice::<HeartbeatResponse>(&bytes)
-            .context("decode heartbeat response")?;
         Ok(hb)
     }
-}
-
-fn truncate_preview(body: &str) -> String {
-    const MAX: usize = 512;
-    if body.len() <= MAX {
-        body.to_string()
-    } else {
-        let mut preview: String = body.chars().take(MAX).collect();
-        preview.push_str("… (truncated)");
-        preview
-    }
-}
-
-fn json_debug_preview<T: Serialize>(value: &T) -> Option<String> {
-    if !tracing::enabled!(Level::DEBUG) {
-        return None;
-    }
-    serde_json::to_string(value)
-        .map(|s| truncate_preview(&s))
-        .ok()
 }
