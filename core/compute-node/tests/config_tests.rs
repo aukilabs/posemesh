@@ -191,6 +191,7 @@ fn robot_credentials_are_required_and_must_not_be_blank() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
+        "LOG_FORMAT",
     ]);
 
     let err = RobotNodeConfig::from_env().expect_err("missing credentials must fail");
@@ -212,6 +213,7 @@ fn loads_robot_credentials_from_file_and_trims_newline() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
+        "LOG_FORMAT",
     ]);
 
     let credentials = "opaque-file-robot-credentials";
@@ -243,6 +245,7 @@ fn robot_credential_sources_are_mutually_exclusive() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
+        "LOG_FORMAT",
     ]);
 
     std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "inline-credentials");
@@ -263,6 +266,7 @@ fn robot_credential_file_must_be_readable_and_nonempty() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
+        "LOG_FORMAT",
     ]);
 
     std::env::set_var(
@@ -293,6 +297,7 @@ fn robot_credentials_do_not_switch_the_existing_siwe_loader() {
         "SECP256K1_PRIVHEX",
         "HEARTBEAT_MIN_RATIO",
         "HEARTBEAT_MAX_RATIO",
+        "LOG_FORMAT",
     ]);
 
     std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "opaque-robot-credentials");
