@@ -3,7 +3,9 @@ use super::token_manager::{
     AccessAuthenticator, SystemClock, TokenManager, TokenManagerConfig, TokenProvider,
     TokenProviderError,
 };
+use super::PeerBoundAuthenticator;
 use crate::config::NodeConfig;
+use crate::dds::p2p::PeerBindingClient;
 use crate::dds::persist as dds_state;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -19,7 +21,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 type ManagerCell = Arc<Mutex<Option<Arc<SiweTokenManager>>>>;
-type SiweTokenManager = TokenManager<DdsAuthenticator, SystemClock>;
+type SiweTokenManager = TokenManager<PeerBoundAuthenticator<DdsAuthenticator>, SystemClock>;
 
 #[derive(Clone)]
 struct DdsAuthenticator {
@@ -90,13 +92,20 @@ fn rearm_registration_if_invalid(err: &siwe::SiweError) {
 }
 
 pub struct SiweAfterRegistration {
-    authenticator: Arc<DdsAuthenticator>,
+    authenticator: Arc<PeerBoundAuthenticator<DdsAuthenticator>>,
     config: TokenManagerConfig,
     manager: ManagerCell,
 }
 
 impl SiweAfterRegistration {
     pub fn from_config(cfg: &NodeConfig) -> Result<Self> {
+        Self::from_config_with_peer_binding(cfg, None)
+    }
+
+    pub(crate) fn from_config_with_peer_binding(
+        cfg: &NodeConfig,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
         let dds_base_url = cfg
             .dds_base_url
             .as_ref()
@@ -117,11 +126,30 @@ impl SiweAfterRegistration {
             jitter: Duration::from_millis(cfg.token_reauth_jitter_ms),
         };
 
-        Self::new(dds_base_url, priv_hex, config)
+        Self::new_inner(dds_base_url, priv_hex, config, peer_binding)
     }
 
     pub fn new(dds_base_url: String, priv_hex: String, config: TokenManagerConfig) -> Result<Self> {
-        let authenticator = Arc::new(DdsAuthenticator::new(dds_base_url, priv_hex)?);
+        Self::new_inner(dds_base_url, priv_hex, config, None)
+    }
+
+    pub fn new_peer_bound(
+        dds_base_url: String,
+        priv_hex: String,
+        config: TokenManagerConfig,
+        peer_binding: PeerBindingClient,
+    ) -> Result<Self> {
+        Self::new_inner(dds_base_url, priv_hex, config, Some(peer_binding))
+    }
+
+    fn new_inner(
+        dds_base_url: String,
+        priv_hex: String,
+        config: TokenManagerConfig,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
+        let base = DdsAuthenticator::new(dds_base_url, priv_hex)?;
+        let authenticator = Arc::new(PeerBoundAuthenticator::new(base, peer_binding));
         Ok(Self {
             authenticator,
             config,
@@ -149,7 +177,6 @@ impl SiweAfterRegistration {
             Arc::new(SystemClock),
             self.config.clone(),
         ));
-        manager.start_bg().await;
 
         manager
             .bearer()
@@ -158,11 +185,19 @@ impl SiweAfterRegistration {
 
         let mut guard = self.manager.lock().await;
         if let Some(existing) = guard.as_ref() {
-            manager.stop_bg().await;
             return Ok(existing.clone());
         }
         *guard = Some(manager.clone());
+        manager.start_bg().await;
         Ok(manager)
+    }
+
+    /// Stop and discard any token manager installed by [`Self::start`].
+    pub async fn shutdown(&self) {
+        let manager = self.manager.lock().await.take();
+        if let Some(manager) = manager {
+            manager.stop_bg().await;
+        }
     }
 
     async fn wait_for_registration(&self) -> Result<()> {
@@ -283,6 +318,7 @@ mod tests {
             token_safety_ratio: 0.75,
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
+            auki_p2p_enabled: false,
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: 1,

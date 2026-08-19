@@ -42,6 +42,8 @@ pub struct NodeConfig {
     pub token_safety_ratio: f32,
     pub token_reauth_max_retries: u32,
     pub token_reauth_jitter_ms: u64,
+    #[serde(default)]
+    pub auki_p2p_enabled: bool,
     pub register_interval_secs: Option<u64>,
     pub register_max_retry: Option<i32>,
     pub max_concurrency: u32,
@@ -90,6 +92,7 @@ impl NodeConfig {
         let token_safety_ratio = parse_f32_opt("TOKEN_SAFETY_RATIO", 0.75)?;
         let token_reauth_max_retries = parse_u32_opt("TOKEN_REAUTH_MAX_RETRIES", 3)?;
         let token_reauth_jitter_ms = parse_u64_opt("TOKEN_REAUTH_JITTER_MS", 500)?;
+        let auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
         let register_interval_secs = Some(parse_u64_default(
             "REGISTER_INTERVAL_SECS",
             DEFAULT_REGISTER_INTERVAL_SECS,
@@ -118,6 +121,7 @@ impl NodeConfig {
             token_safety_ratio,
             token_reauth_max_retries,
             token_reauth_jitter_ms,
+            auki_p2p_enabled,
             register_interval_secs,
             register_max_retry,
             max_concurrency,
@@ -154,6 +158,7 @@ pub struct RobotNodeConfig {
     pub token_safety_ratio: f32,
     pub token_reauth_max_retries: u32,
     pub token_reauth_jitter_ms: u64,
+    pub auki_p2p_enabled: bool,
     pub max_concurrency: u32,
     pub log_format: LogFormat,
     pub enable_noop: bool,
@@ -176,6 +181,7 @@ impl fmt::Debug for RobotNodeConfig {
             .field("token_safety_ratio", &self.token_safety_ratio)
             .field("token_reauth_max_retries", &self.token_reauth_max_retries)
             .field("token_reauth_jitter_ms", &self.token_reauth_jitter_ms)
+            .field("auki_p2p_enabled", &self.auki_p2p_enabled)
             .field("max_concurrency", &self.max_concurrency)
             .field("log_format", &self.log_format)
             .field("enable_noop", &self.enable_noop)
@@ -214,6 +220,7 @@ impl RobotNodeConfig {
             token_safety_ratio: 0.75,
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
+            auki_p2p_enabled: false,
             max_concurrency: 1,
             log_format: LogFormat::default(),
             enable_noop: false,
@@ -246,6 +253,7 @@ impl RobotNodeConfig {
         cfg.token_safety_ratio = parse_f32_opt("TOKEN_SAFETY_RATIO", 0.75)?;
         cfg.token_reauth_max_retries = parse_u32_opt("TOKEN_REAUTH_MAX_RETRIES", 3)?;
         cfg.token_reauth_jitter_ms = parse_u64_opt("TOKEN_REAUTH_JITTER_MS", 500)?;
+        cfg.auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
         cfg.max_concurrency = parse_u32_opt("MAX_CONCURRENCY", 1)?;
         cfg.log_format = parse_log_format("LOG_FORMAT").unwrap_or_default();
         cfg.enable_noop = parse_bool_opt("ENABLE_NOOP", false)?;
@@ -277,6 +285,7 @@ impl RobotNodeConfig {
             token_safety_ratio: self.token_safety_ratio,
             token_reauth_max_retries: self.token_reauth_max_retries,
             token_reauth_jitter_ms: self.token_reauth_jitter_ms,
+            auki_p2p_enabled: self.auki_p2p_enabled,
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: self.max_concurrency,

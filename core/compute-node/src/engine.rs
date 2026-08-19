@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::{
     auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
     config::{NodeConfig, RobotNodeConfig},
+    dds::p2p::{ProcessP2p, RobotP2pTokenProvider},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
     poller::{jittered_delay_ms, PollerConfig},
@@ -95,6 +96,7 @@ pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -
     let result = run_node_with_shutdown(cfg, runners, shutdown.clone()).await;
 
     shutdown.cancel();
+    signal_task.abort();
     let _ = signal_task.await;
 
     result
@@ -105,15 +107,43 @@ pub async fn run_node_with_shutdown(
     runners: RunnerRegistry,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    let siwe = crate::auth::SiweAfterRegistration::from_config(&cfg)?;
+    let process_p2p = start_process_p2p(&cfg).await?;
+    let peer_binding = process_p2p.as_ref().map(ProcessP2p::binding_client);
+    let siwe =
+        match crate::auth::SiweAfterRegistration::from_config_with_peer_binding(&cfg, peer_binding)
+        {
+            Ok(siwe) => siwe,
+            Err(error) => {
+                shutdown_process_p2p(process_p2p).await;
+                return Err(error);
+            }
+        };
     info!("DDS SIWE authentication configured; waiting for DDS registration");
-    let siwe_handle = siwe.start().await?;
+    let siwe_handle = tokio::select! {
+        result = siwe.start() => match result {
+            Ok(handle) => handle,
+            Err(error) => {
+                siwe.shutdown().await;
+                shutdown_process_p2p(process_p2p).await;
+                return Err(error);
+            }
+        },
+        _ = shutdown.cancelled() => {
+            siwe.shutdown().await;
+            shutdown_process_p2p(process_p2p).await;
+            info!("Shutdown signal received before SIWE authentication completed");
+            return Ok(());
+        }
+    };
     info!("DDS SIWE token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
-    let result = run_authenticated_node_loop(&cfg, &runners, auth, shutdown, "SIWE", false).await;
+    let result =
+        run_authenticated_node_loop(&cfg, &runners, auth, shutdown, "SIWE", cfg.auki_p2p_enabled)
+            .await;
 
     siwe_handle.shutdown().await;
+    shutdown_process_p2p(process_p2p).await;
     info!("Shutdown signal received; exiting run_node loop");
 
     result
@@ -145,12 +175,32 @@ pub async fn run_robot_node_with_shutdown(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let runtime_cfg = cfg.runtime_config();
-    let robot = crate::auth::RobotMachineAuth::from_config(&cfg, runners.capabilities())?;
+    let process_p2p = start_process_p2p(&runtime_cfg).await?;
+    let peer_binding = process_p2p.as_ref().map(ProcessP2p::binding_client);
+    let robot = match crate::auth::RobotMachineAuth::from_config_with_peer_binding(
+        &cfg,
+        runners.capabilities(),
+        peer_binding,
+    ) {
+        Ok(robot) => robot,
+        Err(error) => {
+            shutdown_process_p2p(process_p2p).await;
+            return Err(error);
+        }
+    };
     info!("DDS robot authentication configured");
     let robot_handle = tokio::select! {
-        result = robot.start() => result?,
+        result = robot.start() => match result {
+            Ok(handle) => handle,
+            Err(error) => {
+                robot.shutdown().await;
+                shutdown_process_p2p(process_p2p).await;
+                return Err(error);
+            }
+        },
         _ = shutdown.cancelled() => {
             robot.shutdown().await;
+            shutdown_process_p2p(process_p2p).await;
             info!("Shutdown signal received before robot authentication completed");
             return Ok(());
         }
@@ -158,13 +208,69 @@ pub async fn run_robot_node_with_shutdown(
     info!("DDS robot token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(robot_handle.clone());
+    let robot_p2p = if let Some(process) = process_p2p.as_ref() {
+        let start = RobotP2pTokenProvider::start(
+            process.dds_client(),
+            Arc::clone(&auth),
+            process.node(),
+            &shutdown,
+        );
+        let provider = tokio::select! {
+            result = start => match result {
+                Ok(provider) => provider,
+                Err(error) => {
+                    robot_handle.shutdown().await;
+                    shutdown_process_p2p(process_p2p).await;
+                    return Err(error.into());
+                }
+            },
+            _ = shutdown.cancelled() => {
+                robot_handle.shutdown().await;
+                shutdown_process_p2p(process_p2p).await;
+                return Ok(());
+            }
+        };
+        Some(provider)
+    } else {
+        None
+    };
     let result =
         run_authenticated_node_loop(&runtime_cfg, &runners, auth, shutdown, "robot", true).await;
 
+    if let Some(provider) = robot_p2p {
+        provider.shutdown().await;
+    }
     robot_handle.shutdown().await;
+    shutdown_process_p2p(process_p2p).await;
     info!("Shutdown signal received; exiting robot node loop");
 
     result
+}
+
+async fn start_process_p2p(cfg: &NodeConfig) -> Result<Option<ProcessP2p>> {
+    if !cfg.auki_p2p_enabled {
+        return Ok(None);
+    }
+    let dds_base_url = cfg
+        .dds_base_url
+        .clone()
+        .ok_or_else(|| anyhow!("DDS_BASE_URL required when AUKI_P2P_ENABLED=true"))?;
+    let process = ProcessP2p::start(
+        dds_base_url,
+        StdDuration::from_secs(cfg.request_timeout_secs.max(1)),
+    )
+    .await
+    .context("start process P2P identity")?;
+    info!(peer_id = %process.binding_client().peer_id(), "Auki P2P identity started");
+    Ok(Some(process))
+}
+
+async fn shutdown_process_p2p(process: Option<ProcessP2p>) {
+    if let Some(process) = process {
+        if let Err(error) = process.shutdown().await {
+            warn!(error = %error, "Auki P2P shutdown failed");
+        }
+    }
 }
 
 async fn run_authenticated_node_loop(

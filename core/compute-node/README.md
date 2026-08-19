@@ -84,6 +84,9 @@ Optional environment variables:
 - `TOKEN_REAUTH_MAX_RETRIES` (default `3`) — retries before bailing on token
   refresh.
 - `TOKEN_REAUTH_JITTER_MS` (default `500`) — jitter applied between retries.
+- `AUKI_P2P_ENABLED` (default `false`) — enables the local direct-P2P prototype,
+  including process-lifetime libp2p identity binding and DDS P2P token refresh.
+  Keep this disabled until the local DDS exposes the P2P authentication endpoints.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
   registration attempts while the node is not yet registered or is recovering.
 - `REGISTER_MAX_RETRY` (legacy SIWE only; default `-1`, meaning infinite

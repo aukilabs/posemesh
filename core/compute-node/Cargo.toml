@@ -11,10 +11,12 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
+auki-p2p = { path = "../auki-p2p" }
 compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.2", path = "../compute-node-runner-api" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+base64 = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
@@ -42,6 +44,7 @@ posemesh-domain-http = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }
+jsonwebtoken = "9.3.0"
 once_cell = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features = [

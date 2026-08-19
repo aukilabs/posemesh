@@ -170,6 +170,7 @@ mod tests {
             token_safety_ratio: 0.75,
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
+            auki_p2p_enabled: false,
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: 1,

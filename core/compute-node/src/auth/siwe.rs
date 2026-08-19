@@ -30,6 +30,8 @@ pub enum SiweError {
     InvalidExpiration(#[from] chrono::ParseError),
     #[error("missing field '{0}' in response")]
     MissingField(&'static str),
+    #[error("DDS peer binding failed: {0}")]
+    PeerBinding(String),
 }
 
 pub type Result<T> = std::result::Result<T, SiweError>;

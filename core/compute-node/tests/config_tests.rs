@@ -26,6 +26,7 @@ fn loads_required_siwe_defaults() {
         "TOKEN_SAFETY_RATIO",
         "TOKEN_REAUTH_MAX_RETRIES",
         "TOKEN_REAUTH_JITTER_MS",
+        "AUKI_P2P_ENABLED",
         "REGISTER_INTERVAL_SECS",
         "REGISTER_MAX_RETRY",
         "MAX_CONCURRENCY",
@@ -58,6 +59,7 @@ fn loads_required_siwe_defaults() {
     assert!((cfg.token_safety_ratio - 0.75).abs() < f32::EPSILON);
     assert_eq!(cfg.token_reauth_max_retries, 3);
     assert_eq!(cfg.token_reauth_jitter_ms, 500);
+    assert!(!cfg.auki_p2p_enabled);
     assert_eq!(cfg.register_interval_secs, Some(120));
     assert_eq!(cfg.register_max_retry, Some(-1));
     assert_eq!(cfg.max_concurrency, 1);
@@ -126,6 +128,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
         "TOKEN_SAFETY_RATIO",
         "TOKEN_REAUTH_MAX_RETRIES",
         "TOKEN_REAUTH_JITTER_MS",
+        "AUKI_P2P_ENABLED",
         "MAX_CONCURRENCY",
         "LOG_FORMAT",
         "ENABLE_NOOP",
@@ -153,6 +156,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     assert!((cfg.token_safety_ratio - 0.75).abs() < f32::EPSILON);
     assert_eq!(cfg.token_reauth_max_retries, 3);
     assert_eq!(cfg.token_reauth_jitter_ms, 500);
+    assert!(!cfg.auki_p2p_enabled);
     assert_eq!(cfg.max_concurrency, 1);
     assert_eq!(cfg.log_format, LogFormat::Json);
     assert!(!cfg.enable_noop);
