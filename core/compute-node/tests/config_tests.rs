@@ -27,6 +27,8 @@ fn loads_required_siwe_defaults() {
         "TOKEN_REAUTH_MAX_RETRIES",
         "TOKEN_REAUTH_JITTER_MS",
         "AUKI_P2P_ENABLED",
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
         "REGISTER_INTERVAL_SECS",
         "REGISTER_MAX_RETRY",
         "MAX_CONCURRENCY",
@@ -60,6 +62,8 @@ fn loads_required_siwe_defaults() {
     assert_eq!(cfg.token_reauth_max_retries, 3);
     assert_eq!(cfg.token_reauth_jitter_ms, 500);
     assert!(!cfg.auki_p2p_enabled);
+    assert!(cfg.auki_p2p_listen_multiaddrs.is_empty());
+    assert!(cfg.auki_p2p_advertised_multiaddrs.is_empty());
     assert_eq!(cfg.register_interval_secs, Some(120));
     assert_eq!(cfg.register_max_retry, Some(-1));
     assert_eq!(cfg.max_concurrency, 1);
@@ -129,6 +133,8 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
         "TOKEN_REAUTH_MAX_RETRIES",
         "TOKEN_REAUTH_JITTER_MS",
         "AUKI_P2P_ENABLED",
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
         "MAX_CONCURRENCY",
         "LOG_FORMAT",
         "ENABLE_NOOP",
@@ -157,6 +163,8 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     assert_eq!(cfg.token_reauth_max_retries, 3);
     assert_eq!(cfg.token_reauth_jitter_ms, 500);
     assert!(!cfg.auki_p2p_enabled);
+    assert!(cfg.auki_p2p_listen_multiaddrs.is_empty());
+    assert!(cfg.auki_p2p_advertised_multiaddrs.is_empty());
     assert_eq!(cfg.max_concurrency, 1);
     assert_eq!(cfg.log_format, LogFormat::Json);
     assert!(!cfg.enable_noop);
@@ -165,6 +173,48 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     let debug = format!("{cfg:?}");
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains(credentials));
+}
+
+#[test]
+fn loads_explicit_p2p_multiaddrs() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+        "REG_SECRET",
+        "SECP256K1_PRIVHEX",
+    ]);
+    std::env::set_var("REG_SECRET", "secret");
+    std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
+    std::env::set_var(
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+        " /ip4/127.0.0.1/tcp/0 , /ip4/0.0.0.0/tcp/41001 ",
+    );
+    std::env::set_var(
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+        "/ip4/192.0.2.10/tcp/41001",
+    );
+
+    let cfg = NodeConfig::from_env().expect("P2P config");
+    assert!(cfg.auki_p2p_enabled);
+    assert_eq!(
+        cfg.auki_p2p_listen_multiaddrs,
+        ["/ip4/127.0.0.1/tcp/0", "/ip4/0.0.0.0/tcp/41001"]
+    );
+    assert_eq!(
+        cfg.auki_p2p_advertised_multiaddrs,
+        ["/ip4/192.0.2.10/tcp/41001"]
+    );
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+        "REG_SECRET",
+        "SECP256K1_PRIVHEX",
+    ]);
 }
 
 #[test]

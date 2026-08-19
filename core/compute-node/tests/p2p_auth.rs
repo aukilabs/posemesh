@@ -11,7 +11,12 @@ use httpmock::{prelude::*, Mock};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use posemesh_compute_node::{
     auth::{token_manager::TokenManagerConfig, AccessBundle, RobotMachineAuth, TokenProvider},
-    dds::p2p::{DdsP2pClient, DdsP2pError, PeerBindingClient, RobotP2pTokenProvider},
+    dds::p2p::{
+        DdsP2pClient, DdsP2pError, P2pCredentialStore, PeerBindingClient, RobotP2pTokenProvider,
+    },
+    dms::types::HeartbeatResponse,
+    engine::{apply_heartbeat_token_update, apply_p2p_credential_update},
+    storage::TokenRef,
 };
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -275,6 +280,74 @@ impl TokenProvider for StaticMachineToken {
 }
 
 #[tokio::test]
+async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() {
+    let identity = Identity::generate();
+    let verifier = DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap();
+    let node = Node::start(
+        identity.clone(),
+        verifier,
+        std::iter::empty::<auki_p2p::Multiaddr>(),
+    )
+    .unwrap();
+    let credentials = P2pCredentialStore::new(node.clone());
+    let domain_id = Uuid::new_v4();
+    let first_subject = Uuid::new_v4();
+    let (first_token, first_expiry) =
+        signed_p2p_token(&identity, domain_id, PeerRole::Compute, first_subject);
+    apply_p2p_credential_update(Some(&credentials), Some(&first_token), Some(first_expiry))
+        .await
+        .unwrap();
+    assert_eq!(
+        credentials.current_claims().await.unwrap().sub,
+        first_subject.to_string()
+    );
+
+    let domain_token = TokenRef::new("domain-http-a".into());
+    let second_subject = Uuid::new_v4();
+    let (second_token, second_expiry) =
+        signed_p2p_token(&identity, domain_id, PeerRole::Compute, second_subject);
+    let p2p_heartbeat = HeartbeatResponse {
+        p2p_access_token: Some(second_token),
+        p2p_access_token_expires_at: Some(second_expiry),
+        ..HeartbeatResponse::default()
+    };
+    apply_heartbeat_token_update(&domain_token, &p2p_heartbeat);
+    apply_p2p_credential_update(
+        Some(&credentials),
+        p2p_heartbeat.p2p_access_token.as_deref(),
+        p2p_heartbeat.p2p_access_token_expires_at,
+    )
+    .await
+    .unwrap();
+    assert_eq!(domain_token.get(), "domain-http-a");
+    assert_eq!(
+        credentials.current_claims().await.unwrap().sub,
+        second_subject.to_string()
+    );
+
+    let domain_heartbeat = HeartbeatResponse {
+        access_token: Some("domain-http-b".into()),
+        ..HeartbeatResponse::default()
+    };
+    apply_heartbeat_token_update(&domain_token, &domain_heartbeat);
+    apply_p2p_credential_update(
+        Some(&credentials),
+        domain_heartbeat.p2p_access_token.as_deref(),
+        domain_heartbeat.p2p_access_token_expires_at,
+    )
+    .await
+    .unwrap();
+    assert_eq!(domain_token.get(), "domain-http-b");
+    assert_eq!(
+        credentials.current_claims().await.unwrap().sub,
+        second_subject.to_string()
+    );
+
+    credentials.clear().await;
+    node.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn robot_direct_token_refresh_hot_swaps_and_shuts_down_cleanly() {
     let server = MockServer::start();
     let identity = Identity::generate();
@@ -302,8 +375,9 @@ async fn robot_direct_token_refresh_hot_swaps_and_shuts_down_cleanly() {
     .unwrap();
     let machine_auth: Arc<dyn TokenProvider> = Arc::new(StaticMachineToken(machine_token));
     let shutdown = CancellationToken::new();
+    let credentials = P2pCredentialStore::new(node.clone());
     let provider =
-        RobotP2pTokenProvider::start(client(&server), machine_auth, node.clone(), &shutdown)
+        RobotP2pTokenProvider::start(client(&server), machine_auth, credentials, &shutdown)
             .await
             .expect("initial Robot P2P refresh");
 
@@ -337,9 +411,10 @@ async fn robot_direct_token_refresh_rejects_missing_assignment_without_http() {
     let machine_auth: Arc<dyn TokenProvider> =
         Arc::new(StaticMachineToken(robot_machine_token(None)));
     let shutdown = CancellationToken::new();
+    let credentials = P2pCredentialStore::new(node.clone());
 
     let error =
-        match RobotP2pTokenProvider::start(client(&server), machine_auth, node.clone(), &shutdown)
+        match RobotP2pTokenProvider::start(client(&server), machine_auth, credentials, &shutdown)
             .await
         {
             Ok(provider) => {
@@ -367,6 +442,15 @@ fn robot_machine_token(assigned_domain_id: Option<Uuid>) -> String {
 }
 
 fn signed_robot_p2p_token(identity: &Identity, domain_id: Uuid) -> (String, DateTime<Utc>) {
+    signed_p2p_token(identity, domain_id, PeerRole::Robot, Uuid::new_v4())
+}
+
+fn signed_p2p_token(
+    identity: &Identity,
+    domain_id: Uuid,
+    role: PeerRole,
+    subject: Uuid,
+) -> (String, DateTime<Utc>) {
     let issued_at = Utc::now().timestamp() as u64;
     let expires_at_unix = issued_at + P2P_TOKEN_TTL.as_secs();
     let expires_at = DateTime::from_timestamp(expires_at_unix as i64, 0).unwrap();
@@ -374,8 +458,8 @@ fn signed_robot_p2p_token(identity: &Identity, domain_id: Uuid) -> (String, Date
         token_type: P2P_TOKEN_TYPE.into(),
         iss: P2P_TOKEN_ISSUER.into(),
         aud: vec![P2P_TOKEN_AUDIENCE.into()],
-        sub: Uuid::new_v4().to_string(),
-        peer_type: PeerRole::Robot,
+        sub: subject.to_string(),
+        peer_type: role,
         peer_id: identity.peer_id().to_string(),
         domain_ids: vec![domain_id.to_string()],
         scopes: vec![P2P_TOKEN_SCOPE.into()],

@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
+use auki_p2p::{Multiaddr, Protocol};
+use compute_runner_api::{
+    ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, P2pDataset, Runner, TaskCtx,
+};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -19,6 +22,7 @@ use crate::{
     dds::p2p::{ProcessP2p, RobotP2pTokenProvider},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
+    p2p_dataset::{P2pDatasetAdapter, P2pDatasetServer},
     poller::{jittered_delay_ms, PollerConfig},
     session::{CapabilitySelector, HeartbeatPolicy, SessionManager},
 };
@@ -65,16 +69,31 @@ impl RunnerRegistry {
         ctrl: &dyn ControlPlane,
         access_token: &dyn compute_runner_api::runner::AccessTokenProvider,
     ) -> std::result::Result<(), crate::errors::ExecutorError> {
+        self.run_for_lease_with_p2p(lease, input, output, ctrl, access_token, None)
+            .await
+    }
+
+    pub async fn run_for_lease_with_p2p(
+        &self,
+        lease: &LeaseEnvelope,
+        input: &dyn InputSource,
+        output: &dyn ArtifactSink,
+        ctrl: &dyn ControlPlane,
+        access_token: &dyn compute_runner_api::runner::AccessTokenProvider,
+        p2p_dataset: Option<&dyn P2pDataset>,
+    ) -> std::result::Result<(), crate::errors::ExecutorError> {
         let cap = lease.task.capability.as_str();
         let runner = self
             .get(cap)
             .ok_or_else(|| crate::errors::ExecutorError::NoRunner(cap.to_string()))?;
+        let runner_lease = lease.without_p2p_credentials();
         let ctx = TaskCtx {
-            lease,
+            lease: &runner_lease,
             input,
             output,
             ctrl,
             access_token,
+            p2p_dataset,
         };
         runner
             .run(ctx)
@@ -108,7 +127,9 @@ pub async fn run_node_with_shutdown(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let process_p2p = start_process_p2p(&cfg).await?;
-    let peer_binding = process_p2p.as_ref().map(ProcessP2p::binding_client);
+    let peer_binding = process_p2p
+        .as_ref()
+        .map(|runtime| runtime.process.binding_client());
     let siwe =
         match crate::auth::SiweAfterRegistration::from_config_with_peer_binding(&cfg, peer_binding)
         {
@@ -138,9 +159,22 @@ pub async fn run_node_with_shutdown(
     info!("DDS SIWE token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
-    let result =
-        run_authenticated_node_loop(&cfg, &runners, auth, shutdown, "SIWE", cfg.auki_p2p_enabled)
-            .await;
+    let dataset = process_p2p
+        .as_ref()
+        .map(|runtime| Arc::clone(&runtime.dataset));
+    let result = run_authenticated_node_loop(
+        &cfg,
+        &runners,
+        auth,
+        shutdown,
+        "SIWE",
+        cfg.auki_p2p_enabled,
+        NodeLoopP2p {
+            dataset,
+            install_task_credentials: cfg.auki_p2p_enabled,
+        },
+    )
+    .await;
 
     siwe_handle.shutdown().await;
     shutdown_process_p2p(process_p2p).await;
@@ -175,8 +209,11 @@ pub async fn run_robot_node_with_shutdown(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let runtime_cfg = cfg.runtime_config();
+    validate_robot_p2p_config(&runtime_cfg)?;
     let process_p2p = start_process_p2p(&runtime_cfg).await?;
-    let peer_binding = process_p2p.as_ref().map(ProcessP2p::binding_client);
+    let peer_binding = process_p2p
+        .as_ref()
+        .map(|runtime| runtime.process.binding_client());
     let robot = match crate::auth::RobotMachineAuth::from_config_with_peer_binding(
         &cfg,
         runners.capabilities(),
@@ -208,11 +245,11 @@ pub async fn run_robot_node_with_shutdown(
     info!("DDS robot token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(robot_handle.clone());
-    let robot_p2p = if let Some(process) = process_p2p.as_ref() {
+    let mut robot_p2p = if let Some(runtime) = process_p2p.as_ref() {
         let start = RobotP2pTokenProvider::start(
-            process.dds_client(),
+            runtime.process.dds_client(),
             Arc::clone(&auth),
-            process.node(),
+            runtime.process.credentials(),
             &shutdown,
         );
         let provider = tokio::select! {
@@ -234,9 +271,54 @@ pub async fn run_robot_node_with_shutdown(
     } else {
         None
     };
-    let result =
-        run_authenticated_node_loop(&runtime_cfg, &runners, auth, shutdown, "robot", true).await;
+    let dataset_server =
+        if let (Some(runtime), Some(provider)) = (process_p2p.as_ref(), robot_p2p.as_ref()) {
+            let start = runtime
+                .dataset
+                .start_serving(provider.domain_id(), &shutdown);
+            let server = tokio::select! {
+                result = start => match result {
+                    Ok(server) => server,
+                    Err(error) => {
+                        if let Some(provider) = robot_p2p.take() {
+                            provider.shutdown().await;
+                        }
+                        robot_handle.shutdown().await;
+                        shutdown_process_p2p(process_p2p).await;
+                        return Err(error.into());
+                    }
+                },
+                _ = shutdown.cancelled() => {
+                    if let Some(provider) = robot_p2p.take() {
+                        provider.shutdown().await;
+                    }
+                    robot_handle.shutdown().await;
+                    shutdown_process_p2p(process_p2p).await;
+                    return Ok(());
+                }
+            };
+            Some(server)
+        } else {
+            None
+        };
+    let dataset = process_p2p
+        .as_ref()
+        .map(|runtime| Arc::clone(&runtime.dataset));
+    let result = run_authenticated_node_loop(
+        &runtime_cfg,
+        &runners,
+        auth,
+        shutdown,
+        "robot",
+        true,
+        NodeLoopP2p {
+            dataset,
+            install_task_credentials: false,
+        },
+    )
+    .await;
 
+    shutdown_dataset_server(dataset_server).await;
     if let Some(provider) = robot_p2p {
         provider.shutdown().await;
     }
@@ -247,7 +329,17 @@ pub async fn run_robot_node_with_shutdown(
     result
 }
 
-async fn start_process_p2p(cfg: &NodeConfig) -> Result<Option<ProcessP2p>> {
+struct ProcessP2pRuntime {
+    process: ProcessP2p,
+    dataset: Arc<P2pDatasetAdapter>,
+}
+
+struct NodeLoopP2p {
+    dataset: Option<Arc<P2pDatasetAdapter>>,
+    install_task_credentials: bool,
+}
+
+async fn start_process_p2p(cfg: &NodeConfig) -> Result<Option<ProcessP2pRuntime>> {
     if !cfg.auki_p2p_enabled {
         return Ok(None);
     }
@@ -255,19 +347,97 @@ async fn start_process_p2p(cfg: &NodeConfig) -> Result<Option<ProcessP2p>> {
         .dds_base_url
         .clone()
         .ok_or_else(|| anyhow!("DDS_BASE_URL required when AUKI_P2P_ENABLED=true"))?;
-    let process = ProcessP2p::start(
+    let listen_addresses = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_listen_multiaddrs,
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+    )?;
+    let advertised_addresses = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_advertised_multiaddrs,
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+    )?;
+    validate_advertised_p2p_multiaddrs(&advertised_addresses)?;
+    let process = ProcessP2p::start_with_listen_addresses(
         dds_base_url,
         StdDuration::from_secs(cfg.request_timeout_secs.max(1)),
+        listen_addresses,
     )
     .await
     .context("start process P2P identity")?;
     info!(peer_id = %process.binding_client().peer_id(), "Auki P2P identity started");
-    Ok(Some(process))
+    let dataset = Arc::new(P2pDatasetAdapter::new(
+        process.node(),
+        process.credentials(),
+        advertised_addresses,
+    ));
+    Ok(Some(ProcessP2pRuntime { process, dataset }))
 }
 
-async fn shutdown_process_p2p(process: Option<ProcessP2p>) {
-    if let Some(process) = process {
-        if let Err(error) = process.shutdown().await {
+fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<Multiaddr>> {
+    values
+        .iter()
+        .map(|value| {
+            let address = value
+                .parse::<Multiaddr>()
+                .with_context(|| format!("invalid TCP multiaddr in {setting}"))?;
+            if !address
+                .iter()
+                .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+            {
+                return Err(anyhow!("non-TCP multiaddr in {setting}"));
+            }
+            Ok(address)
+        })
+        .collect()
+}
+
+fn validate_advertised_p2p_multiaddrs(addresses: &[Multiaddr]) -> Result<()> {
+    for address in addresses {
+        if address
+            .iter()
+            .any(|protocol| matches!(protocol, Protocol::Tcp(0)))
+        {
+            return Err(anyhow!(
+                "AUKI_P2P_ADVERTISED_MULTIADDRS must not contain tcp/0"
+            ));
+        }
+        if address.iter().any(|protocol| match protocol {
+            Protocol::Ip4(ip) => ip.is_unspecified(),
+            Protocol::Ip6(ip) => ip.is_unspecified(),
+            _ => false,
+        }) {
+            return Err(anyhow!(
+                "AUKI_P2P_ADVERTISED_MULTIADDRS must contain reachable addresses"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_robot_p2p_config(cfg: &NodeConfig) -> Result<()> {
+    if cfg.auki_p2p_enabled && cfg.auki_p2p_listen_multiaddrs.is_empty() {
+        return Err(anyhow!(
+            "AUKI_P2P_LISTEN_MULTIADDRS required for Robot P2P serving"
+        ));
+    }
+    if cfg.auki_p2p_enabled && cfg.auki_p2p_advertised_multiaddrs.is_empty() {
+        return Err(anyhow!(
+            "AUKI_P2P_ADVERTISED_MULTIADDRS required for Robot P2P serving"
+        ));
+    }
+    Ok(())
+}
+
+async fn shutdown_dataset_server(server: Option<P2pDatasetServer>) {
+    if let Some(server) = server {
+        if let Err(error) = server.shutdown().await {
+            warn!(error = %error, "Auki P2P dataset server shutdown failed");
+        }
+    }
+}
+
+async fn shutdown_process_p2p(runtime: Option<ProcessP2pRuntime>) {
+    if let Some(runtime) = runtime {
+        if let Err(error) = runtime.process.shutdown().await {
             warn!(error = %error, "Auki P2P shutdown failed");
         }
     }
@@ -280,6 +450,7 @@ async fn run_authenticated_node_loop(
     shutdown: CancellationToken,
     auth_kind: &'static str,
     interrupt_on_shutdown: bool,
+    p2p: NodeLoopP2p,
 ) -> Result<()> {
     let poll_cfg = PollerConfig {
         backoff_ms_min: cfg.poll_backoff_ms_min,
@@ -340,13 +511,35 @@ async fn run_authenticated_node_loop(
             };
             match acquired {
                 Ok(Some(acquired)) => {
-                    run_leased_cycle_with_dms(cfg, &dms_client, runners, acquired).await
+                    run_leased_cycle_with_dms(
+                        cfg,
+                        &dms_client,
+                        runners,
+                        acquired,
+                        p2p.dataset.clone(),
+                        p2p.install_task_credentials,
+                    )
+                    .await
                 }
                 Ok(None) => Ok(false),
                 Err(err) => Err(err),
             }
         } else {
-            run_cycle_with_dms(cfg, &dms_client, runners).await
+            match acquire_lease_with_dms(&dms_client, runners).await {
+                Ok(Some(acquired)) => {
+                    run_leased_cycle_with_dms(
+                        cfg,
+                        &dms_client,
+                        runners,
+                        acquired,
+                        p2p.dataset.clone(),
+                        p2p.install_task_credentials,
+                    )
+                    .await
+                }
+                Ok(None) => Ok(false),
+                Err(error) => Err(error),
+            }
         };
 
         match cycle {
@@ -394,6 +587,26 @@ pub fn apply_heartbeat_token_update(
     }
 }
 
+pub async fn apply_p2p_credential_update(
+    credentials: Option<&crate::dds::p2p::P2pCredentialStore>,
+    token: Option<&str>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<()> {
+    match credentials {
+        Some(credentials) => {
+            credentials
+                .install_optional(token, expires_at)
+                .await
+                .context("install DDS P2P task credential")?;
+            Ok(())
+        }
+        None if token.is_none() && expires_at.is_none() => Ok(()),
+        None => Err(anyhow!(
+            "DMS returned a P2P credential to a node without a P2P runtime"
+        )),
+    }
+}
+
 /// Merge fields from a heartbeat response into the cached lease.
 pub fn merge_heartbeat_into_lease(
     lease: &mut LeaseEnvelope,
@@ -404,6 +617,12 @@ pub fn merge_heartbeat_into_lease(
     }
     if let Some(expiry) = hb.access_token_expires_at {
         lease.access_token_expires_at = Some(expiry);
+    }
+    if let Some(token) = hb.p2p_access_token.clone() {
+        lease.p2p_access_token = Some(token);
+    }
+    if let Some(expiry) = hb.p2p_access_token_expires_at {
+        lease.p2p_access_token_expires_at = Some(expiry);
     }
     if let Some(expiry) = hb.lease_expires_at {
         lease.lease_expires_at = Some(expiry);
@@ -451,7 +670,7 @@ pub async fn run_cycle_with_dms(
     let Some(acquired) = acquire_lease_with_dms(dms, reg).await? else {
         return Ok(false);
     };
-    run_leased_cycle_with_dms(cfg, dms, reg, acquired).await
+    run_leased_cycle_with_dms(cfg, dms, reg, acquired, None, false).await
 }
 
 struct AcquiredLease {
@@ -484,6 +703,39 @@ async fn run_leased_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
+    p2p_dataset: Option<Arc<P2pDatasetAdapter>>,
+    install_task_p2p_credentials: bool,
+) -> Result<bool> {
+    let credentials = if install_task_p2p_credentials {
+        p2p_dataset.as_ref().map(|dataset| dataset.credentials())
+    } else {
+        None
+    };
+    if let Some(credentials) = &credentials {
+        credentials.clear().await;
+    }
+    let result = run_leased_cycle_inner(
+        cfg,
+        dms,
+        reg,
+        acquired,
+        p2p_dataset.as_deref(),
+        credentials.clone(),
+    )
+    .await;
+    if let Some(credentials) = credentials {
+        credentials.clear().await;
+    }
+    result
+}
+
+async fn run_leased_cycle_inner(
+    cfg: &crate::config::NodeConfig,
+    dms: &DmsClient,
+    reg: &RunnerRegistry,
+    acquired: AcquiredLease,
+    p2p_dataset: Option<&P2pDatasetAdapter>,
+    p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
 ) -> Result<bool> {
     use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
     use serde_json::json;
@@ -517,6 +769,20 @@ async fn run_leased_cycle_with_dms(
             dms.fail(task_id, &body).await
         }
     };
+
+    if let Err(error) = apply_p2p_credential_update(
+        p2p_credentials.as_ref(),
+        lease.p2p_access_token.as_deref(),
+        lease.p2p_access_token_expires_at,
+    )
+    .await
+    {
+        if let Err(fail_error) = report_setup_failure("p2p_lease_token", &error).await {
+            warn!(error = %fail_error, task_id = %task_id, "failed to report P2P setup failure");
+            return Err(error);
+        }
+        return Ok(true);
+    }
 
     let snapshot = match session
         .start_session(&lease, Instant::now(), &policy, &mut rng)
@@ -569,6 +835,19 @@ async fn run_leased_cycle_with_dms(
             return Ok(true);
         }
     };
+    if let Err(error) = apply_p2p_credential_update(
+        p2p_credentials.as_ref(),
+        heartbeat_initial.p2p_access_token.as_deref(),
+        heartbeat_initial.p2p_access_token_expires_at,
+    )
+    .await
+    {
+        if let Err(fail_error) = report_setup_failure("p2p_heartbeat_token", &error).await {
+            warn!(error = %fail_error, task_id = %task_id, "failed to report P2P heartbeat setup failure");
+            return Err(error);
+        }
+        return Ok(true);
+    }
     apply_heartbeat_token_update(&token_ref, &heartbeat_initial);
     merge_heartbeat_into_lease(&mut lease, &heartbeat_initial);
     session
@@ -626,6 +905,7 @@ async fn run_leased_cycle_with_dms(
             progress_rx,
             state: control_state.clone(),
             token_ref: token_ref.clone(),
+            p2p_credentials: p2p_credentials.clone(),
             runner_cancel: runner_cancel.clone(),
             shutdown: heartbeat_shutdown.clone(),
             task_id: lease.task.id,
@@ -634,7 +914,14 @@ async fn run_leased_cycle_with_dms(
     let heartbeat_handle = tokio::spawn(async move { heartbeat_driver.run().await });
 
     let run_res = reg
-        .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref)
+        .run_for_lease_with_p2p(
+            &lease,
+            &*ports.input,
+            &*ports.output,
+            &ctrl,
+            &token_ref,
+            p2p_dataset.map(|dataset| dataset as &dyn P2pDataset),
+        )
         .await;
 
     // Re-broadcast the latest progress/events so the heartbeat loop can flush
@@ -822,6 +1109,7 @@ pub struct HeartbeatDriverArgs {
     pub progress_rx: ProgressReceiver,
     pub state: Arc<Mutex<ControlState>>,
     pub token_ref: crate::storage::TokenRef,
+    pub p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
     pub runner_cancel: CancellationToken,
     pub shutdown: CancellationToken,
     pub task_id: Uuid,
@@ -838,6 +1126,7 @@ where
     progress_rx: ProgressReceiver,
     state: Arc<Mutex<ControlState>>,
     token_ref: crate::storage::TokenRef,
+    p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
     runner_cancel: CancellationToken,
     shutdown: CancellationToken,
     task_id: Uuid,
@@ -857,6 +1146,7 @@ where
             progress_rx: args.progress_rx,
             state: args.state,
             token_ref: args.token_ref,
+            p2p_credentials: args.p2p_credentials,
             runner_cancel: args.runner_cancel,
             shutdown: args.shutdown,
             task_id: args.task_id,
@@ -954,6 +1244,16 @@ where
                     }
                 }
                 apply_heartbeat_token_update(&self.token_ref, &update);
+                if let Err(error) = apply_p2p_credential_update(
+                    self.p2p_credentials.as_ref(),
+                    update.p2p_access_token.as_deref(),
+                    update.p2p_access_token_expires_at,
+                )
+                .await
+                {
+                    self.runner_cancel.cancel();
+                    return Some(HeartbeatLoopResult::LostLease(error));
+                }
                 if let Some(task) = &update.task {
                     self.task_id = task.id;
                 } else if let Some(task_id) = update.task_id {
@@ -983,5 +1283,32 @@ where
                 Some(HeartbeatLoopResult::LostLease(err))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn p2p_multiaddrs_are_explicit_tcp_and_advertised_addresses_are_dialable() {
+        let listen = parse_p2p_multiaddrs(
+            &["/ip4/127.0.0.1/tcp/0".into()],
+            "AUKI_P2P_LISTEN_MULTIADDRS",
+        )
+        .unwrap();
+        assert_eq!(listen.len(), 1);
+        assert!(parse_p2p_multiaddrs(
+            &["/ip4/127.0.0.1/udp/41001".into()],
+            "AUKI_P2P_LISTEN_MULTIADDRS"
+        )
+        .is_err());
+
+        let reachable = ["/ip4/192.0.2.10/tcp/41001".parse::<Multiaddr>().unwrap()];
+        assert!(validate_advertised_p2p_multiaddrs(&reachable).is_ok());
+        let ephemeral = ["/ip4/127.0.0.1/tcp/0".parse::<Multiaddr>().unwrap()];
+        assert!(validate_advertised_p2p_multiaddrs(&ephemeral).is_err());
+        let unspecified = ["/ip4/0.0.0.0/tcp/41001".parse::<Multiaddr>().unwrap()];
+        assert!(validate_advertised_p2p_multiaddrs(&unspecified).is_err());
     }
 }

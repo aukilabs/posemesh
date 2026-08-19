@@ -44,6 +44,10 @@ pub struct NodeConfig {
     pub token_reauth_jitter_ms: u64,
     #[serde(default)]
     pub auki_p2p_enabled: bool,
+    #[serde(default)]
+    pub auki_p2p_listen_multiaddrs: Vec<String>,
+    #[serde(default)]
+    pub auki_p2p_advertised_multiaddrs: Vec<String>,
     pub register_interval_secs: Option<u64>,
     pub register_max_retry: Option<i32>,
     pub max_concurrency: u32,
@@ -93,6 +97,8 @@ impl NodeConfig {
         let token_reauth_max_retries = parse_u32_opt("TOKEN_REAUTH_MAX_RETRIES", 3)?;
         let token_reauth_jitter_ms = parse_u64_opt("TOKEN_REAUTH_JITTER_MS", 500)?;
         let auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
+        let auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
+        let auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
         let register_interval_secs = Some(parse_u64_default(
             "REGISTER_INTERVAL_SECS",
             DEFAULT_REGISTER_INTERVAL_SECS,
@@ -122,6 +128,8 @@ impl NodeConfig {
             token_reauth_max_retries,
             token_reauth_jitter_ms,
             auki_p2p_enabled,
+            auki_p2p_listen_multiaddrs,
+            auki_p2p_advertised_multiaddrs,
             register_interval_secs,
             register_max_retry,
             max_concurrency,
@@ -159,6 +167,8 @@ pub struct RobotNodeConfig {
     pub token_reauth_max_retries: u32,
     pub token_reauth_jitter_ms: u64,
     pub auki_p2p_enabled: bool,
+    pub auki_p2p_listen_multiaddrs: Vec<String>,
+    pub auki_p2p_advertised_multiaddrs: Vec<String>,
     pub max_concurrency: u32,
     pub log_format: LogFormat,
     pub enable_noop: bool,
@@ -182,6 +192,14 @@ impl fmt::Debug for RobotNodeConfig {
             .field("token_reauth_max_retries", &self.token_reauth_max_retries)
             .field("token_reauth_jitter_ms", &self.token_reauth_jitter_ms)
             .field("auki_p2p_enabled", &self.auki_p2p_enabled)
+            .field(
+                "auki_p2p_listen_multiaddrs",
+                &self.auki_p2p_listen_multiaddrs,
+            )
+            .field(
+                "auki_p2p_advertised_multiaddrs",
+                &self.auki_p2p_advertised_multiaddrs,
+            )
             .field("max_concurrency", &self.max_concurrency)
             .field("log_format", &self.log_format)
             .field("enable_noop", &self.enable_noop)
@@ -221,6 +239,8 @@ impl RobotNodeConfig {
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
             auki_p2p_enabled: false,
+            auki_p2p_listen_multiaddrs: Vec::new(),
+            auki_p2p_advertised_multiaddrs: Vec::new(),
             max_concurrency: 1,
             log_format: LogFormat::default(),
             enable_noop: false,
@@ -254,6 +274,8 @@ impl RobotNodeConfig {
         cfg.token_reauth_max_retries = parse_u32_opt("TOKEN_REAUTH_MAX_RETRIES", 3)?;
         cfg.token_reauth_jitter_ms = parse_u64_opt("TOKEN_REAUTH_JITTER_MS", 500)?;
         cfg.auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
+        cfg.auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
+        cfg.auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
         cfg.max_concurrency = parse_u32_opt("MAX_CONCURRENCY", 1)?;
         cfg.log_format = parse_log_format("LOG_FORMAT").unwrap_or_default();
         cfg.enable_noop = parse_bool_opt("ENABLE_NOOP", false)?;
@@ -286,6 +308,8 @@ impl RobotNodeConfig {
             token_reauth_max_retries: self.token_reauth_max_retries,
             token_reauth_jitter_ms: self.token_reauth_jitter_ms,
             auki_p2p_enabled: self.auki_p2p_enabled,
+            auki_p2p_listen_multiaddrs: self.auki_p2p_listen_multiaddrs.clone(),
+            auki_p2p_advertised_multiaddrs: self.auki_p2p_advertised_multiaddrs.clone(),
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: self.max_concurrency,
@@ -410,6 +434,19 @@ fn parse_bool_opt(key: &str, default: bool) -> Result<bool> {
             .with_context(|| format!("invalid bool in {key}; expected true/false")),
         Err(_) => Ok(default),
     }
+}
+
+fn parse_csv_opt(key: &str) -> Vec<String> {
+    env_var_trimmed(key)
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_log_format(key: &str) -> Option<LogFormat> {

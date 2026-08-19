@@ -84,6 +84,8 @@ async fn task_ctx_wiring_and_object_safety() {
     let lease = LeaseEnvelope {
         access_token: Some("t".into()),
         access_token_expires_at: Some(Utc::now()),
+        p2p_access_token: None,
+        p2p_access_token_expires_at: None,
         lease_expires_at: Some(Utc::now()),
         cancel: false,
         status: Some("leased".into()),
@@ -135,6 +137,7 @@ async fn task_ctx_wiring_and_object_safety() {
         output,
         ctrl,
         access_token: &tok,
+        p2p_dataset: None,
     };
 
     let r = DummyRunner;
@@ -156,4 +159,22 @@ fn task_spec_priority_allows_negative_values() {
     .unwrap();
 
     assert_eq!(spec.priority, Some(-3));
+}
+
+#[test]
+fn lease_json_without_p2p_fields_remains_compatible() {
+    use uuid::Uuid;
+
+    let lease: LeaseEnvelope = serde_json::from_value(json!({
+        "access_token": "domain-http-token",
+        "task": {
+            "id": Uuid::nil(),
+            "capability": "/dummy/v1"
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(lease.access_token.as_deref(), Some("domain-http-token"));
+    assert!(lease.p2p_access_token.is_none());
+    assert!(lease.p2p_access_token_expires_at.is_none());
 }

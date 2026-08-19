@@ -12,7 +12,7 @@ mod transport;
 
 pub use error::{Error, Result};
 pub use identity::Identity;
-pub use libp2p::{Multiaddr, PeerId};
+pub use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 pub use token::{
     DdsTokenVerifier, P2PAccessClaims, PeerRole, DOMAIN_SERVER_MAX_DOMAINS, P2P_TOKEN_AUDIENCE,
     P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,

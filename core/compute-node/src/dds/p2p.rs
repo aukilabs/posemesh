@@ -1,11 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
-use auki_p2p::{DdsTokenVerifier, Identity, Node, P2PAccessClaims, PeerId};
+use auki_p2p::{DdsTokenVerifier, Identity, Multiaddr, Node, P2PAccessClaims, PeerId, PeerRole};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::OnceCell, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, OnceCell},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use url::Url;
@@ -50,6 +53,16 @@ pub enum DdsP2pError {
     InvalidAccessToken(#[source] auki_p2p::Error),
     #[error("DDS P2P access-token expiration is invalid")]
     InvalidExpiration,
+    #[error("DDS P2P token and expiration must be provided together")]
+    IncompleteCredential,
+    #[error("no current DDS P2P credential is installed")]
+    MissingCredential,
+    #[error("the current DDS P2P credential has expired")]
+    ExpiredCredential,
+    #[error("the current DDS P2P credential has the wrong local role")]
+    CredentialRoleMismatch,
+    #[error("the current DDS P2P credential does not authorize the required Domain")]
+    CredentialDomainMismatch,
 }
 
 pub type Result<T> = std::result::Result<T, DdsP2pError>;
@@ -232,21 +245,32 @@ pub struct ProcessP2p {
     node: Node,
     binding: PeerBindingClient,
     dds: DdsP2pClient,
+    credentials: P2pCredentialStore,
 }
 
 impl ProcessP2p {
     pub async fn start(dds_base_url: Url, request_timeout: Duration) -> Result<Self> {
+        Self::start_with_listen_addresses(dds_base_url, request_timeout, []).await
+    }
+
+    pub async fn start_with_listen_addresses(
+        dds_base_url: Url,
+        request_timeout: Duration,
+        listen_addresses: impl IntoIterator<Item = Multiaddr>,
+    ) -> Result<Self> {
         let identity = Identity::generate();
         let dds = DdsP2pClient::new(dds_base_url, request_timeout)?;
         let verifier = dds.token_verifier().await?;
-        let node = Node::start(
-            identity.clone(),
-            verifier,
-            std::iter::empty::<auki_p2p::Multiaddr>(),
-        )
-        .map_err(DdsP2pError::Node)?;
+        let node =
+            Node::start(identity.clone(), verifier, listen_addresses).map_err(DdsP2pError::Node)?;
         let binding = PeerBindingClient::new(dds.clone(), identity);
-        Ok(Self { node, binding, dds })
+        let credentials = P2pCredentialStore::new(node.clone());
+        Ok(Self {
+            node,
+            binding,
+            dds,
+            credentials,
+        })
     }
 
     pub fn node(&self) -> Node {
@@ -261,15 +285,112 @@ impl ProcessP2p {
         self.dds.clone()
     }
 
+    pub fn credentials(&self) -> P2pCredentialStore {
+        self.credentials.clone()
+    }
+
     pub async fn shutdown(self) -> Result<()> {
         self.node.shutdown().await.map_err(DdsP2pError::Node)
+    }
+}
+
+#[derive(Clone)]
+pub struct P2pCredentialStore {
+    node: Node,
+    current: Arc<Mutex<Option<P2PAccessClaims>>>,
+}
+
+impl P2pCredentialStore {
+    pub fn new(node: Node) -> Self {
+        Self {
+            node,
+            current: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub async fn install(
+        &self,
+        token: impl Into<String>,
+        expected_expires_at: DateTime<Utc>,
+    ) -> Result<P2PAccessClaims> {
+        if expected_expires_at <= Utc::now() {
+            return Err(DdsP2pError::InvalidExpiration);
+        }
+        let mut current = self.current.lock().await;
+        let claims = self
+            .node
+            .install_token(token)
+            .await
+            .map_err(DdsP2pError::InvalidAccessToken)?;
+        let claim_exp = i64::try_from(claims.exp)
+            .ok()
+            .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
+            .ok_or(DdsP2pError::InvalidExpiration)?;
+        if claim_exp != expected_expires_at {
+            self.node.clear_token().await;
+            *current = None;
+            return Err(DdsP2pError::InvalidExpiration);
+        }
+        *current = Some(claims.clone());
+        Ok(claims)
+    }
+
+    pub async fn install_optional(
+        &self,
+        token: Option<&str>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Option<P2PAccessClaims>> {
+        match (token, expires_at) {
+            (Some(token), Some(expires_at)) => {
+                self.install(token.to_string(), expires_at).await.map(Some)
+            }
+            (None, None) => Ok(None),
+            _ => Err(DdsP2pError::IncompleteCredential),
+        }
+    }
+
+    pub async fn require(&self, role: PeerRole, domain_id: Uuid) -> Result<P2PAccessClaims> {
+        let claims = self
+            .current
+            .lock()
+            .await
+            .clone()
+            .ok_or(DdsP2pError::MissingCredential)?;
+        let now = Utc::now().timestamp();
+        let expiration = i64::try_from(claims.exp).map_err(|_| DdsP2pError::InvalidExpiration)?;
+        if expiration <= now {
+            return Err(DdsP2pError::ExpiredCredential);
+        }
+        if claims.peer_type != role {
+            return Err(DdsP2pError::CredentialRoleMismatch);
+        }
+        if !claims
+            .domain_ids
+            .iter()
+            .filter_map(|candidate| Uuid::parse_str(candidate).ok())
+            .any(|candidate| candidate == domain_id)
+        {
+            return Err(DdsP2pError::CredentialDomainMismatch);
+        }
+        Ok(claims)
+    }
+
+    pub async fn current_claims(&self) -> Option<P2PAccessClaims> {
+        self.current.lock().await.clone()
+    }
+
+    pub async fn clear(&self) {
+        let mut current = self.current.lock().await;
+        self.node.clear_token().await;
+        *current = None;
     }
 }
 
 pub struct RobotP2pTokenProvider {
     dds: DdsP2pClient,
     machine_auth: Arc<dyn TokenProvider>,
-    node: Node,
+    credentials: P2pCredentialStore,
+    domain_id: Uuid,
     stop: CancellationToken,
     task: Option<JoinHandle<()>>,
 }
@@ -278,14 +399,20 @@ impl RobotP2pTokenProvider {
     pub async fn start(
         dds: DdsP2pClient,
         machine_auth: Arc<dyn TokenProvider>,
-        node: Node,
+        credentials: P2pCredentialStore,
         shutdown: &CancellationToken,
     ) -> Result<Self> {
-        let (_, initial_delay) = refresh_robot_token(&dds, &machine_auth, &node).await?;
+        let (initial_claims, initial_delay) =
+            refresh_robot_token(&dds, &machine_auth, &credentials).await?;
+        let domain_id = initial_claims
+            .domain_ids
+            .first()
+            .and_then(|domain_id| Uuid::parse_str(domain_id).ok())
+            .ok_or(DdsP2pError::CredentialDomainMismatch)?;
         let stop = shutdown.child_token();
         let task_dds = dds.clone();
         let task_auth = Arc::clone(&machine_auth);
-        let task_node = node.clone();
+        let task_credentials = credentials.clone();
         let task_stop = stop.clone();
         let task = tokio::spawn(async move {
             let mut delay = initial_delay;
@@ -294,7 +421,7 @@ impl RobotP2pTokenProvider {
                     _ = task_stop.cancelled() => break,
                     _ = tokio::time::sleep(delay) => {}
                 }
-                let refresh = refresh_robot_token(&task_dds, &task_auth, &task_node);
+                let refresh = refresh_robot_token(&task_dds, &task_auth, &task_credentials);
                 let result = tokio::select! {
                     _ = task_stop.cancelled() => break,
                     result = refresh => result,
@@ -312,16 +439,21 @@ impl RobotP2pTokenProvider {
         Ok(Self {
             dds,
             machine_auth,
-            node,
+            credentials,
+            domain_id,
             stop,
             task: Some(task),
         })
     }
 
     pub async fn refresh_now(&self) -> Result<P2PAccessClaims> {
-        refresh_robot_token(&self.dds, &self.machine_auth, &self.node)
+        refresh_robot_token(&self.dds, &self.machine_auth, &self.credentials)
             .await
             .map(|(claims, _)| claims)
+    }
+
+    pub fn domain_id(&self) -> Uuid {
+        self.domain_id
     }
 
     pub async fn shutdown(mut self) {
@@ -335,22 +467,16 @@ impl RobotP2pTokenProvider {
 async fn refresh_robot_token(
     dds: &DdsP2pClient,
     machine_auth: &Arc<dyn TokenProvider>,
-    node: &Node,
+    credentials: &P2pCredentialStore,
 ) -> Result<(P2PAccessClaims, Duration)> {
     let machine_token = machine_auth
         .bearer()
         .await
         .map_err(DdsP2pError::MachineToken)?;
     let response = dds.robot_p2p_token(&machine_token).await?;
-    let claims = node
-        .install_token(response.token)
-        .await
-        .map_err(DdsP2pError::InvalidAccessToken)?;
-    let claim_expires_at =
-        DateTime::from_timestamp(claims.exp as i64, 0).ok_or(DdsP2pError::InvalidExpiration)?;
-    if claim_expires_at != response.expires_at {
-        return Err(DdsP2pError::InvalidExpiration);
-    }
+    let claims = credentials
+        .install(response.token, response.expires_at)
+        .await?;
     let remaining = response
         .expires_at
         .signed_duration_since(Utc::now())

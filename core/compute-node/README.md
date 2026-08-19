@@ -87,6 +87,13 @@ Optional environment variables:
 - `AUKI_P2P_ENABLED` (default `false`) — enables the local direct-P2P prototype,
   including process-lifetime libp2p identity binding and DDS P2P token refresh.
   Keep this disabled until the local DDS exposes the P2P authentication endpoints.
+- `AUKI_P2P_LISTEN_MULTIADDRS` (default empty) — comma-separated native TCP
+  multiaddrs for the process-level libp2p node. Robot serving requires at least
+  one explicit value; tests may use `/ip4/127.0.0.1/tcp/0`.
+- `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated TCP
+  multiaddrs placed in dataset references. Robot serving requires explicit
+  addresses that Compute Nodes can reach. There is no discovery or address
+  guessing, and an ephemeral `tcp/0` address must not be advertised.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
   registration attempts while the node is not yet registered or is recovering.
 - `REGISTER_MAX_RETRY` (legacy SIWE only; default `-1`, meaning infinite

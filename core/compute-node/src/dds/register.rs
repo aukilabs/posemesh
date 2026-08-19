@@ -171,6 +171,8 @@ mod tests {
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
             auki_p2p_enabled: false,
+            auki_p2p_listen_multiaddrs: Vec::new(),
+            auki_p2p_advertised_multiaddrs: Vec::new(),
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: 1,
