@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "auki-p2p",
     "networking",
     "domain",
     "examples/client",

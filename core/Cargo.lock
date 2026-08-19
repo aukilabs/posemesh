@@ -532,6 +532,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "auki-p2p"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "jsonwebtoken",
+ "libp2p",
+ "libp2p-stream",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3961,7 +3976,7 @@ dependencies = [
 
 [[package]]
 name = "posemesh-domain-http"
-version = "1.5.3"
+version = "1.5.4"
 dependencies = [
  "base64 0.22.1",
  "bytes",
