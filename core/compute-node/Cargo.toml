@@ -45,8 +45,12 @@ posemesh-domain-http = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }
+hickory-resolver = "0.24.4"
 jsonwebtoken = "9.3.0"
+libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux", "relay", "metrics"] }
+libp2p-stream = { workspace = true }
 once_cell = { workspace = true }
+prometheus-client = "0.22.3"
 rand = { workspace = true }
 tokio = { workspace = true, features = [
     "rt-multi-thread",

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use auki_p2p::{
     ApplicationProtocol, AuthenticatedStream, ExpectedRelayLimits, IncomingAuthenticatedStreams,
     Multiaddr, Node, PeerId, PeerRole, Protocol, RelayProvider, RelayReservationHandle,
-    SessionRequirements,
+    RelayRouteHandle, SessionRequirements,
 };
 use chrono::{DateTime, Utc};
 use compute_runner_api::{
@@ -38,10 +38,11 @@ const MAX_REQUEST_BYTES: usize = 4 * 1024;
 const MAX_RESPONSE_HEADER_BYTES: usize = 16 * 1024;
 const MAX_DATASET_ID_BYTES: usize = 512;
 const MAX_DATASET_NAME_BYTES: usize = 1024;
+const MAX_ROUTE_TEXT_BYTES: usize = 1024;
 const TRANSFER_BUFFER_BYTES: usize = 64 * 1024;
 const FETCH_ATTEMPTS: usize = 2;
-const FETCH_RETRY_DELAY: Duration = Duration::from_millis(50);
 const FETCH_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const FETCH_CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_PUBLISHED_ROUTES: usize = 16;
 const MAX_CIRCUIT_ROUTES: usize = 3;
 const MIN_CIRCUIT_DURATION: Duration = Duration::from_secs(15 * 60);
@@ -119,6 +120,10 @@ pub enum P2pDatasetError {
     HashMismatch,
     #[error("P2P dataset transfer timed out")]
     TransferTimeout,
+    #[error("failed to close the exact P2P dataset relay route")]
+    RelayRouteCleanup(#[source] auki_p2p::Error),
+    #[error("failed to remove a partial P2P dataset file")]
+    PartialFileCleanup(#[source] std::io::Error),
     #[error("P2P dataset server task failed")]
     ServerTask(#[source] tokio::task::JoinError),
 }
@@ -252,6 +257,144 @@ struct DatasetResponseHeader {
     dataset_id: String,
     size_bytes: u64,
     sha256: String,
+}
+
+#[derive(Clone, Debug)]
+enum DatasetRouteCandidate {
+    Direct(Multiaddr),
+    Circuit(Multiaddr),
+}
+
+impl DatasetRouteCandidate {
+    fn route(&self) -> &Multiaddr {
+        match self {
+            Self::Direct(route) | Self::Circuit(route) => route,
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Direct(_) => "direct",
+            Self::Circuit(_) => "circuit",
+        }
+    }
+}
+
+struct OpenedDatasetStream {
+    stream: Option<AuthenticatedStream>,
+    relay_route: Option<RelayRouteGuard>,
+}
+
+impl OpenedDatasetStream {
+    fn stream_mut(&mut self) -> &mut AuthenticatedStream {
+        self.stream
+            .as_mut()
+            .expect("an opened dataset stream remains present until cleanup")
+    }
+
+    async fn close(mut self) -> Result<()> {
+        drop(self.stream.take());
+        if let Some(mut relay_route) = self.relay_route.take() {
+            relay_route.close().await?;
+        }
+        Ok(())
+    }
+}
+
+struct RelayRouteGuard {
+    node: Node,
+    route: Option<RelayRouteHandle>,
+}
+
+impl RelayRouteGuard {
+    fn new(node: Node, route: RelayRouteHandle) -> Self {
+        Self {
+            node,
+            route: Some(route),
+        }
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        let Some(route) = self.route.as_ref().cloned() else {
+            return Ok(());
+        };
+        self.node
+            .close_relay_route(&route)
+            .await
+            .map_err(P2pDatasetError::RelayRouteCleanup)?;
+        self.route.take();
+        Ok(())
+    }
+}
+
+impl Drop for RelayRouteGuard {
+    fn drop(&mut self) {
+        let Some(route) = self.route.take() else {
+            return;
+        };
+        let node = self.node.clone();
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        runtime.spawn(async move {
+            if let Err(error) = node.close_relay_route(&route).await {
+                warn!(error = %error, route = %route.route(), "failed to close dropped dataset relay route");
+            }
+        });
+    }
+}
+
+struct PartialFileGuard {
+    path: PathBuf,
+    armed: bool,
+}
+
+impl PartialFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path, armed: true }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    async fn cleanup(&mut self) -> Result<()> {
+        if !self.armed {
+            return Ok(());
+        }
+        match fs::remove_file(&self.path).await {
+            Ok(()) => {
+                self.armed = false;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.armed = false;
+                Ok(())
+            }
+            // Retain ownership on failure so Drop can make one final
+            // best-effort cleanup attempt while the typed error propagates.
+            Err(error) => Err(P2pDatasetError::PartialFileCleanup(error)),
+        }
+    }
+}
+
+impl Drop for PartialFileGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+struct CanonicalCircuitRoute {
+    route: Multiaddr,
+    relay_peer_id: PeerId,
+    endpoint_key: String,
 }
 
 impl P2pDatasetAdapter {
@@ -804,7 +947,7 @@ impl P2pDatasetAdapter {
         reference: &P2pDatasetReference,
         destination: &Path,
     ) -> Result<()> {
-        let (peer_id, multiaddrs) = validate_reference(reference)?;
+        let (peer_id, candidates) = validate_reference(reference)?;
         self.inner
             .credentials
             .require(PeerRole::Compute, reference.domain_id)
@@ -816,120 +959,220 @@ impl P2pDatasetAdapter {
             .await
             .map_err(P2pDatasetError::Io)?;
 
-        let mut last_error = None;
-        for attempt in 0..FETCH_ATTEMPTS {
-            let temp_path = partial_path(destination);
-            let transfer = self.fetch_once(
-                reference,
-                destination,
-                &temp_path,
-                peer_id,
-                multiaddrs.clone(),
-            );
-            let result = match tokio::time::timeout(FETCH_ATTEMPT_TIMEOUT, transfer).await {
-                Ok(result) => result,
-                Err(_) => Err(P2pDatasetError::TransferTimeout),
-            };
-            match result {
-                Ok(()) => return Ok(()),
-                Err(error) => {
-                    let _ = fs::remove_file(&temp_path).await;
-                    let retry = error.is_retryable() && attempt + 1 < FETCH_ATTEMPTS;
-                    last_error = Some(error);
-                    if !retry {
-                        break;
-                    }
-                    let _ = self.inner.node.disconnect(peer_id).await;
-                    tokio::time::sleep(FETCH_RETRY_DELAY).await;
-                }
-            }
-        }
-        Err(last_error.unwrap_or(P2pDatasetError::InterruptedTransfer))
-    }
-
-    async fn fetch_once(
-        &self,
-        reference: &P2pDatasetReference,
-        destination: &Path,
-        temp_path: &Path,
-        peer_id: PeerId,
-        multiaddrs: Vec<Multiaddr>,
-    ) -> Result<()> {
         let protocol =
             ApplicationProtocol::new(DATASET_PROTOCOL).map_err(P2pDatasetError::Transport)?;
         let requirements =
             SessionRequirements::new(reference.domain_id.to_string(), PeerRole::Robot)
                 .map_err(P2pDatasetError::Transport)?
                 .with_expected_remote_peer_id(peer_id);
-        let mut stream = self
-            .inner
-            .node
-            .open(peer_id, multiaddrs, protocol, requirements)
-            .await
-            .map_err(P2pDatasetError::Transport)?;
 
-        write_json_frame(
-            &mut stream,
-            &DatasetRequest {
-                version: DATASET_REQUEST_VERSION,
-                dataset_id: reference.dataset_id.clone(),
-            },
-            MAX_REQUEST_BYTES,
-        )
-        .await?;
-        stream.flush().await.map_err(P2pDatasetError::Io)?;
-        let header: DatasetResponseHeader =
-            read_json_frame(&mut stream, MAX_RESPONSE_HEADER_BYTES).await?;
-        if header.dataset_id != reference.dataset_id
-            || header.size_bytes != reference.size_bytes
-            || !header.sha256.eq_ignore_ascii_case(&reference.sha256)
-        {
-            return Err(P2pDatasetError::ReferenceMismatch);
-        }
-
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(temp_path)
-            .await
-            .map_err(P2pDatasetError::Io)?;
-        let mut hasher = Sha256::new();
-        let mut received = 0_u64;
-        let mut buffer = vec![0_u8; TRANSFER_BUFFER_BYTES];
-        while received < reference.size_bytes {
-            let remaining = reference.size_bytes - received;
-            let limit = usize::try_from(remaining)
-                .unwrap_or(usize::MAX)
-                .min(buffer.len());
-            let count = stream
-                .read(&mut buffer[..limit])
-                .await
-                .map_err(P2pDatasetError::Io)?;
-            if count == 0 {
-                return Err(P2pDatasetError::InterruptedTransfer);
+        let mut last_error = None;
+        let mut round_start = 0_usize;
+        for round in 0..FETCH_ATTEMPTS {
+            // This is the one whole-file budget for the round. Candidate
+            // connect, relay admission, endpoint authentication, and all bytes
+            // share it; walking another candidate never starts a fresh budget.
+            let round_deadline = tokio::time::Instant::now() + FETCH_ATTEMPT_TIMEOUT;
+            let mut opened = None;
+            for offset in 0..candidates.len() {
+                if tokio::time::Instant::now() >= round_deadline {
+                    last_error = Some(P2pDatasetError::TransferTimeout);
+                    break;
+                }
+                let candidate_index = (round_start + offset) % candidates.len();
+                let candidate = &candidates[candidate_index];
+                match self
+                    .open_dataset_candidate(
+                        peer_id,
+                        candidate,
+                        &protocol,
+                        &requirements,
+                        round_deadline,
+                        reference.available_until,
+                    )
+                    .await
+                {
+                    Ok(stream) => {
+                        opened = Some((candidate_index, stream));
+                        break;
+                    }
+                    Err(P2pDatasetError::ExpiredDataset) => {
+                        return Err(P2pDatasetError::ExpiredDataset);
+                    }
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            route = %candidate.route(),
+                            route_kind = candidate.kind(),
+                            round = round + 1,
+                            "P2P dataset candidate failed before streaming; trying the next safe route"
+                        );
+                        last_error = Some(error);
+                    }
+                }
             }
-            TokioAsyncWriteExt::write_all(&mut file, &buffer[..count])
-                .await
-                .map_err(P2pDatasetError::Io)?;
-            hasher.update(&buffer[..count]);
-            received += count as u64;
+
+            let Some((candidate_index, mut opened)) = opened else {
+                // If nothing opened, the only optional retry is a fresh final
+                // round from the first deterministic candidate.
+                round_start = 0;
+                continue;
+            };
+
+            let mut partial = PartialFileGuard::new(partial_path(destination));
+            let transfer = receive_dataset_stream(opened.stream_mut(), reference, partial.path());
+            let result = match tokio::time::timeout_at(round_deadline, transfer).await {
+                Ok(Ok(())) if tokio::time::Instant::now() >= round_deadline => {
+                    Err(P2pDatasetError::TransferTimeout)
+                }
+                Ok(result) => result,
+                Err(_) => Err(P2pDatasetError::TransferTimeout),
+            };
+            let route_cleanup = opened.close().await;
+
+            match result {
+                Ok(()) => {
+                    if let Err(error) = route_cleanup {
+                        partial.cleanup().await?;
+                        return Err(error);
+                    }
+                    if let Err(error) = fs::rename(partial.path(), destination).await {
+                        partial.cleanup().await?;
+                        return Err(P2pDatasetError::Io(error));
+                    }
+                    partial.disarm();
+                    return Ok(());
+                }
+                Err(error) => {
+                    let partial_cleanup = partial.cleanup().await;
+                    partial_cleanup?;
+                    route_cleanup?;
+                    let retry = error.is_retryable() && round + 1 < FETCH_ATTEMPTS;
+                    last_error = Some(error);
+                    if !retry {
+                        break;
+                    }
+                    // Round two begins at the next route. With one candidate
+                    // this wraps to the same route; with siblings, alternatives
+                    // are visited before the failed route can be retried.
+                    round_start = (candidate_index + 1) % candidates.len();
+                }
+            }
         }
-        let mut extra = [0_u8; 1];
-        if stream.read(&mut extra).await.map_err(P2pDatasetError::Io)? != 0 {
-            return Err(P2pDatasetError::SizeMismatch);
+        Err(last_error.unwrap_or(P2pDatasetError::InterruptedTransfer))
+    }
+
+    async fn open_dataset_candidate(
+        &self,
+        peer_id: PeerId,
+        candidate: &DatasetRouteCandidate,
+        protocol: &ApplicationProtocol,
+        requirements: &SessionRequirements,
+        round_deadline: tokio::time::Instant,
+        available_until: DateTime<Utc>,
+    ) -> Result<OpenedDatasetStream> {
+        if available_until <= Utc::now() {
+            return Err(P2pDatasetError::ExpiredDataset);
         }
-        if !hex::encode(hasher.finalize()).eq_ignore_ascii_case(&reference.sha256) {
-            return Err(P2pDatasetError::HashMismatch);
+        let availability_deadline = utc_deadline_as_instant(available_until);
+        let bounded_candidate_deadline = std::cmp::min(
+            round_deadline,
+            tokio::time::Instant::now() + FETCH_CANDIDATE_TIMEOUT,
+        );
+        let candidate_deadline = std::cmp::min(bounded_candidate_deadline, availability_deadline);
+        match candidate {
+            DatasetRouteCandidate::Direct(route) => {
+                let open = self.inner.node.open(
+                    peer_id,
+                    vec![route.clone()],
+                    protocol.clone(),
+                    requirements.clone(),
+                );
+                let stream = tokio::time::timeout_at(candidate_deadline, open)
+                    .await
+                    .map_err(|_| {
+                        candidate_timeout_error(availability_deadline, bounded_candidate_deadline)
+                    })?
+                    .map_err(P2pDatasetError::Transport)?;
+                if tokio::time::Instant::now() >= candidate_deadline {
+                    drop(stream);
+                    return Err(candidate_timeout_error(
+                        availability_deadline,
+                        bounded_candidate_deadline,
+                    ));
+                }
+                Ok(OpenedDatasetStream {
+                    stream: Some(stream),
+                    relay_route: None,
+                })
+            }
+            DatasetRouteCandidate::Circuit(route) => {
+                let connect = self.inner.node.connect_relayed(route.clone(), requirements);
+                let route_handle = tokio::time::timeout_at(candidate_deadline, connect)
+                    .await
+                    .map_err(|_| {
+                        candidate_timeout_error(availability_deadline, bounded_candidate_deadline)
+                    })?
+                    .map_err(P2pDatasetError::Transport)?;
+                let mut relay_route = RelayRouteGuard::new(self.inner.node.clone(), route_handle);
+                if tokio::time::Instant::now() >= candidate_deadline {
+                    let timeout_error =
+                        candidate_timeout_error(availability_deadline, bounded_candidate_deadline);
+                    relay_route.close().await?;
+                    return Err(timeout_error);
+                }
+                // Source admission authorizes the CONNECT completed by
+                // connect_relayed. Once that circuit exists, accepted_until is
+                // not a deadline on its endpoint-authenticated application
+                // substream; the candidate/round and dataset deadlines remain
+                // authoritative here.
+                let open_deadline = candidate_deadline;
+                if tokio::time::Instant::now() >= open_deadline {
+                    let timeout_error =
+                        candidate_timeout_error(availability_deadline, bounded_candidate_deadline);
+                    relay_route.close().await?;
+                    return Err(timeout_error);
+                }
+                let open = self.inner.node.open_relayed(
+                    relay_route
+                        .route
+                        .as_ref()
+                        .expect("new relay route guard contains its handle"),
+                    protocol.clone(),
+                    requirements.clone(),
+                );
+                let stream = match tokio::time::timeout_at(open_deadline, open).await {
+                    Ok(Ok(stream)) => {
+                        if tokio::time::Instant::now() >= open_deadline {
+                            drop(stream);
+                            let timeout_error = candidate_timeout_error(
+                                availability_deadline,
+                                bounded_candidate_deadline,
+                            );
+                            relay_route.close().await?;
+                            return Err(timeout_error);
+                        }
+                        stream
+                    }
+                    Ok(Err(error)) => {
+                        relay_route.close().await?;
+                        return Err(P2pDatasetError::Transport(error));
+                    }
+                    Err(_) => {
+                        let timeout_error = candidate_timeout_error(
+                            availability_deadline,
+                            bounded_candidate_deadline,
+                        );
+                        relay_route.close().await?;
+                        return Err(timeout_error);
+                    }
+                };
+                Ok(OpenedDatasetStream {
+                    stream: Some(stream),
+                    relay_route: Some(relay_route),
+                })
+            }
         }
-        TokioAsyncWriteExt::flush(&mut file)
-            .await
-            .map_err(P2pDatasetError::Io)?;
-        file.sync_all().await.map_err(P2pDatasetError::Io)?;
-        drop(file);
-        fs::rename(temp_path, destination)
-            .await
-            .map_err(P2pDatasetError::Io)?;
-        Ok(())
     }
 
     async fn run_server(
@@ -1068,6 +1311,92 @@ impl P2pDatasetAdapter {
     }
 }
 
+async fn receive_dataset_stream(
+    stream: &mut AuthenticatedStream,
+    reference: &P2pDatasetReference,
+    temp_path: &Path,
+) -> Result<()> {
+    write_json_frame(
+        stream,
+        &DatasetRequest {
+            version: DATASET_REQUEST_VERSION,
+            dataset_id: reference.dataset_id.clone(),
+        },
+        MAX_REQUEST_BYTES,
+    )
+    .await?;
+    stream.flush().await.map_err(P2pDatasetError::Io)?;
+    let header: DatasetResponseHeader = read_json_frame(stream, MAX_RESPONSE_HEADER_BYTES).await?;
+    if header.dataset_id != reference.dataset_id
+        || header.size_bytes != reference.size_bytes
+        || !header.sha256.eq_ignore_ascii_case(&reference.sha256)
+    {
+        return Err(P2pDatasetError::ReferenceMismatch);
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temp_path)
+        .await
+        .map_err(P2pDatasetError::Io)?;
+    let mut hasher = Sha256::new();
+    let mut received = 0_u64;
+    let mut buffer = vec![0_u8; TRANSFER_BUFFER_BYTES];
+    while received < reference.size_bytes {
+        let remaining = reference.size_bytes - received;
+        let limit = usize::try_from(remaining)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        let count = stream
+            .read(&mut buffer[..limit])
+            .await
+            .map_err(P2pDatasetError::Io)?;
+        if count == 0 {
+            return Err(P2pDatasetError::InterruptedTransfer);
+        }
+        TokioAsyncWriteExt::write_all(&mut file, &buffer[..count])
+            .await
+            .map_err(P2pDatasetError::Io)?;
+        hasher.update(&buffer[..count]);
+        received += count as u64;
+    }
+    let mut extra = [0_u8; 1];
+    if stream.read(&mut extra).await.map_err(P2pDatasetError::Io)? != 0 {
+        return Err(P2pDatasetError::SizeMismatch);
+    }
+    if !hex::encode(hasher.finalize()).eq_ignore_ascii_case(&reference.sha256) {
+        return Err(P2pDatasetError::HashMismatch);
+    }
+    TokioAsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(P2pDatasetError::Io)?;
+    file.sync_all().await.map_err(P2pDatasetError::Io)?;
+    drop(file);
+    Ok(())
+}
+
+fn utc_deadline_as_instant(deadline: DateTime<Utc>) -> tokio::time::Instant {
+    let now_instant = tokio::time::Instant::now();
+    deadline
+        .signed_duration_since(Utc::now())
+        .to_std()
+        .ok()
+        .and_then(|remaining| now_instant.checked_add(remaining))
+        .unwrap_or(now_instant)
+}
+
+fn candidate_timeout_error(
+    availability_deadline: tokio::time::Instant,
+    bounded_candidate_deadline: tokio::time::Instant,
+) -> P2pDatasetError {
+    if availability_deadline <= bounded_candidate_deadline {
+        P2pDatasetError::ExpiredDataset
+    } else {
+        P2pDatasetError::TransferTimeout
+    }
+}
+
 impl Drop for ActiveTransferGuard {
     fn drop(&mut self) {
         let status = {
@@ -1122,11 +1451,7 @@ impl P2pDatasetError {
     fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::Transport(_)
-                | Self::Io(_)
-                | Self::Json(_)
-                | Self::InterruptedTransfer
-                | Self::TransferTimeout
+            Self::Transport(_) | Self::Io(_) | Self::InterruptedTransfer | Self::TransferTimeout
         )
     }
 }
@@ -1157,49 +1482,57 @@ fn validate_and_sort_direct_routes(
     routes: Vec<Multiaddr>,
     local_peer_id: PeerId,
 ) -> Result<Vec<Multiaddr>> {
+    let routes = routes
+        .into_iter()
+        .map(|route| validate_direct_route(&route, local_peer_id))
+        .collect::<Result<Vec<_>>>()?;
     let routes = sorted_unique_routes(routes);
     if routes.len() > MAX_PUBLISHED_ROUTES {
         return Err(P2pDatasetError::RouteLimitExceeded {
             maximum: MAX_PUBLISHED_ROUTES,
         });
     }
-    for route in &routes {
-        let protocols = route.iter().collect::<Vec<_>>();
-        if !protocols
-            .iter()
-            .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
-        {
-            return Err(P2pDatasetError::InvalidDirectRoute(
-                "an explicit TCP component is required".to_string(),
-            ));
-        }
-        if protocols
-            .iter()
-            .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
-        {
-            return Err(P2pDatasetError::InvalidDirectRoute(
-                "a direct route must not contain p2p-circuit".to_string(),
-            ));
-        }
-        let peer_components = protocols
-            .iter()
-            .enumerate()
-            .filter_map(|(index, protocol)| match protocol {
-                Protocol::P2p(peer_id) => Some((index, *peer_id)),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        if peer_components.len() > 1
-            || peer_components.first().is_some_and(|(index, peer_id)| {
-                *index + 1 != protocols.len() || *peer_id != local_peer_id
-            })
-        {
-            return Err(P2pDatasetError::InvalidDirectRoute(
-                "a p2p suffix must be unique, terminal, and match the local Peer ID".to_string(),
-            ));
-        }
-    }
     Ok(routes)
+}
+
+fn validate_direct_route(route: &Multiaddr, expected_peer_id: PeerId) -> Result<Multiaddr> {
+    let protocols = route.iter().collect::<Vec<_>>();
+    let (network, port, suffix) = match protocols.as_slice() {
+        [network, Protocol::Tcp(port)] => (network, *port, None),
+        [network, Protocol::Tcp(port), Protocol::P2p(peer_id)] => (network, *port, Some(*peer_id)),
+        _ => {
+            return Err(P2pDatasetError::InvalidDirectRoute(
+                "expected exact address/tcp[/p2p] grammar".to_string(),
+            ));
+        }
+    };
+    if !matches!(
+        network,
+        Protocol::Ip4(_)
+            | Protocol::Ip6(_)
+            | Protocol::Dns(_)
+            | Protocol::Dns4(_)
+            | Protocol::Dns6(_)
+    ) {
+        return Err(P2pDatasetError::InvalidDirectRoute(
+            "the address must be ip4, ip6, dns, dns4, or dns6".to_string(),
+        ));
+    }
+    if port == 0 {
+        return Err(P2pDatasetError::InvalidDirectRoute(
+            "TCP port must be non-zero".to_string(),
+        ));
+    }
+    if suffix.is_some_and(|peer_id| peer_id != expected_peer_id) {
+        return Err(P2pDatasetError::InvalidDirectRoute(
+            "the terminal p2p component must match the expected Peer ID".to_string(),
+        ));
+    }
+    let mut canonical = route.clone();
+    if suffix.is_some() {
+        canonical.pop();
+    }
+    Ok(canonical)
 }
 
 fn validate_circuit_route(
@@ -1207,6 +1540,24 @@ fn validate_circuit_route(
     expected_relay_peer_id: PeerId,
     expected_target_peer_id: PeerId,
 ) -> Result<(PeerId, String)> {
+    let canonical = canonicalize_circuit_route(route, expected_target_peer_id)?;
+    if canonical.relay_peer_id != expected_relay_peer_id {
+        return Err(P2pDatasetError::InvalidRelayRoute(
+            "route relay Peer ID does not match the reservation".to_string(),
+        ));
+    }
+    if canonical.route != *route {
+        return Err(P2pDatasetError::InvalidRelayRoute(
+            "relay route is not canonical".to_string(),
+        ));
+    }
+    Ok((canonical.relay_peer_id, canonical.endpoint_key))
+}
+
+fn canonicalize_circuit_route(
+    route: &Multiaddr,
+    expected_target_peer_id: PeerId,
+) -> Result<CanonicalCircuitRoute> {
     let mut protocols = route.iter();
     let (host, port, relay_peer_id, target_peer_id) = match (
         protocols.next(),
@@ -1230,47 +1581,42 @@ fn validate_circuit_route(
             ));
         }
     };
-    if port == 0 {
-        return Err(P2pDatasetError::InvalidRelayRoute(
-            "TCP port must be non-zero".to_string(),
-        ));
-    }
-    if relay_peer_id != expected_relay_peer_id {
-        return Err(P2pDatasetError::InvalidRelayRoute(
-            "route relay Peer ID does not match the reservation".to_string(),
-        ));
-    }
     if target_peer_id != expected_target_peer_id {
         return Err(P2pDatasetError::InvalidRelayRoute(
-            "route target Peer ID does not match the local node".to_string(),
+            "route target Peer ID does not match the expected node".to_string(),
         ));
     }
-    let canonical_host = host.trim_end_matches('.').to_ascii_lowercase();
-    if canonical_host != host.as_ref() || canonical_host.is_empty() || !canonical_host.contains('.')
-    {
-        return Err(P2pDatasetError::InvalidRelayRoute(
-            "relay DNS name is not canonical".to_string(),
-        ));
-    }
-    let endpoint = format!("/dns4/{canonical_host}/tcp/{port}/p2p/{relay_peer_id}");
+    let provider_base = format!("/dns4/{host}/tcp/{port}/p2p/{relay_peer_id}");
     let validation_limits = ExpectedRelayLimits::new(Duration::from_secs(1), 1)
         .map_err(|error| P2pDatasetError::InvalidRelayRoute(error.to_string()))?;
-    let provider = RelayProvider::new(relay_peer_id, [&endpoint], validation_limits)
+    let provider = RelayProvider::new(relay_peer_id, [&provider_base], validation_limits)
         .map_err(|error| P2pDatasetError::InvalidRelayRoute(error.to_string()))?;
-    if provider.selected_base().to_string() != endpoint {
-        return Err(P2pDatasetError::InvalidRelayRoute(
-            "relay provider endpoint is not canonical".to_string(),
-        ));
-    }
-    let canonical_route = format!("{endpoint}/p2p-circuit/p2p/{target_peer_id}")
-        .parse::<Multiaddr>()
-        .map_err(|error| P2pDatasetError::InvalidRelayRoute(error.to_string()))?;
-    if canonical_route != *route {
-        return Err(P2pDatasetError::InvalidRelayRoute(
-            "relay route is not canonical".to_string(),
-        ));
-    }
-    Ok((relay_peer_id, endpoint))
+    let canonical_base = provider.selected_base().clone();
+    let mut base_protocols = canonical_base.iter();
+    let (canonical_host, canonical_port) = match (
+        base_protocols.next(),
+        base_protocols.next(),
+        base_protocols.next(),
+        base_protocols.next(),
+    ) {
+        (Some(Protocol::Dns4(host)), Some(Protocol::Tcp(port)), Some(Protocol::P2p(_)), None) => {
+            (host, port)
+        }
+        _ => {
+            return Err(P2pDatasetError::InvalidRelayRoute(
+                "canonical relay provider base has unexpected grammar".to_string(),
+            ));
+        }
+    };
+    let endpoint_key = format!("/dns4/{canonical_host}/tcp/{canonical_port}");
+    let canonical_route = canonical_base
+        .with(Protocol::P2pCircuit)
+        .with(Protocol::P2p(target_peer_id));
+    Ok(CanonicalCircuitRoute {
+        route: canonical_route,
+        relay_peer_id,
+        endpoint_key,
+    })
 }
 
 fn validate_registration_state(
@@ -1415,7 +1761,9 @@ fn expire_relay_authorizations(state: &mut ServingState, now: DateTime<Utc>) -> 
     Ok(())
 }
 
-fn validate_reference(reference: &P2pDatasetReference) -> Result<(PeerId, Vec<Multiaddr>)> {
+fn validate_reference(
+    reference: &P2pDatasetReference,
+) -> Result<(PeerId, Vec<DatasetRouteCandidate>)> {
     validate_dataset_id(&reference.dataset_id)?;
     validate_dataset_name(&reference.name)?;
     if reference.schema != P2P_DATASET_SCHEMA
@@ -1429,25 +1777,124 @@ fn validate_reference(reference: &P2pDatasetReference) -> Result<(PeerId, Vec<Mu
             P2pDatasetError::InvalidReference
         });
     }
+    if reference.multiaddrs.len() > MAX_PUBLISHED_ROUTES {
+        return Err(P2pDatasetError::RouteLimitExceeded {
+            maximum: MAX_PUBLISHED_ROUTES,
+        });
+    }
+    if reference.sha256.len() != 64 {
+        return Err(P2pDatasetError::InvalidReference);
+    }
     let hash = hex::decode(&reference.sha256).map_err(|_| P2pDatasetError::InvalidReference)?;
     if hash.len() != 32 {
         return Err(P2pDatasetError::InvalidReference);
     }
     let peer_id =
         PeerId::from_str(&reference.peer_id).map_err(|_| P2pDatasetError::InvalidReference)?;
-    let multiaddrs = reference
-        .multiaddrs
+
+    let mut parsed = Vec::with_capacity(reference.multiaddrs.len());
+    for (route_index, raw) in reference.multiaddrs.iter().enumerate() {
+        if raw.len() > MAX_ROUTE_TEXT_BYTES {
+            warn!(
+                route_index,
+                route_bytes = raw.len(),
+                maximum = MAX_ROUTE_TEXT_BYTES,
+                "skipping oversized P2P dataset route candidate"
+            );
+            continue;
+        }
+        match Multiaddr::from_str(raw) {
+            Ok(route) => parsed.push((route_index, raw.as_str(), route)),
+            Err(error) => {
+                warn!(
+                    route_index,
+                    route = %raw,
+                    error = %error,
+                    "skipping malformed P2P dataset route candidate"
+                );
+            }
+        }
+    }
+    let circuit_count = parsed
         .iter()
-        .map(|address| Multiaddr::from_str(address).map_err(|_| P2pDatasetError::InvalidReference))
-        .collect::<Result<Vec<_>>>()?;
-    if multiaddrs.iter().any(|address| {
-        !address
+        .filter(|(_, _, route)| {
+            route
+                .iter()
+                .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
+        })
+        .count();
+    if circuit_count > MAX_CIRCUIT_ROUTES {
+        return Err(P2pDatasetError::CircuitRouteLimitExceeded {
+            maximum: MAX_CIRCUIT_ROUTES,
+        });
+    }
+
+    let mut direct = Vec::new();
+    let mut circuit = Vec::new();
+    let mut direct_routes = HashSet::new();
+    let mut relay_peer_ids = HashSet::new();
+    let mut relay_endpoint_keys = HashSet::new();
+    for (route_index, raw, route) in parsed {
+        let is_circuit = route
             .iter()
-            .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
-    }) {
+            .any(|protocol| matches!(protocol, Protocol::P2pCircuit));
+        if is_circuit {
+            let canonical = match canonicalize_circuit_route(&route, peer_id) {
+                Ok(canonical) => canonical,
+                Err(error) => {
+                    warn!(
+                        route_index,
+                        route = %raw,
+                        error = %error,
+                        "skipping unsafe P2P dataset circuit candidate"
+                    );
+                    continue;
+                }
+            };
+            if relay_peer_ids.contains(&canonical.relay_peer_id)
+                || relay_endpoint_keys.contains(&canonical.endpoint_key)
+            {
+                warn!(
+                    route_index,
+                    route = %raw,
+                    relay_peer_id = %canonical.relay_peer_id,
+                    endpoint_key = %canonical.endpoint_key,
+                    "skipping duplicate P2P dataset circuit candidate"
+                );
+                continue;
+            }
+            relay_peer_ids.insert(canonical.relay_peer_id);
+            relay_endpoint_keys.insert(canonical.endpoint_key);
+            circuit.push(DatasetRouteCandidate::Circuit(canonical.route));
+        } else {
+            let canonical = match validate_direct_route(&route, peer_id) {
+                Ok(canonical) => canonical,
+                Err(error) => {
+                    warn!(
+                        route_index,
+                        route = %raw,
+                        error = %error,
+                        "skipping unsafe P2P dataset direct candidate"
+                    );
+                    continue;
+                }
+            };
+            if !direct_routes.insert(canonical.to_string()) {
+                warn!(
+                    route_index,
+                    route = %raw,
+                    "skipping duplicate P2P dataset direct candidate"
+                );
+                continue;
+            }
+            direct.push(DatasetRouteCandidate::Direct(canonical));
+        }
+    }
+    direct.extend(circuit);
+    if direct.is_empty() {
         return Err(P2pDatasetError::InvalidReference);
     }
-    Ok((peer_id, multiaddrs))
+    Ok((peer_id, direct))
 }
 
 async fn hash_file(path: &Path) -> Result<(u64, String)> {
@@ -1548,6 +1995,65 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
 -----END PUBLIC KEY-----"#;
 
     #[test]
+    fn fetch_budgets_timeout_causes_and_retry_classes_are_frozen() {
+        assert_eq!(FETCH_ATTEMPTS, 2);
+        assert_eq!(FETCH_ATTEMPT_TIMEOUT, Duration::from_secs(900));
+        assert_eq!(FETCH_CANDIDATE_TIMEOUT, Duration::from_secs(10));
+
+        let now = tokio::time::Instant::now();
+        assert!(matches!(
+            candidate_timeout_error(now, now + Duration::from_secs(1)),
+            P2pDatasetError::ExpiredDataset
+        ));
+        assert!(matches!(
+            candidate_timeout_error(now + Duration::from_secs(1), now),
+            P2pDatasetError::TransferTimeout
+        ));
+        assert!(matches!(
+            candidate_timeout_error(now, now),
+            P2pDatasetError::ExpiredDataset
+        ));
+
+        for retryable in [
+            P2pDatasetError::Transport(auki_p2p::Error::SwarmStopped),
+            P2pDatasetError::Io(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "stream interrupted",
+            )),
+            P2pDatasetError::InterruptedTransfer,
+            P2pDatasetError::TransferTimeout,
+        ] {
+            assert!(
+                retryable.is_retryable(),
+                "{retryable} must consume one round"
+            );
+        }
+        for terminal in [
+            P2pDatasetError::ReferenceMismatch,
+            P2pDatasetError::SizeMismatch,
+            P2pDatasetError::HashMismatch,
+            P2pDatasetError::ExpiredDataset,
+        ] {
+            assert!(!terminal.is_retryable(), "{terminal} must fail immediately");
+        }
+    }
+
+    #[tokio::test]
+    async fn partial_file_cleanup_failure_retains_guard_ownership() {
+        let temp = TempDir::new().unwrap();
+        let directory = temp.path().join("not-a-removable-file.part");
+        fs::create_dir(&directory).await.unwrap();
+        let mut guard = PartialFileGuard::new(directory);
+
+        assert!(matches!(
+            guard.cleanup().await,
+            Err(P2pDatasetError::PartialFileCleanup(_))
+        ));
+        assert!(guard.armed, "failed cleanup silently disarmed the guard");
+        guard.disarm();
+    }
+
+    #[test]
     fn relay_data_budget_is_exact_and_overflow_checked() {
         assert_eq!(
             required_relay_data_bytes(1).unwrap(),
@@ -1596,6 +2102,178 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
                 maximum: MAX_PUBLISHED_ROUTES
             })
         ));
+    }
+
+    #[test]
+    fn direct_route_validation_freezes_grammar_and_normalizes_peer_suffix() {
+        let target = Identity::generate().peer_id();
+        let other = Identity::generate().peer_id();
+        let bare: Multiaddr = "/ip4/192.0.2.10/tcp/4001".parse().unwrap();
+        let suffixed: Multiaddr = format!("{bare}/p2p/{target}").parse().unwrap();
+        assert_eq!(
+            validate_direct_route(&bare, target).unwrap(),
+            validate_direct_route(&suffixed, target).unwrap()
+        );
+
+        for route in [
+            "/ip6/2001:db8::1/tcp/4001".to_string(),
+            "/dns/relay.dev.aukiverse.com/tcp/4001".to_string(),
+            "/dns4/relay.dev.aukiverse.com/tcp/4001".to_string(),
+            "/dns6/relay.dev.aukiverse.com/tcp/4001".to_string(),
+        ] {
+            assert!(validate_direct_route(&route.parse().unwrap(), target).is_ok());
+        }
+
+        for route in [
+            "/ip4/192.0.2.10/tcp/0".to_string(),
+            "/ip4/192.0.2.10/udp/4001".to_string(),
+            "/ip4/192.0.2.10/tcp/4001/ws".to_string(),
+            format!("/ip4/192.0.2.10/tcp/4001/p2p/{other}"),
+        ] {
+            assert!(matches!(
+                validate_direct_route(&route.parse().unwrap(), target),
+                Err(P2pDatasetError::InvalidDirectRoute(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn reference_routes_are_canonical_deduplicated_and_stably_direct_first() {
+        let target = Identity::generate().peer_id();
+        let relay_a = Identity::generate().peer_id();
+        let relay_b = Identity::generate().peer_id();
+        let direct_a = "/ip4/192.0.2.20/tcp/4020";
+        let direct_b = "/dns4/robot.dev.aukiverse.com/tcp/4021";
+        let circuit_a = format!(
+            "/dns4/relay-a.dev.aukiverse.com/tcp/4101/p2p/{relay_a}/p2p-circuit/p2p/{target}"
+        );
+        let circuit_b = format!(
+            "/dns4/relay-b.dev.aukiverse.com/tcp/4102/p2p/{relay_b}/p2p-circuit/p2p/{target}"
+        );
+        let reference = reference_with_routes(
+            target,
+            vec![
+                circuit_a.clone(),
+                format!("{direct_a}/p2p/{target}"),
+                direct_a.to_string(),
+                "not-a-multiaddr".to_string(),
+                direct_b.to_string(),
+                circuit_b.clone(),
+            ],
+        );
+
+        let (_, candidates) = validate_reference(&reference).unwrap();
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| (candidate.kind(), candidate.route().to_string()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("direct", direct_a.to_string()),
+                ("direct", direct_b.to_string()),
+                ("circuit", circuit_a),
+                ("circuit", circuit_b),
+            ]
+        );
+    }
+
+    #[test]
+    fn reference_circuit_routes_deduplicate_relay_and_endpoint_independently() {
+        let target = Identity::generate().peer_id();
+        let relay_a = Identity::generate().peer_id();
+        let relay_b = Identity::generate().peer_id();
+        let relay_c = Identity::generate().peer_id();
+        let route = |host: &str, port: u16, relay: PeerId| {
+            format!("/dns4/{host}/tcp/{port}/p2p/{relay}/p2p-circuit/p2p/{target}")
+        };
+
+        let first_a = route("relay-a.dev.aukiverse.com", 4101, relay_a);
+        let distinct_b = route("relay-b.dev.aukiverse.com", 4102, relay_b);
+        let (_, by_peer) = validate_reference(&reference_with_routes(
+            target,
+            vec![
+                first_a.clone(),
+                route("relay-a-alt.dev.aukiverse.com", 4199, relay_a),
+                distinct_b.clone(),
+            ],
+        ))
+        .unwrap();
+        assert_eq!(
+            by_peer
+                .iter()
+                .map(|candidate| candidate.route().to_string())
+                .collect::<Vec<_>>(),
+            vec![first_a.clone(), distinct_b]
+        );
+
+        let distinct_c = route("relay-c.dev.aukiverse.com", 4103, relay_c);
+        let (_, by_endpoint) = validate_reference(&reference_with_routes(
+            target,
+            vec![
+                first_a.clone(),
+                route("relay-a.dev.aukiverse.com", 4101, relay_b),
+                distinct_c.clone(),
+            ],
+        ))
+        .unwrap();
+        assert_eq!(
+            by_endpoint
+                .iter()
+                .map(|candidate| candidate.route().to_string())
+                .collect::<Vec<_>>(),
+            vec![first_a, distinct_c]
+        );
+    }
+
+    #[test]
+    fn reference_route_bounds_count_parsed_circuits_before_dedup() {
+        let target = Identity::generate().peer_id();
+        let seventeen = (1..=MAX_PUBLISHED_ROUTES + 1)
+            .map(|port| format!("/ip4/192.0.2.30/tcp/{port}"))
+            .collect();
+        assert!(matches!(
+            validate_reference(&reference_with_routes(target, seventeen)),
+            Err(P2pDatasetError::RouteLimitExceeded {
+                maximum: MAX_PUBLISHED_ROUTES
+            })
+        ));
+
+        let four_circuits = (0..=MAX_CIRCUIT_ROUTES)
+            .map(|index| {
+                let relay = Identity::generate().peer_id();
+                format!(
+                    "/dns4/relay-{index}.dev.aukiverse.com/tcp/{}/p2p/{relay}/p2p-circuit/p2p/{target}",
+                    4200 + index
+                )
+            })
+            .collect();
+        assert!(matches!(
+            validate_reference(&reference_with_routes(target, four_circuits)),
+            Err(P2pDatasetError::CircuitRouteLimitExceeded {
+                maximum: MAX_CIRCUIT_ROUTES
+            })
+        ));
+
+        let dns_value_named_like_protocol = (4300..4304)
+            .map(|port| format!("/dns4/p2p-circuit/tcp/{port}"))
+            .collect();
+        let (_, direct) = validate_reference(&reference_with_routes(
+            target,
+            dns_value_named_like_protocol,
+        ))
+        .unwrap();
+        assert_eq!(direct.len(), 4);
+        assert!(direct
+            .iter()
+            .all(|candidate| matches!(candidate, DatasetRouteCandidate::Direct(_))));
+
+        let oversized = format!("/dns4/{}/tcp/443", "a".repeat(MAX_ROUTE_TEXT_BYTES));
+        let (_, bounded) = validate_reference(&reference_with_routes(
+            target,
+            vec![oversized, "/ip4/192.0.2.31/tcp/443".to_string()],
+        ))
+        .unwrap();
+        assert_eq!(bounded.len(), 1);
     }
 
     #[tokio::test]
@@ -2432,6 +3110,20 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
             name: "unreachable.zip".into(),
             peer_id: Identity::generate().peer_id().to_string(),
             multiaddrs: vec!["/ip4/127.0.0.1/tcp/9".into()],
+            size_bytes: 1,
+            sha256: "00".repeat(32),
+            available_until: Utc::now() + chrono::Duration::minutes(10),
+        }
+    }
+
+    fn reference_with_routes(peer_id: PeerId, multiaddrs: Vec<String>) -> P2pDatasetReference {
+        P2pDatasetReference {
+            schema: P2P_DATASET_SCHEMA.into(),
+            dataset_id: "route-validation".into(),
+            domain_id: Uuid::new_v4(),
+            name: "route-validation.zip".into(),
+            peer_id: peer_id.to_string(),
+            multiaddrs,
             size_bytes: 1,
             sha256: "00".repeat(32),
             available_until: Utc::now() + chrono::Duration::minutes(10),
