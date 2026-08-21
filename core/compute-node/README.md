@@ -17,7 +17,10 @@ engine.
   used by legacy registration callbacks (`dds::persist`).
 - Authentication state machines for SIWE after registration and opt-in robot
   machine authentication (`auth` module).
-- DMS HTTP client (`dms::client`) plus request/response data contracts.
+- DMS HTTP clients (`dms::client`, `dms::relay`) plus strict request/response
+  data contracts.
+- Robot-owned relay-booking coordination, confirmed Circuit Relay v2 route
+  publication, and fenced child cancellation (`relay_booking`).
 - Storage façade that turns leases into runner-facing input/output ports
   (`storage::{input, output, client, token}`).
 - Session lifecycle management and heartbeat scheduling (`session`, `heartbeat`,
@@ -37,13 +40,17 @@ engine.
    `auth::SiweAfterRegistration`. The robot entrypoint registers directly with
    its opaque DDS-issued credential and never starts legacy registration or
    falls back to SIWE.
-5. The main `run_node` loop obtains an access token from DDS, builds a DMS
+5. When Robot relay mode is enabled, the host starts the endpoint P2P-token
+   refresher and relay-booking coordinator after machine authentication,
+   process Peer-ID binding, and Domain assignment. The coordinator reserves
+   each DMS-ready child and exposes only confirmed routes to the dataset layer.
+6. The main `run_node` loop obtains an access token from DDS, builds a DMS
    client, leases tasks, initializes session state, and dispatches to the
    correct runner via `RunnerRegistry::run_for_lease`.
-6. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
+7. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
    schedule computed by `session::HeartbeatPolicy`, refreshing storage tokens
    when DDS returns new ones.
-7. When a runner finishes, artifacts discovered by the storage layer are
+8. When a runner finishes, artifacts discovered by the storage layer are
    reported to DMS via `complete` or `fail`, and the cycle restarts.
 
 ## Configuration surface
@@ -71,7 +78,8 @@ Optional environment variables:
 - `DDS_BASE_URL` (default `https://dds.auki.network`) — base URL of the DDS API
   used by the selected authentication flow.
 - `REQUEST_TIMEOUT_SECS` (default `60`) — per-request timeout applied to DDS
-  authentication and DMS calls.
+  authentication and ordinary task DMS calls. Relay control requests use their
+  fixed 10-second timeout described below.
 - `NODE_VERSION` (default crate version) — optional override for the advertised
   node version.
 - `HEARTBEAT_JITTER_MS` (default `250`) — backoff applied when coalescing
@@ -84,16 +92,32 @@ Optional environment variables:
 - `TOKEN_REAUTH_MAX_RETRIES` (default `3`) — retries before bailing on token
   refresh.
 - `TOKEN_REAUTH_JITTER_MS` (default `500`) — jitter applied between retries.
-- `AUKI_P2P_ENABLED` (default `false`) — enables the local direct-P2P prototype,
-  including process-lifetime libp2p identity binding and DDS P2P token refresh.
-  Keep this disabled until the local DDS exposes the P2P authentication endpoints.
+- `AUKI_P2P_ENABLED` (default `false`) — enables the process-level P2P runtime,
+  including process-lifetime libp2p identity binding and DDS P2P-token refresh.
+  Selecting relay mode `auto` or `always` also enables this runtime.
 - `AUKI_P2P_LISTEN_MULTIADDRS` (default empty) — comma-separated native TCP
-  multiaddrs for the process-level libp2p node. Robot serving requires at least
-  one explicit value; tests may use `/ip4/127.0.0.1/tcp/0`.
+  multiaddrs for the process-level libp2p node. Direct-only Robot serving
+  requires at least one explicit value; `auto` and `always` may leave it empty
+  and become ready through a confirmed circuit listener. Tests may use
+  `/ip4/127.0.0.1/tcp/0`.
 - `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated TCP
-  multiaddrs placed in dataset references. Robot serving requires explicit
-  addresses that Compute Nodes can reach. There is no discovery or address
-  guessing, and an ephemeral `tcp/0` address must not be advertised.
+  multiaddrs placed in dataset references. Direct-only Robot serving requires
+  explicit addresses that Compute Nodes can reach. `auto` and `always` may
+  leave this empty, but cannot register a dataset until a relay route is
+  confirmed. There is no direct-address discovery or guessing, and an
+  ephemeral `tcp/0` address must not be advertised.
+- `AUKI_P2P_RELAY_MODE` (Robot only; default `disabled`) — one of `disabled`,
+  `auto`, or `always`; see the readiness rules below.
+- `AUKI_P2P_RELAY_BOOKING_MODE` (Robot only; default `public`) — `public`
+  permits an eligible public relay, while `dedicated` restricts selection to
+  the Robot's organization. DMS never relaxes the selected policy to fill a
+  shortfall.
+- `AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS` (Robot only; default `86400`) —
+  requested rolling horizon, accepted range `300..=86400`.
+- `AUKI_P2P_RELAY_COUNT` (Robot only; default `1`) — desired distinct relay
+  children, accepted range `1..=3`.
+- `AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS` (Robot only; default `5`) —
+  child-status cadence, accepted whole-second range `1..=60`.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
   registration attempts while the node is not yet registered or is recovering.
 - `REGISTER_MAX_RETRY` (legacy SIWE only; default `-1`, meaning infinite
@@ -104,6 +128,51 @@ Optional environment variables:
 - `LOG_FORMAT` (default `json`) — set to `text` for pretty console logs.
 - `ENABLE_NOOP` (default `false`) — when true the binary registers noop runners.
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
+
+Relay control timing is fixed in v1 rather than exposed as more environment
+variables: a 10-second HTTP timeout, jittered retry delays from 250 milliseconds
+through 5 seconds, a 30-second reservation retry budget, and a 15-second
+authority-deadline safety margin. Startup also rejects configurations whose
+direct advertised-route count plus requested relay count could exceed the
+16-route reference limit. At most three of those routes may be circuits.
+
+### Robot relay readiness and shutdown
+
+`disabled` never creates a relay booking. When P2P serving is enabled in this
+mode, operators must supply explicit listen and advertised direct routes and
+accept that an immutable direct-only reference cannot be repaired if the route
+is private, stale, blackholed, or later becomes unreachable.
+
+`auto` always books a relay fallback. With a configured direct advertised
+route, task polling may begin before the relay is ready, but immutable dataset
+registration still waits for at least one eligible confirmed relay. Without a
+direct route, task polling also waits for the first confirmation. `always`
+gates both task polling and registration on a confirmation even when direct
+routes are configured.
+
+`AUKI_P2P_RELAY_COUNT` is desired redundancy, not a quorum. One confirmed child
+is usable when two or three were requested; queued, recovering, or replacement
+siblings continue in the background without changing booking mode. Zero
+confirmed eligible children blocks relay-backed registration. Each immutable
+reference snapshots its explicit direct routes plus the confirmed,
+dataset-limit-eligible relay routes available at that commit. A child confirmed
+later appears only in future references, and a reassigned route is not
+retrofitted into an old reference.
+
+Graceful Robot shutdown stops new dataset registrations first while keeping the
+shared endpoint token, booking authority, and still-authorized reservations
+alive through the greatest outstanding `available_until` and the existing
+15-minute limit for an already-open transfer attempt. It then exact-owner
+deletes the parent booking. Forced process termination or an unrecoverable
+coordinator failure cannot provide that drain and may break already-published
+immutable references; the replacement process has a new Peer ID and does not
+recover those references.
+
+Relay policy and credentials remain host-only. The coordinator uses the
+peer-bound Robot machine JWT for DMS booking calls and a separate endpoint P2P
+token for end-to-end authentication. Neither the runner nor `TaskCtx` receives
+machine, booking, relay, or P2P credentials, and relay count does not alter the
+ordinary runner `MAX_CONCURRENCY` setting.
 
 ## Hello runner entrypoints
 
@@ -143,8 +212,13 @@ the robot binary does not read `REG_SECRET` or `SECP256K1_PRIVHEX`.
   `posemesh-node-registration`. Once acquired, registration is parked until the
   runtime needs recovery instead of being refreshed on a fixed cadence.
 - `engine` — orchestrates leasing, cancellation, heartbeat posting, and
-  completion/failure reporting. The `RunnerRegistry` façade makes it easy to add
-  new capabilities.
+  completion/failure reporting, plus Robot relay startup and graceful drain.
+  The `RunnerRegistry` façade makes it easy to add new capabilities without
+  exposing relay credentials.
+- `dms::relay` — strict, body-redacting typed client for active/create/renew,
+  reservation-failure, and exact-owner delete operations.
+- `relay_booking` — serializes parent booking calls, reconciles stable child
+  fences, and publishes only locally confirmed reservations.
 - `storage::client` — performs authenticated multipart downloads/uploads
   against the domain server using safe temporary directories.
 - `session` — tracks lease metadata, computes TTL-driven heartbeat deadlines,

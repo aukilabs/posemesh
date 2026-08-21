@@ -1,9 +1,10 @@
-//! DMS path builders and DTO shells (no HTTP).
+//! DMS HTTP clients, path builders, and typed DTOs.
 
 use url::Url;
 use uuid::Uuid;
 
 pub mod client;
+pub(crate) mod relay;
 pub mod types;
 
 /// Helper to build DMS endpoint URLs.
