@@ -47,12 +47,46 @@ pub enum Error {
     Listen { address: String, reason: String },
     #[error("failed to open libp2p stream: {0}")]
     OpenStream(String),
+    #[error(transparent)]
+    TargetedStream(#[from] crate::targeted_stream::TargetedStreamError),
     #[error("failed to dial libp2p peer: {0}")]
     Dial(String),
+    #[error("failed to resolve relay DNS name: {0}")]
+    Dns(String),
     #[error("libp2p swarm task has stopped")]
     SwarmStopped,
     #[error("failed to disconnect libp2p peer {0}")]
     Disconnect(String),
+    #[error("relay admission frame is empty or exceeds the {maximum}-byte limit")]
+    RelayAdmissionFrameTooLarge { maximum: usize },
+    #[error("relay admission response is malformed")]
+    RelayAdmissionMalformed,
+    #[error("relay admission was denied")]
+    RelayAdmissionDenied,
+    #[error("relay admission authority is already expired")]
+    RelayAdmissionExpired,
+    #[error("relay admission timed out")]
+    RelayAdmissionTimeout,
+    #[error(transparent)]
+    RelayReservation(#[from] crate::relay::RelayReservationError),
+    #[error("relay reservation confirmation was rejected: {0}")]
+    RelayConfirmationRejected(crate::relay::RelayConfirmationRejection),
+    #[error("relay reservation listener closed before confirmation: {0}")]
+    RelayReservationClosed(String),
+    #[error(
+        "the first direct connection to relay {relay_peer_id} does not match the selected base {expected}; observed {actual}"
+    )]
+    RelayDirectConnectionMismatch {
+        relay_peer_id: String,
+        expected: String,
+        actual: String,
+    },
+    #[error("invalid relay route {address}: {reason}")]
+    InvalidRelayRoute { address: String, reason: String },
+    #[error("relayed sessions require an explicit expected target Peer ID")]
+    MissingExpectedRelayTarget,
+    #[error("relay route handle belongs to a different node instance")]
+    ForeignRelayRoute,
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 }

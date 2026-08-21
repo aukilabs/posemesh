@@ -6,14 +6,14 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+chrono = { workspace = true }
 futures = { workspace = true }
+hickory-resolver = "0.24.4"
 jsonwebtoken = "9.3.0"
-libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux"] }
+libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux", "dns", "relay"] }
 libp2p-stream = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { workspace = true }
-
-[dev-dependencies]
-serde_json = { workspace = true }

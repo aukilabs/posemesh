@@ -104,15 +104,12 @@ fn validate_profile(claims: &P2PAccessClaims) -> Result<()> {
         ));
     }
 
-    let valid_count = match claims.peer_type {
-        PeerRole::Robot | PeerRole::Compute => claims.domain_ids.len() == 1,
-        PeerRole::DomainServer => {
-            (1..=DOMAIN_SERVER_MAX_DOMAINS).contains(&claims.domain_ids.len())
-        }
-    };
-    if !valid_count {
+    // `peer_type` is signed endpoint metadata, not a Domain-cardinality policy.
+    // Relay admission checks membership in the requested Domain and therefore
+    // must retain every bounded signed Domain for every supported role.
+    if !(1..=DOMAIN_SERVER_MAX_DOMAINS).contains(&claims.domain_ids.len()) {
         return Err(Error::InvalidToken(
-            "invalid Domain count for peer role".into(),
+            "domain_ids must contain between 1 and 25 Domains".into(),
         ));
     }
 

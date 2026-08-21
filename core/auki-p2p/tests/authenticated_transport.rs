@@ -45,9 +45,24 @@ fn verifier_enforces_the_exact_dds_claim_profile() {
     let now = unix_time();
 
     for role in [PeerRole::Robot, PeerRole::Compute, PeerRole::DomainServer] {
-        let claims = claims(&identity, role, vec![domain_id.clone()], now);
-        let verified = verifier.verify(&sign(&claims)).unwrap();
+        let single_domain = claims(&identity, role, vec![domain_id.clone()], now);
+        let verified = verifier.verify(&sign(&single_domain)).unwrap();
         assert_eq!(verified.peer_type, role);
+
+        let multi_domain = claims(
+            &identity,
+            role,
+            vec![domain_id.clone(), Uuid::new_v4().to_string()],
+            now,
+        );
+        assert_eq!(
+            verifier
+                .verify(&sign(&multi_domain))
+                .unwrap()
+                .domain_ids
+                .len(),
+            2
+        );
     }
 
     let mut cases: Vec<(&str, ClaimsMutation)> = vec![

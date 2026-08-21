@@ -535,7 +535,9 @@ dependencies = [
 name = "auki-p2p"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures",
+ "hickory-resolver",
  "jsonwebtoken",
  "libp2p",
  "libp2p-stream",
