@@ -1,0 +1,33 @@
+name: GenTool JSON schema validation
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate_gentool_schema:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/gentool
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate GenTool enum/interface JSON against schema
+        run: npm run validate:schemas
+

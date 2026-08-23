@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "main": "generator.js",
   "scripts": {
-    "generate": "node generator.js"
+    "generate": "node generator.js && node generate-schema-fragment.js",
+    "validate:schemas": "node validate-schemas.js"
   },
   "author": "aukilabs",
   "license": "UNLICENSED",
-  "description": "Generator Tool"
+  "description": "Generator Tool",
+  "devDependencies": {
+    "ajv": "^8.18.0",
+    "ajv-cli": "^5.0.0"
+  }
 }

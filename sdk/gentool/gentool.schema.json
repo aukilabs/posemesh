@@ -1,0 +1,434 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://posemesh.auki.dev/schemas/gentool.schema.json",
+  "title": "Posemesh GenTool enum/interface schema",
+  "type": "object",
+  "description": "Schema for Posemesh GenTool enum and interface JSON definitions.",
+  "markdownDescription": "Schema for Posemesh GenTool enum and interface JSON definitions.",
+  "oneOf": [
+    { "$ref": "#/$defs/EnumDef" },
+    { "$ref": "#/$defs/InterfaceDef" }
+  ],
+  "$defs": {
+    "StringWithGen": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      }
+    },
+    "TypeKey": {
+      "description": "Valid type key for properties (see GenTool README valid types).",
+      "markdownDescription": "Valid type key for properties. **Primitives:** `int8`, `float`, `string`, etc. **Parameterized:** `CLASS_MIX:Vector3`, `ENUM:SolvePnPMethod`, `ARRAY_REF:float`.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double", "boolean", "string", "string_ref", "string_mix", "data"]
+        },
+        { "$ref": "gentool.schema.generated.json#/$defs/ParameterizedTypeKey" }
+      ]
+    },
+    "ParamTypeKey": {
+      "description": "Valid type key for method/constructor parameters and return types (excludes string_mix, CLASS_MIX, ARRAY_MIX).",
+      "markdownDescription": "Valid type for parameters/return. Excludes `string_mix`, `CLASS_MIX`, `ARRAY_MIX`.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double", "boolean", "string", "string_ref", "data"]
+        },
+        { "$ref": "gentool.schema.generated.json#/$defs/ParameterizedParamTypeKey" }
+      ]
+    },
+    "Alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Property": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string", "description": "Property name", "markdownDescription": "**Property name** (e.g. `X`, `Position`)" },
+        "type": { "$ref": "#/$defs/TypeKey", "description": "Property type", "markdownDescription": "**Property type** — primitive or `CLASS_MIX:Name`, `ENUM:Name`, `ARRAY_REF:type`" },
+        "static": { "type": "boolean", "description": "Static property", "markdownDescription": "**Static** — class-level property" },
+        "hasGetter": { "type": "boolean", "description": "Generate getter", "markdownDescription": "**Generate getter** — default `true`" },
+        "getterConst": { "type": "boolean", "description": "Getter is const", "markdownDescription": "**Getter is const**" },
+        "getterNoexcept": { "type": "boolean", "description": "Getter is noexcept", "markdownDescription": "**Getter is noexcept**" },
+        "getterName": { "type": "string", "description": "Custom getter name", "markdownDescription": "**Custom getter name** — override default" },
+        "getterMode": { "$ref": "#/$defs/MethodMode", "description": "Getter mode", "markdownDescription": "**Getter mode** — `regular`, `virtual`, `pureVirtual`, `override`" },
+        "getterCustom": { "type": "boolean", "description": "Custom getter implementation", "markdownDescription": "**Custom getter** — you implement; use with `hasMemberVar: false` for computed props" },
+        "getterVisibility": { "$ref": "#/$defs/Visibility", "description": "Getter visibility", "markdownDescription": "**Getter visibility** — `public`, `protected`, `private`" },
+        "hasSetter": { "type": "boolean", "description": "Generate setter", "markdownDescription": "**Generate setter** — default `true`; set `false` for read-only" },
+        "setterConst": { "type": "boolean", "description": "Setter is const", "markdownDescription": "**Setter is const**" },
+        "setterNoexcept": { "type": "boolean", "description": "Setter is noexcept", "markdownDescription": "**Setter is noexcept**" },
+        "setterName": { "type": "string", "description": "Custom setter name", "markdownDescription": "**Custom setter name**" },
+        "setterArgName": { "type": "string", "description": "Setter argument name", "markdownDescription": "**Setter argument name**" },
+        "setterMode": { "$ref": "#/$defs/MethodMode", "description": "Setter mode", "markdownDescription": "**Setter mode**" },
+        "setterCustom": { "type": "boolean", "description": "Custom setter implementation", "markdownDescription": "**Custom setter** — you implement" },
+        "setterVisibility": { "$ref": "#/$defs/Visibility", "description": "Setter visibility", "markdownDescription": "**Setter visibility**" },
+        "hasMemberVar": { "type": "boolean", "description": "Has backing member variable", "markdownDescription": "**Has member var** — `false` for computed-only (e.g. `Length` from X,Y,Z)" },
+        "defaultValue": { "type": "string", "description": "Default value", "markdownDescription": "**Default value** — for constructors" },
+        "partOfIdentity": { "type": "boolean", "description": "Include in equality/hash", "markdownDescription": "**Part of identity** — include in `==` and `hash`; default `true`" }
+      },
+      "required": ["name", "type"]
+    },
+    "InitializedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "valuePlaceholder": { "type": "string" },
+        "initializeInBody": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "ParameterlessConstructor": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "initializedProperties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InitializedProperty" }
+        },
+        "codeFront": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "codeBack": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "definition": { "$ref": "#/$defs/ConstructorDefinition" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "noexcept": { "type": "boolean" },
+        "custom": { "type": "boolean" }
+      }
+    },
+    "CopyConstructor": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "mainArgName": { "type": "string" },
+        "initializedProperties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InitializedProperty" }
+        },
+        "codeFront": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "codeBack": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorCodeFront": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorCodeBack": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "definition": { "$ref": "#/$defs/ConstructorDefinition" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "noexcept": { "type": "boolean" },
+        "custom": { "type": "boolean" },
+        "customOperator": { "type": "boolean" }
+      }
+    },
+    "MoveConstructor": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "mainArgName": { "type": "string" },
+        "initializedProperties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InitializedProperty" }
+        },
+        "codeFront": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "codeBack": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorCodeFront": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorCodeBack": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "definition": { "$ref": "#/$defs/ConstructorDefinition" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "noexcept": { "type": "boolean" },
+        "custom": { "type": "boolean" },
+        "customOperator": { "type": "boolean" }
+      }
+    },
+    "Destructor": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "virtual": { "type": "boolean" },
+        "code": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "definition": { "$ref": "#/$defs/DestructorDefinition" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "custom": { "type": "boolean" }
+      }
+    },
+    "ComparedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "useGetter": { "type": "boolean" },
+        "comparator": { "type": "string" },
+        "comparatorClassInstancePlaceholder": { "type": "string" },
+        "comparatorPropertyPlaceholder": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "EqualityOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "defined": { "type": "boolean" },
+        "comparePointers": { "type": "boolean" },
+        "comparedProperties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ComparedProperty" }
+        },
+        "custom": { "type": "boolean" },
+        "customInequality": { "type": "boolean" }
+      }
+    },
+    "HashedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "useGetter": { "type": "boolean" },
+        "hasher": { "type": "string" },
+        "hasherPlaceholder": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "HashOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "defined": { "type": "boolean" },
+        "usePointerAsHash": { "type": "boolean" },
+        "hashedProperties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/HashedProperty" }
+        },
+        "custom": { "type": "boolean" }
+      }
+    },
+    "ToStringOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "defined": { "type": "boolean" },
+        "custom": { "type": "boolean" }
+      }
+    },
+    "ConstructorParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/ParamTypeKey" },
+        "objectiveC.namePrefix": { "type": "string" },
+        "swift.namePrefix": { "type": "string" }
+      },
+      "required": ["name", "type"]
+    },
+    "Constructor": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ConstructorParameter" },
+          "minItems": 1
+        },
+        "mode": { "$ref": "#/$defs/MethodMode" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "noexcept": { "type": "boolean" }
+      },
+      "required": ["parameters"]
+    },
+    "MethodParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/ParamTypeKey" },
+        "objectiveC.namePrefix": { "type": "string" },
+        "swift.namePrefix": { "type": "string" }
+      },
+      "required": ["name", "type"]
+    },
+    "Method": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "returnType": { "$ref": "#/$defs/ParamTypeKey" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MethodParameter" }
+        },
+        "static": { "type": "boolean" },
+        "mode": { "$ref": "#/$defs/MethodMode" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "noexcept": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "Visibility": {
+      "type": "string",
+      "enum": ["public", "protected", "private"]
+    },
+    "MethodMode": {
+      "type": "string",
+      "enum": ["regular", "virtual", "pureVirtual", "override"]
+    },
+    "ConstructorDefinition": {
+      "type": "string",
+      "enum": ["defined", "default", "deleted", "omitted"]
+    },
+    "DestructorDefinition": {
+      "type": "string",
+      "enum": ["defined", "default", "omitted"]
+    },
+    "EnumConstant": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "EnumDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "constants": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EnumConstant" },
+          "minItems": 1
+        }
+      },
+      "required": ["name", "constants"]
+    },
+    "InterfaceDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        ".*\\.gen$": { "type": "boolean" }
+      },
+      "properties": {
+        "name": { "type": "string" },
+        "static": { "type": "boolean" },
+        "final": { "type": "boolean" },
+        "aliases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" }
+        },
+        "headerGuardName": { "type": "string" },
+        "properties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Property" }
+        },
+        "copyable": { "type": "boolean" },
+        "movable": { "type": "boolean" },
+        "parameterlessConstructor": { "$ref": "#/$defs/ParameterlessConstructor" },
+        "copyConstructor": { "$ref": "#/$defs/CopyConstructor" },
+        "moveConstructor": { "$ref": "#/$defs/MoveConstructor" },
+        "destructor": { "$ref": "#/$defs/Destructor" },
+        "equalityOperator": { "$ref": "#/$defs/EqualityOperator" },
+        "hashOperator": { "$ref": "#/$defs/HashOperator" },
+        "toStringOperator": { "$ref": "#/$defs/ToStringOperator" },
+        "c.generateFuncAliasDefines": { "type": "boolean" },
+        "constructors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Constructor" }
+        },
+        "methods": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Method" }
+        }
+      },
+      "required": ["name"]
+    }
+  }
+}
+
