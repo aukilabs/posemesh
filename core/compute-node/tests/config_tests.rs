@@ -1,6 +1,9 @@
+use auki_p2p::Identity;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use once_cell::sync::Lazy;
 use posemesh_compute_node::config::{
-    LogFormat, NodeConfig, RelayBookingConfig, RelayBookingMode, RelayMode, RobotNodeConfig,
+    LogFormat, NodeConfig, P2pPrivateKey, RelayBookingConfig, RelayBookingMode, RelayMode,
+    RobotNodeConfig,
 };
 use std::{sync::Mutex, time::Duration};
 use tempfile::NamedTempFile;
@@ -15,8 +18,14 @@ const RELAY_ENV_KEYS: &[&str] = &[
     "AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS",
 ];
 
+const P2P_IDENTITY_ENV_KEYS: &[&str] = &["AUKI_P2P_PRIVATE_KEY", "AUKI_P2P_PRIVATE_KEY_FILE"];
+
 fn clear(keys: &[&str]) {
-    for k in keys.iter().chain(RELAY_ENV_KEYS) {
+    for k in keys
+        .iter()
+        .chain(RELAY_ENV_KEYS)
+        .chain(P2P_IDENTITY_ENV_KEYS)
+    {
         std::env::remove_var(k);
     }
 }
@@ -74,6 +83,7 @@ fn loads_required_siwe_defaults() {
     assert!(!cfg.auki_p2p_enabled);
     assert!(cfg.auki_p2p_listen_multiaddrs.is_empty());
     assert!(cfg.auki_p2p_advertised_multiaddrs.is_empty());
+    assert!(cfg.p2p_peer_id().is_none());
     assert_eq!(cfg.register_interval_secs, Some(120));
     assert_eq!(cfg.register_max_retry, Some(-1));
     assert_eq!(cfg.max_concurrency, 1);
@@ -175,6 +185,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     assert!(!cfg.auki_p2p_enabled);
     assert!(cfg.auki_p2p_listen_multiaddrs.is_empty());
     assert!(cfg.auki_p2p_advertised_multiaddrs.is_empty());
+    assert!(cfg.p2p_peer_id().is_none());
     let relay = cfg.relay_booking_config();
     assert_eq!(relay.mode(), RelayMode::Disabled);
     assert_eq!(relay.booking_mode(), RelayBookingMode::Public);
@@ -239,6 +250,118 @@ fn loads_explicit_p2p_multiaddrs() {
         "REG_SECRET",
         "SECP256K1_PRIVHEX",
     ]);
+}
+
+#[test]
+fn persisted_p2p_identity_loads_from_inline_or_file_and_is_redacted() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+
+    let identity = Identity::generate();
+    let protobuf = identity.to_protobuf_encoding().unwrap();
+    let encoded = STANDARD.encode(&protobuf);
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY", &encoded);
+    let inline = RobotNodeConfig::from_env().expect("inline P2P identity");
+    assert_eq!(inline.p2p_peer_id(), Some(identity.peer_id()));
+    let debug = format!("{inline:?}");
+    assert!(debug.contains("[REDACTED]"));
+    assert!(!debug.contains(&encoded));
+
+    std::env::remove_var("AUKI_P2P_PRIVATE_KEY");
+    let mut file = NamedTempFile::new().expect("P2P private-key file");
+    std::io::Write::write_all(&mut file, &protobuf).expect("write P2P private key");
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY_FILE", file.path());
+    let from_file = RobotNodeConfig::from_env().expect("file P2P identity");
+    assert_eq!(from_file.p2p_peer_id(), Some(identity.peer_id()));
+
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[test]
+fn persisted_p2p_identity_sources_and_encoding_fail_closed() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY", "not-base64");
+    let error = RobotNodeConfig::from_env().expect_err("invalid Base64 must fail");
+    assert!(error.to_string().contains("canonical Base64"));
+
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY", " Zm9v ");
+    let error = RobotNodeConfig::from_env().expect_err("padded whitespace must fail");
+    assert!(error.to_string().contains("canonical Base64"));
+
+    let identity = Identity::generate();
+    let protobuf = identity.to_protobuf_encoding().unwrap();
+    let encoded = STANDARD.encode(&protobuf);
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY", &encoded);
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY_FILE", "/not/read");
+    let error = RobotNodeConfig::from_env().expect_err("ambiguous sources must fail");
+    assert!(error.to_string().contains("mutually exclusive"));
+
+    std::env::remove_var("AUKI_P2P_PRIVATE_KEY");
+    let file = NamedTempFile::new().expect("invalid P2P key file");
+    std::fs::write(file.path(), b"not-a-libp2p-key").expect("write invalid key");
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY_FILE", file.path());
+    let error = RobotNodeConfig::from_env().expect_err("invalid protobuf must fail");
+    assert!(error.to_string().contains("canonical Ed25519"));
+
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[cfg(unix)]
+#[test]
+fn p2p_private_key_file_rejects_group_or_other_access() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    let identity = Identity::generate();
+    let file = NamedTempFile::new().expect("P2P key file");
+    std::fs::write(file.path(), identity.to_protobuf_encoding().unwrap()).unwrap();
+    std::fs::set_permissions(file.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY_FILE", file.path());
+
+    let error = RobotNodeConfig::from_env().expect_err("permissive key file must fail");
+    assert!(error.to_string().contains("group or other"));
+
+    clear(&[
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[test]
+fn programmatic_private_key_preserves_peer_id_without_exposing_bytes() {
+    let identity = Identity::generate();
+    let protobuf = identity.to_protobuf_encoding().unwrap();
+    let key = P2pPrivateKey::from_protobuf_encoding(protobuf.clone()).unwrap();
+    let mut cfg = RobotNodeConfig::new(
+        "https://dds.example".parse().unwrap(),
+        "https://dms.example/v1".parse().unwrap(),
+        "robot-credentials",
+    )
+    .unwrap();
+    cfg.set_p2p_private_key(Some(key));
+
+    assert_eq!(cfg.p2p_peer_id(), Some(identity.peer_id()));
+    assert!(!format!("{cfg:?}").contains(&STANDARD.encode(protobuf)));
 }
 
 #[test]

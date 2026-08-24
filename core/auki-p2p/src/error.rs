@@ -2,6 +2,10 @@ use std::io;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("invalid Ed25519 libp2p private key")]
+    InvalidIdentityPrivateKey,
+    #[error("libp2p identity private key must use Ed25519")]
+    UnsupportedIdentityKeyType,
     #[error("failed to sign libp2p identity proof: {0}")]
     IdentitySigning(String),
     #[error("invalid DDS verification key: {0}")]

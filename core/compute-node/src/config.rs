@@ -1,6 +1,8 @@
 use anyhow::{bail, Context, Result};
+use auki_p2p::{Identity, PeerId};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::{env, fmt, fs, time::Duration};
+use std::{env, fmt, fs, io::Read, path::Path, sync::Arc, time::Duration};
 use url::Url;
 
 const DEFAULT_DMS_BASE_URL: &str = "https://dms.auki.network/v1";
@@ -25,6 +27,7 @@ const MAX_RELAY_COUNT: u8 = 3;
 const MIN_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 1;
 const MAX_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 60;
 const MAX_PUBLISHED_ROUTES: usize = 16;
+const MAX_P2P_PRIVATE_KEY_BYTES: u64 = 4 * 1024;
 
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -33,6 +36,65 @@ pub enum LogFormat {
     #[default]
     Json,
     Text,
+}
+
+/// Validated, opaque Ed25519 libp2p identity material.
+///
+/// The private bytes are deliberately excluded from serialization and have a
+/// redacted [`fmt::Debug`] implementation. Clone shares the immutable secret
+/// allocation rather than making additional copies.
+#[derive(Clone, PartialEq, Eq)]
+pub struct P2pPrivateKey {
+    protobuf: Arc<[u8]>,
+    peer_id: PeerId,
+}
+
+impl fmt::Debug for P2pPrivateKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("P2pPrivateKey")
+            .field("peer_id", &self.peer_id)
+            .field("private_key", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl P2pPrivateKey {
+    /// Validate canonical raw libp2p protobuf key bytes.
+    pub fn from_protobuf_encoding(bytes: Vec<u8>) -> Result<Self> {
+        if bytes.is_empty() || bytes.len() > MAX_P2P_PRIVATE_KEY_BYTES as usize {
+            bail!("AUKI P2P private key must be 1..={MAX_P2P_PRIVATE_KEY_BYTES} bytes");
+        }
+        let identity = Identity::from_protobuf_encoding(&bytes)
+            .context("AUKI P2P private key is not a canonical Ed25519 libp2p key")?;
+        Ok(Self {
+            protobuf: Arc::from(bytes),
+            peer_id: identity.peer_id(),
+        })
+    }
+
+    /// Decode canonical RFC 4648 Base64 containing protobuf key bytes.
+    pub fn from_base64(value: &str) -> Result<Self> {
+        if value.is_empty() || value != value.trim() {
+            bail!("AUKI_P2P_PRIVATE_KEY must be non-empty canonical Base64");
+        }
+        let bytes = STANDARD
+            .decode(value)
+            .context("AUKI_P2P_PRIVATE_KEY must be canonical Base64")?;
+        if STANDARD.encode(&bytes) != value {
+            bail!("AUKI_P2P_PRIVATE_KEY must be canonical padded Base64");
+        }
+        Self::from_protobuf_encoding(bytes)
+    }
+
+    pub fn peer_id(&self) -> PeerId {
+        self.peer_id
+    }
+
+    pub(crate) fn identity(&self) -> Result<Identity> {
+        Identity::from_protobuf_encoding(&self.protobuf)
+            .context("validated AUKI P2P private key could not be restored")
+    }
 }
 
 /// Whether a Robot coordinates Circuit Relay v2 fallback routes.
@@ -212,6 +274,9 @@ pub struct NodeConfig {
     pub auki_p2p_listen_multiaddrs: Vec<String>,
     #[serde(default)]
     pub auki_p2p_advertised_multiaddrs: Vec<String>,
+    /// Optional persisted identity; omitted from all serialized configuration.
+    #[serde(skip)]
+    pub auki_p2p_private_key: Option<P2pPrivateKey>,
     pub register_interval_secs: Option<u64>,
     pub register_max_retry: Option<i32>,
     pub max_concurrency: u32,
@@ -221,6 +286,14 @@ pub struct NodeConfig {
 }
 
 impl NodeConfig {
+    /// Peer ID restored from configured private-key material, or `None` when
+    /// startup will generate a process-ephemeral identity.
+    pub fn p2p_peer_id(&self) -> Option<PeerId> {
+        self.auki_p2p_private_key
+            .as_ref()
+            .map(P2pPrivateKey::peer_id)
+    }
+
     /// Load configuration from environment variables.
     pub fn from_env() -> Result<Self> {
         // Core settings (defaults when unset).
@@ -263,6 +336,7 @@ impl NodeConfig {
         let auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
         let auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
         let auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
+        let auki_p2p_private_key = p2p_private_key_from_env()?;
         let register_interval_secs = Some(parse_u64_default(
             "REGISTER_INTERVAL_SECS",
             DEFAULT_REGISTER_INTERVAL_SECS,
@@ -294,6 +368,7 @@ impl NodeConfig {
             auki_p2p_enabled,
             auki_p2p_listen_multiaddrs,
             auki_p2p_advertised_multiaddrs,
+            auki_p2p_private_key,
             register_interval_secs,
             register_max_retry,
             max_concurrency,
@@ -333,6 +408,7 @@ pub struct RobotNodeConfig {
     pub auki_p2p_enabled: bool,
     pub auki_p2p_listen_multiaddrs: Vec<String>,
     pub auki_p2p_advertised_multiaddrs: Vec<String>,
+    p2p_private_key: Option<P2pPrivateKey>,
     relay_booking: RelayBookingConfig,
     pub max_concurrency: u32,
     pub log_format: LogFormat,
@@ -365,6 +441,7 @@ impl fmt::Debug for RobotNodeConfig {
                 "auki_p2p_advertised_multiaddrs",
                 &self.auki_p2p_advertised_multiaddrs,
             )
+            .field("p2p_private_key", &self.p2p_private_key)
             .field("relay_booking", &self.relay_booking)
             .field("max_concurrency", &self.max_concurrency)
             .field("log_format", &self.log_format)
@@ -407,6 +484,7 @@ impl RobotNodeConfig {
             auki_p2p_enabled: false,
             auki_p2p_listen_multiaddrs: Vec::new(),
             auki_p2p_advertised_multiaddrs: Vec::new(),
+            p2p_private_key: None,
             relay_booking: RelayBookingConfig::default(),
             max_concurrency: 1,
             log_format: LogFormat::default(),
@@ -443,6 +521,7 @@ impl RobotNodeConfig {
         cfg.auki_p2p_enabled = parse_bool_opt("AUKI_P2P_ENABLED", false)?;
         cfg.auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
         cfg.auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
+        cfg.p2p_private_key = p2p_private_key_from_env()?;
         cfg.relay_booking = relay_booking_config_from_env()?;
         let direct_route_count =
             usize::from(cfg.auki_p2p_enabled || cfg.relay_booking.mode().is_enabled())
@@ -463,6 +542,17 @@ impl RobotNodeConfig {
     /// Return the validated relay policy used by the Robot host coordinator.
     pub fn relay_booking_config(&self) -> RelayBookingConfig {
         self.relay_booking
+    }
+
+    /// Peer ID that will be restored at startup, or `None` for the legacy
+    /// process-ephemeral identity behavior.
+    pub fn p2p_peer_id(&self) -> Option<PeerId> {
+        self.p2p_private_key.as_ref().map(P2pPrivateKey::peer_id)
+    }
+
+    /// Install already validated identity material for programmatic hosts.
+    pub fn set_p2p_private_key(&mut self, private_key: Option<P2pPrivateKey>) {
+        self.p2p_private_key = private_key;
     }
 
     /// Set a programmatic Robot relay policy while enforcing the reference
@@ -506,6 +596,7 @@ impl RobotNodeConfig {
             auki_p2p_enabled: self.auki_p2p_enabled || self.relay_booking.mode().is_enabled(),
             auki_p2p_listen_multiaddrs: self.auki_p2p_listen_multiaddrs.clone(),
             auki_p2p_advertised_multiaddrs: self.auki_p2p_advertised_multiaddrs.clone(),
+            auki_p2p_private_key: self.p2p_private_key.clone(),
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: self.max_concurrency,
@@ -587,6 +678,61 @@ fn robot_registration_credentials_from_env() -> Result<String> {
             "ROBOT_REGISTRATION_CREDENTIALS or ROBOT_REGISTRATION_CREDENTIALS_FILE required for robot machine authentication"
         ),
     }
+}
+
+fn p2p_private_key_from_env() -> Result<Option<P2pPrivateKey>> {
+    let inline = env::var("AUKI_P2P_PRIVATE_KEY").ok();
+    let file = env::var("AUKI_P2P_PRIVATE_KEY_FILE").ok();
+
+    match (inline, file) {
+        (Some(_), Some(_)) => {
+            bail!("AUKI_P2P_PRIVATE_KEY and AUKI_P2P_PRIVATE_KEY_FILE are mutually exclusive")
+        }
+        (Some(value), None) => {
+            if value.is_empty() || value != value.trim() {
+                bail!("AUKI_P2P_PRIVATE_KEY must be non-empty canonical Base64");
+            }
+            P2pPrivateKey::from_base64(&value).map(Some)
+        }
+        (None, Some(path)) => {
+            let path = path.trim();
+            if path.is_empty() {
+                bail!("AUKI_P2P_PRIVATE_KEY_FILE must not be empty");
+            }
+            read_p2p_private_key_file(Path::new(path)).map(Some)
+        }
+        (None, None) => Ok(None),
+    }
+}
+
+fn read_p2p_private_key_file(path: &Path) -> Result<P2pPrivateKey> {
+    let file = fs::File::open(path)
+        .with_context(|| format!("open AUKI_P2P_PRIVATE_KEY_FILE {}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("stat AUKI_P2P_PRIVATE_KEY_FILE {}", path.display()))?;
+    if !metadata.is_file() {
+        bail!("AUKI_P2P_PRIVATE_KEY_FILE must resolve to a regular file");
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_P2P_PRIVATE_KEY_BYTES {
+        bail!("AUKI_P2P_PRIVATE_KEY_FILE must contain 1..={MAX_P2P_PRIVATE_KEY_BYTES} bytes");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            bail!("AUKI_P2P_PRIVATE_KEY_FILE must not be accessible by group or other users");
+        }
+    }
+
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_P2P_PRIVATE_KEY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read AUKI_P2P_PRIVATE_KEY_FILE {}", path.display()))?;
+    if bytes.len() as u64 > MAX_P2P_PRIVATE_KEY_BYTES {
+        bail!("AUKI_P2P_PRIVATE_KEY_FILE changed while being read or exceeds its size limit");
+    }
+    P2pPrivateKey::from_protobuf_encoding(bytes)
 }
 
 fn env_var_trimmed(key: &str) -> Option<String> {

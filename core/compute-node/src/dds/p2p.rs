@@ -258,7 +258,26 @@ impl ProcessP2p {
         request_timeout: Duration,
         listen_addresses: impl IntoIterator<Item = Multiaddr>,
     ) -> Result<Self> {
-        let identity = Identity::generate();
+        Self::start_with_identity_and_listen_addresses(
+            Identity::generate(),
+            dds_base_url,
+            request_timeout,
+            listen_addresses,
+        )
+        .await
+    }
+
+    /// Start with an explicitly owned persistent libp2p identity.
+    ///
+    /// Callers must ensure that the same private key is not used by concurrent
+    /// processes. The identity remains process-local after construction and is
+    /// never exposed through runner or task APIs.
+    pub async fn start_with_identity_and_listen_addresses(
+        identity: Identity,
+        dds_base_url: Url,
+        request_timeout: Duration,
+        listen_addresses: impl IntoIterator<Item = Multiaddr>,
+    ) -> Result<Self> {
         let dds = DdsP2pClient::new(dds_base_url, request_timeout)?;
         let verifier = dds.token_verifier().await?;
         let node =

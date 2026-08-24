@@ -321,6 +321,7 @@ mod tests {
             auki_p2p_enabled: false,
             auki_p2p_listen_multiaddrs: Vec::new(),
             auki_p2p_advertised_multiaddrs: Vec::new(),
+            auki_p2p_private_key: None,
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: 1,

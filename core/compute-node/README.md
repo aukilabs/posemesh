@@ -93,8 +93,15 @@ Optional environment variables:
   refresh.
 - `TOKEN_REAUTH_JITTER_MS` (default `500`) — jitter applied between retries.
 - `AUKI_P2P_ENABLED` (default `false`) — enables the process-level P2P runtime,
-  including process-lifetime libp2p identity binding and DDS P2P-token refresh.
+  including libp2p identity binding and DDS P2P-token refresh.
   Selecting relay mode `auto` or `always` also enables this runtime.
+- `AUKI_P2P_PRIVATE_KEY_FILE` (optional; preferred) — path to a raw canonical
+  Ed25519 libp2p protobuf private key. The file must be a regular file of at
+  most 4 KiB with no group/other permission bits (normally mode `0600`).
+- `AUKI_P2P_PRIVATE_KEY` (optional) — canonical padded RFC 4648 Base64 of the
+  same protobuf bytes. It is mutually exclusive with
+  `AUKI_P2P_PRIVATE_KEY_FILE`. When neither value is configured, the process
+  retains the previous behavior and generates an ephemeral identity at start.
 - `AUKI_P2P_LISTEN_MULTIADDRS` (default empty) — comma-separated native TCP
   multiaddrs for the process-level libp2p node. Direct-only Robot serving
   requires at least one explicit value; `auto` and `always` may leave it empty
@@ -165,8 +172,22 @@ alive through the greatest outstanding `available_until` and the existing
 15-minute limit for an already-open transfer attempt. It then exact-owner
 deletes the parent booking. Forced process termination or an unrecoverable
 coordinator failure cannot provide that drain and may break already-published
-immutable references; the replacement process has a new Peer ID and does not
-recover those references.
+immutable references. A configured persistent P2P key lets a replacement prove
+the same Peer ID and reconcile its peer-bound relay booking instead of waiting
+for prior authority to expire. It does not reconstruct the old process's
+in-memory dataset registrations or repair references whose availability already
+ended. Exactly one live process may own a given P2P private key at a time.
+
+Generate a dedicated Ed25519 identity without printing the private key:
+
+```sh
+cargo run -p posemesh-compute-node --bin posemesh-p2p-keygen -- \
+  "$HOME/.auki/robot/libp2p-private-key"
+```
+
+The generator refuses to overwrite a path and creates the raw key with mode
+`0600`. Configure that path as `AUKI_P2P_PRIVATE_KEY_FILE`. Do not reuse a SIWE,
+wallet, or registration private key for libp2p identity.
 
 Relay policy and credentials remain host-only. The coordinator uses the
 peer-bound Robot machine JWT for DMS booking calls and a separate endpoint P2P

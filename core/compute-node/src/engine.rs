@@ -566,12 +566,22 @@ async fn start_process_p2p(
         "AUKI_P2P_ADVERTISED_MULTIADDRS",
     )?;
     validate_advertised_p2p_multiaddrs(&advertised_addresses)?;
-    let process = ProcessP2p::start_with_listen_addresses(
-        dds_base_url,
-        StdDuration::from_secs(cfg.request_timeout_secs.max(1)),
-        listen_addresses,
-    )
-    .await
+    let request_timeout = StdDuration::from_secs(cfg.request_timeout_secs.max(1));
+    let process = match cfg.auki_p2p_private_key.as_ref() {
+        Some(private_key) => {
+            ProcessP2p::start_with_identity_and_listen_addresses(
+                private_key.identity()?,
+                dds_base_url,
+                request_timeout,
+                listen_addresses,
+            )
+            .await
+        }
+        None => {
+            ProcessP2p::start_with_listen_addresses(dds_base_url, request_timeout, listen_addresses)
+                .await
+        }
+    }
     .context("start process P2P identity")?;
     info!(peer_id = %process.binding_client().peer_id(), "Auki P2P identity started");
     let dataset = Arc::new(P2pDatasetAdapter::new_with_route_policy(

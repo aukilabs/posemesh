@@ -27,8 +27,24 @@ chmod 600 /tmp/relay-demo.robot.env /tmp/relay-demo.reconstruction.env
 Fill the two files. The Robot file needs:
 
 - its DDS registration-credential file;
+- a dedicated persistent libp2p private-key file;
 - an App JWT authorized for the selected `DOMAIN_ID`;
 - a non-empty `RELAY_DEMO_SOURCE_FILE`.
+
+Create the Robot's stable libp2p identity once (the command refuses to
+overwrite an existing key):
+
+```sh
+mkdir -p "$HOME/.auki/relay-file-demo"
+cargo run -p posemesh-compute-node --bin posemesh-p2p-keygen -- \
+  "$HOME/.auki/relay-file-demo/robot-libp2p-private-key"
+```
+
+Point `AUKI_P2P_PRIVATE_KEY_FILE` at that file. Reusing it preserves the
+Robot's Peer ID across demo restarts, allowing DMS to reconcile the previous
+peer-bound relay-booking authority instead of waiting for it to expire. Never
+run two processes with the same key concurrently, and do not substitute the
+Robot wallet or registration key.
 
 The reconstruction file needs its existing `REG_SECRET` and
 `SECP256K1_PRIVHEX`. With the default `dedicated` reconstruction task, that
