@@ -11,6 +11,7 @@ members = [
     "domain-http",
     "compute-node-runner-api",
     "compute-node-runner-api/examples/hello-runner",
+    "compute-node-runner-api/examples/relay-file-demo",
     "compute-node",
     "node-registration", "uniffi-bindgen",
 ]

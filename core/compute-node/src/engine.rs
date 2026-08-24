@@ -228,7 +228,12 @@ pub async fn run_robot_node_with_shutdown(
     run_robot_node_with_shutdowns(cfg, runners, shutdown, CancellationToken::new()).await
 }
 
-async fn run_robot_node_with_shutdowns(
+/// Run a robot-authenticated node with separate graceful and forced shutdown
+/// signals.
+///
+/// The first token stops task polling and begins the bounded dataset-reference
+/// drain. The second token interrupts that drain and tears down P2P authority.
+pub async fn run_robot_node_with_shutdowns(
     cfg: RobotNodeConfig,
     runners: RunnerRegistry,
     shutdown: CancellationToken,
