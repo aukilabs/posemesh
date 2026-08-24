@@ -71,12 +71,18 @@ bool ArucoDetection::detectArucoFromLuminance(
     std::vector<std::string>& outContents,
     std::vector<Vector2>& outCorners)
 {
+    outContents.clear();
+    outCorners.clear();
+
     try {
         if (width <= 0) {
             throw std::invalid_argument("width");
         }
         if (height <= 0) {
             throw std::invalid_argument("height");
+        }
+        if (!imageBytes) {
+            throw std::invalid_argument("imageBytes");
         }
         if (imageBytesSize != width * height * sizeof(std::uint8_t)) {
             throw std::invalid_argument("imageBytesSize");
@@ -102,7 +108,7 @@ bool ArucoDetection::detectArucoFromLuminance(
         outContents.reserve(contentsFound.size());
 
         outCorners.clear();
-        outCorners.reserve(cornersFound.size());
+        outCorners.reserve(cornersFound.size() * 4);
 
         for (std::size_t i = 0; i < contentsFound.size(); ++i) {
             outContents.push_back(std::to_string(contentsFound[i]));
@@ -207,10 +213,15 @@ std::vector<LandmarkObservation> ArucoDetection::detectArucoFromLuminance(
     std::vector<LandmarkObservation> observations;
 
     if (detected) {
-        for (int i = 0; i < outContents.size(); i++) {
+        if (outCorners.size() < outContents.size() * 4) {
+            std::cerr << "ArucoDetection::detectArucoFromLuminance(): Observation corner count mismatch." << std::endl;
+            return observations;
+        }
+        for (std::size_t i = 0; i < outContents.size(); i++) {
+            const std::size_t cornerBaseIndex = i * 4;
             for (int j = 0; j < 4; j++) {
                 LandmarkObservation l;
-                l.setPosition(outCorners[i * 4 + j]);
+                l.setPosition(outCorners[cornerBaseIndex + j]);
                 l.setType(arucoMarkerFormatToString(markerFormat));
                 std::string content = outContents[i];
                 if (Portals::isAukiQR(content)) {
