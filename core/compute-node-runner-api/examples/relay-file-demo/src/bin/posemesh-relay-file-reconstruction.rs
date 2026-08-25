@@ -2,11 +2,12 @@ use anyhow::{bail, Context, Result};
 use posemesh_compute_node::{
     config::NodeConfig,
     dds::register::spawn_registration_if_configured,
-    engine::{run_node, RunnerRegistry},
+    engine::{run_node, RunnerComposition, RunnerRegistry},
     telemetry,
 };
 use posemesh_relay_file_demo::{
     config::{load_env_file, ReconstructionDemoConfig},
+    jobs::RECONSTRUCTION_CAPABILITY,
     runners::ReconstructionFileDownloader,
 };
 use tracing::info;
@@ -22,9 +23,12 @@ async fn main() -> Result<()> {
     }
     let demo =
         ReconstructionDemoConfig::from_env().context("load reconstruction demo configuration")?;
-    let registry = RunnerRegistry::new().register(ReconstructionFileDownloader::new(demo.clone()));
-    let capabilities = registry.capabilities();
+    let capabilities = vec![RECONSTRUCTION_CAPABILITY.to_string()];
     spawn_registration_if_configured(&cfg, &capabilities)?;
+    let runner_demo = demo.clone();
+    let runners = RunnerComposition::with_dataset(move |dataset| {
+        RunnerRegistry::new().register(ReconstructionFileDownloader::new(runner_demo, dataset))
+    });
 
     info!(
         env_file = %env_file.display(),
@@ -32,5 +36,5 @@ async fn main() -> Result<()> {
         ?capabilities,
         "starting the dev relay-file reconstruction demo"
     );
-    run_node(cfg, registry).await
+    run_node(cfg, runners).await
 }

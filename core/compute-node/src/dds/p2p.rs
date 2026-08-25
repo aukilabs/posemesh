@@ -1,14 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use auki_p2p::{DdsTokenVerifier, Identity, Multiaddr, Node, P2PAccessClaims, PeerId, PeerRole};
+pub use auki_p2p::P2pCredentialStore;
+use auki_p2p::{DdsTokenVerifier, Identity, Multiaddr, Node, P2PAccessClaims, PeerId};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use tokio::{
-    sync::{Mutex, OnceCell},
-    task::JoinHandle,
-};
+use tokio::{sync::OnceCell, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use url::Url;
@@ -51,6 +49,8 @@ pub enum DdsP2pError {
     MachineToken(#[source] TokenProviderError),
     #[error("DDS P2P access token is invalid")]
     InvalidAccessToken(#[source] auki_p2p::Error),
+    #[error("local P2P authority rejected the credential")]
+    Credential(#[from] auki_p2p::P2pCredentialError),
     #[error("DDS P2P access-token expiration is invalid")]
     InvalidExpiration,
     #[error("DDS P2P token and expiration must be provided together")]
@@ -310,98 +310,6 @@ impl ProcessP2p {
 
     pub async fn shutdown(self) -> Result<()> {
         self.node.shutdown().await.map_err(DdsP2pError::Node)
-    }
-}
-
-#[derive(Clone)]
-pub struct P2pCredentialStore {
-    node: Node,
-    current: Arc<Mutex<Option<P2PAccessClaims>>>,
-}
-
-impl P2pCredentialStore {
-    pub fn new(node: Node) -> Self {
-        Self {
-            node,
-            current: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    pub async fn install(
-        &self,
-        token: impl Into<String>,
-        expected_expires_at: DateTime<Utc>,
-    ) -> Result<P2PAccessClaims> {
-        if expected_expires_at <= Utc::now() {
-            return Err(DdsP2pError::InvalidExpiration);
-        }
-        let mut current = self.current.lock().await;
-        let claims = self
-            .node
-            .install_token(token)
-            .await
-            .map_err(DdsP2pError::InvalidAccessToken)?;
-        let claim_exp = i64::try_from(claims.exp)
-            .ok()
-            .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
-            .ok_or(DdsP2pError::InvalidExpiration)?;
-        if claim_exp != expected_expires_at {
-            self.node.clear_token().await;
-            *current = None;
-            return Err(DdsP2pError::InvalidExpiration);
-        }
-        *current = Some(claims.clone());
-        Ok(claims)
-    }
-
-    pub async fn install_optional(
-        &self,
-        token: Option<&str>,
-        expires_at: Option<DateTime<Utc>>,
-    ) -> Result<Option<P2PAccessClaims>> {
-        match (token, expires_at) {
-            (Some(token), Some(expires_at)) => {
-                self.install(token.to_string(), expires_at).await.map(Some)
-            }
-            (None, None) => Ok(None),
-            _ => Err(DdsP2pError::IncompleteCredential),
-        }
-    }
-
-    pub async fn require(&self, role: PeerRole, domain_id: Uuid) -> Result<P2PAccessClaims> {
-        let claims = self
-            .current
-            .lock()
-            .await
-            .clone()
-            .ok_or(DdsP2pError::MissingCredential)?;
-        let now = Utc::now().timestamp();
-        let expiration = i64::try_from(claims.exp).map_err(|_| DdsP2pError::InvalidExpiration)?;
-        if expiration <= now {
-            return Err(DdsP2pError::ExpiredCredential);
-        }
-        if claims.peer_type != role {
-            return Err(DdsP2pError::CredentialRoleMismatch);
-        }
-        if !claims
-            .domain_ids
-            .iter()
-            .filter_map(|candidate| Uuid::parse_str(candidate).ok())
-            .any(|candidate| candidate == domain_id)
-        {
-            return Err(DdsP2pError::CredentialDomainMismatch);
-        }
-        Ok(claims)
-    }
-
-    pub async fn current_claims(&self) -> Option<P2PAccessClaims> {
-        self.current.lock().await.clone()
-    }
-
-    pub async fn clear(&self) {
-        let mut current = self.current.lock().await;
-        self.node.clear_token().await;
-        *current = None;
     }
 }
 

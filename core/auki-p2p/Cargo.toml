@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 publish = false
+description = "Authenticated Posemesh P2P runtime, exact-route transport, and relay routing"
+readme = "README.md"
 
 [dependencies]
 chrono = { workspace = true }
@@ -12,8 +14,11 @@ hickory-resolver = "0.24.4"
 jsonwebtoken = "9.3.0"
 libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux", "dns", "relay"] }
 libp2p-stream = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
 uuid = { workspace = true }

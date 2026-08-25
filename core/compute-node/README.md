@@ -8,6 +8,15 @@ server on behalf of capability-specific runners. Legacy SIWE and robot machine
 authentication use separate, explicit entrypoints while sharing the task
 engine.
 
+The authenticated P2P stack is intentionally split out of this crate:
+[`auki-p2p`](../auki-p2p/README.md) owns the reusable runtime, identity, mutual
+authentication, relay transport, and route catalog;
+[`auki-p2p-dataset`](../auki-p2p-dataset/README.md) owns the dataset protocol.
+Compute-node remains the composition root for DDS credential acquisition, DMS
+relay bookings, task lifecycle, and shutdown. Runners receive protocol-specific
+facades explicitly in their constructors, never through `TaskCtx` and never as
+the raw P2P node or credentials.
+
 ## Responsibilities
 - Environment-driven configuration (`config`) with typed accessors and sane
   defaults where permitted.
@@ -33,8 +42,9 @@ engine.
 1. `telemetry::init_from_env()` installs logging based on `LOG_FORMAT`.
 2. The selected entrypoint loads either `NodeConfig` for legacy SIWE or the
    separate `RobotNodeConfig` for robot machine authentication.
-3. Runners are registered in a `RunnerRegistry`; the binary decides which
-   capabilities to advertise.
+3. The engine starts process protocols, then a `RunnerComposition` constructs
+   protocol-aware runners with typed dependencies such as `DatasetService`.
+   Plain runners can still be registered directly in a `RunnerRegistry`.
 4. The legacy entrypoint starts
    `dds::register::spawn_registration_if_configured()` and then
    `auth::SiweAfterRegistration`. The robot entrypoint registers directly with

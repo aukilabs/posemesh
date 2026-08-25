@@ -1,4 +1,4 @@
-use crate::types::{LeaseEnvelope, P2pDatasetReference, P2pDatasetRegistration};
+use crate::types::LeaseEnvelope;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -119,16 +119,6 @@ pub trait AccessTokenProvider: Send + Sync {
     fn get(&self) -> String;
 }
 
-/// Narrow process-level interface for the authenticated demo dataset path.
-#[async_trait]
-pub trait P2pDataset: Send + Sync {
-    /// Register one local ZIP and return non-secret routing/integrity metadata.
-    async fn register(&self, registration: P2pDatasetRegistration) -> Result<P2pDatasetReference>;
-
-    /// Fetch one referenced ZIP into a caller-selected local destination.
-    async fn fetch(&self, reference: &P2pDatasetReference, destination: &Path) -> Result<()>;
-}
-
 /// Task context passed to runners.
 pub struct TaskCtx<'a> {
     pub lease: &'a LeaseEnvelope,
@@ -137,8 +127,6 @@ pub struct TaskCtx<'a> {
     pub ctrl: &'a dyn ControlPlane,
     /// Hot-swappable bearer token reference (read-only) for domain HTTP.
     pub access_token: &'a dyn AccessTokenProvider,
-    /// Optional authenticated P2P dataset adapter. No raw network or token API.
-    pub p2p_dataset: Option<&'a dyn P2pDataset>,
 }
 
 /// Runner entrypoint.

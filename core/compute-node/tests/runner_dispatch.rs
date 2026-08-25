@@ -1,7 +1,5 @@
-use compute_runner_api::{
-    ArtifactSink, ControlPlane, InputSource, P2pDataset, P2pDatasetReference,
-    P2pDatasetRegistration, Runner, TaskCtx,
-};
+use auki_p2p_dataset::{DatasetService, P2pDataset, P2pDatasetReference, P2pDatasetRegistration};
+use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, Runner, TaskCtx};
 use posemesh_compute_node::engine::RunnerRegistry;
 use std::path::Path;
 use std::sync::{
@@ -55,7 +53,7 @@ impl Runner for RCount {
         self.cap
     }
     async fn run(&self, ctx: TaskCtx<'_>) -> anyhow::Result<()> {
-        assert!(ctx.p2p_dataset.is_none());
+        let _ = ctx;
         self.count.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -82,6 +80,7 @@ impl P2pDataset for DummyP2pDataset {
 }
 
 struct BoundaryRunner {
+    dataset: DatasetService,
     saw_narrow_handle: Arc<AtomicBool>,
 }
 
@@ -99,7 +98,7 @@ impl Runner for BoundaryRunner {
         assert_eq!(ctx.access_token.get(), "domain-http-secret");
         assert!(ctx.lease.p2p_access_token.is_none());
         assert!(ctx.lease.p2p_access_token_expires_at.is_none());
-        assert!(ctx.p2p_dataset.is_some());
+        let _dataset = &self.dataset;
         self.saw_narrow_handle.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -179,9 +178,11 @@ async fn dispatches_to_correct_runner_only() {
 }
 
 #[tokio::test]
-async fn runner_receives_only_the_narrow_handle_and_not_p2p_credentials() {
+async fn runner_receives_constructor_injected_handle_but_not_p2p_credentials() {
     let saw_narrow_handle = Arc::new(AtomicBool::new(false));
+    let p2p: Arc<dyn P2pDataset> = Arc::new(DummyP2pDataset);
     let registry = RunnerRegistry::new().register(BoundaryRunner {
+        dataset: DatasetService::new(p2p),
         saw_narrow_handle: saw_narrow_handle.clone(),
     });
     let mut lease = fake_lease("/p2p-boundary");
@@ -191,7 +192,6 @@ async fn runner_receives_only_the_narrow_handle_and_not_p2p_credentials() {
     let input = DummyInput;
     let output = DummySink;
     let ctrl = DummyCtrl;
-    let p2p = DummyP2pDataset;
     struct DomainToken;
     impl compute_runner_api::runner::AccessTokenProvider for DomainToken {
         fn get(&self) -> String {
@@ -200,7 +200,7 @@ async fn runner_receives_only_the_narrow_handle_and_not_p2p_credentials() {
     }
 
     registry
-        .run_for_lease_with_p2p(&lease, &input, &output, &ctrl, &DomainToken, Some(&p2p))
+        .run_for_lease(&lease, &input, &output, &ctrl, &DomainToken)
         .await
         .expect("runner boundary");
 

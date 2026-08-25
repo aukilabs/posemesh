@@ -3,6 +3,8 @@
 //! Exposes:
 //! - Data contracts: `LeaseEnvelope`, `TaskSpec`.
 //! - Runner ports: `InputSource`, `ArtifactSink`, `ControlPlane`.
+//! - Explicit dependency boundary: protocol handles belong on runner structs;
+//!   `TaskCtx` carries only values that change for each task.
 //! - Execution: `TaskCtx`, `Runner`.
 
 /// Public crate identifier used by workspace smoke tests.
@@ -11,9 +13,5 @@ pub const CRATE_NAME: &str = "posemesh-compute-node-runner-api";
 pub mod runner;
 pub mod types;
 
-pub use runner::{
-    ArtifactSink, ControlPlane, InputSource, MaterializedInput, P2pDataset, Runner, TaskCtx,
-};
-pub use types::{
-    LeaseEnvelope, P2pDatasetReference, P2pDatasetRegistration, TaskSpec, P2P_DATASET_SCHEMA,
-};
+pub use runner::{ArtifactSink, ControlPlane, InputSource, MaterializedInput, Runner, TaskCtx};
+pub use types::{LeaseEnvelope, TaskSpec};

@@ -1,14 +1,15 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use auki_p2p::{
-    ApplicationProtocol, DdsTokenVerifier, Error, Identity, Node, P2PAccessClaims, PeerRole,
-    SessionRequirements, DOMAIN_SERVER_MAX_DOMAINS, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER,
-    P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
+    ApplicationProtocol, DdsTokenVerifier, Error, ExactRoute, Identity, Node, P2PAccessClaims,
+    PeerRole, ProtocolSpec, SessionRequirements, DOMAIN_SERVER_MAX_DOMAINS, P2P_TOKEN_AUDIENCE,
+    P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
 };
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use libp2p::{identity::PublicKey, Multiaddr};
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 const TEST_DDS_PRIVATE_KEY: &[u8] = br#"-----BEGIN PRIVATE KEY-----
@@ -213,6 +214,69 @@ async fn peers_exchange_bytes_only_after_mutual_authentication() {
     assert_eq!(&response, b"pong");
     server.await.unwrap();
 
+    robot.shutdown().await.unwrap();
+    compute.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_runtime_supervises_multiple_independent_authenticated_protocols() {
+    let domain_id = Uuid::new_v4().to_string();
+    let robot = listening_node();
+    let compute = listening_node();
+    install_current_token(&robot, PeerRole::Robot, vec![domain_id.clone()]).await;
+    install_current_token(&compute, PeerRole::Compute, vec![domain_id.clone()]).await;
+    let robot_peer_id = robot.peer_id();
+    let robot_address = listen_address(&robot).await;
+    let shutdown = CancellationToken::new();
+
+    let mut servers = Vec::new();
+    for (name, response) in [
+        ("/auki-p2p/runtime-alpha/1", b"alpha".as_slice()),
+        ("/auki-p2p/runtime-beta/1", b"beta".as_slice()),
+    ] {
+        let spec = ProtocolSpec::new(
+            ApplicationProtocol::new(name).unwrap(),
+            SessionRequirements::new(&domain_id, PeerRole::Compute).unwrap(),
+        );
+        servers.push(
+            robot
+                .serve(spec, &shutdown, move |mut stream| async move {
+                    let mut request = [0_u8; 1];
+                    stream.read_exact(&mut request).await.unwrap();
+                    assert_eq!(request, [1]);
+                    stream.write_all(response).await.unwrap();
+                    stream.flush().await.unwrap();
+                })
+                .unwrap(),
+        );
+    }
+
+    for (name, expected) in [
+        ("/auki-p2p/runtime-alpha/1", b"alpha".as_slice()),
+        ("/auki-p2p/runtime-beta/1", b"beta".as_slice()),
+    ] {
+        let mut stream = compute
+            .open_exact_route(
+                robot_peer_id,
+                ExactRoute::Direct(robot_address.clone()),
+                ApplicationProtocol::new(name).unwrap(),
+                SessionRequirements::new(&domain_id, PeerRole::Robot)
+                    .unwrap()
+                    .with_expected_remote_peer_id(robot_peer_id),
+            )
+            .await
+            .unwrap();
+        stream.write_all(&[1]).await.unwrap();
+        stream.flush().await.unwrap();
+        let mut response = vec![0_u8; expected.len()];
+        stream.read_exact(&mut response).await.unwrap();
+        assert_eq!(response, expected);
+        stream.close().await.unwrap();
+    }
+
+    for server in servers {
+        server.shutdown().await.unwrap();
+    }
     robot.shutdown().await.unwrap();
     compute.shutdown().await.unwrap();
 }

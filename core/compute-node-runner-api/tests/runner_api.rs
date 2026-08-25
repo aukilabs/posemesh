@@ -137,7 +137,6 @@ async fn task_ctx_wiring_and_object_safety() {
         output,
         ctrl,
         access_token: &tok,
-        p2p_dataset: None,
     };
 
     let r = DummyRunner;

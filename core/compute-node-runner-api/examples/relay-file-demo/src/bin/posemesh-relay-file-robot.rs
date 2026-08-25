@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use posemesh_compute_node::{
     config::{RelayMode, RobotNodeConfig},
-    engine::{run_robot_node_with_shutdowns, RunnerRegistry},
+    engine::{run_robot_node_with_shutdowns, RunnerComposition, RunnerRegistry},
     telemetry,
 };
 use posemesh_relay_file_demo::{
@@ -33,8 +33,15 @@ async fn main() -> Result<()> {
     let run_id = Uuid::new_v4();
     let jobs = Arc::new(JobClient::new(demo.jobs.clone())?);
     let submitter: Arc<dyn ReconstructionJobSubmitter> = jobs.clone();
-    let registry =
-        RunnerRegistry::new().register(RobotFilePublisher::new(demo.clone(), run_id, submitter));
+    let runner_demo = demo.clone();
+    let runners = RunnerComposition::with_dataset(move |dataset| {
+        RunnerRegistry::new().register(RobotFilePublisher::new(
+            runner_demo,
+            run_id,
+            dataset,
+            submitter,
+        ))
+    });
 
     let shutdown = CancellationToken::new();
     let forced_shutdown = CancellationToken::new();
@@ -49,7 +56,7 @@ async fn main() -> Result<()> {
 
     let mut engine = Box::pin(run_robot_node_with_shutdowns(
         cfg,
-        registry,
+        runners,
         shutdown.clone(),
         forced_shutdown.clone(),
     ));

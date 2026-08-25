@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use auki_p2p::{Identity, PeerId};
+use auki_p2p_dataset::MAX_DATASET_ROUTES;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::{env, fmt, fs, io::Read, path::Path, sync::Arc, time::Duration};
@@ -26,7 +27,6 @@ const MIN_RELAY_COUNT: u8 = 1;
 const MAX_RELAY_COUNT: u8 = 3;
 const MIN_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 1;
 const MAX_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 60;
-const MAX_PUBLISHED_ROUTES: usize = 16;
 const MAX_P2P_PRIVATE_KEY_BYTES: u64 = 4 * 1024;
 
 /// Log output format.
@@ -237,9 +237,9 @@ impl RelayBookingConfig {
         let total = direct_route_count
             .checked_add(relay_route_count)
             .ok_or_else(|| anyhow::anyhow!("configured direct and relay route count overflowed"))?;
-        if total > MAX_PUBLISHED_ROUTES {
+        if total > MAX_DATASET_ROUTES {
             bail!(
-                "configured direct advertised route count ({direct_route_count}) plus requested relay route count ({relay_route_count}) exceeds the {MAX_PUBLISHED_ROUTES}-route reference limit"
+                "configured direct advertised route count ({direct_route_count}) plus requested relay route count ({relay_route_count}) exceeds the {MAX_DATASET_ROUTES}-route reference limit"
             );
         }
         Ok(())

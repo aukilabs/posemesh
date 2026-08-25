@@ -2,10 +2,13 @@ use std::{path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
+use auki_p2p_dataset::{
+    DatasetService, P2pDatasetReference, P2pDatasetRegistration, P2P_DATASET_SCHEMA,
+};
 use chrono::{DateTime, Utc};
 use compute_runner_api::{
     runner::{DomainArtifactContent, DomainArtifactRequest},
-    P2pDatasetReference, P2pDatasetRegistration, Runner, TaskCtx, P2P_DATASET_SCHEMA,
+    Runner, TaskCtx,
 };
 use posemesh_compute_node_runner_api as compute_runner_api;
 use serde::Deserialize;
@@ -27,6 +30,7 @@ const COPY_BUFFER_BYTES: usize = 64 * 1024;
 pub struct RobotFilePublisher {
     config: RobotDemoConfig,
     run_id: Uuid,
+    dataset: DatasetService,
     submitter: Arc<dyn ReconstructionJobSubmitter>,
 }
 
@@ -34,11 +38,13 @@ impl RobotFilePublisher {
     pub fn new(
         config: RobotDemoConfig,
         run_id: Uuid,
+        dataset: DatasetService,
         submitter: Arc<dyn ReconstructionJobSubmitter>,
     ) -> Self {
         Self {
             config,
             run_id,
+            dataset,
             submitter,
         }
     }
@@ -62,10 +68,6 @@ impl Runner for RobotFilePublisher {
         if domain_id != self.config.jobs.domain_id {
             bail!("relay demo Robot lease Domain does not match DOMAIN_ID");
         }
-        let dataset = ctx
-            .p2p_dataset
-            .context("relay demo P2P dataset service is unavailable")?;
-
         let source = fs::canonicalize(&self.config.source_file)
             .await
             .with_context(|| {
@@ -90,7 +92,8 @@ impl Runner for RobotFilePublisher {
         let availability = chrono::Duration::from_std(self.config.availability)
             .context("RELAY_DEMO_AVAILABILITY_SECONDS is out of range")?;
         let available_until = Utc::now() + availability;
-        let reference = dataset
+        let reference = self
+            .dataset
             .register(P2pDatasetRegistration {
                 dataset_id: dataset_id.clone(),
                 domain_id,
@@ -162,11 +165,12 @@ impl Runner for RobotFilePublisher {
 
 pub struct ReconstructionFileDownloader {
     config: ReconstructionDemoConfig,
+    dataset: DatasetService,
 }
 
 impl ReconstructionFileDownloader {
-    pub fn new(config: ReconstructionDemoConfig) -> Self {
-        Self { config }
+    pub fn new(config: ReconstructionDemoConfig, dataset: DatasetService) -> Self {
+        Self { config, dataset }
     }
 }
 
@@ -182,9 +186,6 @@ impl Runner for ReconstructionFileDownloader {
             .lease
             .domain_id
             .context("relay demo reconstruction lease is missing its Domain")?;
-        let dataset = ctx
-            .p2p_dataset
-            .context("relay demo reconstruction P2P dataset service is unavailable")?;
         let [reference_cid] = ctx.lease.task.inputs_cids.as_slice() else {
             bail!("relay demo reconstruction task requires exactly one reference artifact");
         };
@@ -222,7 +223,11 @@ impl Runner for ReconstructionFileDownloader {
                 "bytes":reference.size_bytes,
             }))
             .await?;
-        if let Err(error) = dataset.fetch(&reference, &self.config.output_file).await {
+        if let Err(error) = self
+            .dataset
+            .fetch(&reference, &self.config.output_file)
+            .await
+        {
             let error = error.context("download relay demo file over authenticated P2P");
             warn!(
                 run_id = %run_id,

@@ -2,7 +2,7 @@ use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use auki_p2p::{
-    ExpectedRelayLimits, Multiaddr, Node, RelayConfirmationRejection, RelayProvider,
+    ExpectedRelayLimits, Multiaddr, Node, PeerId, RelayConfirmationRejection, RelayProvider,
     RelayReservationHandle, RelayReservationSnapshot, RelayTransportEvent,
 };
 use rand::Rng;
@@ -187,7 +187,7 @@ pub(crate) struct PublishedRelayRoute {
     pub(crate) route: Multiaddr,
     pub(crate) limits: ExpectedRelayLimits,
     pub(crate) authorized_until: chrono::DateTime<chrono::Utc>,
-    pub(crate) handle: RelayReservationHandle,
+    pub(crate) relay_peer_id: PeerId,
 }
 
 #[async_trait]
@@ -203,21 +203,21 @@ pub(crate) trait RelayRouteRegistry: Send + Sync {
 
 pub(crate) type SharedRouteRegistry = Arc<dyn RelayRouteRegistry>;
 
-fn dataset_fence(fence: LocalRelayFence) -> crate::p2p_dataset::RelayRouteFence {
-    crate::p2p_dataset::RelayRouteFence {
-        slot_id: fence.slot_id,
-        assignment_id: fence.assignment_id,
-        reservation_epoch: fence.reservation_epoch,
+fn route_fence(fence: LocalRelayFence) -> auki_p2p::RouteFence {
+    auki_p2p::RouteFence {
+        route_id: fence.slot_id,
+        authority_id: fence.assignment_id,
+        authority_epoch: fence.reservation_epoch,
         local_generation: fence.local_generation,
     }
 }
 
 #[async_trait]
-impl RelayRouteRegistry for crate::p2p_dataset::P2pDatasetAdapter {
+impl RelayRouteRegistry for auki_p2p::RouteCatalog {
     async fn publish(&self, route: PublishedRelayRoute) -> Result<(), String> {
-        self.publish_confirmed_relay_route(crate::p2p_dataset::ConfirmedRelayRoute {
-            fence: dataset_fence(route.fence),
-            reservation: route.handle,
+        self.publish_confirmed(auki_p2p::ConfirmedRoute {
+            fence: route_fence(route.fence),
+            relay_peer_id: route.relay_peer_id,
             route: route.route,
             limits: route.limits,
             authorized_until: route.authorized_until,
@@ -231,22 +231,22 @@ impl RelayRouteRegistry for crate::p2p_dataset::P2pDatasetAdapter {
         fence: LocalRelayFence,
         authorized_until: chrono::DateTime<chrono::Utc>,
     ) -> Result<bool, String> {
-        match self.refresh_confirmed_relay_authorization(dataset_fence(fence), authorized_until) {
+        match self.refresh_authorization(route_fence(fence), authorized_until) {
             Ok(_) => Ok(true),
             Err(
-                crate::p2p_dataset::P2pDatasetError::RelayRouteNotFound
-                | crate::p2p_dataset::P2pDatasetError::StaleRelayRouteFence,
+                auki_p2p::RouteCatalogError::RouteNotFound
+                | auki_p2p::RouteCatalogError::StaleRouteFence,
             ) => Ok(false),
             Err(error) => Err(error.to_string()),
         }
     }
 
     async fn tombstone(&self, fence: LocalRelayFence) -> Result<bool, String> {
-        match self.tombstone_confirmed_relay_route(dataset_fence(fence)) {
+        match self.tombstone(route_fence(fence)) {
             Ok(_) => Ok(true),
             Err(
-                crate::p2p_dataset::P2pDatasetError::RelayRouteNotFound
-                | crate::p2p_dataset::P2pDatasetError::StaleRelayRouteFence,
+                auki_p2p::RouteCatalogError::RouteNotFound
+                | auki_p2p::RouteCatalogError::StaleRouteFence,
             ) => Ok(false),
             Err(error) => Err(error.to_string()),
         }
@@ -1019,7 +1019,7 @@ impl CoordinatorActor {
                         route,
                         limits: local.limits,
                         authorized_until: local.authorized_until,
-                        handle: snapshot.handle(),
+                        relay_peer_id: snapshot.handle().relay_peer_id(),
                     })
                     .await;
                 if let Err(error) = publish {

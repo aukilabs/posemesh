@@ -1,9 +1,11 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use auki_p2p::{Multiaddr, Protocol};
-use compute_runner_api::{
-    ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, P2pDataset, Runner, TaskCtx,
+use auki_p2p::{Multiaddr, Protocol, RouteCatalog, RouteCatalogLimits};
+use auki_p2p_dataset::{
+    DatasetRoutePolicy, DatasetService, P2pDataset, P2pDatasetAdapter, P2pDatasetServer,
+    MAX_DATASET_RELAY_ROUTES, MAX_DATASET_ROUTES,
 };
+use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -29,7 +31,6 @@ use crate::{
         relay::{RelayBookingClient, RelayIdempotencyKey},
     },
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
-    p2p_dataset::{DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetServer},
     poller::{jittered_delay_ms, PollerConfig},
     session::{CapabilitySelector, HeartbeatPolicy, SessionManager},
 };
@@ -76,19 +77,6 @@ impl RunnerRegistry {
         ctrl: &dyn ControlPlane,
         access_token: &dyn compute_runner_api::runner::AccessTokenProvider,
     ) -> std::result::Result<(), crate::errors::ExecutorError> {
-        self.run_for_lease_with_p2p(lease, input, output, ctrl, access_token, None)
-            .await
-    }
-
-    pub async fn run_for_lease_with_p2p(
-        &self,
-        lease: &LeaseEnvelope,
-        input: &dyn InputSource,
-        output: &dyn ArtifactSink,
-        ctrl: &dyn ControlPlane,
-        access_token: &dyn compute_runner_api::runner::AccessTokenProvider,
-        p2p_dataset: Option<&dyn P2pDataset>,
-    ) -> std::result::Result<(), crate::errors::ExecutorError> {
         let cap = lease.task.capability.as_str();
         let runner = self
             .get(cap)
@@ -100,7 +88,6 @@ impl RunnerRegistry {
             output,
             ctrl,
             access_token,
-            p2p_dataset,
         };
         runner
             .run(ctx)
@@ -109,8 +96,68 @@ impl RunnerRegistry {
     }
 }
 
+/// Typed process-level dependencies available while constructing runners.
+///
+/// A runner takes the protocol handles it needs in its constructor. They are
+/// deliberately absent from [`TaskCtx`], whose fields vary for every task.
+/// Adding another protocol means adding another explicit typed handle here,
+/// rather than inserting it into an untyped service locator.
+#[derive(Clone, Default)]
+struct RunnerDependencies {
+    dataset: Option<DatasetService>,
+}
+
+impl RunnerDependencies {
+    fn require_dataset(&self) -> Result<DatasetService> {
+        self.dataset
+            .clone()
+            .context("the authenticated P2P dataset protocol is unavailable")
+    }
+}
+
+/// Builds the runner registry after process-level protocols have started.
+///
+/// Plain registries convert into a fixed composition automatically. Dataset-
+/// aware applications use [`RunnerComposition::with_dataset`] and construct
+/// each runner with that explicit dependency.
+pub struct RunnerComposition {
+    build: Box<dyn FnOnce(RunnerDependencies) -> Result<RunnerRegistry> + Send>,
+}
+
+impl RunnerComposition {
+    fn new<F>(build: F) -> Self
+    where
+        F: FnOnce(RunnerDependencies) -> Result<RunnerRegistry> + Send + 'static,
+    {
+        Self {
+            build: Box::new(build),
+        }
+    }
+
+    /// Construct runners that explicitly require the dataset protocol.
+    pub fn with_dataset<F>(build: F) -> Self
+    where
+        F: FnOnce(DatasetService) -> RunnerRegistry + Send + 'static,
+    {
+        Self::new(move |dependencies| Ok(build(dependencies.require_dataset()?)))
+    }
+
+    fn compose(self, dependencies: RunnerDependencies) -> Result<RunnerRegistry> {
+        (self.build)(dependencies)
+    }
+}
+
+impl From<RunnerRegistry> for RunnerComposition {
+    fn from(runners: RunnerRegistry) -> Self {
+        Self::new(move |_| Ok(runners))
+    }
+}
+
 /// Run the node main loop. Networking and storage are wired in later prompts.
-pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -> Result<()> {
+pub async fn run_node(
+    cfg: crate::config::NodeConfig,
+    runners: impl Into<RunnerComposition> + Send,
+) -> Result<()> {
     let shutdown = CancellationToken::new();
     let signal_token = shutdown.clone();
     let signal_task = tokio::spawn(async move {
@@ -119,7 +166,7 @@ pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -
         }
     });
 
-    let result = run_node_with_shutdown(cfg, runners, shutdown.clone()).await;
+    let result = run_node_with_shutdown(cfg, runners.into(), shutdown.clone()).await;
 
     shutdown.cancel();
     signal_task.abort();
@@ -130,10 +177,20 @@ pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -
 
 pub async fn run_node_with_shutdown(
     cfg: crate::config::NodeConfig,
-    runners: RunnerRegistry,
+    runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
 ) -> Result<()> {
     let process_p2p = start_process_p2p(&cfg, DatasetRoutePolicy::DirectOnly).await?;
+    let runners = match runners
+        .into()
+        .compose(runner_dependencies(process_p2p.as_ref()))
+    {
+        Ok(runners) => runners,
+        Err(error) => {
+            shutdown_process_p2p(process_p2p).await;
+            return Err(error.context("construct task runners"));
+        }
+    };
     let peer_binding = process_p2p
         .as_ref()
         .map(|runtime| runtime.process.binding_client());
@@ -166,9 +223,9 @@ pub async fn run_node_with_shutdown(
     info!("DDS SIWE token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
-    let dataset = process_p2p
+    let p2p_credentials = process_p2p
         .as_ref()
-        .map(|runtime| Arc::clone(&runtime.dataset));
+        .map(|runtime| runtime.process.credentials());
     let result = run_authenticated_node_loop(
         &cfg,
         &runners,
@@ -177,8 +234,7 @@ pub async fn run_node_with_shutdown(
         "SIWE",
         cfg.auki_p2p_enabled,
         NodeLoopP2p {
-            dataset,
-            install_task_credentials: cfg.auki_p2p_enabled,
+            credentials: p2p_credentials,
             relay_polling_gate: None,
             forced_shutdown: None,
         },
@@ -193,7 +249,10 @@ pub async fn run_node_with_shutdown(
 }
 
 /// Run a robot-authenticated node until interrupted.
-pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Result<()> {
+pub async fn run_robot_node(
+    cfg: RobotNodeConfig,
+    runners: impl Into<RunnerComposition> + Send,
+) -> Result<()> {
     let shutdown = CancellationToken::new();
     let forced_shutdown = CancellationToken::new();
     let signal_token = shutdown.clone();
@@ -207,9 +266,13 @@ pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Re
         }
     });
 
-    let result =
-        run_robot_node_with_shutdowns(cfg, runners, shutdown.clone(), forced_shutdown.clone())
-            .await;
+    let result = run_robot_node_with_shutdowns(
+        cfg,
+        runners.into(),
+        shutdown.clone(),
+        forced_shutdown.clone(),
+    )
+    .await;
 
     shutdown.cancel();
     forced_shutdown.cancel();
@@ -222,10 +285,10 @@ pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Re
 /// Run a robot-authenticated node until the supplied cancellation token fires.
 pub async fn run_robot_node_with_shutdown(
     cfg: RobotNodeConfig,
-    runners: RunnerRegistry,
+    runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    run_robot_node_with_shutdowns(cfg, runners, shutdown, CancellationToken::new()).await
+    run_robot_node_with_shutdowns(cfg, runners.into(), shutdown, CancellationToken::new()).await
 }
 
 /// Run a robot-authenticated node with separate graceful and forced shutdown
@@ -235,7 +298,7 @@ pub async fn run_robot_node_with_shutdown(
 /// drain. The second token interrupts that drain and tears down P2P authority.
 pub async fn run_robot_node_with_shutdowns(
     cfg: RobotNodeConfig,
-    runners: RunnerRegistry,
+    runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
     forced_shutdown: CancellationToken,
 ) -> Result<()> {
@@ -270,6 +333,16 @@ pub async fn run_robot_node_with_shutdowns(
         shutdown_process_p2p(process_p2p).await;
         return Ok(());
     }
+    let runners = match runners
+        .into()
+        .compose(runner_dependencies(process_p2p.as_ref()))
+    {
+        Ok(runners) => runners,
+        Err(error) => {
+            shutdown_process_p2p(process_p2p).await;
+            return Err(error.context("construct task runners"));
+        }
+    };
     let peer_binding = process_p2p
         .as_ref()
         .map(|runtime| runtime.process.binding_client());
@@ -370,14 +443,14 @@ pub async fn run_robot_node_with_shutdowns(
         let runtime = process_p2p
             .as_ref()
             .ok_or_else(|| anyhow!("relay booking requires an active P2P runtime"))?;
-        let dataset = Arc::clone(&runtime.dataset);
         let api: Arc<dyn crate::dms::relay::RelayBookingApi> = Arc::new(RelayBookingClient::new(
             runtime_cfg.dms_base_url.clone(),
             Arc::clone(&auth),
         )?);
         let backend: Arc<dyn crate::relay_booking::RelayReservationBackend> =
             Arc::new(NodeRelayReservationBackend::new(runtime.process.node()));
-        let routes: Arc<dyn crate::relay_booking::RelayRouteRegistry> = dataset;
+        let routes: Arc<dyn crate::relay_booking::RelayRouteRegistry> =
+            Arc::new(runtime.routes.clone());
         let coordinator_config = RelayCoordinatorConfig {
             idempotency_key: RelayIdempotencyKey::new(format!("robot-relay-{}", Uuid::new_v4()))?,
             mode: relay_config.booking_mode(),
@@ -441,8 +514,7 @@ pub async fn run_robot_node_with_shutdowns(
         "robot",
         true,
         NodeLoopP2p {
-            dataset: dataset.clone(),
-            install_task_credentials: false,
+            credentials: None,
             relay_polling_gate,
             forced_shutdown: Some(forced_shutdown.clone()),
         },
@@ -536,14 +608,22 @@ pub async fn run_robot_node_with_shutdowns(
 
 struct ProcessP2pRuntime {
     process: ProcessP2p,
+    routes: auki_p2p::RouteCatalog,
     dataset: Arc<P2pDatasetAdapter>,
 }
 
 struct NodeLoopP2p {
-    dataset: Option<Arc<P2pDatasetAdapter>>,
-    install_task_credentials: bool,
+    credentials: Option<auki_p2p::P2pCredentialStore>,
     relay_polling_gate: Option<RelayPollingGate>,
     forced_shutdown: Option<CancellationToken>,
+}
+
+fn runner_dependencies(runtime: Option<&ProcessP2pRuntime>) -> RunnerDependencies {
+    let dataset = runtime.map(|runtime| {
+        let dataset: Arc<dyn P2pDataset> = runtime.dataset.clone();
+        DatasetService::new(dataset)
+    });
+    RunnerDependencies { dataset }
 }
 
 async fn start_process_p2p(
@@ -584,13 +664,23 @@ async fn start_process_p2p(
     }
     .context("start process P2P identity")?;
     info!(peer_id = %process.binding_client().peer_id(), "Auki P2P identity started");
-    let dataset = Arc::new(P2pDatasetAdapter::new_with_route_policy(
+    let routes = RouteCatalog::new(
+        process.node().peer_id(),
+        advertised_addresses,
+        RouteCatalogLimits::new(MAX_DATASET_ROUTES, MAX_DATASET_RELAY_ROUTES),
+    )
+    .context("construct process P2P route catalog")?;
+    let dataset = Arc::new(P2pDatasetAdapter::with_route_catalog(
         process.node(),
         process.credentials(),
-        advertised_addresses,
+        routes.clone(),
         route_policy,
     )?);
-    Ok(Some(ProcessP2pRuntime { process, dataset }))
+    Ok(Some(ProcessP2pRuntime {
+        process,
+        routes,
+        dataset,
+    }))
 }
 
 fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<Multiaddr>> {
@@ -756,8 +846,7 @@ async fn run_authenticated_node_loop(
     p2p: NodeLoopP2p,
 ) -> Result<()> {
     let NodeLoopP2p {
-        dataset,
-        install_task_credentials,
+        credentials,
         mut relay_polling_gate,
         forced_shutdown,
     } = p2p;
@@ -831,8 +920,7 @@ async fn run_authenticated_node_loop(
                         &dms_client,
                         runners,
                         acquired,
-                        dataset.clone(),
-                        install_task_credentials,
+                        credentials.clone(),
                         forced_shutdown.as_ref(),
                     )
                     .await
@@ -848,8 +936,7 @@ async fn run_authenticated_node_loop(
                         &dms_client,
                         runners,
                         acquired,
-                        dataset.clone(),
-                        install_task_credentials,
+                        credentials.clone(),
                         forced_shutdown.as_ref(),
                     )
                     .await
@@ -987,7 +1074,7 @@ pub async fn run_cycle_with_dms(
     let Some(acquired) = acquire_lease_with_dms(dms, reg).await? else {
         return Ok(false);
     };
-    run_leased_cycle_with_dms(cfg, dms, reg, acquired, None, false).await
+    run_leased_cycle_with_dms(cfg, dms, reg, acquired, None).await
 }
 
 struct AcquiredLease {
@@ -1034,27 +1121,13 @@ async fn run_leased_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_dataset: Option<Arc<P2pDatasetAdapter>>,
-    install_task_p2p_credentials: bool,
+    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
 ) -> Result<bool> {
-    let credentials = if install_task_p2p_credentials {
-        p2p_dataset.as_ref().map(|dataset| dataset.credentials())
-    } else {
-        None
-    };
-    if let Some(credentials) = &credentials {
+    if let Some(credentials) = &p2p_credentials {
         credentials.clear().await;
     }
-    let result = run_leased_cycle_inner(
-        cfg,
-        dms,
-        reg,
-        acquired,
-        p2p_dataset.as_deref(),
-        credentials.clone(),
-    )
-    .await;
-    if let Some(credentials) = credentials {
+    let result = run_leased_cycle_inner(cfg, dms, reg, acquired, p2p_credentials.clone()).await;
+    if let Some(credentials) = p2p_credentials {
         credentials.clear().await;
     }
     result
@@ -1065,18 +1138,10 @@ async fn run_leased_cycle_with_abort(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_dataset: Option<Arc<P2pDatasetAdapter>>,
-    install_task_p2p_credentials: bool,
+    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
     forced_shutdown: Option<&CancellationToken>,
 ) -> Result<bool> {
-    let cycle = run_leased_cycle_with_dms(
-        cfg,
-        dms,
-        reg,
-        acquired,
-        p2p_dataset,
-        install_task_p2p_credentials,
-    );
+    let cycle = run_leased_cycle_with_dms(cfg, dms, reg, acquired, p2p_credentials);
     match forced_shutdown {
         Some(forced_shutdown) => {
             tokio::select! {
@@ -1096,8 +1161,7 @@ async fn run_leased_cycle_inner(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_dataset: Option<&P2pDatasetAdapter>,
-    p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
+    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
 ) -> Result<bool> {
     use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
     use serde_json::json;
@@ -1281,14 +1345,7 @@ async fn run_leased_cycle_inner(
     };
 
     let run_res = reg
-        .run_for_lease_with_p2p(
-            &lease,
-            &*ports.input,
-            &*ports.output,
-            &ctrl,
-            &token_ref,
-            p2p_dataset.map(|dataset| dataset as &dyn P2pDataset),
-        )
+        .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref)
         .await;
 
     // Re-broadcast the latest progress/events so the heartbeat loop can flush
@@ -1657,6 +1714,17 @@ where
 mod tests {
     use super::*;
     use crate::config::{RelayBookingConfig, RelayBookingMode, RobotNodeConfig};
+
+    #[test]
+    fn dataset_runner_composition_fails_without_dataset_runtime() {
+        let result = RunnerComposition::with_dataset(|_| RunnerRegistry::new())
+            .compose(RunnerDependencies::default());
+        let error = result.err().expect("missing dataset must fail composition");
+
+        assert!(error
+            .to_string()
+            .contains("authenticated P2P dataset protocol is unavailable"));
+    }
 
     #[test]
     fn p2p_multiaddrs_are_explicit_tcp_and_advertised_addresses_are_dialable() {

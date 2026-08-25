@@ -1,4 +1,4 @@
-//! Real Circuit Relay v2 coverage for the P2P dataset consumer.
+//! Real Circuit Relay v2 coverage for the standalone dataset protocol crate.
 //!
 //! Production-shaped relay FQDNs resolve through a process-local UDP server,
 //! keeping the test independent of host DNS and the public network.
@@ -17,12 +17,15 @@ use std::{
 
 use auki_p2p::{
     ApplicationProtocol, AuthenticatedStream, DdsTokenVerifier, ExpectedRelayLimits, Identity,
-    Multiaddr, Node, P2PAccessClaims, PeerId, PeerRole, Protocol, RelayProvider,
-    SessionRequirements, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL,
-    P2P_TOKEN_TYPE,
+    Multiaddr, Node, P2PAccessClaims, P2pCredentialStore, PeerId, PeerRole, Protocol,
+    RelayProvider, SessionRequirements, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE,
+    P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
+};
+use auki_p2p_dataset::{
+    ConfirmedRelayRoute, DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetReference,
+    P2pDatasetRegistration, RelayRouteFence, DATASET_PROTOCOL, P2P_DATASET_SCHEMA,
 };
 use chrono::{DateTime, SecondsFormat, Utc};
-use compute_runner_api::{P2pDatasetReference, P2pDatasetRegistration, P2P_DATASET_SCHEMA};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use hickory_resolver::config::{
     NameServerConfig, Protocol as DnsProtocol, ResolverConfig, ResolverOpts,
@@ -34,13 +37,6 @@ use libp2p::{
     tcp, yamux, StreamProtocol, SwarmBuilder,
 };
 use libp2p_stream::{Behaviour as StreamBehaviour, IncomingStreams};
-use posemesh_compute_node::{
-    dds::p2p::P2pCredentialStore,
-    p2p_dataset::{
-        ConfirmedRelayRoute, DatasetRoutePolicy, P2pDatasetAdapter, RelayRouteFence,
-        DATASET_PROTOCOL,
-    },
-};
 use prometheus_client::encoding::text::encode as encode_metrics;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -401,12 +397,12 @@ fn publish_route(
     adapter
         .publish_confirmed_relay_route(ConfirmedRelayRoute {
             fence: RelayRouteFence {
-                slot_id: Uuid::from_u128(index),
-                assignment_id: Uuid::from_u128(100 + index),
-                reservation_epoch: Uuid::from_u128(200 + index),
+                route_id: Uuid::from_u128(index),
+                authority_id: Uuid::from_u128(100 + index),
+                authority_epoch: Uuid::from_u128(200 + index),
                 local_generation: reservation.generation().get(),
             },
-            reservation,
+            relay_peer_id: reservation.relay_peer_id(),
             route,
             limits: relay_limits(),
             authorized_until: Utc::now() + chrono::Duration::minutes(10),

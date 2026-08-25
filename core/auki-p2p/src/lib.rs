@@ -5,15 +5,19 @@
 //! before one of those streams becomes an [`AuthenticatedStream`]. It does not
 //! fetch credentials or understand tasks, datasets, or machine-auth flows.
 
+mod authority;
 mod error;
 mod identity;
 mod relay;
 mod relay_client;
+mod routing;
+mod runtime;
 mod source_admission;
 mod targeted_stream;
 mod token;
 mod transport;
 
+pub use authority::{P2pCredentialError, P2pCredentialResult, P2pCredentialStore};
 pub use error::{Error, Result};
 pub use identity::Identity;
 pub use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
@@ -21,6 +25,12 @@ pub use relay::{
     ExpectedRelayLimits, RelayConfirmationRejection, RelayProvider, RelayReservationError,
     RelayReservationHandle, RelayReservationSnapshot, RelayReservationState, ReservationGeneration,
 };
+pub use routing::{
+    canonicalize_circuit_route, validate_direct_route, CanonicalCircuitRoute, ConfirmedRoute,
+    PublishedRoute, RouteCatalog, RouteCatalogError, RouteCatalogLimits, RouteCatalogResult,
+    RouteCatalogStatus, RouteFence, RouteSnapshot,
+};
+pub use runtime::{AuthenticatedRouteStream, ExactRoute, ProtocolServer, ProtocolSpec};
 pub use targeted_stream::TargetedStreamError;
 pub use token::{
     DdsTokenVerifier, P2PAccessClaims, PeerRole, DOMAIN_SERVER_MAX_DOMAINS, P2P_TOKEN_AUDIENCE,
