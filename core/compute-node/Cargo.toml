@@ -11,8 +11,8 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
-auki-p2p = { path = "../auki-p2p" }
-auki-p2p-dataset = { path = "../auki-p2p-dataset" }
+auki-p2p = { workspace = true }
+auki-p2p-dataset = { workspace = true }
 compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.2", path = "../compute-node-runner-api" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }

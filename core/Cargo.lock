@@ -524,6 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=0f968a3472d9a53d8982970a0165dbb926bd959d#0f968a3472d9a53d8982970a0165dbb926bd959d"
 dependencies = [
  "chrono",
  "futures",
@@ -531,6 +532,7 @@ dependencies = [
  "jsonwebtoken",
  "libp2p",
  "libp2p-stream",
+ "p256",
  "parking_lot",
  "serde",
  "serde_json",
@@ -544,6 +546,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p-dataset"
 version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=0f968a3472d9a53d8982970a0165dbb926bd959d#0f968a3472d9a53d8982970a0165dbb926bd959d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -551,16 +554,10 @@ dependencies = [
  "chrono",
  "futures",
  "hex",
- "hickory-resolver",
- "jsonwebtoken",
- "libp2p",
- "libp2p-stream",
  "parking_lot",
- "prometheus-client",
  "serde",
  "serde_json",
  "sha2",
- "tempfile",
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",

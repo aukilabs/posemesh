@@ -225,7 +225,7 @@ pub async fn run_node_with_shutdown(
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
     let p2p_credentials = process_p2p
         .as_ref()
-        .map(|runtime| runtime.process.credentials());
+        .map(|runtime| runtime.process.authority());
     let result = run_authenticated_node_loop(
         &cfg,
         &runners,
@@ -381,7 +381,7 @@ pub async fn run_robot_node_with_shutdowns(
         let start = RobotP2pTokenProvider::start(
             runtime.process.dds_client(),
             Arc::clone(&auth),
-            runtime.process.credentials(),
+            runtime.process.authority(),
             &lifecycle,
         );
         let provider = tokio::select! {
@@ -613,7 +613,7 @@ struct ProcessP2pRuntime {
 }
 
 struct NodeLoopP2p {
-    credentials: Option<auki_p2p::P2pCredentialStore>,
+    credentials: Option<auki_p2p::DomainAuthority>,
     relay_polling_gate: Option<RelayPollingGate>,
     forced_shutdown: Option<CancellationToken>,
 }
@@ -672,7 +672,7 @@ async fn start_process_p2p(
     .context("construct process P2P route catalog")?;
     let dataset = Arc::new(P2pDatasetAdapter::with_route_catalog(
         process.node(),
-        process.credentials(),
+        process.authority(),
         routes.clone(),
         route_policy,
     )?);
@@ -992,14 +992,13 @@ pub fn apply_heartbeat_token_update(
 }
 
 pub async fn apply_p2p_credential_update(
-    credentials: Option<&crate::dds::p2p::P2pCredentialStore>,
+    credentials: Option<&crate::dds::p2p::DomainAuthority>,
     token: Option<&str>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<()> {
     match credentials {
         Some(credentials) => {
-            credentials
-                .install_optional(token, expires_at)
+            crate::dds::p2p::install_optional_credential(credentials, token, expires_at)
                 .await
                 .context("install DDS P2P task credential")?;
             Ok(())
@@ -1121,14 +1120,14 @@ async fn run_leased_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
+    p2p_credentials: Option<auki_p2p::DomainAuthority>,
 ) -> Result<bool> {
     if let Some(credentials) = &p2p_credentials {
-        credentials.clear().await;
+        credentials.clear_credential().await;
     }
     let result = run_leased_cycle_inner(cfg, dms, reg, acquired, p2p_credentials.clone()).await;
     if let Some(credentials) = p2p_credentials {
-        credentials.clear().await;
+        credentials.clear_credential().await;
     }
     result
 }
@@ -1138,7 +1137,7 @@ async fn run_leased_cycle_with_abort(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
+    p2p_credentials: Option<auki_p2p::DomainAuthority>,
     forced_shutdown: Option<&CancellationToken>,
 ) -> Result<bool> {
     let cycle = run_leased_cycle_with_dms(cfg, dms, reg, acquired, p2p_credentials);
@@ -1161,7 +1160,7 @@ async fn run_leased_cycle_inner(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::P2pCredentialStore>,
+    p2p_credentials: Option<auki_p2p::DomainAuthority>,
 ) -> Result<bool> {
     use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
     use serde_json::json;
@@ -1533,7 +1532,7 @@ pub struct HeartbeatDriverArgs {
     pub progress_rx: ProgressReceiver,
     pub state: Arc<Mutex<ControlState>>,
     pub token_ref: crate::storage::TokenRef,
-    pub p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
+    pub p2p_credentials: Option<crate::dds::p2p::DomainAuthority>,
     pub runner_cancel: CancellationToken,
     pub shutdown: CancellationToken,
     pub task_id: Uuid,
@@ -1550,7 +1549,7 @@ where
     progress_rx: ProgressReceiver,
     state: Arc<Mutex<ControlState>>,
     token_ref: crate::storage::TokenRef,
-    p2p_credentials: Option<crate::dds::p2p::P2pCredentialStore>,
+    p2p_credentials: Option<crate::dds::p2p::DomainAuthority>,
     runner_cancel: CancellationToken,
     shutdown: CancellationToken,
     task_id: Uuid,
