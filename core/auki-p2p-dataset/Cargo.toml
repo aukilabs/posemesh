@@ -25,9 +25,9 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-hickory-resolver = "0.24.4"
+hickory-resolver = "0.25.2"
 jsonwebtoken = "9.3.0"
 libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux", "relay", "metrics"] }
 libp2p-stream = { workspace = true }
-prometheus-client = "0.22.3"
+prometheus-client = "0.23.1"
 tempfile = { workspace = true }

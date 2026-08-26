@@ -20,8 +20,9 @@ use futures::{
     io::{AsyncReadExt, AsyncWriteExt},
     StreamExt,
 };
-use hickory_resolver::config::{
-    NameServerConfig, Protocol as DnsProtocol, ResolverConfig, ResolverOpts,
+use hickory_resolver::{
+    config::{NameServerConfig, ResolverConfig, ResolverOpts},
+    proto::xfer::Protocol as DnsProtocol,
 };
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use libp2p::{

@@ -27,8 +27,9 @@ use auki_p2p_dataset::{
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use hickory_resolver::config::{
-    NameServerConfig, Protocol as DnsProtocol, ResolverConfig, ResolverOpts,
+use hickory_resolver::{
+    config::{NameServerConfig, ResolverConfig, ResolverOpts},
+    proto::xfer::Protocol as DnsProtocol,
 };
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use libp2p::{

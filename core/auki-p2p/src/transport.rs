@@ -1281,7 +1281,7 @@ fn classify_dial_error(error: DialError) -> Error {
 }
 
 fn error_chain_contains_dns_failure(error: &(dyn StdError + 'static)) -> bool {
-    if error.is::<hickory_resolver::error::ResolveError>() {
+    if error.is::<hickory_resolver::ResolveError>() {
         return true;
     }
     if let Some(io_error) = error.downcast_ref::<std::io::Error>() {
@@ -2079,7 +2079,7 @@ async fn read_token_frame(stream: &mut Stream) -> P2PResult<Vec<u8>> {
 mod dial_error_tests {
     use std::io;
 
-    use hickory_resolver::error::{ResolveError, ResolveErrorKind};
+    use hickory_resolver::{ResolveError, ResolveErrorKind};
 
     use super::*;
 

@@ -293,6 +293,11 @@ mod tests {
             client_cfg.port = 10001;
             client_cfg.private_key_path = Some("volume/client.pkey".to_string());
             client_cfg.bootstrap_nodes = vec![format!("/ip4/127.0.0.1/tcp/10000/p2p/{}", server.id.clone())];
+            // Exercise the configured bootstrap route deterministically. Relying
+            // on an unrelated mDNS discovery race made this compatibility test
+            // intermittently time out before the stream protocol was opened.
+            client_cfg.enable_kdht = true;
+            client_cfg.enable_mdns = false;
             let client = Networking::new(&client_cfg).unwrap();
             sleep(Duration::from_secs(2)).await;
             Self {

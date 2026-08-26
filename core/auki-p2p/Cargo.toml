@@ -10,7 +10,7 @@ readme = "README.md"
 [dependencies]
 chrono = { workspace = true }
 futures = { workspace = true }
-hickory-resolver = "0.24.4"
+hickory-resolver = "0.25.2"
 jsonwebtoken = "9.3.0"
 libp2p = { workspace = true, features = ["tokio", "macros", "noise", "tcp", "yamux", "dns", "relay"] }
 libp2p-stream = { workspace = true }

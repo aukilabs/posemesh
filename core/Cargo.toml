@@ -22,12 +22,14 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-websocket = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-websocket-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+libp2p = { version = "0.56.0", default-features = false }
+# `libp2p-stream` is still pre-release and must match libp2p 0.56's
+# libp2p-swarm 0.47 type family exactly.
+libp2p-stream = "=0.4.0-alpha"
+libp2p-webrtc = "=0.9.0-alpha.1"
+libp2p-webrtc-websys = "0.4.0"
+libp2p-websocket = "0.45.1"
+libp2p-websocket-websys = "0.5.0"
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"

@@ -27,7 +27,7 @@ use libp2p_webrtc_websys as webrtc_websys;
 #[cfg(target_family="wasm")]
 use libp2p_websocket_websys as ws_websys;
 #[cfg(target_family="wasm")]
-use libp2p::core::transport::upgrade::Version;
+use libp2p::core::transport::{upgrade::Version, OptionalTransport};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NetworkError {
@@ -252,7 +252,16 @@ async fn build_swarm(key: libp2p::identity::Keypair, mut behavior: PosemeshBehav
     let swarm = libp2p::SwarmBuilder::with_existing_identity(key)
         .with_wasm_bindgen()
         .with_other_transport(|key| {
-            webrtc_websys::Transport::new(webrtc_websys::Config::new(&key))
+            // `libp2p-webrtc-websys` 0.4 still queries `window` before it
+            // checks whether a dial address is WebRTC. Disable only this
+            // transport in Node-hosted WASM so other transports can reject or
+            // handle the address without panicking. Browsers retain WebRTC.
+            match web_sys::window() {
+                Some(_) => OptionalTransport::some(webrtc_websys::Transport::new(
+                    webrtc_websys::Config::new(&key),
+                )),
+                None => OptionalTransport::none(),
+            }
         })?
         .with_other_transport(|key| {
             Ok(ws_websys::Transport::default()
