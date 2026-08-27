@@ -195,7 +195,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_derive",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -294,7 +294,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3203e79f4dd9bdda415ed03cf14dae5a2bf775c683a00f94e9cd1faf0f596e5"
 dependencies = [
  "quote",
- "syn 2.0.106",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -524,23 +524,26 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3bc07721df4895a46ec9a69462f3f443fc380a60#3bc07721df4895a46ec9a69462f3f443fc380a60"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=1007ed88e4d287d157d62979f78b358798e00a8f#1007ed88e4d287d157d62979f78b358798e00a8f"
 dependencies = [
  "chrono",
  "futures",
  "hickory-resolver",
  "jsonwebtoken",
+ "libc",
  "libp2p",
  "libp2p-stream",
  "p256",
  "parking_lot",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -1247,7 +1250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
