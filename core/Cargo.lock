@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=aa415b5bd3fdfdb636b13d76ae75410a3b69024c#aa415b5bd3fdfdb636b13d76ae75410a3b69024c"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3bc07721df4895a46ec9a69462f3f443fc380a60#3bc07721df4895a46ec9a69462f3f443fc380a60"
 dependencies = [
  "chrono",
  "futures",
