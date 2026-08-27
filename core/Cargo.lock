@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=1007ed88e4d287d157d62979f78b358798e00a8f#1007ed88e4d287d157d62979f78b358798e00a8f"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=2ca8e6ed030e818faa40c380ca1dfc0d1447d25d#2ca8e6ed030e818faa40c380ca1dfc0d1447d25d"
 dependencies = [
  "chrono",
  "futures",
@@ -1250,7 +1250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 2.0.106",
+ "syn 1.0.109",
 ]
 
 [[package]]
