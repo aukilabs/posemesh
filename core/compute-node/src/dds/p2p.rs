@@ -376,24 +376,6 @@ impl Drop for ProcessP2p {
 }
 
 impl ProcessP2p {
-    pub async fn start(dds_base_url: Url, request_timeout: Duration) -> Result<Self> {
-        Self::start_with_listen_addresses(dds_base_url, request_timeout, []).await
-    }
-
-    pub async fn start_with_listen_addresses(
-        dds_base_url: Url,
-        request_timeout: Duration,
-        listen_addresses: impl IntoIterator<Item = Multiaddr>,
-    ) -> Result<Self> {
-        Self::start_with_identity_and_listen_addresses(
-            Identity::generate(),
-            dds_base_url,
-            request_timeout,
-            listen_addresses,
-        )
-        .await
-    }
-
     /// Start with an explicitly owned persistent libp2p identity.
     ///
     /// Callers must ensure that the same private key is not used by concurrent

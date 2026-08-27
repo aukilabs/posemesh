@@ -286,8 +286,10 @@ pub struct NodeConfig {
 }
 
 impl NodeConfig {
-    /// Peer ID restored from configured private-key material, or `None` when
-    /// startup will generate a process-ephemeral identity.
+    /// Peer ID restored from configured private-key material.
+    ///
+    /// `None` is valid only while P2P is disabled. Production startup fails
+    /// closed if P2P is enabled without a persisted identity.
     pub fn p2p_peer_id(&self) -> Option<PeerId> {
         self.auki_p2p_private_key
             .as_ref()
@@ -337,6 +339,7 @@ impl NodeConfig {
         let auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
         let auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
         let auki_p2p_private_key = p2p_private_key_from_env()?;
+        require_p2p_private_key_when_enabled(auki_p2p_enabled, &auki_p2p_private_key)?;
         let register_interval_secs = Some(parse_u64_default(
             "REGISTER_INTERVAL_SECS",
             DEFAULT_REGISTER_INTERVAL_SECS,
@@ -523,6 +526,10 @@ impl RobotNodeConfig {
         cfg.auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
         cfg.p2p_private_key = p2p_private_key_from_env()?;
         cfg.relay_booking = relay_booking_config_from_env()?;
+        require_p2p_private_key_when_enabled(
+            cfg.auki_p2p_enabled || cfg.relay_booking.mode().is_enabled(),
+            &cfg.p2p_private_key,
+        )?;
         let direct_route_count =
             usize::from(cfg.auki_p2p_enabled || cfg.relay_booking.mode().is_enabled())
                 * cfg.auki_p2p_advertised_multiaddrs.len();
@@ -544,8 +551,10 @@ impl RobotNodeConfig {
         self.relay_booking
     }
 
-    /// Peer ID that will be restored at startup, or `None` for the legacy
-    /// process-ephemeral identity behavior.
+    /// Peer ID that will be restored at startup.
+    ///
+    /// `None` is valid only while P2P and relay booking are disabled.
+    /// Production startup fails closed instead of generating an identity.
     pub fn p2p_peer_id(&self) -> Option<PeerId> {
         self.p2p_private_key.as_ref().map(P2pPrivateKey::peer_id)
     }
@@ -703,6 +712,16 @@ fn p2p_private_key_from_env() -> Result<Option<P2pPrivateKey>> {
         }
         (None, None) => Ok(None),
     }
+}
+
+fn require_p2p_private_key_when_enabled(
+    p2p_enabled: bool,
+    private_key: &Option<P2pPrivateKey>,
+) -> Result<()> {
+    if p2p_enabled && private_key.is_none() {
+        bail!("AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled");
+    }
+    Ok(())
 }
 
 fn read_p2p_private_key_file(path: &Path) -> Result<P2pPrivateKey> {

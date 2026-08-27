@@ -30,6 +30,13 @@ fn clear(keys: &[&str]) {
     }
 }
 
+fn install_test_p2p_identity() -> Identity {
+    let identity = Identity::from_ed25519_seed(&[0x52; 32]);
+    let protobuf = identity.to_protobuf_encoding().unwrap();
+    std::env::set_var("AUKI_P2P_PRIVATE_KEY", STANDARD.encode(protobuf));
+    identity
+}
+
 #[test]
 fn loads_required_siwe_defaults() {
     let _g = ENV_GUARD.lock().unwrap();
@@ -110,6 +117,45 @@ fn missing_siwe_fields_fails() {
     let err = NodeConfig::from_env().expect_err("should error");
     let msg = format!("{}", err);
     assert!(msg.contains("REG_SECRET required"));
+}
+
+#[test]
+fn enabled_p2p_requires_a_persisted_identity_for_each_production_loader() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "REG_SECRET",
+        "SECP256K1_PRIVHEX",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+
+    std::env::set_var("REG_SECRET", "secret");
+    std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
+    let error = NodeConfig::from_env().expect_err("SIWE P2P without an identity must fail");
+    assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "REG_SECRET",
+        "SECP256K1_PRIVHEX",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    std::env::set_var("AUKI_P2P_RELAY_MODE", "auto");
+    let error = RobotNodeConfig::from_env()
+        .expect_err("relay-enabled Robot P2P without an identity must fail");
+    assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "REG_SECRET",
+        "SECP256K1_PRIVHEX",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
 }
 
 #[test]
@@ -223,6 +269,7 @@ fn loads_explicit_p2p_multiaddrs() {
     std::env::set_var("REG_SECRET", "secret");
     std::env::set_var("SECP256K1_PRIVHEX", "abcdef");
     std::env::set_var("AUKI_P2P_ENABLED", "true");
+    let identity = install_test_p2p_identity();
     std::env::set_var(
         "AUKI_P2P_LISTEN_MULTIADDRS",
         " /ip4/127.0.0.1/tcp/0 , /ip4/0.0.0.0/tcp/41001 ",
@@ -234,6 +281,7 @@ fn loads_explicit_p2p_multiaddrs() {
 
     let cfg = NodeConfig::from_env().expect("P2P config");
     assert!(cfg.auki_p2p_enabled);
+    assert_eq!(cfg.p2p_peer_id(), Some(identity.peer_id()));
     assert_eq!(
         cfg.auki_p2p_listen_multiaddrs,
         ["/ip4/127.0.0.1/tcp/0", "/ip4/0.0.0.0/tcp/41001"]
@@ -524,6 +572,7 @@ fn loads_explicit_robot_relay_booking_policy() {
     std::env::set_var("AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS", "300");
     std::env::set_var("AUKI_P2P_RELAY_COUNT", "3");
     std::env::set_var("AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS", "60");
+    install_test_p2p_identity();
 
     let cfg = RobotNodeConfig::from_env().expect("explicit relay config");
     let relay = cfg.relay_booking_config();
@@ -615,6 +664,7 @@ fn enforces_the_total_direct_and_requested_relay_route_bound() {
     std::env::set_var("AUKI_P2P_RELAY_MODE", "auto");
     std::env::set_var("AUKI_P2P_RELAY_COUNT", "3");
     std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(13));
+    install_test_p2p_identity();
     RobotNodeConfig::from_env().expect("thirteen direct plus three relays fits");
 
     std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(14));

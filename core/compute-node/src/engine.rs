@@ -633,6 +633,15 @@ async fn start_process_p2p(
     if !cfg.auki_p2p_enabled {
         return Ok(None);
     }
+    let identity = cfg
+        .auki_p2p_private_key
+        .as_ref()
+        .ok_or_else(|| {
+            anyhow!(
+                "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
+            )
+        })?
+        .identity()?;
     let dds_base_url = cfg
         .dds_base_url
         .clone()
@@ -647,21 +656,13 @@ async fn start_process_p2p(
     )?;
     validate_advertised_p2p_multiaddrs(&advertised_addresses)?;
     let request_timeout = StdDuration::from_secs(cfg.request_timeout_secs.max(1));
-    let process = match cfg.auki_p2p_private_key.as_ref() {
-        Some(private_key) => {
-            ProcessP2p::start_with_identity_and_listen_addresses(
-                private_key.identity()?,
-                dds_base_url,
-                request_timeout,
-                listen_addresses,
-            )
-            .await
-        }
-        None => {
-            ProcessP2p::start_with_listen_addresses(dds_base_url, request_timeout, listen_addresses)
-                .await
-        }
-    }
+    let process = ProcessP2p::start_with_identity_and_listen_addresses(
+        identity,
+        dds_base_url,
+        request_timeout,
+        listen_addresses,
+    )
+    .await
     .context("start process P2P identity")?;
     info!(peer_id = %process.binding_client().peer_id(), "Auki P2P identity started");
     let routes = RouteCatalog::new(
@@ -725,6 +726,11 @@ fn validate_advertised_p2p_multiaddrs(addresses: &[Multiaddr]) -> Result<()> {
 }
 
 fn validate_robot_p2p_config(cfg: &NodeConfig, relay_mode: RelayMode) -> Result<()> {
+    if cfg.auki_p2p_enabled && cfg.auki_p2p_private_key.is_none() {
+        return Err(anyhow!(
+            "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
+        ));
+    }
     if cfg.auki_p2p_enabled
         && relay_mode == RelayMode::Disabled
         && cfg.auki_p2p_listen_multiaddrs.is_empty()
@@ -1712,7 +1718,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{RelayBookingConfig, RelayBookingMode, RobotNodeConfig};
+    use crate::config::{P2pPrivateKey, RelayBookingConfig, RelayBookingMode, RobotNodeConfig};
+    use auki_p2p::Identity;
 
     #[test]
     fn dataset_runner_composition_fails_without_dataset_runtime() {
@@ -1747,6 +1754,24 @@ mod tests {
         assert!(validate_advertised_p2p_multiaddrs(&unspecified).is_err());
     }
 
+    #[tokio::test]
+    async fn production_p2p_start_rejects_a_missing_identity_before_network_io() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let runtime = robot.runtime_config();
+
+        let error = start_process_p2p(&runtime, DatasetRoutePolicy::DirectOnly)
+            .await
+            .err()
+            .expect("missing production identity must fail before DDS access");
+        assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
+    }
+
     #[test]
     fn robot_p2p_address_requirements_are_mode_sensitive() {
         let mut robot = RobotNodeConfig::new(
@@ -1756,6 +1781,11 @@ mod tests {
         )
         .unwrap();
         robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x53; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
 
         let disabled = robot.runtime_config();
         assert!(validate_robot_p2p_config(&disabled, RelayMode::Disabled).is_err());

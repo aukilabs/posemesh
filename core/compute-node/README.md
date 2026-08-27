@@ -105,13 +105,14 @@ Optional environment variables:
 - `AUKI_P2P_ENABLED` (default `false`) — enables the process-level P2P runtime,
   including libp2p identity binding and DDS P2P-token refresh.
   Selecting relay mode `auto` or `always` also enables this runtime.
-- `AUKI_P2P_PRIVATE_KEY_FILE` (optional; preferred) — path to a raw canonical
+- `AUKI_P2P_PRIVATE_KEY_FILE` (required when P2P or relay booking is enabled;
+  preferred over inline configuration) — path to a raw canonical
   Ed25519 libp2p protobuf private key. The file must be a regular file of at
   most 4 KiB with no group/other permission bits (normally mode `0600`).
-- `AUKI_P2P_PRIVATE_KEY` (optional) — canonical padded RFC 4648 Base64 of the
-  same protobuf bytes. It is mutually exclusive with
-  `AUKI_P2P_PRIVATE_KEY_FILE`. When neither value is configured, the process
-  retains the previous behavior and generates an ephemeral identity at start.
+- `AUKI_P2P_PRIVATE_KEY` (alternative required form) — canonical padded RFC
+  4648 Base64 of the same protobuf bytes. It is mutually exclusive with
+  `AUKI_P2P_PRIVATE_KEY_FILE`. If neither value is configured, production P2P
+  startup fails closed; it never substitutes an ephemeral identity.
 - `AUKI_P2P_LISTEN_MULTIADDRS` (default empty) — comma-separated native TCP
   multiaddrs for the process-level libp2p node. Direct-only Robot serving
   requires at least one explicit value; `auto` and `always` may leave it empty
@@ -182,7 +183,7 @@ alive through the greatest outstanding `available_until` and the existing
 15-minute limit for an already-open transfer attempt. It then exact-owner
 deletes the parent booking. Forced process termination or an unrecoverable
 coordinator failure cannot provide that drain and may break already-published
-immutable references. A configured persistent P2P key lets a replacement prove
+immutable references. The required persistent P2P key lets a replacement prove
 the same Peer ID and reconcile its peer-bound relay booking instead of waiting
 for prior authority to expire. It does not reconstruct the old process's
 in-memory dataset registrations or repair references whose availability already
