@@ -31,24 +31,30 @@ Fill the two files. The Robot file needs:
 - an App JWT authorized for the selected `DOMAIN_ID`;
 - a non-empty `RELAY_DEMO_SOURCE_FILE`.
 
-Create the Robot's stable libp2p identity once (the command refuses to
-overwrite an existing key):
+The reconstruction file also needs a distinct persistent libp2p private-key
+file, in addition to its existing `REG_SECRET` and `SECP256K1_PRIVHEX`.
+
+Create both stable libp2p identities once (the commands refuse to overwrite
+existing keys):
 
 ```sh
 mkdir -p "$HOME/.auki/relay-file-demo"
 cargo run -p posemesh-compute-node --bin posemesh-p2p-keygen -- \
   "$HOME/.auki/relay-file-demo/robot-libp2p-private-key"
+cargo run -p posemesh-compute-node --bin posemesh-p2p-keygen -- \
+  "$HOME/.auki/relay-file-demo/reconstruction-libp2p-private-key"
 ```
 
-Point `AUKI_P2P_PRIVATE_KEY_FILE` at that file. Reusing it preserves the
-Robot's Peer ID across demo restarts, allowing DMS to reconcile the previous
-peer-bound relay-booking authority instead of waiting for it to expire. Never
-run two processes with the same key concurrently, and do not substitute the
-Robot wallet or registration key.
+Point each file's `AUKI_P2P_PRIVATE_KEY_FILE` at its corresponding key. Reusing
+the Robot key for later Robot runs preserves its Peer ID, allowing DMS to
+reconcile the previous peer-bound relay-booking authority instead of waiting
+for it to expire. Reusing the reconstruction key likewise keeps that Compute
+Peer ID stable. Never run two processes with the same key concurrently, share
+one key between Robot and reconstruction, or substitute a wallet or
+registration key.
 
-The reconstruction file needs its existing `REG_SECRET` and
-`SECP256K1_PRIVHEX`. With the default `dedicated` reconstruction task, that
-credential must belong to the same organization as the App JWT. Set
+With the default `dedicated` reconstruction task, its registration credential
+must belong to the same organization as the App JWT. Set
 `RELAY_DEMO_RECONSTRUCTION_TASK_MODE=public` in the Robot file only when the
 Compute registration is public.
 
