@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=0f968a3472d9a53d8982970a0165dbb926bd959d#0f968a3472d9a53d8982970a0165dbb926bd959d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=7941457bec533a163298aa580a2fa1c6a8b5dc53#7941457bec533a163298aa580a2fa1c6a8b5dc53"
 dependencies = [
  "chrono",
  "futures",
@@ -546,7 +546,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p-dataset"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=0f968a3472d9a53d8982970a0165dbb926bd959d#0f968a3472d9a53d8982970a0165dbb926bd959d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=7941457bec533a163298aa580a2fa1c6a8b5dc53#7941457bec533a163298aa580a2fa1c6a8b5dc53"
 dependencies = [
  "anyhow",
  "async-trait",
