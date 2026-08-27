@@ -4,6 +4,6 @@ Posemesh Core is a list of Rust libraries that implements all of the underlying 
 
 - [auki-p2p](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-p2p) – Shared mutually authenticated P2P runtime,
   exact-route transport, relay primitives, and authority-fenced route catalog.
-- [auki-p2p-dataset](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-p2p-dataset) – Immutable file publication
-  and transfer protocol built on the shared runtime.
+- [auki-p2p-dataset](auki-p2p-dataset/README.md) – Posemesh-owned immutable
+  file publication and transfer protocol built on the shared runtime.
 - [posemesh-domain-http](domain-http/README.md) – A cross-platform HTTP client library for interacting with posemesh domains on the Auki Network, supporting both native and WebAssembly environments.

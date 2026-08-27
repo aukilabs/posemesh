@@ -9,9 +9,11 @@ authentication use separate, explicit entrypoints while sharing the task
 engine.
 
 The authenticated P2P stack is intentionally split out of this crate:
-[`auki-p2p`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-p2p) owns the reusable runtime, identity, mutual
-authentication, relay transport, and route catalog;
-[`auki-p2p-dataset`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-p2p-dataset) owns the dataset protocol.
+the SDK-owned
+[`auki-p2p`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-p2p)
+owns the reusable runtime, identity, mutual authentication, relay transport,
+and route catalog; the Posemesh-owned
+[`auki-p2p-dataset`](../auki-p2p-dataset/README.md) owns the dataset protocol.
 Compute-node remains the composition root for DDS credential acquisition, DMS
 relay bookings, task lifecycle, and shutdown. Runners receive protocol-specific
 facades explicitly in their constructors, never through `TaskCtx` and never as

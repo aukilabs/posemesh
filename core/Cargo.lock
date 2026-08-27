@@ -195,7 +195,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_derive",
- "syn 2.0.106",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -294,7 +294,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3203e79f4dd9bdda415ed03cf14dae5a2bf775c683a00f94e9cd1faf0f596e5"
 dependencies = [
  "quote",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=7941457bec533a163298aa580a2fa1c6a8b5dc53#7941457bec533a163298aa580a2fa1c6a8b5dc53"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=aa415b5bd3fdfdb636b13d76ae75410a3b69024c#aa415b5bd3fdfdb636b13d76ae75410a3b69024c"
 dependencies = [
  "chrono",
  "futures",
@@ -546,7 +546,6 @@ dependencies = [
 [[package]]
 name = "auki-p2p-dataset"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=7941457bec533a163298aa580a2fa1c6a8b5dc53#7941457bec533a163298aa580a2fa1c6a8b5dc53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -554,10 +553,16 @@ dependencies = [
  "chrono",
  "futures",
  "hex",
+ "hickory-resolver",
+ "jsonwebtoken",
+ "libp2p",
+ "libp2p-stream",
  "parking_lot",
+ "prometheus-client",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
@@ -1242,7 +1247,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 2.0.106",
+ "syn 1.0.109",
 ]
 
 [[package]]
