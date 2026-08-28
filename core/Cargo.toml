@@ -21,7 +21,7 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "2ca8e6ed030e818faa40c380ca1dfc0d1447d25d" }
+auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "5de85f852ec6f98361279cf904b6cc9ece6d594c" }
 auki-p2p-dataset = { path = "auki-p2p-dataset" }
 libp2p = { version = "0.56.0", default-features = false }
 # `libp2p-stream` is still pre-release and must match libp2p 0.56's
@@ -71,6 +71,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 url = { version = "2.5.7", features = ["serde"] }
 uuid = { version = "1.10.1", features = ["v4", "serde"] }
 parking_lot = "0.12.3"
+p256 = "0.13.2"
 scopeguard = "1.2.0"
 uniffi = { version = "0.30", features = [ "cli" ] }
 httpmock = "0.7.0"

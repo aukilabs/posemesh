@@ -25,7 +25,7 @@ use crate::relay_booking::{
 use crate::{
     auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
     config::{NodeConfig, RelayMode, RobotNodeConfig},
-    dds::p2p::{ProcessP2p, RobotP2pTokenProvider},
+    dds::p2p::{DdsP2pCredentialInstaller, ProcessP2p, RobotP2pTokenProvider},
     dms::{
         client::DmsClient,
         relay::{RelayBookingClient, RelayIdempotencyKey},
@@ -225,7 +225,7 @@ pub async fn run_node_with_shutdown(
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
     let p2p_credentials = process_p2p
         .as_ref()
-        .map(|runtime| runtime.process.authority());
+        .map(|runtime| runtime.process.credential_installer());
     let result = run_authenticated_node_loop(
         &cfg,
         &runners,
@@ -613,7 +613,7 @@ struct ProcessP2pRuntime {
 }
 
 struct NodeLoopP2p {
-    credentials: Option<auki_p2p::DomainAuthority>,
+    credentials: Option<DdsP2pCredentialInstaller>,
     relay_polling_gate: Option<RelayPollingGate>,
     forced_shutdown: Option<CancellationToken>,
 }
@@ -998,13 +998,14 @@ pub fn apply_heartbeat_token_update(
 }
 
 pub async fn apply_p2p_credential_update(
-    credentials: Option<&crate::dds::p2p::DomainAuthority>,
+    credentials: Option<&DdsP2pCredentialInstaller>,
     token: Option<&str>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<()> {
     match credentials {
         Some(credentials) => {
-            crate::dds::p2p::install_optional_credential(credentials, token, expires_at)
+            credentials
+                .install_optional(token, expires_at)
                 .await
                 .context("install DDS P2P task credential")?;
             Ok(())
@@ -1126,14 +1127,14 @@ async fn run_leased_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::DomainAuthority>,
+    p2p_credentials: Option<DdsP2pCredentialInstaller>,
 ) -> Result<bool> {
     if let Some(credentials) = &p2p_credentials {
-        credentials.clear_credential().await;
+        credentials.clear().await;
     }
     let result = run_leased_cycle_inner(cfg, dms, reg, acquired, p2p_credentials.clone()).await;
     if let Some(credentials) = p2p_credentials {
-        credentials.clear_credential().await;
+        credentials.clear().await;
     }
     result
 }
@@ -1143,7 +1144,7 @@ async fn run_leased_cycle_with_abort(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::DomainAuthority>,
+    p2p_credentials: Option<DdsP2pCredentialInstaller>,
     forced_shutdown: Option<&CancellationToken>,
 ) -> Result<bool> {
     let cycle = run_leased_cycle_with_dms(cfg, dms, reg, acquired, p2p_credentials);
@@ -1166,7 +1167,7 @@ async fn run_leased_cycle_inner(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
-    p2p_credentials: Option<auki_p2p::DomainAuthority>,
+    p2p_credentials: Option<DdsP2pCredentialInstaller>,
 ) -> Result<bool> {
     use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
     use serde_json::json;
@@ -1538,7 +1539,7 @@ pub struct HeartbeatDriverArgs {
     pub progress_rx: ProgressReceiver,
     pub state: Arc<Mutex<ControlState>>,
     pub token_ref: crate::storage::TokenRef,
-    pub p2p_credentials: Option<crate::dds::p2p::DomainAuthority>,
+    pub p2p_credentials: Option<DdsP2pCredentialInstaller>,
     pub runner_cancel: CancellationToken,
     pub shutdown: CancellationToken,
     pub task_id: Uuid,
@@ -1555,7 +1556,7 @@ where
     progress_rx: ProgressReceiver,
     state: Arc<Mutex<ControlState>>,
     token_ref: crate::storage::TokenRef,
-    p2p_credentials: Option<crate::dds::p2p::DomainAuthority>,
+    p2p_credentials: Option<DdsP2pCredentialInstaller>,
     runner_cancel: CancellationToken,
     shutdown: CancellationToken,
     task_id: Uuid,

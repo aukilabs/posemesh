@@ -9,16 +9,19 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use httpmock::{prelude::*, Mock};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use p256::pkcs8::{DecodePublicKey, EncodePublicKey};
 use posemesh_compute_node::{
     auth::{token_manager::TokenManagerConfig, AccessBundle, RobotMachineAuth, TokenProvider},
     dds::p2p::{
-        DdsP2pClient, DdsP2pError, DomainAuthority, PeerBindingClient, RobotP2pTokenProvider,
+        DdsP2pClient, DdsP2pCredentialInstaller, DdsP2pError, DomainAuthority, PeerBindingClient,
+        RobotP2pTokenProvider,
     },
     dms::types::HeartbeatResponse,
     engine::{apply_heartbeat_token_update, apply_p2p_credential_update},
     storage::TokenRef,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -27,7 +30,7 @@ const VERIFY_PATH: &str = "/internal/v1/auth/p2p/verify";
 const ROBOT_REGISTER_PATH: &str = "/internal/v1/robots/register";
 const ROBOT_VERIFY_PATH: &str = "/internal/v1/auth/robot/verify";
 const ROBOT_P2P_TOKEN_PATH: &str = "/internal/v1/auth/robot/p2p-token";
-const PUBLIC_KEY_PATH: &str = "/service/public-key.pem";
+const VERIFICATION_KEYS_PATH: &str = "/service/p2p-verification-keys";
 
 const TEST_DDS_PRIVATE_KEY: &[u8] = br#"-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggm4twpf4y/yNNw/k
@@ -40,8 +43,71 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
 8FKYQ5HDiJO0jg7CsFL0yIlK9dTW1wSZmwUX4REXM7LiuD1YWuXoNH1aqA==
 -----END PUBLIC KEY-----"#;
 
+const SECOND_DDS_PRIVATE_KEY: &[u8] = br#"-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgwRbuxaM6rEI3vYEl
+vRmIEsc1QtC3uPMWvXo1xXt+CcOhRANCAAQDFwBFAujMsiq78IWbq5vz0QSWEdc7
+7h5NE8sDwgD6Js22t9Ztq84hhkS3Aad4m9FOi8evk5QYW7ef+Bc2oZsr
+-----END PRIVATE KEY-----"#;
+
+const SECOND_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAxcARQLozLIqu/CFm6ub89EElhHX
+O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
+-----END PUBLIC KEY-----"#;
+
 fn client(server: &MockServer) -> DdsP2pClient {
     DdsP2pClient::new(server.base_url().parse().unwrap(), Duration::from_secs(2)).unwrap()
+}
+
+fn verification_key_id(public_key: &[u8]) -> String {
+    let public_key =
+        p256::PublicKey::from_public_key_pem(std::str::from_utf8(public_key).unwrap()).unwrap();
+    let der = public_key.to_public_key_der().unwrap();
+    hex::encode(Sha256::digest(der.as_bytes()))
+}
+
+fn verification_keys_body(
+    generation: u64,
+    current: &[u8],
+    previous: Option<&[u8]>,
+) -> serde_json::Value {
+    let mut keys = vec![json!({
+        "id": verification_key_id(current),
+        "status": "current",
+        "signing_method": "ES256",
+        "public_key": std::str::from_utf8(current).unwrap(),
+    })];
+    if let Some(previous) = previous {
+        keys.push(json!({
+            "id": verification_key_id(previous),
+            "status": "previous",
+            "signing_method": "ES256",
+            "public_key": std::str::from_utf8(previous).unwrap(),
+        }));
+    }
+    json!({
+        "version": 1,
+        "generation": generation,
+        "previous_key_overlap_seconds": 1860,
+        "keys": keys,
+    })
+}
+
+fn verification_keys_mock<'a>(
+    server: &'a MockServer,
+    generation: u64,
+    current: &[u8],
+    previous: Option<&[u8]>,
+) -> Mock<'a> {
+    let body = verification_keys_body(generation, current, previous);
+    server.mock(move |when, then| {
+        when.method(GET)
+            .path(VERIFICATION_KEYS_PATH)
+            .header("accept", "application/json")
+            .header("cache-control", "no-cache");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(body.clone());
+    })
 }
 
 fn node_with_identity(identity: Identity) -> Node {
@@ -269,26 +335,24 @@ async fn invalid_or_replayed_peer_proof_fails_closed() {
 }
 
 #[tokio::test]
-async fn dds_public_key_is_fetched_once_and_cached() {
+async fn dds_verification_key_set_is_fetched_once_and_cached() {
     let server = MockServer::start();
-    let public_key = server.mock(|when, then| {
-        when.method(GET).path(PUBLIC_KEY_PATH);
-        then.status(200).body(TEST_DDS_PUBLIC_KEY);
-    });
+    let key_set = verification_keys_mock(&server, 7, TEST_DDS_PUBLIC_KEY, None);
     let client = client(&server);
 
     client.token_verifier().await.expect("first key fetch");
     client.token_verifier().await.expect("cached key fetch");
 
-    public_key.assert_hits(1);
+    key_set.assert_hits(1);
 }
 
 #[tokio::test]
-async fn dds_public_key_response_is_bounded_before_parsing() {
+async fn dds_verification_key_response_is_bounded_before_parsing() {
     let server = MockServer::start();
-    let public_key = server.mock(|when, then| {
-        when.method(GET).path(PUBLIC_KEY_PATH);
+    let key_set = server.mock(|when, then| {
+        when.method(GET).path(VERIFICATION_KEYS_PATH);
         then.status(200)
+            .header("content-type", "application/json")
             .body("x".repeat(DDS_VERIFICATION_KEY_MAX_BYTES + 1));
     });
 
@@ -301,7 +365,71 @@ async fn dds_public_key_response_is_bounded_before_parsing() {
         error,
         DdsP2pError::VerificationKeyResponseTooLarge
     ));
-    public_key.assert_hits(1);
+    key_set.assert_hits(1);
+}
+
+#[tokio::test]
+async fn dds_verification_key_response_rejects_unknown_fields() {
+    let server = MockServer::start();
+    let mut body = verification_keys_body(1, TEST_DDS_PUBLIC_KEY, None);
+    body["unexpected"] = json!(true);
+    let key_set = server.mock(|when, then| {
+        when.method(GET).path(VERIFICATION_KEYS_PATH);
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(body.clone());
+    });
+
+    let error = match client(&server).token_verifier().await {
+        Err(error) => error,
+        Ok(_) => panic!("unknown key-set fields must fail closed"),
+    };
+    assert!(matches!(
+        error,
+        DdsP2pError::InvalidVerificationKeyResponse(_)
+    ));
+    key_set.assert_hits(1);
+}
+
+#[tokio::test]
+async fn restart_during_rotation_trusts_the_published_current_and_previous_keys() {
+    let server = MockServer::start();
+    let key_set = verification_keys_mock(
+        &server,
+        12,
+        SECOND_DDS_PUBLIC_KEY,
+        Some(TEST_DDS_PUBLIC_KEY),
+    );
+    let identity = Identity::generate();
+    let domain_id = Uuid::new_v4();
+    let issued_at = Utc::now().timestamp() as u64;
+    let (old_token, _) = signed_p2p_token_at_with_key(
+        &identity,
+        domain_id,
+        PeerRole::Compute,
+        Uuid::new_v4(),
+        issued_at,
+        TEST_DDS_PRIVATE_KEY,
+    );
+    let (new_token, _) = signed_p2p_token_at_with_key(
+        &identity,
+        domain_id,
+        PeerRole::Compute,
+        Uuid::new_v4(),
+        issued_at,
+        SECOND_DDS_PRIVATE_KEY,
+    );
+
+    let first = client(&server).token_verifier().await.unwrap();
+    assert_eq!(first.generation(), 12);
+    first.verify(&old_token).unwrap();
+    first.verify(&new_token).unwrap();
+
+    let restarted = client(&server).token_verifier().await.unwrap();
+    assert_eq!(restarted.generation(), 12);
+    restarted.verify(&old_token).unwrap();
+    restarted.verify(&new_token).unwrap();
+    key_set.assert_hits(2);
 }
 
 #[derive(Clone)]
@@ -320,6 +448,8 @@ impl TokenProvider for StaticMachineToken {
 
 #[tokio::test]
 async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() {
+    let server = MockServer::start();
+    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
     let identity = Identity::generate();
     let verifier = DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap();
     let node = Node::start(
@@ -329,6 +459,7 @@ async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() 
     )
     .unwrap();
     let credentials = node.authority();
+    let installer = DdsP2pCredentialInstaller::new(client(&server), credentials.clone());
     let domain_id = Uuid::new_v4();
     let first_subject = Uuid::new_v4();
     let first_issued_at = Utc::now().timestamp() as u64;
@@ -339,7 +470,7 @@ async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() 
         first_subject,
         first_issued_at,
     );
-    apply_p2p_credential_update(Some(&credentials), Some(&first_token), Some(first_expiry))
+    apply_p2p_credential_update(Some(&installer), Some(&first_token), Some(first_expiry))
         .await
         .unwrap();
     assert_eq!(
@@ -363,7 +494,7 @@ async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() 
     };
     apply_heartbeat_token_update(&domain_token, &p2p_heartbeat);
     apply_p2p_credential_update(
-        Some(&credentials),
+        Some(&installer),
         p2p_heartbeat.p2p_access_token.as_deref(),
         p2p_heartbeat.p2p_access_token_expires_at,
     )
@@ -381,7 +512,7 @@ async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() 
     };
     apply_heartbeat_token_update(&domain_token, &domain_heartbeat);
     apply_p2p_credential_update(
-        Some(&credentials),
+        Some(&installer),
         domain_heartbeat.p2p_access_token.as_deref(),
         domain_heartbeat.p2p_access_token_expires_at,
     )
@@ -394,12 +525,52 @@ async fn heartbeat_replaces_p2p_credentials_without_mixing_domain_http_tokens() 
     );
 
     credentials.clear_credential().await;
+    key_set.assert_hits(2);
+    node.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn compute_credential_refreshes_rotated_keys_before_verification() {
+    let server = MockServer::start();
+    let key_set =
+        verification_keys_mock(&server, 2, SECOND_DDS_PUBLIC_KEY, Some(TEST_DDS_PUBLIC_KEY));
+    let identity = Identity::generate();
+    let verifier = DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap();
+    let node = Node::start(
+        identity.clone(),
+        verifier.clone(),
+        std::iter::empty::<auki_p2p::Multiaddr>(),
+    )
+    .unwrap();
+    let authority = node.authority();
+    let installer = DdsP2pCredentialInstaller::new(client(&server), authority.clone());
+    let domain_id = Uuid::new_v4();
+    let (token, expires_at) = signed_p2p_token_at_with_key(
+        &identity,
+        domain_id,
+        PeerRole::Compute,
+        Uuid::new_v4(),
+        Utc::now().timestamp() as u64,
+        SECOND_DDS_PRIVATE_KEY,
+    );
+
+    apply_p2p_credential_update(Some(&installer), Some(&token), Some(expires_at))
+        .await
+        .unwrap();
+
+    assert_eq!(verifier.generation(), 2);
+    assert_eq!(
+        authority.current_claims().await.unwrap().domain_ids,
+        vec![domain_id.to_string()]
+    );
+    key_set.assert_hits(1);
     node.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn robot_direct_token_refresh_hot_swaps_and_shuts_down_cleanly() {
     let server = MockServer::start();
+    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
     let identity = Identity::generate();
     let domain_id = Uuid::new_v4();
     let machine_token = robot_machine_token(Some(domain_id));
@@ -439,6 +610,7 @@ async fn robot_direct_token_refresh_hot_swaps_and_shuts_down_cleanly() {
     assert_eq!(refreshed.peer_id, identity.peer_id().to_string());
     assert_eq!(refreshed.domain_ids, vec![domain_id.to_string()]);
     exchange.assert_hits(2);
+    key_set.assert_hits(2);
 
     tokio::time::timeout(Duration::from_secs(1), provider.shutdown())
         .await
@@ -515,6 +687,24 @@ fn signed_p2p_token_at(
     subject: Uuid,
     issued_at: u64,
 ) -> (String, DateTime<Utc>) {
+    signed_p2p_token_at_with_key(
+        identity,
+        domain_id,
+        role,
+        subject,
+        issued_at,
+        TEST_DDS_PRIVATE_KEY,
+    )
+}
+
+fn signed_p2p_token_at_with_key(
+    identity: &Identity,
+    domain_id: Uuid,
+    role: PeerRole,
+    subject: Uuid,
+    issued_at: u64,
+    signing_key: &[u8],
+) -> (String, DateTime<Utc>) {
     let expires_at_unix = issued_at + P2P_TOKEN_TTL.as_secs();
     let expires_at = DateTime::from_timestamp(expires_at_unix as i64, 0).unwrap();
     let claims = P2PAccessClaims {
@@ -522,6 +712,7 @@ fn signed_p2p_token_at(
         iss: P2P_TOKEN_ISSUER.into(),
         aud: vec![P2P_TOKEN_AUDIENCE.into()],
         sub: subject.to_string(),
+        organization_id: None,
         peer_type: Some(role.to_string()),
         peer_id: identity.peer_id().to_string(),
         domain_ids: vec![domain_id.to_string()],
@@ -534,7 +725,7 @@ fn signed_p2p_token_at(
     let token = encode(
         &Header::new(Algorithm::ES256),
         &claims,
-        &EncodingKey::from_ec_pem(TEST_DDS_PRIVATE_KEY).unwrap(),
+        &EncodingKey::from_ec_pem(signing_key).unwrap(),
     )
     .unwrap();
     (token, expires_at)

@@ -572,6 +572,7 @@ async fn install_current_token(
         iss: P2P_TOKEN_ISSUER.into(),
         aud: vec![P2P_TOKEN_AUDIENCE.into()],
         sub: Uuid::new_v4().to_string(),
+        organization_id: None,
         peer_type: Some(role.to_string()),
         peer_id: node.peer_id().to_string(),
         domain_ids: vec![domain_id.to_string()],

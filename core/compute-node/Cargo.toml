@@ -23,6 +23,7 @@ futures = { workspace = true }
 hex = { workspace = true }
 k256 = { workspace = true }
 parking_lot = { workspace = true }
+p256 = { workspace = true }
 posemesh-node-registration = { version = "0.2.1", path = "../node-registration" }
 rand = { workspace = true }
 regex = { workspace = true }

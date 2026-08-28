@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=2ca8e6ed030e818faa40c380ca1dfc0d1447d25d#2ca8e6ed030e818faa40c380ca1dfc0d1447d25d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=5de85f852ec6f98361279cf904b6cc9ece6d594c#5de85f852ec6f98361279cf904b6cc9ece6d594c"
 dependencies = [
  "chrono",
  "futures",
@@ -3955,6 +3955,7 @@ dependencies = [
  "jsonwebtoken",
  "k256",
  "once_cell",
+ "p256",
  "parking_lot",
  "posemesh-compute-node-runner-api",
  "posemesh-domain-http",

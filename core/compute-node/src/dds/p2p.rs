@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 pub use auki_p2p::DomainAuthority;
 use auki_p2p::{
@@ -11,8 +8,14 @@ use auki_p2p::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
-use reqwest::{Client, StatusCode};
+use p256::pkcs8::{DecodePublicKey, EncodePublicKey};
+use reqwest::{
+    header::{ACCEPT, CACHE_CONTROL, CONTENT_TYPE},
+    redirect::Policy,
+    Client, StatusCode,
+};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::{sync::OnceCell, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -24,7 +27,7 @@ use crate::auth::{AccessBundle, TokenProvider, TokenProviderError};
 const CHALLENGE_PATH: &str = "/internal/v1/auth/p2p/challenge";
 const VERIFY_PATH: &str = "/internal/v1/auth/p2p/verify";
 const ROBOT_TOKEN_PATH: &str = "/internal/v1/auth/robot/p2p-token";
-const PUBLIC_KEY_PATH: &str = "/service/public-key.pem";
+const VERIFICATION_KEYS_PATH: &str = "/service/p2p-verification-keys";
 const REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
 const REFRESH_SAFETY_RATIO: f64 = 0.75;
 const VERIFICATION_KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(2 * 60);
@@ -50,8 +53,8 @@ pub enum DdsP2pError {
     InvalidPublicKey(#[source] auki_p2p::Error),
     #[error("DDS P2P verification public key response is too large")]
     VerificationKeyResponseTooLarge,
-    #[error("DDS P2P verification-key generation is exhausted")]
-    VerificationKeyGenerationExhausted,
+    #[error("DDS P2P verification-key response is invalid: {0}")]
+    InvalidVerificationKeyResponse(&'static str),
     #[error("Auki P2P node operation failed")]
     Node(#[source] auki_p2p::Error),
     #[error("machine token is malformed")]
@@ -89,87 +92,102 @@ pub struct DdsP2pClient {
 
 struct InitialVerification {
     verifier: DdsTokenVerifier,
-    current_pem: Vec<u8>,
 }
 
-#[derive(Clone)]
-struct VerificationKeyRefreshState {
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VerificationKeysResponse {
+    version: u8,
     generation: u64,
-    current_pem: Vec<u8>,
-    previous_pem: Option<Vec<u8>>,
-    rotated_at: Option<Instant>,
+    previous_key_overlap_seconds: u64,
+    keys: Vec<VerificationKeyResponse>,
 }
 
-struct VerificationKeyRefreshProposal {
-    preferred: VerificationKeyRefreshState,
-    rotation_fallback: Option<VerificationKeyRefreshState>,
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum VerificationKeyStatus {
+    Current,
+    Previous,
 }
 
-impl VerificationKeyRefreshState {
-    fn new(current_pem: Vec<u8>) -> Self {
-        Self {
-            generation: 0,
-            current_pem,
-            previous_pem: None,
-            rotated_at: None,
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VerificationKeyResponse {
+    id: String,
+    status: VerificationKeyStatus,
+    signing_method: String,
+    public_key: String,
+}
+
+fn convert_verification_keys(response: VerificationKeysResponse) -> Result<DdsVerificationKeys> {
+    if response.version != 1 || response.generation == 0 {
+        return Err(DdsP2pError::InvalidVerificationKeyResponse(
+            "unsupported key-set version or zero generation",
+        ));
+    }
+    if response.previous_key_overlap_seconds < DDS_PREVIOUS_KEY_MIN_OVERLAP.as_secs() {
+        return Err(DdsP2pError::InvalidVerificationKeyResponse(
+            "previous-key overlap is below the SDK safety window",
+        ));
+    }
+    if !(1..=2).contains(&response.keys.len())
+        || response.keys[0].status != VerificationKeyStatus::Current
+        || response
+            .keys
+            .get(1)
+            .is_some_and(|key| key.status != VerificationKeyStatus::Previous)
+    {
+        return Err(DdsP2pError::InvalidVerificationKeyResponse(
+            "keys must contain current first and at most one previous key",
+        ));
+    }
+
+    let mut parsed = Vec::with_capacity(response.keys.len());
+    let mut ids = HashSet::with_capacity(response.keys.len());
+    for key in response.keys {
+        if key.id.len() != 64
+            || !key
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || !ids.insert(key.id.clone())
+            || key.signing_method != "ES256"
+            || key.public_key.is_empty()
+            || key.public_key.len() > DDS_VERIFICATION_KEY_MAX_BYTES
+        {
+            return Err(DdsP2pError::InvalidVerificationKeyResponse(
+                "verification-key metadata or PEM is invalid",
+            ));
         }
+        if verification_key_id(&key.public_key)? != key.id {
+            return Err(DdsP2pError::InvalidVerificationKeyResponse(
+                "verification-key id does not match its canonical PKIX fingerprint",
+            ));
+        }
+        parsed.push(key.public_key.into_bytes());
     }
 
-    fn propose(
-        &self,
-        fetched_pem: Vec<u8>,
-        now: Instant,
-    ) -> Result<VerificationKeyRefreshProposal> {
-        let raw_encoding_changed = fetched_pem != self.current_pem;
-        let retire_previous = self.previous_pem.is_some()
-            && self.rotated_at.is_some_and(|rotated_at| {
-                now.duration_since(rotated_at) >= DDS_PREVIOUS_KEY_MIN_OVERLAP
-            });
-        let changes_generation = raw_encoding_changed || retire_previous;
-        let preferred = Self {
-            generation: if changes_generation {
-                self.next_generation()?
-            } else {
-                self.generation
-            },
-            current_pem: fetched_pem.clone(),
-            previous_pem: if retire_previous {
-                None
-            } else {
-                self.previous_pem.clone()
-            },
-            rotated_at: if retire_previous {
-                None
-            } else {
-                self.rotated_at
-            },
-        };
-        let rotation_fallback = raw_encoding_changed.then(|| Self {
-            generation: preferred.generation,
-            current_pem: fetched_pem,
-            previous_pem: Some(self.current_pem.clone()),
-            rotated_at: Some(now),
-        });
+    let current = parsed.remove(0);
+    let previous = parsed.pop();
+    Ok(DdsVerificationKeys::new(
+        response.generation,
+        current,
+        previous,
+    ))
+}
 
-        Ok(VerificationKeyRefreshProposal {
-            preferred,
-            rotation_fallback,
-        })
-    }
-
-    fn next_generation(&self) -> Result<u64> {
-        self.generation
-            .checked_add(1)
-            .ok_or(DdsP2pError::VerificationKeyGenerationExhausted)
-    }
-
-    fn verification_keys(&self) -> DdsVerificationKeys {
-        DdsVerificationKeys::new(
-            self.generation,
-            self.current_pem.clone(),
-            self.previous_pem.clone(),
+fn verification_key_id(public_key_pem: &str) -> Result<String> {
+    let public_key = p256::PublicKey::from_public_key_pem(public_key_pem).map_err(|_| {
+        DdsP2pError::InvalidVerificationKeyResponse(
+            "verification key must contain a P-256 public key",
         )
-    }
+    })?;
+    let canonical_der = public_key.to_public_key_der().map_err(|_| {
+        DdsP2pError::InvalidVerificationKeyResponse(
+            "verification key could not be encoded as canonical PKIX DER",
+        )
+    })?;
+    Ok(hex::encode(Sha256::digest(canonical_der.as_bytes())))
 }
 
 impl DdsP2pClient {
@@ -177,6 +195,7 @@ impl DdsP2pClient {
         let http = Client::builder()
             .use_rustls_tls()
             .no_proxy()
+            .redirect(Policy::none())
             .timeout(timeout)
             .build()
             .map_err(DdsP2pError::Client)?;
@@ -194,38 +213,63 @@ impl DdsP2pClient {
     async fn initial_verification(&self) -> Result<&InitialVerification> {
         self.initial_verification
             .get_or_try_init(|| async {
-                let current_pem = self.fetch_verification_key().await?;
-                let verifier = DdsTokenVerifier::from_es256_pem(&current_pem)
-                    .map_err(DdsP2pError::InvalidPublicKey)?;
-                Ok(InitialVerification {
-                    verifier,
-                    current_pem,
-                })
+                let keys = self.fetch_verification_keys().await?;
+                let verifier =
+                    DdsTokenVerifier::from_keys(keys).map_err(DdsP2pError::InvalidPublicKey)?;
+                Ok(InitialVerification { verifier })
             })
             .await
     }
 
-    async fn fetch_verification_key(&self) -> Result<Vec<u8>> {
+    async fn fetch_verification_keys(&self) -> Result<DdsVerificationKeys> {
         let response = self
             .http
-            .get(self.endpoint(PUBLIC_KEY_PATH))
+            .get(self.endpoint(VERIFICATION_KEYS_PATH))
+            .header(ACCEPT, "application/json")
+            .header(CACHE_CONTROL, "no-cache")
             .send()
             .await
             .map_err(DdsP2pError::Request)?;
         ensure_success(&response)?;
-        let mut pem = Vec::new();
+        let is_json = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"));
+        if !is_json {
+            return Err(DdsP2pError::InvalidVerificationKeyResponse(
+                "Content-Type must be application/json",
+            ));
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > DDS_VERIFICATION_KEY_MAX_BYTES as u64)
+        {
+            return Err(DdsP2pError::VerificationKeyResponseTooLarge);
+        }
+
+        let mut encoded = Vec::new();
         let mut body = response.bytes_stream();
         while let Some(chunk) = body.next().await {
             let chunk = chunk.map_err(DdsP2pError::Request)?;
-            if pem.len().saturating_add(chunk.len()) > DDS_VERIFICATION_KEY_MAX_BYTES {
+            if encoded.len().saturating_add(chunk.len()) > DDS_VERIFICATION_KEY_MAX_BYTES {
                 return Err(DdsP2pError::VerificationKeyResponseTooLarge);
             }
-            pem.extend_from_slice(&chunk);
+            encoded.extend_from_slice(&chunk);
         }
-        if pem.is_empty() {
-            return Err(DdsP2pError::MissingField("DDS public key"));
-        }
-        Ok(pem)
+        let response: VerificationKeysResponse =
+            serde_json::from_slice(&encoded).map_err(|_| {
+                DdsP2pError::InvalidVerificationKeyResponse("JSON does not match the V1 contract")
+            })?;
+        convert_verification_keys(response)
+    }
+
+    async fn refresh_verification_keys(&self, authority: &DomainAuthority) -> Result<()> {
+        authority
+            .install_verification_keys(self.fetch_verification_keys().await?)
+            .await
+            .map_err(DdsP2pError::Node)
     }
 
     async fn create_challenge(
@@ -388,10 +432,7 @@ impl ProcessP2p {
         listen_addresses: impl IntoIterator<Item = Multiaddr>,
     ) -> Result<Self> {
         let dds = DdsP2pClient::new(dds_base_url, request_timeout)?;
-        let (verifier, initial_current_pem) = {
-            let initial = dds.initial_verification().await?;
-            (initial.verifier.clone(), initial.current_pem.clone())
-        };
+        let verifier = dds.initial_verification().await?.verifier.clone();
         let node = Node::start(identity, verifier, listen_addresses).map_err(DdsP2pError::Node)?;
         let authority = node.authority();
         let binding = PeerBindingClient::new(dds.clone(), authority.clone());
@@ -400,7 +441,6 @@ impl ProcessP2p {
             dds.clone(),
             authority.clone(),
             key_refresh_stop.clone(),
-            VerificationKeyRefreshState::new(initial_current_pem),
         ));
         Ok(Self {
             node,
@@ -428,6 +468,10 @@ impl ProcessP2p {
         self.authority.clone()
     }
 
+    pub fn credential_installer(&self) -> DdsP2pCredentialInstaller {
+        DdsP2pCredentialInstaller::new(self.dds.clone(), self.authority.clone())
+    }
+
     pub async fn shutdown(mut self) -> Result<()> {
         self.key_refresh_stop.cancel();
         if let Some(task) = self.key_refresh_task.take() {
@@ -447,7 +491,6 @@ async fn drive_verification_key_refresh(
     dds: DdsP2pClient,
     authority: DomainAuthority,
     stop: CancellationToken,
-    mut state: VerificationKeyRefreshState,
 ) {
     loop {
         tokio::select! {
@@ -455,13 +498,13 @@ async fn drive_verification_key_refresh(
             _ = tokio::time::sleep(VERIFICATION_KEY_REFRESH_INTERVAL) => {}
         }
 
-        let fetched_pem = tokio::select! {
+        let fetched_keys = tokio::select! {
             _ = stop.cancelled() => break,
             result = tokio::time::timeout(
                 VERIFICATION_KEY_REFRESH_TIMEOUT,
-                dds.fetch_verification_key(),
+                dds.fetch_verification_keys(),
             ) => match result {
-                Ok(Ok(pem)) => pem,
+                Ok(Ok(keys)) => keys,
                 Ok(Err(error)) => {
                     warn!(error = %error, "DDS P2P verification-key refresh failed");
                     continue;
@@ -472,45 +515,43 @@ async fn drive_verification_key_refresh(
                 }
             },
         };
-        let install =
-            install_verification_key_refresh(&authority, &state, fetched_pem, Instant::now());
+        let install = authority.install_verification_keys(fetched_keys);
         let result = tokio::select! {
             _ = stop.cancelled() => break,
             result = install => result,
         };
-        match result {
-            Ok(installed) => state = installed,
-            Err(error) => {
-                warn!(error = %error, "DDS P2P verification-key update was rejected");
-            }
+        if let Err(error) = result {
+            warn!(error = %error, "DDS P2P verification-key update was rejected");
         }
     }
 }
 
-async fn install_verification_key_refresh(
-    authority: &DomainAuthority,
-    state: &VerificationKeyRefreshState,
-    fetched_pem: Vec<u8>,
-    now: Instant,
-) -> Result<VerificationKeyRefreshState> {
-    let proposal = state.propose(fetched_pem, now)?;
-    match authority
-        .install_verification_keys(proposal.preferred.verification_keys())
-        .await
-    {
-        Ok(()) => Ok(proposal.preferred),
-        Err(auki_p2p::Error::VerificationKeyRotationMissingPrevious) => {
-            let fallback = proposal
-                .rotation_fallback
-                .ok_or(auki_p2p::Error::VerificationKeyRotationMissingPrevious)
-                .map_err(DdsP2pError::Node)?;
-            authority
-                .install_verification_keys(fallback.verification_keys())
-                .await
-                .map_err(DdsP2pError::Node)?;
-            Ok(fallback)
-        }
-        Err(error) => Err(DdsP2pError::Node(error)),
+/// Installs task credentials only after refreshing their DDS verification set.
+///
+/// Keeping the DDS client and local authority together prevents a newly issued
+/// credential from racing the periodic verification-key refresh task during a
+/// signer rotation.
+#[derive(Clone)]
+pub struct DdsP2pCredentialInstaller {
+    dds: DdsP2pClient,
+    authority: DomainAuthority,
+}
+
+impl DdsP2pCredentialInstaller {
+    pub fn new(dds: DdsP2pClient, authority: DomainAuthority) -> Self {
+        Self { dds, authority }
+    }
+
+    pub async fn install_optional(
+        &self,
+        token: Option<&str>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Option<P2PAccessClaims>> {
+        install_optional_credential(&self.dds, &self.authority, token, expires_at).await
+    }
+
+    pub async fn clear(&self) {
+        self.authority.clear_credential().await;
     }
 }
 
@@ -602,6 +643,7 @@ async fn refresh_robot_token(
         .await
         .map_err(DdsP2pError::MachineToken)?;
     let response = dds.robot_p2p_token(&machine_token).await?;
+    dds.refresh_verification_keys(authority).await?;
     let credential = SignedP2pCredential::new(response.token).map_err(DdsP2pError::Node)?;
     let claims = authority
         .install_credential_checked(credential, response.expires_at)
@@ -618,12 +660,14 @@ async fn refresh_robot_token(
 }
 
 pub async fn install_optional_credential(
+    dds: &DdsP2pClient,
     authority: &DomainAuthority,
     token: Option<&str>,
     expires_at: Option<DateTime<Utc>>,
 ) -> Result<Option<P2PAccessClaims>> {
     match (token, expires_at) {
         (Some(token), Some(expires_at)) => {
+            dds.refresh_verification_keys(authority).await?;
             let credential =
                 SignedP2pCredential::new(token.to_owned()).map_err(DdsP2pError::Node)?;
             authority
@@ -726,133 +770,96 @@ struct RobotP2pToken {
 mod tests {
     use super::*;
 
-    const TEST_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
+    const TEST_DDS_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
 8FKYQ5HDiJO0jg7CsFL0yIlK9dTW1wSZmwUX4REXM7LiuD1YWuXoNH1aqA==
 -----END PUBLIC KEY-----"#;
 
-    const SECOND_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
+    const SECOND_DDS_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAxcARQLozLIqu/CFm6ub89EElhHX
 O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
 -----END PUBLIC KEY-----"#;
 
-    #[test]
-    fn verification_key_refresh_tracks_rotation_overlap_and_retirement() {
-        let started_at = Instant::now();
-        let initial = VerificationKeyRefreshState::new(b"key-a".to_vec());
+    fn response(
+        generation: u64,
+        current: &str,
+        previous: Option<&str>,
+    ) -> VerificationKeysResponse {
+        let mut keys = vec![VerificationKeyResponse {
+            id: verification_key_id(current).unwrap(),
+            status: VerificationKeyStatus::Current,
+            signing_method: "ES256".into(),
+            public_key: current.into(),
+        }];
+        if let Some(previous) = previous {
+            keys.push(VerificationKeyResponse {
+                id: verification_key_id(previous).unwrap(),
+                status: VerificationKeyStatus::Previous,
+                signing_method: "ES256".into(),
+                public_key: previous.into(),
+            });
+        }
+        VerificationKeysResponse {
+            version: 1,
+            generation,
+            previous_key_overlap_seconds: DDS_PREVIOUS_KEY_MIN_OVERLAP.as_secs(),
+            keys,
+        }
+    }
 
-        let refreshed = initial
-            .propose(b"key-a".to_vec(), started_at)
-            .expect("same key refreshes generation zero")
-            .preferred;
-        assert_eq!(refreshed.generation, 0);
-        assert_eq!(refreshed.current_pem, b"key-a");
-        assert!(refreshed.previous_pem.is_none());
+    #[tokio::test]
+    async fn dds_generations_drive_rotation_restart_and_retirement_shape() {
+        let initial = convert_verification_keys(response(41, TEST_DDS_PUBLIC_KEY, None)).unwrap();
+        let rotated = convert_verification_keys(response(
+            42,
+            SECOND_DDS_PUBLIC_KEY,
+            Some(TEST_DDS_PUBLIC_KEY),
+        ))
+        .unwrap();
+        let retired = convert_verification_keys(response(43, SECOND_DDS_PUBLIC_KEY, None)).unwrap();
 
-        let rotation = refreshed
-            .propose(b"key-b".to_vec(), started_at)
-            .expect("new key creates a rotation generation");
-        assert_eq!(rotation.preferred.generation, 1);
-        assert_eq!(rotation.preferred.current_pem, b"key-b");
-        assert!(rotation.preferred.previous_pem.is_none());
-        let rotated = rotation
-            .rotation_fallback
-            .expect("a byte change has a true-rotation fallback");
-        assert_eq!(rotated.generation, 1);
-        assert_eq!(rotated.current_pem, b"key-b");
-        assert_eq!(rotated.previous_pem.as_deref(), Some(b"key-a".as_slice()));
-        assert_eq!(rotated.rotated_at, Some(started_at));
+        initial.validate_successor(&rotated).unwrap();
+        rotated.validate_successor(&retired).unwrap();
 
-        let protected = rotated
-            .propose(
-                b"key-b".to_vec(),
-                started_at + DDS_PREVIOUS_KEY_MIN_OVERLAP - Duration::from_nanos(1),
-            )
-            .expect("same key keeps the protected previous key")
-            .preferred;
-        assert_eq!(protected.generation, 1);
-        assert_eq!(protected.previous_pem.as_deref(), Some(b"key-a".as_slice()));
+        let verifier = DdsTokenVerifier::from_keys(initial).unwrap();
+        let node = Node::start(
+            Identity::generate(),
+            verifier.clone(),
+            std::iter::empty::<Multiaddr>(),
+        )
+        .unwrap();
+        node.authority()
+            .install_verification_keys(rotated.clone())
+            .await
+            .unwrap();
+        assert_eq!(verifier.generation(), 42);
 
-        let retired = protected
-            .propose(b"key-b".to_vec(), started_at + DDS_PREVIOUS_KEY_MIN_OVERLAP)
-            .expect("previous key retires after the full overlap")
-            .preferred;
-        assert_eq!(retired.generation, 2);
-        assert_eq!(retired.current_pem, b"key-b");
-        assert!(retired.previous_pem.is_none());
-        assert!(retired.rotated_at.is_none());
+        let restarted = DdsTokenVerifier::from_keys(rotated).unwrap();
+        assert_eq!(restarted.generation(), 42);
+        node.shutdown().await.unwrap();
     }
 
     #[test]
-    fn verification_key_refresh_never_wraps_generation() {
-        let exhausted = VerificationKeyRefreshState {
-            generation: u64::MAX,
-            current_pem: b"key-a".to_vec(),
-            previous_pem: None,
-            rotated_at: None,
-        };
-
+    fn malformed_key_set_metadata_is_rejected() {
+        let mut invalid = response(1, TEST_DDS_PUBLIC_KEY, None);
+        invalid.previous_key_overlap_seconds = DDS_PREVIOUS_KEY_MIN_OVERLAP.as_secs() - 1;
         assert!(matches!(
-            exhausted.propose(b"key-b".to_vec(), Instant::now()),
-            Err(DdsP2pError::VerificationKeyGenerationExhausted)
+            convert_verification_keys(invalid),
+            Err(DdsP2pError::InvalidVerificationKeyResponse(_))
         ));
-    }
 
-    #[tokio::test]
-    async fn equivalent_pem_reencoding_refreshes_without_creating_a_duplicate_previous_key() {
-        let verifier = DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap();
-        let node = Node::start(
-            Identity::generate(),
-            verifier,
-            std::iter::empty::<Multiaddr>(),
-        )
-        .unwrap();
-        let authority = node.authority();
-        let state = VerificationKeyRefreshState::new(TEST_DDS_PUBLIC_KEY.to_vec());
-        let mut equivalent_pem = TEST_DDS_PUBLIC_KEY.to_vec();
-        equivalent_pem.push(b'\n');
+        let mut invalid = response(1, TEST_DDS_PUBLIC_KEY, None);
+        invalid.keys[0].id = "a".repeat(64);
+        assert!(matches!(
+            convert_verification_keys(invalid),
+            Err(DdsP2pError::InvalidVerificationKeyResponse(_))
+        ));
 
-        let installed = install_verification_key_refresh(
-            &authority,
-            &state,
-            equivalent_pem.clone(),
-            Instant::now(),
-        )
-        .await
-        .expect("the SDK accepts a higher-generation canonical-key refresh");
-
-        assert_eq!(installed.generation, 1);
-        assert_eq!(installed.current_pem, equivalent_pem);
-        assert!(installed.previous_pem.is_none());
-        node.shutdown().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn distinct_key_uses_the_rotation_fallback_and_preserves_the_old_key() {
-        let verifier = DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap();
-        let node = Node::start(
-            Identity::generate(),
-            verifier,
-            std::iter::empty::<Multiaddr>(),
-        )
-        .unwrap();
-        let authority = node.authority();
-        let state = VerificationKeyRefreshState::new(TEST_DDS_PUBLIC_KEY.to_vec());
-        let rotated_at = Instant::now();
-
-        let installed = install_verification_key_refresh(
-            &authority,
-            &state,
-            SECOND_DDS_PUBLIC_KEY.to_vec(),
-            rotated_at,
-        )
-        .await
-        .expect("the SDK lineage rejection selects the true-rotation fallback");
-
-        assert_eq!(installed.generation, 1);
-        assert_eq!(installed.current_pem, SECOND_DDS_PUBLIC_KEY);
-        assert_eq!(installed.previous_pem.as_deref(), Some(TEST_DDS_PUBLIC_KEY));
-        assert_eq!(installed.rotated_at, Some(rotated_at));
-        node.shutdown().await.unwrap();
+        let mut invalid = response(1, TEST_DDS_PUBLIC_KEY, None);
+        invalid.keys[0].signing_method = "RS256".into();
+        assert!(matches!(
+            convert_verification_keys(invalid),
+            Err(DdsP2pError::InvalidVerificationKeyResponse(_))
+        ));
     }
 }
