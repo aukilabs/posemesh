@@ -1,4 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use auki_p2p::{
@@ -11,7 +17,10 @@ use httpmock::{prelude::*, Mock};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use p256::pkcs8::{DecodePublicKey, EncodePublicKey};
 use posemesh_compute_node::{
-    auth::{token_manager::TokenManagerConfig, AccessBundle, RobotMachineAuth, TokenProvider},
+    auth::{
+        token_manager::{TokenManagerConfig, TokenProviderError, TokenProviderResult},
+        AccessBundle, RobotMachineAuth, TokenProvider,
+    },
     dds::p2p::{
         DdsP2pClient, DdsP2pCredentialInstaller, DdsP2pError, DomainAuthority, PeerBindingClient,
         RobotP2pTokenProvider,
@@ -437,10 +446,35 @@ struct StaticMachineToken(String);
 
 #[async_trait]
 impl TokenProvider for StaticMachineToken {
-    async fn bearer(
-        &self,
-    ) -> posemesh_compute_node::auth::token_manager::TokenProviderResult<String> {
+    async fn bearer(&self) -> TokenProviderResult<String> {
         Ok(self.0.clone())
+    }
+
+    async fn on_unauthorized(&self) {}
+}
+
+struct SequencedMachineTokens {
+    tokens: Vec<String>,
+    next: AtomicUsize,
+}
+
+impl SequencedMachineTokens {
+    fn new(tokens: Vec<String>) -> Self {
+        Self {
+            tokens,
+            next: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl TokenProvider for SequencedMachineTokens {
+    async fn bearer(&self) -> TokenProviderResult<String> {
+        let index = self.next.fetch_add(1, Ordering::SeqCst);
+        self.tokens
+            .get(index)
+            .cloned()
+            .ok_or_else(|| TokenProviderError::Message("no test machine token".to_owned()))
     }
 
     async fn on_unauthorized(&self) {}
@@ -615,6 +649,80 @@ async fn robot_direct_token_refresh_hot_swaps_and_shuts_down_cleanly() {
     tokio::time::timeout(Duration::from_secs(1), provider.shutdown())
         .await
         .expect("provider shutdown must not hang");
+    node.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn robot_relay_auth_refreshes_the_p2p_credential_after_unauthorized() {
+    let server = MockServer::start();
+    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
+    let identity = Identity::generate();
+    let domain_id = Uuid::new_v4();
+    let machine_token_a = format!("{}-a", robot_machine_token(Some(domain_id)));
+    let machine_token_b = format!("{}-b", robot_machine_token(Some(domain_id)));
+    let issued_at = Utc::now().timestamp() as u64;
+    let (p2p_token_a, expires_at_a) = signed_p2p_token_at(
+        &identity,
+        domain_id,
+        PeerRole::Robot,
+        Uuid::new_v4(),
+        issued_at,
+    );
+    let (p2p_token_b, expires_at_b) = signed_p2p_token_at(
+        &identity,
+        domain_id,
+        PeerRole::Robot,
+        Uuid::new_v4(),
+        issued_at + 1,
+    );
+    let exchange_a = server.mock(|when, then| {
+        when.method(POST)
+            .path(ROBOT_P2P_TOKEN_PATH)
+            .header("authorization", format!("Bearer {machine_token_a}"));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "p2p_access_token": p2p_token_a,
+                "p2p_access_expires_at": expires_at_a,
+            }));
+    });
+    let exchange_b = server.mock(|when, then| {
+        when.method(POST)
+            .path(ROBOT_P2P_TOKEN_PATH)
+            .header("authorization", format!("Bearer {machine_token_b}"));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "p2p_access_token": p2p_token_b,
+                "p2p_access_expires_at": expires_at_b,
+            }));
+    });
+    let node = Node::start(
+        identity,
+        DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap(),
+        std::iter::empty::<auki_p2p::Multiaddr>(),
+    )
+    .unwrap();
+    let machine_auth: Arc<dyn TokenProvider> = Arc::new(SequencedMachineTokens::new(vec![
+        machine_token_a,
+        machine_token_b,
+    ]));
+    let shutdown = CancellationToken::new();
+    let provider =
+        RobotP2pTokenProvider::start(client(&server), machine_auth, node.authority(), &shutdown)
+            .await
+            .unwrap();
+    let relay_auth = provider.relay_token_provider();
+
+    assert_eq!(relay_auth.bearer().await.unwrap(), p2p_token_a);
+    relay_auth.on_unauthorized().await;
+    assert_eq!(relay_auth.bearer().await.unwrap(), p2p_token_b);
+    exchange_a.assert_hits(1);
+    exchange_b.assert_hits(1);
+    key_set.assert_hits(2);
+
+    provider.shutdown().await;
+    assert!(relay_auth.bearer().await.is_err());
     node.shutdown().await.unwrap();
 }
 

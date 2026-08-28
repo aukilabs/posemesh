@@ -633,14 +633,15 @@ fn validate_error_status(
         | RelayErrorCode::MissingIdempotencyKey
         | RelayErrorCode::InvalidIdempotencyKey => status == StatusCode::BAD_REQUEST,
         RelayErrorCode::Unauthorized => status == StatusCode::UNAUTHORIZED,
-        RelayErrorCode::InvalidRobotPrincipal | RelayErrorCode::Forbidden => {
-            status == StatusCode::FORBIDDEN
-        }
+        RelayErrorCode::InvalidRobotPrincipal
+        | RelayErrorCode::InvalidRequesterPrincipal
+        | RelayErrorCode::Forbidden => status == StatusCode::FORBIDDEN,
         RelayErrorCode::NotFound => status == StatusCode::NOT_FOUND,
         RelayErrorCode::ActiveBookingConflict
         | RelayErrorCode::IdempotencyConflict
         | RelayErrorCode::TargetPeerConflict
         | RelayErrorCode::StaleRobotPrincipal
+        | RelayErrorCode::StaleRequesterPrincipal
         | RelayErrorCode::StaleFence => status == StatusCode::CONFLICT,
         RelayErrorCode::AuthorityEnded => status == StatusCode::GONE,
         RelayErrorCode::OrganizationSlotQuotaExceeded => status == StatusCode::TOO_MANY_REQUESTS,
@@ -659,8 +660,10 @@ fn validate_error_status(
             code,
             RelayErrorCode::Unauthorized
                 | RelayErrorCode::InvalidRobotPrincipal
+                | RelayErrorCode::InvalidRequesterPrincipal
                 | RelayErrorCode::Forbidden
                 | RelayErrorCode::StaleRobotPrincipal
+                | RelayErrorCode::StaleRequesterPrincipal
                 | RelayErrorCode::DependencyUnavailable
                 | RelayErrorCode::InternalError
         ),
@@ -671,6 +674,7 @@ fn validate_error_status(
                 | RelayErrorCode::MissingIdempotencyKey
                 | RelayErrorCode::InvalidIdempotencyKey
                 | RelayErrorCode::InvalidRobotPrincipal
+                | RelayErrorCode::InvalidRequesterPrincipal
                 | RelayErrorCode::Forbidden
                 | RelayErrorCode::ActiveBookingConflict
                 | RelayErrorCode::IdempotencyConflict
@@ -684,9 +688,11 @@ fn validate_error_status(
             RelayErrorCode::Unauthorized
                 | RelayErrorCode::InvalidRequest
                 | RelayErrorCode::InvalidRobotPrincipal
+                | RelayErrorCode::InvalidRequesterPrincipal
                 | RelayErrorCode::Forbidden
                 | RelayErrorCode::NotFound
                 | RelayErrorCode::StaleRobotPrincipal
+                | RelayErrorCode::StaleRequesterPrincipal
                 | RelayErrorCode::AuthorityEnded
                 | RelayErrorCode::DependencyUnavailable
                 | RelayErrorCode::InternalError
@@ -696,9 +702,11 @@ fn validate_error_status(
             RelayErrorCode::Unauthorized
                 | RelayErrorCode::InvalidRequest
                 | RelayErrorCode::InvalidRobotPrincipal
+                | RelayErrorCode::InvalidRequesterPrincipal
                 | RelayErrorCode::Forbidden
                 | RelayErrorCode::NotFound
                 | RelayErrorCode::StaleRobotPrincipal
+                | RelayErrorCode::StaleRequesterPrincipal
                 | RelayErrorCode::AuthorityEnded
                 | RelayErrorCode::DependencyUnavailable
                 | RelayErrorCode::InternalError
@@ -708,9 +716,11 @@ fn validate_error_status(
             RelayErrorCode::Unauthorized
                 | RelayErrorCode::InvalidRequest
                 | RelayErrorCode::InvalidRobotPrincipal
+                | RelayErrorCode::InvalidRequesterPrincipal
                 | RelayErrorCode::Forbidden
                 | RelayErrorCode::NotFound
                 | RelayErrorCode::StaleRobotPrincipal
+                | RelayErrorCode::StaleRequesterPrincipal
                 | RelayErrorCode::AuthorityEnded
                 | RelayErrorCode::DependencyUnavailable
                 | RelayErrorCode::InternalError
@@ -1046,12 +1056,14 @@ pub(crate) enum RelayErrorCode {
     MissingIdempotencyKey,
     InvalidIdempotencyKey,
     InvalidRobotPrincipal,
+    InvalidRequesterPrincipal,
     Forbidden,
     NotFound,
     ActiveBookingConflict,
     IdempotencyConflict,
     TargetPeerConflict,
     StaleRobotPrincipal,
+    StaleRequesterPrincipal,
     StaleFence,
     AuthorityEnded,
     OrganizationSlotQuotaExceeded,
@@ -1067,18 +1079,34 @@ impl RelayErrorCode {
             Self::MissingIdempotencyKey => "missing_idempotency_key",
             Self::InvalidIdempotencyKey => "invalid_idempotency_key",
             Self::InvalidRobotPrincipal => "invalid_robot_principal",
+            Self::InvalidRequesterPrincipal => "invalid_requester_principal",
             Self::Forbidden => "forbidden",
             Self::NotFound => "not_found",
             Self::ActiveBookingConflict => "active_booking_conflict",
             Self::IdempotencyConflict => "idempotency_conflict",
             Self::TargetPeerConflict => "target_peer_conflict",
             Self::StaleRobotPrincipal => "stale_robot_principal",
+            Self::StaleRequesterPrincipal => "stale_requester_principal",
             Self::StaleFence => "stale_fence",
             Self::AuthorityEnded => "authority_ended",
             Self::OrganizationSlotQuotaExceeded => "organization_slot_quota_exceeded",
             Self::DependencyUnavailable => "dependency_unavailable",
             Self::InternalError => "internal_error",
         }
+    }
+
+    pub(crate) fn is_invalid_requester_principal(self) -> bool {
+        matches!(
+            self,
+            Self::InvalidRobotPrincipal | Self::InvalidRequesterPrincipal
+        )
+    }
+
+    pub(crate) fn is_stale_requester_principal(self) -> bool {
+        matches!(
+            self,
+            Self::StaleRobotPrincipal | Self::StaleRequesterPrincipal
+        )
     }
 }
 
@@ -1612,6 +1640,61 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn accepts_legacy_and_generic_requester_principal_codes_during_rollout() {
+        for (encoded, code) in [
+            (
+                "invalid_robot_principal",
+                RelayErrorCode::InvalidRobotPrincipal,
+            ),
+            (
+                "invalid_requester_principal",
+                RelayErrorCode::InvalidRequesterPrincipal,
+            ),
+        ] {
+            let body: RelayErrorResponse = serde_json::from_value(json!({
+                "code": encoded,
+                "error": "principal rejected"
+            }))
+            .unwrap();
+            assert_eq!(body.code, code);
+            assert!(code.is_invalid_requester_principal());
+            for operation in [
+                RelayOperation::Active,
+                RelayOperation::Create,
+                RelayOperation::Renew,
+                RelayOperation::ReservationFailed,
+                RelayOperation::Delete,
+            ] {
+                validate_error_status(operation, StatusCode::FORBIDDEN, code).unwrap();
+            }
+        }
+
+        for (encoded, code) in [
+            ("stale_robot_principal", RelayErrorCode::StaleRobotPrincipal),
+            (
+                "stale_requester_principal",
+                RelayErrorCode::StaleRequesterPrincipal,
+            ),
+        ] {
+            let body: RelayErrorResponse = serde_json::from_value(json!({
+                "code": encoded,
+                "error": "principal is stale"
+            }))
+            .unwrap();
+            assert_eq!(body.code, code);
+            assert!(code.is_stale_requester_principal());
+            for operation in [
+                RelayOperation::Active,
+                RelayOperation::Renew,
+                RelayOperation::ReservationFailed,
+                RelayOperation::Delete,
+            ] {
+                validate_error_status(operation, StatusCode::CONFLICT, code).unwrap();
+            }
+        }
     }
 
     #[test]

@@ -443,9 +443,13 @@ pub async fn run_robot_node_with_shutdowns(
         let runtime = process_p2p
             .as_ref()
             .ok_or_else(|| anyhow!("relay booking requires an active P2P runtime"))?;
+        let relay_auth = robot_p2p
+            .as_ref()
+            .ok_or_else(|| anyhow!("relay booking requires an active Robot P2P credential"))?
+            .relay_token_provider();
         let api: Arc<dyn crate::dms::relay::RelayBookingApi> = Arc::new(RelayBookingClient::new(
             runtime_cfg.dms_base_url.clone(),
-            Arc::clone(&auth),
+            relay_auth,
         )?);
         let backend: Arc<dyn crate::relay_booking::RelayReservationBackend> =
             Arc::new(NodeRelayReservationBackend::new(runtime.process.node()));

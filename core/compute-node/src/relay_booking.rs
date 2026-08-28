@@ -292,14 +292,13 @@ impl RelayCoordinatorError {
             return None;
         };
         if error.is_retryable()
-            || matches!(
-                error.http_code(),
-                Some(
-                    RelayErrorCode::StaleRobotPrincipal
-                        | RelayErrorCode::ActiveBookingConflict
-                        | RelayErrorCode::TargetPeerConflict
-                )
-            )
+            || error.http_code().is_some_and(|code| {
+                code.is_stale_requester_principal()
+                    || matches!(
+                        code,
+                        RelayErrorCode::ActiveBookingConflict | RelayErrorCode::TargetPeerConflict
+                    )
+            })
         {
             return Some(error.retry_after().unwrap_or(fallback));
         }
@@ -327,7 +326,11 @@ impl RelayBookingCoordinator {
                 .await
             {
                 Ok(active) => active,
-                Err(error) if error.http_code() == Some(RelayErrorCode::StaleRobotPrincipal) => {
+                Err(error)
+                    if error
+                        .http_code()
+                        .is_some_and(RelayErrorCode::is_stale_requester_principal) =>
+                {
                     // Create is the expiry-on-access path for a new process Peer
                     // ID and returns the authoritative conflict Retry-After while
                     // the old Robot authority is still live.
@@ -1515,15 +1518,14 @@ impl CoordinatorActor {
 }
 
 fn control_error_ends_authority(error: &RelayBookingClientError) -> bool {
-    matches!(
-        error.http_code(),
-        Some(
-            RelayErrorCode::StaleRobotPrincipal
-                | RelayErrorCode::InvalidRobotPrincipal
-                | RelayErrorCode::AuthorityEnded
-                | RelayErrorCode::NotFound
-        )
-    )
+    error.http_code().is_some_and(|code| {
+        code.is_stale_requester_principal()
+            || code.is_invalid_requester_principal()
+            || matches!(
+                code,
+                RelayErrorCode::AuthorityEnded | RelayErrorCode::NotFound
+            )
+    })
 }
 
 async fn bounded_control_call<T, F>(
@@ -1917,6 +1919,47 @@ mod tests {
     use super::*;
 
     type ApiResult<T> = Result<T, RelayBookingClientError>;
+
+    fn principal_http_error(
+        status: reqwest::StatusCode,
+        code: RelayErrorCode,
+    ) -> RelayBookingClientError {
+        RelayBookingClientError::Http {
+            operation: RelayOperation::Active,
+            status,
+            code,
+            retry_after: None,
+            location: None,
+        }
+    }
+
+    #[test]
+    fn generic_requester_errors_keep_legacy_coordinator_semantics() {
+        let fallback = Duration::from_secs(7);
+        for code in [
+            RelayErrorCode::StaleRobotPrincipal,
+            RelayErrorCode::StaleRequesterPrincipal,
+        ] {
+            let error = principal_http_error(reqwest::StatusCode::CONFLICT, code);
+            assert!(control_error_ends_authority(&error));
+            assert_eq!(
+                RelayCoordinatorError::Dms(error).startup_retry_after(fallback),
+                Some(fallback)
+            );
+        }
+
+        for code in [
+            RelayErrorCode::InvalidRobotPrincipal,
+            RelayErrorCode::InvalidRequesterPrincipal,
+        ] {
+            let error = principal_http_error(reqwest::StatusCode::FORBIDDEN, code);
+            assert!(control_error_ends_authority(&error));
+            assert_eq!(
+                RelayCoordinatorError::Dms(error).startup_retry_after(fallback),
+                None
+            );
+        }
+    }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum ApiCall {

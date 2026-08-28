@@ -1,5 +1,6 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 pub use auki_p2p::DomainAuthority;
 use auki_p2p::{
     DdsTokenVerifier, DdsVerificationKeys, Identity, Multiaddr, Node, P2PAccessClaims, PeerId,
@@ -16,7 +17,10 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::{sync::OnceCell, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, OnceCell, RwLock},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use url::Url;
@@ -556,12 +560,93 @@ impl DdsP2pCredentialInstaller {
 }
 
 pub struct RobotP2pTokenProvider {
-    dds: DdsP2pClient,
-    machine_auth: Arc<dyn TokenProvider>,
-    authority: DomainAuthority,
+    relay_auth: RobotP2pRelayAuth,
     domain_id: Uuid,
     stop: CancellationToken,
     task: Option<JoinHandle<()>>,
+}
+
+#[derive(Clone)]
+struct RobotP2pRelayAuth {
+    dds: DdsP2pClient,
+    machine_auth: Arc<dyn TokenProvider>,
+    authority: DomainAuthority,
+    current: Arc<RwLock<Option<RetainedRobotP2pCredential>>>,
+    refresh_lock: Arc<Mutex<()>>,
+}
+
+struct RetainedRobotP2pCredential {
+    bearer: String,
+    expires_at: DateTime<Utc>,
+}
+
+impl std::fmt::Debug for RetainedRobotP2pCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RetainedRobotP2pCredential")
+            .field("bearer", &"[redacted]")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+impl RobotP2pRelayAuth {
+    fn new(
+        dds: DdsP2pClient,
+        machine_auth: Arc<dyn TokenProvider>,
+        authority: DomainAuthority,
+    ) -> Self {
+        Self {
+            dds,
+            machine_auth,
+            authority,
+            current: Arc::new(RwLock::new(None)),
+            refresh_lock: Arc::new(Mutex::new(())),
+        }
+    }
+
+    async fn refresh(&self) -> Result<(P2PAccessClaims, Duration)> {
+        let _guard = self.refresh_lock.lock().await;
+        self.refresh_locked().await
+    }
+
+    async fn refresh_locked(&self) -> Result<(P2PAccessClaims, Duration)> {
+        let (claims, delay, credential) =
+            refresh_robot_token(&self.dds, &self.machine_auth, &self.authority).await?;
+        *self.current.write().await = Some(credential);
+        Ok((claims, delay))
+    }
+
+    async fn refresh_after_unauthorized(&self) {
+        let _guard = self.refresh_lock.lock().await;
+        self.current.write().await.take();
+        if let Err(error) = self.refresh_locked().await {
+            warn!(error = %error, "DDS Robot P2P credential refresh after DMS 401 failed");
+        }
+    }
+
+    async fn clear(&self) {
+        self.current.write().await.take();
+    }
+}
+
+#[async_trait]
+impl TokenProvider for RobotP2pRelayAuth {
+    async fn bearer(&self) -> std::result::Result<String, TokenProviderError> {
+        self.current
+            .read()
+            .await
+            .as_ref()
+            .filter(|credential| credential.expires_at > Utc::now())
+            .map(|credential| credential.bearer.clone())
+            .ok_or_else(|| {
+                TokenProviderError::Message("Robot P2P credential is unavailable".to_owned())
+            })
+    }
+
+    async fn on_unauthorized(&self) {
+        self.refresh_after_unauthorized().await;
+    }
 }
 
 impl RobotP2pTokenProvider {
@@ -571,17 +656,15 @@ impl RobotP2pTokenProvider {
         authority: DomainAuthority,
         shutdown: &CancellationToken,
     ) -> Result<Self> {
-        let (initial_claims, initial_delay) =
-            refresh_robot_token(&dds, &machine_auth, &authority).await?;
+        let relay_auth = RobotP2pRelayAuth::new(dds, machine_auth, authority);
+        let (initial_claims, initial_delay) = relay_auth.refresh().await?;
         let domain_id = initial_claims
             .domain_ids
             .first()
             .and_then(|domain_id| Uuid::parse_str(domain_id).ok())
             .ok_or(DdsP2pError::CredentialDomainMismatch)?;
         let stop = shutdown.child_token();
-        let task_dds = dds.clone();
-        let task_auth = Arc::clone(&machine_auth);
-        let task_authority = authority.clone();
+        let task_relay_auth = relay_auth.clone();
         let task_stop = stop.clone();
         let task = tokio::spawn(async move {
             let mut delay = initial_delay;
@@ -590,7 +673,7 @@ impl RobotP2pTokenProvider {
                     _ = task_stop.cancelled() => break,
                     _ = tokio::time::sleep(delay) => {}
                 }
-                let refresh = refresh_robot_token(&task_dds, &task_auth, &task_authority);
+                let refresh = task_relay_auth.refresh();
                 let result = tokio::select! {
                     _ = task_stop.cancelled() => break,
                     result = refresh => result,
@@ -606,9 +689,7 @@ impl RobotP2pTokenProvider {
         });
 
         Ok(Self {
-            dds,
-            machine_auth,
-            authority,
+            relay_auth,
             domain_id,
             stop,
             task: Some(task),
@@ -616,9 +697,11 @@ impl RobotP2pTokenProvider {
     }
 
     pub async fn refresh_now(&self) -> Result<P2PAccessClaims> {
-        refresh_robot_token(&self.dds, &self.machine_auth, &self.authority)
-            .await
-            .map(|(claims, _)| claims)
+        self.relay_auth.refresh().await.map(|(claims, _)| claims)
+    }
+
+    pub fn relay_token_provider(&self) -> Arc<dyn TokenProvider> {
+        Arc::new(self.relay_auth.clone())
     }
 
     pub fn domain_id(&self) -> Uuid {
@@ -630,6 +713,7 @@ impl RobotP2pTokenProvider {
         if let Some(task) = self.task.take() {
             let _ = task.await;
         }
+        self.relay_auth.clear().await;
     }
 }
 
@@ -637,14 +721,14 @@ async fn refresh_robot_token(
     dds: &DdsP2pClient,
     machine_auth: &Arc<dyn TokenProvider>,
     authority: &DomainAuthority,
-) -> Result<(P2PAccessClaims, Duration)> {
+) -> Result<(P2PAccessClaims, Duration, RetainedRobotP2pCredential)> {
     let machine_token = machine_auth
         .bearer()
         .await
         .map_err(DdsP2pError::MachineToken)?;
     let response = dds.robot_p2p_token(&machine_token).await?;
     dds.refresh_verification_keys(authority).await?;
-    let credential = SignedP2pCredential::new(response.token).map_err(DdsP2pError::Node)?;
+    let credential = SignedP2pCredential::new(response.token.clone()).map_err(DdsP2pError::Node)?;
     let claims = authority
         .install_credential_checked(credential, response.expires_at)
         .await?;
@@ -656,7 +740,11 @@ async fn refresh_robot_token(
     let delay = remaining
         .mul_f64(REFRESH_SAFETY_RATIO)
         .max(Duration::from_secs(1));
-    Ok((claims, delay))
+    let retained = RetainedRobotP2pCredential {
+        bearer: response.token,
+        expires_at: response.expires_at,
+    };
+    Ok((claims, delay, retained))
 }
 
 pub async fn install_optional_credential(
@@ -861,5 +949,17 @@ O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
             convert_verification_keys(invalid),
             Err(DdsP2pError::InvalidVerificationKeyResponse(_))
         ));
+    }
+
+    #[test]
+    fn retained_robot_p2p_credential_debug_is_redacted() {
+        let credential = RetainedRobotP2pCredential {
+            bearer: "sensitive-robot-p2p-bearer".to_owned(),
+            expires_at: Utc::now(),
+        };
+
+        let rendered = format!("{credential:?}");
+        assert!(rendered.contains("[redacted]"));
+        assert!(!rendered.contains("sensitive-robot-p2p-bearer"));
     }
 }
