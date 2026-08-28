@@ -5,6 +5,7 @@ use auki_p2p_dataset::{
     DatasetRoutePolicy, DatasetService, P2pDataset, P2pDatasetAdapter, P2pDatasetServer,
     MAX_DATASET_RELAY_ROUTES, MAX_DATASET_ROUTES,
 };
+use auki_sdk::{AukiPeerConfig, AukiRelayConfig, AukiRelayMode};
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
 use rand::rngs::StdRng;
@@ -133,6 +134,68 @@ struct TaskDatasetSlotState {
 struct TaskDatasetActivation {
     slot: TaskDatasetSlot,
     generation: u64,
+}
+
+#[derive(Clone, Copy)]
+enum PeerRuntimeKind {
+    Robot,
+    Compute,
+}
+
+impl PeerRuntimeKind {
+    fn app_id(self) -> &'static str {
+        match self {
+            Self::Robot => "posemesh-robot-node",
+            Self::Compute => "posemesh-compute-node",
+        }
+    }
+
+    fn storage_directory(self) -> &'static str {
+        match self {
+            Self::Robot => "robot",
+            Self::Compute => "compute",
+        }
+    }
+}
+
+fn peer_facade_config(
+    cfg: &NodeConfig,
+    kind: PeerRuntimeKind,
+    relay: Option<crate::config::RelayBookingConfig>,
+) -> Result<AukiPeerConfig> {
+    let peer_id = cfg
+        .p2p_peer_id()
+        .ok_or_else(|| anyhow!("a persisted P2P identity is required for the Auki peer facade"))?;
+    let listen_addresses = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_listen_multiaddrs,
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+    )?;
+    let direct_routes = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_advertised_multiaddrs,
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+    )?;
+    validate_advertised_p2p_multiaddrs(&direct_routes)?;
+    let storage_root = std::env::temp_dir()
+        .join("posemesh-auki-peer")
+        .join(peer_id.to_string())
+        .join(kind.storage_directory());
+    let config = AukiPeerConfig::new(cfg.dms_base_url.as_str(), kind.app_id(), storage_root)?
+        .with_listen_addresses(listen_addresses)?
+        .with_advertised_direct_routes(direct_routes)?;
+
+    let Some(relay) = relay.filter(|relay| relay.mode().is_enabled()) else {
+        return Ok(config.direct_only());
+    };
+    let relay = AukiRelayConfig::new(
+        match relay.booking_mode() {
+            crate::config::RelayBookingMode::Public => AukiRelayMode::Public,
+            crate::config::RelayBookingMode::Dedicated => AukiRelayMode::Dedicated,
+        },
+        relay.relay_count(),
+        StdDuration::from_secs(relay.requested_duration_seconds()),
+        relay.status_poll_interval(),
+    )?;
+    Ok(config.with_relay(relay)?)
 }
 
 impl TaskDatasetSlot {
@@ -1953,6 +2016,51 @@ mod tests {
             assert!(runtime.auki_p2p_enabled);
             assert!(validate_robot_p2p_config(&runtime, mode).is_ok());
         }
+    }
+
+    #[test]
+    fn facade_config_maps_compute_to_direct_only_and_robot_to_sdk_relay() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x47; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
+        let relay = RelayBookingConfig::new(
+            RelayMode::Auto,
+            RelayBookingMode::Dedicated,
+            600,
+            2,
+            StdDuration::from_secs(7),
+        )
+        .unwrap();
+        robot.set_relay_booking_config(relay).unwrap();
+        let runtime = robot.runtime_config();
+
+        let compute = peer_facade_config(&runtime, PeerRuntimeKind::Compute, None).unwrap();
+        assert_eq!(compute.app_id(), "posemesh-compute-node");
+        assert!(!compute.relay_required());
+
+        let robot = peer_facade_config(&runtime, PeerRuntimeKind::Robot, Some(relay)).unwrap();
+        assert_eq!(robot.app_id(), "posemesh-robot-node");
+        assert_eq!(
+            robot.relay(),
+            Some(
+                AukiRelayConfig::new(
+                    AukiRelayMode::Dedicated,
+                    2,
+                    StdDuration::from_secs(600),
+                    StdDuration::from_secs(7),
+                )
+                .unwrap()
+            )
+        );
     }
 
     #[test]
