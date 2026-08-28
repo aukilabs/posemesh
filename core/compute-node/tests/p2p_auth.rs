@@ -24,7 +24,7 @@ use posemesh_compute_node::{
     },
     dds::p2p::{
         DdsP2pClient, DdsP2pCredentialInstaller, DdsP2pError, PeerBindingClient,
-        RobotP2pTokenProvider,
+        RobotP2pAuthoritySource, RobotP2pTokenProvider,
     },
     dms::types::HeartbeatResponse,
     engine::{apply_heartbeat_token_update, apply_p2p_credential_update},
@@ -612,6 +612,38 @@ async fn external_authority_update_is_bound_to_the_persisted_peer_and_domain() {
     assert_eq!(update.peer_id(), identity.peer_id());
     assert_eq!(update.verification_key_generation(), 7);
     assert_eq!(update.credential_expires_at(), expires_at);
+    key_set.assert_hits(1);
+}
+
+#[tokio::test]
+async fn robot_authority_is_prepared_before_any_network_runtime_starts() {
+    let server = MockServer::start();
+    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
+    let identity = Identity::generate();
+    let domain_id = Uuid::new_v4();
+    let machine_token = robot_machine_token(Some(domain_id));
+    let (p2p_token, expires_at) = signed_robot_p2p_token(&identity, domain_id);
+    let exchange = server.mock(|when, then| {
+        when.method(POST)
+            .path(ROBOT_P2P_TOKEN_PATH)
+            .header("authorization", format!("Bearer {machine_token}"))
+            .json_body(json!({"domain_id": domain_id}));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "p2p_access_token": p2p_token,
+                "p2p_access_expires_at": expires_at,
+            }));
+    });
+    let machine_auth: Arc<dyn TokenProvider> = Arc::new(StaticMachineToken(machine_token));
+    let source = RobotP2pAuthoritySource::new(client(&server), machine_auth, identity.proof());
+
+    let prepared = source.prepare().await.expect("Robot facade authority");
+
+    assert_eq!(prepared.domain_id(), domain_id);
+    assert_eq!(prepared.expires_at(), expires_at);
+    assert_eq!(prepared.into_update().peer_id(), identity.peer_id());
+    exchange.assert_hits(1);
     key_set.assert_hits(1);
 }
 
