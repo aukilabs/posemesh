@@ -4,7 +4,6 @@ use url::Url;
 use uuid::Uuid;
 
 pub mod client;
-pub(crate) mod relay;
 pub mod types;
 
 /// Helper to build DMS endpoint URLs.

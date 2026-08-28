@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use posemesh_compute_node::{
-    config::{RelayMode, RobotNodeConfig},
+    config::RobotNodeConfig,
     engine::{run_robot_node_with_shutdowns, RunnerComposition, RunnerRegistry},
     telemetry,
 };
@@ -21,8 +21,10 @@ async fn main() -> Result<()> {
     telemetry::init_from_env()?;
 
     let cfg = RobotNodeConfig::from_env().context("load Robot node configuration")?;
-    if cfg.relay_booking_config().mode() != RelayMode::Always {
-        bail!("the relay demo requires AUKI_P2P_RELAY_MODE=always");
+    if !cfg.relay_booking_config().mode().is_enabled() {
+        bail!(
+            "the relay demo requires AUKI_P2P_ENABLED=true and relay mode auto or always"
+        );
     }
     if !cfg.auki_p2p_advertised_multiaddrs.is_empty() {
         bail!(

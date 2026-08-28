@@ -13,7 +13,6 @@ pub mod heartbeat;
 pub mod http;
 pub mod p2p_dataset;
 pub mod poller;
-mod relay_booking;
 pub mod session;
 pub mod storage;
 pub mod telemetry;

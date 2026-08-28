@@ -1,11 +1,8 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
-use async_trait::async_trait;
-pub use auki_p2p::DomainAuthority;
 use auki_p2p::{
-    DdsTokenVerifier, DdsVerificationKeys, Identity, Multiaddr, Node, P2PAccessClaims, PeerId,
-    PeerIdentityProof, SignedP2pCredential, DDS_PREVIOUS_KEY_MIN_OVERLAP,
-    DDS_VERIFICATION_KEY_MAX_BYTES,
+    DdsTokenVerifier, DdsVerificationKeys, PeerId, PeerIdentityProof, SignedP2pCredential,
+    DDS_PREVIOUS_KEY_MIN_OVERLAP, DDS_VERIFICATION_KEY_MAX_BYTES,
 };
 use auki_sdk::{ExternalAuthorityControl, ExternalAuthorityUpdate};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -19,10 +16,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::{
-    sync::{Mutex, OnceCell, RwLock},
-    task::JoinHandle,
-};
+use tokio::{sync::OnceCell, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use url::Url;
@@ -36,8 +30,6 @@ const ROBOT_TOKEN_PATH: &str = "/internal/v1/auth/robot/p2p-token";
 const VERIFICATION_KEYS_PATH: &str = "/service/p2p-verification-keys";
 const REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
 const REFRESH_SAFETY_RATIO: f64 = 0.75;
-const VERIFICATION_KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(2 * 60);
-const VERIFICATION_KEY_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
 pub enum DdsP2pError {
@@ -61,8 +53,6 @@ pub enum DdsP2pError {
     VerificationKeyResponseTooLarge,
     #[error("DDS P2P verification-key response is invalid: {0}")]
     InvalidVerificationKeyResponse(&'static str),
-    #[error("Auki P2P node operation failed")]
-    Node(#[source] auki_p2p::Error),
     #[error("machine token is malformed")]
     MalformedMachineToken,
     #[error("Robot machine token has no assigned Domain")]
@@ -71,18 +61,8 @@ pub enum DdsP2pError {
     MachineToken(#[source] TokenProviderError),
     #[error("DDS P2P access token is invalid")]
     InvalidAccessToken(#[source] auki_p2p::Error),
-    #[error("local P2P authority rejected the credential")]
-    Credential(#[from] auki_p2p::P2pCredentialError),
     #[error("DDS P2P access-token expiration is invalid")]
     InvalidExpiration,
-    #[error("DDS P2P token and expiration must be provided together")]
-    IncompleteCredential,
-    #[error("no current DDS P2P credential is installed")]
-    MissingCredential,
-    #[error("the current DDS P2P credential has expired")]
-    ExpiredCredential,
-    #[error("the current DDS P2P credential has the wrong local role")]
-    CredentialRoleMismatch,
     #[error("the current DDS P2P credential does not authorize the required Domain")]
     CredentialDomainMismatch,
 }
@@ -271,13 +251,6 @@ impl DdsP2pClient {
         convert_verification_keys(response)
     }
 
-    async fn refresh_verification_keys(&self, authority: &DomainAuthority) -> Result<()> {
-        authority
-            .install_verification_keys(self.fetch_verification_keys().await?)
-            .await
-            .map_err(DdsP2pError::Node)
-    }
-
     async fn create_challenge(
         &self,
         machine_token: &str,
@@ -432,157 +405,6 @@ impl PeerBindingClient {
         self.dds
             .verify_challenge(base.token(), &self.identity, challenge)
             .await
-    }
-}
-
-pub struct ProcessP2p {
-    node: Node,
-    binding: PeerBindingClient,
-    dds: DdsP2pClient,
-    authority: DomainAuthority,
-    key_refresh_stop: CancellationToken,
-    key_refresh_task: Option<JoinHandle<()>>,
-}
-
-impl Drop for ProcessP2p {
-    fn drop(&mut self) {
-        self.key_refresh_stop.cancel();
-    }
-}
-
-impl ProcessP2p {
-    /// Start with an explicitly owned persistent libp2p identity.
-    ///
-    /// Callers must ensure that the same private key is not used by concurrent
-    /// processes. The identity remains process-local after construction and is
-    /// never exposed through runner or task APIs.
-    pub async fn start_with_identity_and_listen_addresses(
-        identity: Identity,
-        dds_base_url: Url,
-        request_timeout: Duration,
-        listen_addresses: impl IntoIterator<Item = Multiaddr>,
-    ) -> Result<Self> {
-        let dds = DdsP2pClient::new(dds_base_url, request_timeout)?;
-        let verifier = dds.initial_verification().await?.verifier.clone();
-        let binding = PeerBindingClient::new(dds.clone(), identity.proof());
-        let node = Node::start(identity, verifier, listen_addresses).map_err(DdsP2pError::Node)?;
-        let authority = node.authority();
-        let key_refresh_stop = CancellationToken::new();
-        let key_refresh_task = tokio::spawn(drive_verification_key_refresh(
-            dds.clone(),
-            authority.clone(),
-            key_refresh_stop.clone(),
-        ));
-        Ok(Self {
-            node,
-            binding,
-            dds,
-            authority,
-            key_refresh_stop,
-            key_refresh_task: Some(key_refresh_task),
-        })
-    }
-
-    pub fn node(&self) -> Node {
-        self.node.clone()
-    }
-
-    pub fn binding_client(&self) -> PeerBindingClient {
-        self.binding.clone()
-    }
-
-    pub fn dds_client(&self) -> DdsP2pClient {
-        self.dds.clone()
-    }
-
-    pub fn authority(&self) -> DomainAuthority {
-        self.authority.clone()
-    }
-
-    pub fn credential_installer(&self) -> DdsP2pCredentialInstaller {
-        DdsP2pCredentialInstaller::new(self.dds.clone(), self.authority.clone())
-    }
-
-    pub async fn shutdown(mut self) -> Result<()> {
-        self.key_refresh_stop.cancel();
-        if let Some(task) = self.key_refresh_task.take() {
-            if let Err(error) = task.await {
-                warn!(error = %error, "DDS P2P verification-key refresh task failed");
-            }
-        }
-        self.node
-            .clone()
-            .shutdown()
-            .await
-            .map_err(DdsP2pError::Node)
-    }
-}
-
-async fn drive_verification_key_refresh(
-    dds: DdsP2pClient,
-    authority: DomainAuthority,
-    stop: CancellationToken,
-) {
-    loop {
-        tokio::select! {
-            _ = stop.cancelled() => break,
-            _ = tokio::time::sleep(VERIFICATION_KEY_REFRESH_INTERVAL) => {}
-        }
-
-        let fetched_keys = tokio::select! {
-            _ = stop.cancelled() => break,
-            result = tokio::time::timeout(
-                VERIFICATION_KEY_REFRESH_TIMEOUT,
-                dds.fetch_verification_keys(),
-            ) => match result {
-                Ok(Ok(keys)) => keys,
-                Ok(Err(error)) => {
-                    warn!(error = %error, "DDS P2P verification-key refresh failed");
-                    continue;
-                }
-                Err(_) => {
-                    warn!("DDS P2P verification-key refresh timed out");
-                    continue;
-                }
-            },
-        };
-        let install = authority.install_verification_keys(fetched_keys);
-        let result = tokio::select! {
-            _ = stop.cancelled() => break,
-            result = install => result,
-        };
-        if let Err(error) = result {
-            warn!(error = %error, "DDS P2P verification-key update was rejected");
-        }
-    }
-}
-
-/// Installs task credentials only after refreshing their DDS verification set.
-///
-/// Keeping the DDS client and local authority together prevents a newly issued
-/// credential from racing the periodic verification-key refresh task during a
-/// signer rotation.
-#[derive(Clone)]
-pub struct DdsP2pCredentialInstaller {
-    dds: DdsP2pClient,
-    authority: DomainAuthority,
-}
-
-impl DdsP2pCredentialInstaller {
-    pub fn new(dds: DdsP2pClient, authority: DomainAuthority) -> Self {
-        Self { dds, authority }
-    }
-
-    pub async fn install_optional(
-        &self,
-        token: Option<&str>,
-        expires_at: Option<DateTime<Utc>>,
-    ) -> Result<Option<P2PAccessClaims>> {
-        install_optional_credential(&self.dds, &self.authority, token, expires_at).await
-    }
-
-    pub async fn clear(&self) {
-        self.authority.clear_credential().await;
     }
 }
 
@@ -748,216 +570,6 @@ fn authority_refresh_delay(expires_at: DateTime<Utc>) -> Result<Duration> {
         .max(Duration::from_secs(1)))
 }
 
-pub struct RobotP2pTokenProvider {
-    relay_auth: RobotP2pRelayAuth,
-    domain_id: Uuid,
-    stop: CancellationToken,
-    task: Option<JoinHandle<()>>,
-}
-
-#[derive(Clone)]
-struct RobotP2pRelayAuth {
-    dds: DdsP2pClient,
-    machine_auth: Arc<dyn TokenProvider>,
-    authority: DomainAuthority,
-    current: Arc<RwLock<Option<RetainedRobotP2pCredential>>>,
-    refresh_lock: Arc<Mutex<()>>,
-}
-
-struct RetainedRobotP2pCredential {
-    bearer: String,
-    expires_at: DateTime<Utc>,
-}
-
-impl std::fmt::Debug for RetainedRobotP2pCredential {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("RetainedRobotP2pCredential")
-            .field("bearer", &"[redacted]")
-            .field("expires_at", &self.expires_at)
-            .finish()
-    }
-}
-
-impl RobotP2pRelayAuth {
-    fn new(
-        dds: DdsP2pClient,
-        machine_auth: Arc<dyn TokenProvider>,
-        authority: DomainAuthority,
-    ) -> Self {
-        Self {
-            dds,
-            machine_auth,
-            authority,
-            current: Arc::new(RwLock::new(None)),
-            refresh_lock: Arc::new(Mutex::new(())),
-        }
-    }
-
-    async fn refresh(&self) -> Result<(P2PAccessClaims, Duration)> {
-        let _guard = self.refresh_lock.lock().await;
-        self.refresh_locked().await
-    }
-
-    async fn refresh_locked(&self) -> Result<(P2PAccessClaims, Duration)> {
-        let (claims, delay, credential) =
-            refresh_robot_token(&self.dds, &self.machine_auth, &self.authority).await?;
-        *self.current.write().await = Some(credential);
-        Ok((claims, delay))
-    }
-
-    async fn refresh_after_unauthorized(&self) {
-        let _guard = self.refresh_lock.lock().await;
-        self.current.write().await.take();
-        if let Err(error) = self.refresh_locked().await {
-            warn!(error = %error, "DDS Robot P2P credential refresh after DMS 401 failed");
-        }
-    }
-
-    async fn clear(&self) {
-        self.current.write().await.take();
-    }
-}
-
-#[async_trait]
-impl TokenProvider for RobotP2pRelayAuth {
-    async fn bearer(&self) -> std::result::Result<String, TokenProviderError> {
-        self.current
-            .read()
-            .await
-            .as_ref()
-            .filter(|credential| credential.expires_at > Utc::now())
-            .map(|credential| credential.bearer.clone())
-            .ok_or_else(|| {
-                TokenProviderError::Message("Robot P2P credential is unavailable".to_owned())
-            })
-    }
-
-    async fn on_unauthorized(&self) {
-        self.refresh_after_unauthorized().await;
-    }
-}
-
-impl RobotP2pTokenProvider {
-    pub async fn start(
-        dds: DdsP2pClient,
-        machine_auth: Arc<dyn TokenProvider>,
-        authority: DomainAuthority,
-        shutdown: &CancellationToken,
-    ) -> Result<Self> {
-        let relay_auth = RobotP2pRelayAuth::new(dds, machine_auth, authority);
-        let (initial_claims, initial_delay) = relay_auth.refresh().await?;
-        let domain_id = initial_claims
-            .domain_ids
-            .first()
-            .and_then(|domain_id| Uuid::parse_str(domain_id).ok())
-            .ok_or(DdsP2pError::CredentialDomainMismatch)?;
-        let stop = shutdown.child_token();
-        let task_relay_auth = relay_auth.clone();
-        let task_stop = stop.clone();
-        let task = tokio::spawn(async move {
-            let mut delay = initial_delay;
-            loop {
-                tokio::select! {
-                    _ = task_stop.cancelled() => break,
-                    _ = tokio::time::sleep(delay) => {}
-                }
-                let refresh = task_relay_auth.refresh();
-                let result = tokio::select! {
-                    _ = task_stop.cancelled() => break,
-                    result = refresh => result,
-                };
-                match result {
-                    Ok((_, next_delay)) => delay = next_delay,
-                    Err(error) => {
-                        warn!(error = %error, "DDS Robot P2P token refresh failed");
-                        delay = REFRESH_RETRY_DELAY;
-                    }
-                }
-            }
-        });
-
-        Ok(Self {
-            relay_auth,
-            domain_id,
-            stop,
-            task: Some(task),
-        })
-    }
-
-    pub async fn refresh_now(&self) -> Result<P2PAccessClaims> {
-        self.relay_auth.refresh().await.map(|(claims, _)| claims)
-    }
-
-    pub fn relay_token_provider(&self) -> Arc<dyn TokenProvider> {
-        Arc::new(self.relay_auth.clone())
-    }
-
-    pub fn domain_id(&self) -> Uuid {
-        self.domain_id
-    }
-
-    pub async fn shutdown(mut self) {
-        self.stop.cancel();
-        if let Some(task) = self.task.take() {
-            let _ = task.await;
-        }
-        self.relay_auth.clear().await;
-    }
-}
-
-async fn refresh_robot_token(
-    dds: &DdsP2pClient,
-    machine_auth: &Arc<dyn TokenProvider>,
-    authority: &DomainAuthority,
-) -> Result<(P2PAccessClaims, Duration, RetainedRobotP2pCredential)> {
-    let machine_token = machine_auth
-        .bearer()
-        .await
-        .map_err(DdsP2pError::MachineToken)?;
-    let response = dds.robot_p2p_token(&machine_token).await?;
-    dds.refresh_verification_keys(authority).await?;
-    let credential = SignedP2pCredential::new(response.token.clone()).map_err(DdsP2pError::Node)?;
-    let claims = authority
-        .install_credential_checked(credential, response.expires_at)
-        .await?;
-    let remaining = response
-        .expires_at
-        .signed_duration_since(Utc::now())
-        .to_std()
-        .map_err(|_| DdsP2pError::InvalidExpiration)?;
-    let delay = remaining
-        .mul_f64(REFRESH_SAFETY_RATIO)
-        .max(Duration::from_secs(1));
-    let retained = RetainedRobotP2pCredential {
-        bearer: response.token,
-        expires_at: response.expires_at,
-    };
-    Ok((claims, delay, retained))
-}
-
-pub async fn install_optional_credential(
-    dds: &DdsP2pClient,
-    authority: &DomainAuthority,
-    token: Option<&str>,
-    expires_at: Option<DateTime<Utc>>,
-) -> Result<Option<P2PAccessClaims>> {
-    match (token, expires_at) {
-        (Some(token), Some(expires_at)) => {
-            dds.refresh_verification_keys(authority).await?;
-            let credential =
-                SignedP2pCredential::new(token.to_owned()).map_err(DdsP2pError::Node)?;
-            authority
-                .install_credential_checked(credential, expires_at)
-                .await
-                .map(Some)
-                .map_err(DdsP2pError::Credential)
-        }
-        (None, None) => Ok(None),
-        _ => Err(DdsP2pError::IncompleteCredential),
-    }
-}
-
 fn ensure_success(response: &reqwest::Response) -> Result<()> {
     if response.status().is_success() {
         Ok(())
@@ -1085,8 +697,8 @@ O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
         }
     }
 
-    #[tokio::test]
-    async fn dds_generations_drive_rotation_restart_and_retirement_shape() {
+    #[test]
+    fn dds_generations_drive_rotation_restart_and_retirement_shape() {
         let initial = convert_verification_keys(response(41, TEST_DDS_PUBLIC_KEY, None)).unwrap();
         let rotated = convert_verification_keys(response(
             42,
@@ -1099,22 +711,10 @@ O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
         initial.validate_successor(&rotated).unwrap();
         rotated.validate_successor(&retired).unwrap();
 
-        let verifier = DdsTokenVerifier::from_keys(initial).unwrap();
-        let node = Node::start(
-            Identity::generate(),
-            verifier.clone(),
-            std::iter::empty::<Multiaddr>(),
-        )
-        .unwrap();
-        node.authority()
-            .install_verification_keys(rotated.clone())
-            .await
-            .unwrap();
-        assert_eq!(verifier.generation(), 42);
-
+        let initial_verifier = DdsTokenVerifier::from_keys(initial).unwrap();
+        assert_eq!(initial_verifier.generation(), 41);
         let restarted = DdsTokenVerifier::from_keys(rotated).unwrap();
         assert_eq!(restarted.generation(), 42);
-        node.shutdown().await.unwrap();
     }
 
     #[test]
@@ -1139,17 +739,5 @@ O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
             convert_verification_keys(invalid),
             Err(DdsP2pError::InvalidVerificationKeyResponse(_))
         ));
-    }
-
-    #[test]
-    fn retained_robot_p2p_credential_debug_is_redacted() {
-        let credential = RetainedRobotP2pCredential {
-            bearer: "sensitive-robot-p2p-bearer".to_owned(),
-            expires_at: Utc::now(),
-        };
-
-        let rendered = format!("{credential:?}");
-        assert!(rendered.contains("[redacted]"));
-        assert!(!rendered.contains("sensitive-robot-p2p-bearer"));
     }
 }

@@ -144,9 +144,9 @@ fn enabled_p2p_requires_a_persisted_identity_for_each_production_loader() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
     ]);
     std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
-    std::env::set_var("AUKI_P2P_RELAY_MODE", "auto");
-    let error = RobotNodeConfig::from_env()
-        .expect_err("relay-enabled Robot P2P without an identity must fail");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
+    let error =
+        RobotNodeConfig::from_env().expect_err("enabled Robot P2P without an identity must fail");
     assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
 
     clear(&[
@@ -238,14 +238,6 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     assert_eq!(relay.requested_duration_seconds(), 86_400);
     assert_eq!(relay.relay_count(), 1);
     assert_eq!(relay.status_poll_interval(), Duration::from_secs(5));
-    assert_eq!(relay.http_timeout(), Duration::from_secs(10));
-    assert_eq!(relay.retry_jitter_min(), Duration::from_millis(250));
-    assert_eq!(relay.retry_jitter_max(), Duration::from_secs(5));
-    assert_eq!(relay.reservation_retry_budget(), Duration::from_secs(30));
-    assert_eq!(
-        relay.authority_deadline_safety_margin(),
-        Duration::from_secs(15)
-    );
     assert_eq!(cfg.max_concurrency, 1);
     assert_eq!(cfg.log_format, LogFormat::Json);
     assert!(!cfg.enable_noop);
@@ -567,6 +559,7 @@ fn loads_explicit_robot_relay_booking_policy() {
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
     ]);
     std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
     std::env::set_var("AUKI_P2P_RELAY_MODE", "always");
     std::env::set_var("AUKI_P2P_RELAY_BOOKING_MODE", "dedicated");
     std::env::set_var("AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS", "300");
@@ -586,6 +579,80 @@ fn loads_explicit_robot_relay_booking_policy() {
         "AUKI_P2P_ENABLED",
         "AUKI_P2P_LISTEN_MULTIADDRS",
         "AUKI_P2P_ADVERTISED_MULTIADDRS",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[test]
+fn enabled_robot_p2p_defaults_to_one_public_relay() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
+    install_test_p2p_identity();
+
+    let cfg = RobotNodeConfig::from_env().expect("default relay config");
+    let relay = cfg.relay_booking_config();
+    assert_eq!(relay.mode(), RelayMode::Always);
+    assert_eq!(relay.booking_mode(), RelayBookingMode::Public);
+    assert_eq!(relay.relay_count(), 1);
+    assert!(cfg.auki_p2p_enabled);
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[test]
+fn relay_mode_does_not_implicitly_enable_robot_p2p() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+
+    for mode in ["auto", "always"] {
+        std::env::set_var("AUKI_P2P_RELAY_MODE", mode);
+        let error = RobotNodeConfig::from_env()
+            .expect_err("relay mode without the explicit P2P gate must fail");
+        assert!(error.to_string().contains("AUKI_P2P_ENABLED=true"));
+    }
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+}
+
+#[test]
+fn explicit_disabled_relay_mode_keeps_enabled_robot_p2p_direct_only() {
+    let _g = ENV_GUARD.lock().unwrap();
+    clear(&[
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ]);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
+    std::env::set_var("AUKI_P2P_ENABLED", "true");
+    std::env::set_var("AUKI_P2P_RELAY_MODE", "disabled");
+    install_test_p2p_identity();
+
+    let cfg = RobotNodeConfig::from_env().expect("explicit direct-only config");
+    assert_eq!(cfg.relay_booking_config().mode(), RelayMode::Disabled);
+    assert!(cfg.auki_p2p_enabled);
+
+    clear(&[
+        "AUKI_P2P_ENABLED",
         "ROBOT_REGISTRATION_CREDENTIALS",
         "ROBOT_REGISTRATION_CREDENTIALS_FILE",
     ]);
@@ -695,12 +762,6 @@ fn programmatic_relay_config_validates_ranges_and_route_bound() {
         "robot-credentials",
     )
     .unwrap();
-    cfg.auki_p2p_enabled = true;
-    cfg.auki_p2p_advertised_multiaddrs = direct_addresses(15)
-        .split(',')
-        .map(str::to_string)
-        .collect();
-
     let relay = RelayBookingConfig::new(
         RelayMode::Auto,
         RelayBookingMode::Public,
@@ -709,6 +770,16 @@ fn programmatic_relay_config_validates_ranges_and_route_bound() {
         Duration::from_secs(5),
     )
     .unwrap();
+    let error = cfg
+        .set_relay_booking_config(relay)
+        .expect_err("programmatic relay mode must not implicitly enable P2P");
+    assert!(error.to_string().contains("AUKI_P2P_ENABLED=true"));
+
+    cfg.auki_p2p_enabled = true;
+    cfg.auki_p2p_advertised_multiaddrs = direct_addresses(15)
+        .split(',')
+        .map(str::to_string)
+        .collect();
     let error = cfg
         .set_relay_booking_config(relay)
         .expect_err("fifteen direct plus two relays must fail");

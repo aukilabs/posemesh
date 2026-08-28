@@ -96,7 +96,6 @@ impl Runner for RobotFilePublisher {
             .dataset
             .register(P2pDatasetRegistration {
                 dataset_id: dataset_id.clone(),
-                domain_id,
                 name: name.clone(),
                 path: source.clone(),
                 available_until,
