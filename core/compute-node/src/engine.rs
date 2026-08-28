@@ -6,6 +6,7 @@ use auki_p2p_dataset::{
     MAX_DATASET_RELAY_ROUTES, MAX_DATASET_ROUTES,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
+use parking_lot::RwLock as SyncRwLock;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -112,6 +113,78 @@ impl RunnerDependencies {
         self.dataset
             .clone()
             .context("the authenticated P2P dataset protocol is unavailable")
+    }
+}
+
+/// One typed, fail-closed protocol slot shared with process-constructed
+/// runners. Compute activates it only for the current task peer; Robot keeps
+/// one activation for its fixed-Domain peer lifetime.
+#[derive(Clone, Default)]
+struct TaskDatasetSlot {
+    state: Arc<SyncRwLock<TaskDatasetSlotState>>,
+}
+
+#[derive(Default)]
+struct TaskDatasetSlotState {
+    generation: u64,
+    active: Option<Arc<dyn P2pDataset>>,
+}
+
+struct TaskDatasetActivation {
+    slot: TaskDatasetSlot,
+    generation: u64,
+}
+
+impl TaskDatasetSlot {
+    fn activate(&self, dataset: Arc<dyn P2pDataset>) -> Result<TaskDatasetActivation> {
+        let mut state = self.state.write();
+        if state.active.is_some() {
+            return Err(anyhow!("the task dataset protocol is already active"));
+        }
+        state.generation = state
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("the task dataset activation generation is exhausted"))?;
+        state.active = Some(dataset);
+        Ok(TaskDatasetActivation {
+            slot: self.clone(),
+            generation: state.generation,
+        })
+    }
+
+    fn current(&self) -> Result<Arc<dyn P2pDataset>> {
+        self.state
+            .read()
+            .active
+            .clone()
+            .ok_or_else(|| anyhow!("the task dataset protocol is not active"))
+    }
+}
+
+impl Drop for TaskDatasetActivation {
+    fn drop(&mut self) {
+        let mut state = self.slot.state.write();
+        if state.generation == self.generation {
+            state.active = None;
+        }
+    }
+}
+
+#[async_trait]
+impl P2pDataset for TaskDatasetSlot {
+    async fn register(
+        &self,
+        registration: auki_p2p_dataset::P2pDatasetRegistration,
+    ) -> anyhow::Result<auki_p2p_dataset::P2pDatasetReference> {
+        self.current()?.register(registration).await
+    }
+
+    async fn fetch(
+        &self,
+        reference: &auki_p2p_dataset::P2pDatasetReference,
+        destination: &std::path::Path,
+    ) -> anyhow::Result<()> {
+        self.current()?.fetch(reference, destination).await
     }
 }
 
@@ -614,6 +687,8 @@ struct ProcessP2pRuntime {
     process: ProcessP2p,
     routes: auki_p2p::RouteCatalog,
     dataset: Arc<P2pDatasetAdapter>,
+    dataset_slot: TaskDatasetSlot,
+    dataset_activation: TaskDatasetActivation,
 }
 
 struct NodeLoopP2p {
@@ -624,7 +699,7 @@ struct NodeLoopP2p {
 
 fn runner_dependencies(runtime: Option<&ProcessP2pRuntime>) -> RunnerDependencies {
     let dataset = runtime.map(|runtime| {
-        let dataset: Arc<dyn P2pDataset> = runtime.dataset.clone();
+        let dataset: Arc<dyn P2pDataset> = Arc::new(runtime.dataset_slot.clone());
         DatasetService::new(dataset)
     });
     RunnerDependencies { dataset }
@@ -681,10 +756,15 @@ async fn start_process_p2p(
         routes.clone(),
         route_policy,
     )?);
+    let dataset_slot = TaskDatasetSlot::default();
+    let active_dataset: Arc<dyn P2pDataset> = dataset.clone();
+    let dataset_activation = dataset_slot.activate(active_dataset)?;
     Ok(Some(ProcessP2pRuntime {
         process,
         routes,
         dataset,
+        dataset_slot,
+        dataset_activation,
     }))
 }
 
@@ -768,7 +848,13 @@ async fn shutdown_dataset_server(server: Option<P2pDatasetServer>) {
 
 async fn shutdown_process_p2p(runtime: Option<ProcessP2pRuntime>) {
     if let Some(runtime) = runtime {
-        if let Err(error) = runtime.process.shutdown().await {
+        let ProcessP2pRuntime {
+            process,
+            dataset_activation,
+            ..
+        } = runtime;
+        drop(dataset_activation);
+        if let Err(error) = process.shutdown().await {
             warn!(error = %error, "Auki P2P shutdown failed");
         }
     }
@@ -1725,6 +1811,27 @@ mod tests {
     use super::*;
     use crate::config::{P2pPrivateKey, RelayBookingConfig, RelayBookingMode, RobotNodeConfig};
     use auki_p2p::Identity;
+    use auki_p2p_dataset::{P2pDatasetReference, P2pDatasetRegistration};
+
+    struct SuccessfulDataset;
+
+    #[async_trait]
+    impl P2pDataset for SuccessfulDataset {
+        async fn register(
+            &self,
+            _registration: P2pDatasetRegistration,
+        ) -> anyhow::Result<P2pDatasetReference> {
+            Err(anyhow!("registration is unused by this test"))
+        }
+
+        async fn fetch(
+            &self,
+            _reference: &P2pDatasetReference,
+            _destination: &std::path::Path,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn dataset_runner_composition_fails_without_dataset_runtime() {
@@ -1735,6 +1842,40 @@ mod tests {
         assert!(error
             .to_string()
             .contains("authenticated P2P dataset protocol is unavailable"));
+    }
+
+    #[tokio::test]
+    async fn task_dataset_slot_is_active_for_exactly_one_runtime() {
+        let slot = TaskDatasetSlot::default();
+        let service = DatasetService::new(Arc::new(slot.clone()));
+        let reference = P2pDatasetReference {
+            schema: "test".into(),
+            dataset_id: "test".into(),
+            domain_id: Uuid::nil(),
+            name: "test".into(),
+            peer_id: "test".into(),
+            multiaddrs: vec![],
+            size_bytes: 1,
+            sha256: "test".into(),
+            available_until: chrono::Utc::now() + chrono::Duration::minutes(1),
+        };
+
+        assert!(service
+            .fetch(&reference, std::path::Path::new("unused"))
+            .await
+            .is_err());
+        let activation = slot.activate(Arc::new(SuccessfulDataset)).unwrap();
+        assert!(slot.activate(Arc::new(SuccessfulDataset)).is_err());
+        service
+            .fetch(&reference, std::path::Path::new("unused"))
+            .await
+            .unwrap();
+
+        drop(activation);
+        assert!(service
+            .fetch(&reference, std::path::Path::new("unused"))
+            .await
+            .is_err());
     }
 
     #[test]
