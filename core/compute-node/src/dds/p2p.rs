@@ -4,8 +4,10 @@ use async_trait::async_trait;
 pub use auki_p2p::DomainAuthority;
 use auki_p2p::{
     DdsTokenVerifier, DdsVerificationKeys, Identity, Multiaddr, Node, P2PAccessClaims, PeerId,
-    SignedP2pCredential, DDS_PREVIOUS_KEY_MIN_OVERLAP, DDS_VERIFICATION_KEY_MAX_BYTES,
+    PeerIdentityProof, SignedP2pCredential, DDS_PREVIOUS_KEY_MIN_OVERLAP,
+    DDS_VERIFICATION_KEY_MAX_BYTES,
 };
+use auki_sdk::ExternalAuthorityUpdate;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
@@ -279,11 +281,11 @@ impl DdsP2pClient {
     async fn create_challenge(
         &self,
         machine_token: &str,
-        authority: &DomainAuthority,
+        identity: &PeerIdentityProof,
     ) -> Result<ChallengeResponse> {
         let request = ChallengeRequest {
-            peer_id: authority.peer_id().to_string(),
-            public_key: URL_SAFE_NO_PAD.encode(authority.peer_public_key_protobuf()),
+            peer_id: identity.peer_id().to_string(),
+            public_key: URL_SAFE_NO_PAD.encode(identity.public_key_protobuf()),
         };
         let response = self
             .http
@@ -310,14 +312,14 @@ impl DdsP2pClient {
     async fn verify_challenge(
         &self,
         machine_token: &str,
-        authority: &DomainAuthority,
+        identity: &PeerIdentityProof,
         challenge: ChallengeResponse,
     ) -> Result<AccessBundle> {
         let challenge_bytes = URL_SAFE_NO_PAD
             .decode(challenge.challenge)
             .map_err(DdsP2pError::InvalidChallengeEncoding)?;
-        let signature = authority
-            .sign_peer_challenge(&challenge_bytes)
+        let signature = identity
+            .sign_challenge(&challenge_bytes)
             .map_err(DdsP2pError::IdentityProof)?;
         let request = VerifyRequest {
             challenge_id: challenge.challenge_id,
@@ -333,7 +335,7 @@ impl DdsP2pClient {
             .map_err(DdsP2pError::Request)?;
         ensure_success(&response)?;
         let response: VerifyResponse = response.json().await.map_err(DdsP2pError::Request)?;
-        if response.peer_id != authority.peer_id().to_string() {
+        if response.peer_id != identity.peer_id().to_string() {
             return Err(DdsP2pError::PeerIdMismatch);
         }
         if response.access_token.is_empty() {
@@ -345,6 +347,30 @@ impl DdsP2pClient {
         Ok(AccessBundle::new(
             response.access_token,
             response.access_expires_at,
+        ))
+    }
+
+    /// Build the complete fixed-Domain authority envelope consumed by
+    /// `AukiPeer::start_external` and `ExternalAuthorityControl::replace`.
+    pub async fn external_authority_update(
+        &self,
+        identity: &PeerIdentityProof,
+        domain_id: Uuid,
+        token: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<ExternalAuthorityUpdate> {
+        if expires_at <= Utc::now() {
+            return Err(DdsP2pError::InvalidExpiration);
+        }
+        let verification_keys = self.fetch_verification_keys().await?;
+        let credential =
+            SignedP2pCredential::new(token.to_owned()).map_err(DdsP2pError::InvalidAccessToken)?;
+        Ok(ExternalAuthorityUpdate::new(
+            domain_id,
+            identity.peer_id(),
+            verification_keys,
+            credential,
+            expires_at,
         ))
     }
 
@@ -385,25 +411,25 @@ impl DdsP2pClient {
 #[derive(Clone)]
 pub struct PeerBindingClient {
     dds: DdsP2pClient,
-    authority: DomainAuthority,
+    identity: PeerIdentityProof,
 }
 
 impl PeerBindingClient {
-    pub fn new(dds: DdsP2pClient, authority: DomainAuthority) -> Self {
-        Self { dds, authority }
+    pub fn new(dds: DdsP2pClient, identity: PeerIdentityProof) -> Self {
+        Self { dds, identity }
     }
 
     pub fn peer_id(&self) -> PeerId {
-        self.authority.peer_id()
+        self.identity.peer_id()
     }
 
     pub async fn bind(&self, base: &AccessBundle) -> Result<AccessBundle> {
         let challenge = self
             .dds
-            .create_challenge(base.token(), &self.authority)
+            .create_challenge(base.token(), &self.identity)
             .await?;
         self.dds
-            .verify_challenge(base.token(), &self.authority, challenge)
+            .verify_challenge(base.token(), &self.identity, challenge)
             .await
     }
 }
@@ -437,9 +463,9 @@ impl ProcessP2p {
     ) -> Result<Self> {
         let dds = DdsP2pClient::new(dds_base_url, request_timeout)?;
         let verifier = dds.initial_verification().await?.verifier.clone();
+        let binding = PeerBindingClient::new(dds.clone(), identity.proof());
         let node = Node::start(identity, verifier, listen_addresses).map_err(DdsP2pError::Node)?;
         let authority = node.authority();
-        let binding = PeerBindingClient::new(dds.clone(), authority.clone());
         let key_refresh_stop = CancellationToken::new();
         let key_refresh_task = tokio::spawn(drive_verification_key_refresh(
             dds.clone(),

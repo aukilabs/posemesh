@@ -11,6 +11,7 @@ readme = "README.md"
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 auki-p2p = { workspace = true }
+auki-sdk = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }

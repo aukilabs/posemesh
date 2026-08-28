@@ -21,7 +21,8 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "5de85f852ec6f98361279cf904b6cc9ece6d594c" }
+auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "f4af3772dc0001f6c78ff3831744ec57da00b74d" }
+auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "f4af3772dc0001f6c78ff3831744ec57da00b74d" }
 auki-p2p-dataset = { path = "auki-p2p-dataset" }
 libp2p = { version = "0.56.0", default-features = false }
 # `libp2p-stream` is still pre-release and must match libp2p 0.56's

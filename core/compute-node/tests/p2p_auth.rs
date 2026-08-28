@@ -8,8 +8,9 @@ use std::{
 
 use async_trait::async_trait;
 use auki_p2p::{
-    DdsTokenVerifier, Identity, Node, P2PAccessClaims, PeerRole, DDS_VERIFICATION_KEY_MAX_BYTES,
-    P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
+    DdsTokenVerifier, Identity, Node, P2PAccessClaims, PeerIdentityProof, PeerRole,
+    DDS_VERIFICATION_KEY_MAX_BYTES, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE,
+    P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
@@ -22,7 +23,7 @@ use posemesh_compute_node::{
         AccessBundle, RobotMachineAuth, TokenProvider,
     },
     dds::p2p::{
-        DdsP2pClient, DdsP2pCredentialInstaller, DdsP2pError, DomainAuthority, PeerBindingClient,
+        DdsP2pClient, DdsP2pCredentialInstaller, DdsP2pError, PeerBindingClient,
         RobotP2pTokenProvider,
     },
     dms::types::HeartbeatResponse,
@@ -119,27 +120,18 @@ fn verification_keys_mock<'a>(
     })
 }
 
-fn node_with_identity(identity: Identity) -> Node {
-    Node::start(
-        identity,
-        DdsTokenVerifier::from_es256_pem(TEST_DDS_PUBLIC_KEY).unwrap(),
-        std::iter::empty::<auki_p2p::Multiaddr>(),
-    )
-    .unwrap()
-}
-
 fn binding_mocks<'a>(
     server: &'a MockServer,
-    authority: &DomainAuthority,
+    identity: &PeerIdentityProof,
     base_token: &str,
     bound_token: &str,
     challenge_id: &str,
     challenge_bytes: &[u8],
 ) -> (Mock<'a>, Mock<'a>) {
-    let peer_id = authority.peer_id().to_string();
-    let public_key = URL_SAFE_NO_PAD.encode(authority.peer_public_key_protobuf());
+    let peer_id = identity.peer_id().to_string();
+    let public_key = URL_SAFE_NO_PAD.encode(identity.public_key_protobuf());
     let challenge = URL_SAFE_NO_PAD.encode(challenge_bytes);
-    let signature = URL_SAFE_NO_PAD.encode(authority.sign_peer_challenge(challenge_bytes).unwrap());
+    let signature = URL_SAFE_NO_PAD.encode(identity.sign_challenge(challenge_bytes).unwrap());
     let expires_at = Utc::now() + chrono::Duration::minutes(10);
     let challenge_mock = server.mock(|when, then| {
         when.method(POST)
@@ -168,7 +160,7 @@ fn binding_mocks<'a>(
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({
-                "peer_id": authority.peer_id().to_string(),
+                "peer_id": identity.peer_id().to_string(),
                 "access_token": bound_token,
                 "access_expires_at": expires_at,
             }));
@@ -180,12 +172,11 @@ fn binding_mocks<'a>(
 async fn compute_challenge_uses_the_exact_process_identity_without_robot_exchange() {
     let server = MockServer::start();
     let identity = Identity::generate();
-    let node = node_with_identity(identity.clone());
-    let authority = node.authority();
-    let binding = PeerBindingClient::new(client(&server), authority.clone());
+    let proof = identity.proof();
+    let binding = PeerBindingClient::new(client(&server), proof.clone());
     let (challenge, verify) = binding_mocks(
         &server,
-        &authority,
+        &proof,
         "compute-base-token",
         "compute-peer-bound-token",
         "compute-challenge",
@@ -209,16 +200,14 @@ async fn compute_challenge_uses_the_exact_process_identity_without_robot_exchang
     challenge.assert_hits(1);
     verify.assert_hits(1);
     robot_exchange.assert_hits(0);
-    node.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn robot_base_token_refresh_requires_a_new_peer_challenge() {
     let server = MockServer::start();
     let identity = Identity::generate();
-    let node = node_with_identity(identity.clone());
-    let authority = node.authority();
-    let binding = PeerBindingClient::new(client(&server), authority.clone());
+    let proof = identity.proof();
+    let binding = PeerBindingClient::new(client(&server), proof.clone());
     let robot_id = Uuid::new_v4();
     let credentials = "opaque-robot-credentials";
     let capabilities = vec!["/robot/demo/v0".to_string()];
@@ -246,7 +235,7 @@ async fn robot_base_token_refresh_requires_a_new_peer_challenge() {
     });
     let (challenge_a, verify_a) = binding_mocks(
         &server,
-        &authority,
+        &proof,
         "robot-base-a",
         "robot-bound-a",
         "robot-challenge-a",
@@ -254,7 +243,7 @@ async fn robot_base_token_refresh_requires_a_new_peer_challenge() {
     );
     let (challenge_b, verify_b) = binding_mocks(
         &server,
-        &authority,
+        &proof,
         "robot-base-b",
         "robot-bound-b",
         "robot-challenge-b",
@@ -288,16 +277,14 @@ async fn robot_base_token_refresh_requires_a_new_peer_challenge() {
     verify_a.assert_hits(1);
     challenge_b.assert_hits(1);
     verify_b.assert_hits(1);
-    node.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn invalid_or_replayed_peer_proof_fails_closed() {
     let server = MockServer::start();
     let identity = Identity::generate();
-    let node = node_with_identity(identity);
-    let authority = node.authority();
-    let binding = PeerBindingClient::new(client(&server), authority.clone());
+    let proof = identity.proof();
+    let binding = PeerBindingClient::new(client(&server), proof.clone());
     let base_token = "proof-must-not-appear-in-error";
     let challenge_bytes = b"one-time challenge";
     let challenge = server.mock(|when, then| {
@@ -319,7 +306,7 @@ async fn invalid_or_replayed_peer_proof_fails_closed() {
             .json_body(json!({
                 "challenge_id": "already-consumed",
                 "signature": URL_SAFE_NO_PAD.encode(
-                    authority.sign_peer_challenge(challenge_bytes).unwrap()
+                    proof.sign_challenge(challenge_bytes).unwrap()
                 ),
             }));
         then.status(401);
@@ -340,7 +327,6 @@ async fn invalid_or_replayed_peer_proof_fails_closed() {
     assert!(!error.to_string().contains(base_token));
     challenge.assert_hits(1);
     verify.assert_hits(1);
-    node.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -599,6 +585,34 @@ async fn compute_credential_refreshes_rotated_keys_before_verification() {
     );
     key_set.assert_hits(1);
     node.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn external_authority_update_is_bound_to_the_persisted_peer_and_domain() {
+    let server = MockServer::start();
+    let key_set =
+        verification_keys_mock(&server, 7, SECOND_DDS_PUBLIC_KEY, Some(TEST_DDS_PUBLIC_KEY));
+    let identity = Identity::generate();
+    let domain_id = Uuid::new_v4();
+    let (token, expires_at) = signed_p2p_token_at_with_key(
+        &identity,
+        domain_id,
+        PeerRole::Compute,
+        Uuid::new_v4(),
+        Utc::now().timestamp() as u64,
+        SECOND_DDS_PRIVATE_KEY,
+    );
+
+    let update = client(&server)
+        .external_authority_update(&identity.proof(), domain_id, &token, expires_at)
+        .await
+        .expect("DDS authority envelope");
+
+    assert_eq!(update.domain_id(), domain_id);
+    assert_eq!(update.peer_id(), identity.peer_id());
+    assert_eq!(update.verification_key_generation(), 7);
+    assert_eq!(update.credential_expires_at(), expires_at);
+    key_set.assert_hits(1);
 }
 
 #[tokio::test]
