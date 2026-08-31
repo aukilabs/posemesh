@@ -5,8 +5,7 @@ use auki_p2p_dataset::{
     DatasetRoutePolicy, DatasetService, P2pDataset, P2pDatasetAdapter, P2pDatasetServer,
 };
 use auki_sdk::{
-    AukiPeer, AukiPeerConfig, AukiPeerStatus, AukiRelayConfig, AukiRelayMode,
-    ExternalAuthorityControl,
+    AukiPeer, AukiPeerConfig, AukiPeerStatus, AukiRelayConfig, ExternalAuthorityControl,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
@@ -24,7 +23,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
-    config::{NodeConfig, RelayMode, RobotNodeConfig},
+    config::{NodeConfig, RobotNodeConfig},
     dds::p2p::{DdsP2pClient, PeerBindingClient, RobotP2pAuthorityDriver, RobotP2pAuthoritySource},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
@@ -156,7 +155,7 @@ impl PeerRuntimeKind {
 fn peer_facade_config(
     cfg: &NodeConfig,
     kind: PeerRuntimeKind,
-    relay: Option<crate::config::RelayBookingConfig>,
+    relay: Option<AukiRelayConfig>,
 ) -> Result<AukiPeerConfig> {
     let peer_id = cfg
         .p2p_peer_id()
@@ -169,28 +168,17 @@ fn peer_facade_config(
         &cfg.auki_p2p_advertised_multiaddrs,
         "AUKI_P2P_ADVERTISED_MULTIADDRS",
     )?;
-    validate_advertised_p2p_multiaddrs(&direct_routes)?;
     let storage_root = std::env::temp_dir()
         .join("posemesh-auki-peer")
         .join(peer_id.to_string())
         .join(kind.storage_directory());
     let config = AukiPeerConfig::new(cfg.dms_base_url.as_str(), kind.app_id(), storage_root)?
-        .with_listen_addresses(listen_addresses)?
-        .with_advertised_direct_routes(direct_routes)?;
-
-    let Some(relay) = relay.filter(|relay| relay.mode().is_enabled()) else {
-        return Ok(config.direct_only());
+        .with_listen_addresses(listen_addresses)?;
+    let config = match relay {
+        Some(relay) => config.with_relay(relay)?,
+        None => config.direct_only(),
     };
-    let relay = AukiRelayConfig::new(
-        match relay.booking_mode() {
-            crate::config::RelayBookingMode::Public => AukiRelayMode::Public,
-            crate::config::RelayBookingMode::Dedicated => AukiRelayMode::Dedicated,
-        },
-        relay.relay_count(),
-        StdDuration::from_secs(relay.requested_duration_seconds()),
-        relay.status_poll_interval(),
-    )?;
-    Ok(config.with_relay(relay)?)
+    Ok(config.with_advertised_direct_routes(direct_routes)?)
 }
 
 struct PreparedPeerIdentity {
@@ -613,14 +601,14 @@ pub async fn run_robot_node_with_shutdowns(
     shutdown: CancellationToken,
     forced_shutdown: CancellationToken,
 ) -> Result<()> {
-    cfg.validate_relay_booking_config()?;
+    cfg.validate_relay_config()?;
     let runtime_cfg = cfg.runtime_config();
-    let relay_config = cfg.relay_booking_config();
-    validate_robot_p2p_config(&runtime_cfg, relay_config.mode())?;
-    if runtime_cfg.auki_p2p_enabled && relay_config.mode() == RelayMode::Disabled {
+    let relay_config = cfg.relay_config();
+    validate_robot_p2p_config(&runtime_cfg, relay_config.is_some())?;
+    if runtime_cfg.auki_p2p_enabled && relay_config.is_none() {
         warn!("Robot relay booking is disabled; direct-only immutable dataset references cannot be repaired if the advertised route is unreachable");
     }
-    let route_policy = if relay_config.mode().is_enabled() {
+    let route_policy = if relay_config.is_some() {
         DatasetRoutePolicy::RelayRequired
     } else {
         DatasetRoutePolicy::DirectOnly
@@ -631,7 +619,7 @@ pub async fn run_robot_node_with_shutdowns(
     let prepared_peer = prepare_peer_identity(&runtime_cfg)?;
     let peer_config = prepared_peer
         .as_ref()
-        .map(|_| peer_facade_config(&runtime_cfg, PeerRuntimeKind::Robot, Some(relay_config)))
+        .map(|_| peer_facade_config(&runtime_cfg, PeerRuntimeKind::Robot, relay_config))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
     let runners = runners
@@ -844,47 +832,18 @@ fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<
         .collect()
 }
 
-fn validate_advertised_p2p_multiaddrs(addresses: &[Multiaddr]) -> Result<()> {
-    for address in addresses {
-        if address
-            .iter()
-            .any(|protocol| matches!(protocol, Protocol::Tcp(0)))
-        {
-            return Err(anyhow!(
-                "AUKI_P2P_ADVERTISED_MULTIADDRS must not contain tcp/0"
-            ));
-        }
-        if address.iter().any(|protocol| match protocol {
-            Protocol::Ip4(ip) => ip.is_unspecified(),
-            Protocol::Ip6(ip) => ip.is_unspecified(),
-            _ => false,
-        }) {
-            return Err(anyhow!(
-                "AUKI_P2P_ADVERTISED_MULTIADDRS must contain reachable addresses"
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_robot_p2p_config(cfg: &NodeConfig, relay_mode: RelayMode) -> Result<()> {
+fn validate_robot_p2p_config(cfg: &NodeConfig, relay_enabled: bool) -> Result<()> {
     if cfg.auki_p2p_enabled && cfg.auki_p2p_private_key.is_none() {
         return Err(anyhow!(
             "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
         ));
     }
-    if cfg.auki_p2p_enabled
-        && relay_mode == RelayMode::Disabled
-        && cfg.auki_p2p_listen_multiaddrs.is_empty()
-    {
+    if cfg.auki_p2p_enabled && !relay_enabled && cfg.auki_p2p_listen_multiaddrs.is_empty() {
         return Err(anyhow!(
             "AUKI_P2P_LISTEN_MULTIADDRS required for Robot P2P serving"
         ));
     }
-    if cfg.auki_p2p_enabled
-        && relay_mode == RelayMode::Disabled
-        && cfg.auki_p2p_advertised_multiaddrs.is_empty()
-    {
+    if cfg.auki_p2p_enabled && !relay_enabled && cfg.auki_p2p_advertised_multiaddrs.is_empty() {
         return Err(anyhow!(
             "AUKI_P2P_ADVERTISED_MULTIADDRS required for Robot P2P serving"
         ));
@@ -1903,9 +1862,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{P2pPrivateKey, RelayBookingConfig, RelayBookingMode, RobotNodeConfig};
+    use crate::config::{P2pPrivateKey, RobotNodeConfig};
     use auki_p2p::Identity;
     use auki_p2p_dataset::{P2pDatasetReference, P2pDatasetRegistration};
+    use auki_sdk::AukiRelayMode;
 
     struct SuccessfulDataset;
 
@@ -1973,7 +1933,7 @@ mod tests {
     }
 
     #[test]
-    fn p2p_multiaddrs_are_explicit_tcp_and_advertised_addresses_are_dialable() {
+    fn p2p_listener_multiaddrs_are_explicit_tcp() {
         let listen = parse_p2p_multiaddrs(
             &["/ip4/127.0.0.1/tcp/0".into()],
             "AUKI_P2P_LISTEN_MULTIADDRS",
@@ -1985,13 +1945,6 @@ mod tests {
             "AUKI_P2P_LISTEN_MULTIADDRS"
         )
         .is_err());
-
-        let reachable = ["/ip4/192.0.2.10/tcp/41001".parse::<Multiaddr>().unwrap()];
-        assert!(validate_advertised_p2p_multiaddrs(&reachable).is_ok());
-        let ephemeral = ["/ip4/127.0.0.1/tcp/0".parse::<Multiaddr>().unwrap()];
-        assert!(validate_advertised_p2p_multiaddrs(&ephemeral).is_err());
-        let unspecified = ["/ip4/0.0.0.0/tcp/41001".parse::<Multiaddr>().unwrap()];
-        assert!(validate_advertised_p2p_multiaddrs(&unspecified).is_err());
     }
 
     #[tokio::test]
@@ -2027,25 +1980,19 @@ mod tests {
         ));
 
         let disabled = robot.runtime_config();
-        assert!(validate_robot_p2p_config(&disabled, RelayMode::Disabled).is_err());
+        assert!(validate_robot_p2p_config(&disabled, false).is_err());
 
-        for mode in [RelayMode::Auto, RelayMode::Always] {
-            robot
-                .set_relay_booking_config(
-                    RelayBookingConfig::new(
-                        mode,
-                        RelayBookingMode::Public,
-                        300,
-                        1,
-                        StdDuration::from_secs(5),
-                    )
-                    .unwrap(),
-                )
-                .unwrap();
-            let runtime = robot.runtime_config();
-            assert!(runtime.auki_p2p_enabled);
-            assert!(validate_robot_p2p_config(&runtime, mode).is_ok());
-        }
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Public,
+            1,
+            StdDuration::from_secs(300),
+            StdDuration::from_secs(5),
+        )
+        .unwrap();
+        robot.set_relay_config(Some(relay)).unwrap();
+        let runtime = robot.runtime_config();
+        assert!(runtime.auki_p2p_enabled);
+        assert!(validate_robot_p2p_config(&runtime, true).is_ok());
     }
 
     #[test]
@@ -2062,15 +2009,14 @@ mod tests {
             P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
                 .unwrap(),
         ));
-        let relay = RelayBookingConfig::new(
-            RelayMode::Auto,
-            RelayBookingMode::Dedicated,
-            600,
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Dedicated,
             2,
+            StdDuration::from_secs(600),
             StdDuration::from_secs(7),
         )
         .unwrap();
-        robot.set_relay_booking_config(relay).unwrap();
+        robot.set_relay_config(Some(relay)).unwrap();
         let runtime = robot.runtime_config();
 
         let compute = peer_facade_config(&runtime, PeerRuntimeKind::Compute, None).unwrap();
@@ -2079,18 +2025,54 @@ mod tests {
 
         let robot = peer_facade_config(&runtime, PeerRuntimeKind::Robot, Some(relay)).unwrap();
         assert_eq!(robot.app_id(), "posemesh-robot-node");
-        assert_eq!(
-            robot.relay(),
-            Some(
-                AukiRelayConfig::new(
-                    AukiRelayMode::Dedicated,
-                    2,
-                    StdDuration::from_secs(600),
-                    StdDuration::from_secs(7),
-                )
-                .unwrap()
-            )
-        );
+        assert_eq!(robot.relay(), Some(relay));
+    }
+
+    #[test]
+    fn facade_config_delegates_advertised_route_validation_to_sdk() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x48; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
+        robot.auki_p2p_advertised_multiaddrs = vec!["/ip4/0.0.0.0/tcp/41001".into()];
+
+        let error = peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, None)
+            .expect_err("the SDK must reject an unspecified advertised address");
+        assert!(error
+            .to_string()
+            .contains("advertised direct route is invalid"));
+    }
+
+    #[test]
+    fn facade_config_selects_direct_only_before_applying_full_route_set() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x49; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
+        robot.auki_p2p_advertised_multiaddrs = (1..=16)
+            .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
+            .collect();
+
+        let config =
+            peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, None).unwrap();
+        assert!(!config.relay_required());
+        assert_eq!(config.advertised_direct_routes().len(), 16);
     }
 
     #[tokio::test]

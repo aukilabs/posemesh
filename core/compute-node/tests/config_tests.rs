@@ -1,10 +1,8 @@
 use auki_p2p::Identity;
+use auki_sdk::{AukiRelayConfig, AukiRelayMode};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use once_cell::sync::Lazy;
-use posemesh_compute_node::config::{
-    LogFormat, NodeConfig, P2pPrivateKey, RelayBookingConfig, RelayBookingMode, RelayMode,
-    RobotNodeConfig,
-};
+use posemesh_compute_node::config::{LogFormat, NodeConfig, P2pPrivateKey, RobotNodeConfig};
 use std::{sync::Mutex, time::Duration};
 use tempfile::NamedTempFile;
 
@@ -232,12 +230,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     assert!(cfg.auki_p2p_listen_multiaddrs.is_empty());
     assert!(cfg.auki_p2p_advertised_multiaddrs.is_empty());
     assert!(cfg.p2p_peer_id().is_none());
-    let relay = cfg.relay_booking_config();
-    assert_eq!(relay.mode(), RelayMode::Disabled);
-    assert_eq!(relay.booking_mode(), RelayBookingMode::Public);
-    assert_eq!(relay.requested_duration_seconds(), 86_400);
-    assert_eq!(relay.relay_count(), 1);
-    assert_eq!(relay.status_poll_interval(), Duration::from_secs(5));
+    assert!(cfg.relay_config().is_none());
     assert_eq!(cfg.max_concurrency, 1);
     assert_eq!(cfg.log_format, LogFormat::Json);
     assert!(!cfg.enable_noop);
@@ -568,12 +561,11 @@ fn loads_explicit_robot_relay_booking_policy() {
     install_test_p2p_identity();
 
     let cfg = RobotNodeConfig::from_env().expect("explicit relay config");
-    let relay = cfg.relay_booking_config();
-    assert_eq!(relay.mode(), RelayMode::Always);
-    assert_eq!(relay.booking_mode(), RelayBookingMode::Dedicated);
-    assert_eq!(relay.requested_duration_seconds(), 300);
-    assert_eq!(relay.relay_count(), 3);
-    assert_eq!(relay.status_poll_interval(), Duration::from_secs(60));
+    let relay = cfg.relay_config().expect("relay enabled");
+    assert_eq!(relay.mode, AukiRelayMode::Dedicated);
+    assert_eq!(relay.requested_duration, Duration::from_secs(300));
+    assert_eq!(relay.relay_count, 3);
+    assert_eq!(relay.status_poll_interval, Duration::from_secs(60));
 
     clear(&[
         "AUKI_P2P_ENABLED",
@@ -597,10 +589,7 @@ fn enabled_robot_p2p_defaults_to_one_public_relay() {
     install_test_p2p_identity();
 
     let cfg = RobotNodeConfig::from_env().expect("default relay config");
-    let relay = cfg.relay_booking_config();
-    assert_eq!(relay.mode(), RelayMode::Always);
-    assert_eq!(relay.booking_mode(), RelayBookingMode::Public);
-    assert_eq!(relay.relay_count(), 1);
+    assert_eq!(cfg.relay_config(), Some(AukiRelayConfig::default()));
     assert!(cfg.auki_p2p_enabled);
 
     clear(&[
@@ -648,7 +637,7 @@ fn explicit_disabled_relay_mode_keeps_enabled_robot_p2p_direct_only() {
     install_test_p2p_identity();
 
     let cfg = RobotNodeConfig::from_env().expect("explicit direct-only config");
-    assert_eq!(cfg.relay_booking_config().mode(), RelayMode::Disabled);
+    assert!(cfg.relay_config().is_none());
     assert!(cfg.auki_p2p_enabled);
 
     clear(&[
@@ -680,24 +669,24 @@ fn rejects_invalid_robot_relay_booking_environment_values() {
         (
             "AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS",
             "299",
-            "RELAY_BOOKING_DURATION_SECONDS",
+            "relay booking duration",
         ),
         (
             "AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS",
             "86401",
-            "RELAY_BOOKING_DURATION_SECONDS",
+            "relay booking duration",
         ),
-        ("AUKI_P2P_RELAY_COUNT", "0", "RELAY_COUNT"),
-        ("AUKI_P2P_RELAY_COUNT", "4", "RELAY_COUNT"),
+        ("AUKI_P2P_RELAY_COUNT", "0", "relay count"),
+        ("AUKI_P2P_RELAY_COUNT", "4", "relay count"),
         (
             "AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS",
             "0",
-            "RELAY_STATUS_POLL_INTERVAL_SECONDS",
+            "relay status poll interval",
         ),
         (
             "AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS",
             "61",
-            "RELAY_STATUS_POLL_INTERVAL_SECONDS",
+            "relay status poll interval",
         ),
     ] {
         clear(RELAY_ENV_KEYS);
@@ -755,23 +744,22 @@ fn enforces_the_total_direct_and_requested_relay_route_bound() {
 }
 
 #[test]
-fn programmatic_relay_config_validates_ranges_and_route_bound() {
+fn programmatic_relay_config_enforces_p2p_gate_and_dataset_route_bound() {
     let mut cfg = RobotNodeConfig::new(
         "https://dds.example".parse().unwrap(),
         "https://dms.example/v1".parse().unwrap(),
         "robot-credentials",
     )
     .unwrap();
-    let relay = RelayBookingConfig::new(
-        RelayMode::Auto,
-        RelayBookingMode::Public,
-        86_400,
+    let relay = AukiRelayConfig::new(
+        AukiRelayMode::Public,
         2,
+        Duration::from_secs(86_400),
         Duration::from_secs(5),
     )
     .unwrap();
     let error = cfg
-        .set_relay_booking_config(relay)
+        .set_relay_config(Some(relay))
         .expect_err("programmatic relay mode must not implicitly enable P2P");
     assert!(error.to_string().contains("AUKI_P2P_ENABLED=true"));
 
@@ -781,18 +769,9 @@ fn programmatic_relay_config_validates_ranges_and_route_bound() {
         .map(str::to_string)
         .collect();
     let error = cfg
-        .set_relay_booking_config(relay)
+        .set_relay_config(Some(relay))
         .expect_err("fifteen direct plus two relays must fail");
     assert!(error.to_string().contains("16-route reference limit"));
-
-    assert!(RelayBookingConfig::new(
-        RelayMode::Auto,
-        RelayBookingMode::Public,
-        86_400,
-        1,
-        Duration::from_millis(1_500),
-    )
-    .is_err());
 }
 
 fn direct_addresses(count: usize) -> String {

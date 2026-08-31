@@ -21,10 +21,8 @@ async fn main() -> Result<()> {
     telemetry::init_from_env()?;
 
     let cfg = RobotNodeConfig::from_env().context("load Robot node configuration")?;
-    if !cfg.relay_booking_config().mode().is_enabled() {
-        bail!(
-            "the relay demo requires AUKI_P2P_ENABLED=true and relay mode auto or always"
-        );
+    if cfg.relay_config().is_none() {
+        bail!("the relay demo requires AUKI_P2P_ENABLED=true and relay mode auto or always");
     }
     if !cfg.auki_p2p_advertised_multiaddrs.is_empty() {
         bail!(

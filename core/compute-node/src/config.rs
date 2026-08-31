@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use auki_p2p::{Identity, PeerId};
 use auki_p2p_dataset::MAX_DATASET_ROUTES;
+use auki_sdk::{AukiRelayConfig, AukiRelayMode};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::{env, fmt, fs, io::Read, path::Path, sync::Arc, time::Duration};
@@ -13,15 +14,6 @@ const DEFAULT_REGISTER_INTERVAL_SECS: u64 = 120;
 const DEFAULT_REGISTER_MAX_RETRY: i32 = -1;
 const DEFAULT_HEARTBEAT_MIN_RATIO: f64 = 0.25;
 const DEFAULT_HEARTBEAT_MAX_RATIO: f64 = 0.35;
-const DEFAULT_RELAY_BOOKING_DURATION_SECONDS: u64 = 86_400;
-const DEFAULT_RELAY_COUNT: u8 = 1;
-const DEFAULT_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 5;
-const MIN_RELAY_BOOKING_DURATION_SECONDS: u64 = 300;
-const MAX_RELAY_BOOKING_DURATION_SECONDS: u64 = 86_400;
-const MIN_RELAY_COUNT: u8 = 1;
-const MAX_RELAY_COUNT: u8 = 3;
-const MIN_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 1;
-const MAX_RELAY_STATUS_POLL_INTERVAL_SECONDS: u64 = 60;
 const MAX_P2P_PRIVATE_KEY_BYTES: u64 = 4 * 1024;
 
 /// Log output format.
@@ -92,133 +84,20 @@ impl P2pPrivateKey {
     }
 }
 
-/// Whether a Robot coordinates Circuit Relay v2 fallback routes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum RelayMode {
-    /// Never acquire a relay booking. Operators accept direct-only reachability.
-    #[default]
-    Disabled,
-    /// Acquire relay routes. Accepted as a compatibility spelling for relay-ready mode.
-    Auto,
-    /// Acquire relay routes and require the facade to become relay-ready.
-    Always,
-}
-
-impl RelayMode {
-    pub fn is_enabled(self) -> bool {
-        !matches!(self, Self::Disabled)
+fn validate_dataset_route_budget(
+    direct_route_count: usize,
+    relay: Option<AukiRelayConfig>,
+) -> Result<()> {
+    let relay_route_count = relay.map_or(0, |relay| usize::from(relay.relay_count));
+    let total = direct_route_count
+        .checked_add(relay_route_count)
+        .ok_or_else(|| anyhow::anyhow!("configured direct and relay route count overflowed"))?;
+    if total > MAX_DATASET_ROUTES {
+        bail!(
+            "configured direct advertised route count ({direct_route_count}) plus requested relay route count ({relay_route_count}) exceeds the {MAX_DATASET_ROUTES}-route reference limit"
+        );
     }
-}
-
-/// DMS provider-selection policy requested for a Robot relay booking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum RelayBookingMode {
-    #[default]
-    Public,
-    Dedicated,
-}
-
-/// Validated relay-booking policy and fixed v1 timing contract.
-///
-/// The timing values are intentionally not environment-tunable. Keeping them
-/// in this value gives the host one authoritative, testable contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RelayBookingConfig {
-    mode: RelayMode,
-    booking_mode: RelayBookingMode,
-    requested_duration_seconds: u64,
-    relay_count: u8,
-    status_poll_interval: Duration,
-}
-
-impl Default for RelayBookingConfig {
-    fn default() -> Self {
-        Self {
-            mode: RelayMode::Disabled,
-            booking_mode: RelayBookingMode::Public,
-            requested_duration_seconds: DEFAULT_RELAY_BOOKING_DURATION_SECONDS,
-            relay_count: DEFAULT_RELAY_COUNT,
-            status_poll_interval: Duration::from_secs(DEFAULT_RELAY_STATUS_POLL_INTERVAL_SECONDS),
-        }
-    }
-}
-
-impl RelayBookingConfig {
-    pub fn new(
-        mode: RelayMode,
-        booking_mode: RelayBookingMode,
-        requested_duration_seconds: u64,
-        relay_count: u8,
-        status_poll_interval: Duration,
-    ) -> Result<Self> {
-        if !(MIN_RELAY_BOOKING_DURATION_SECONDS..=MAX_RELAY_BOOKING_DURATION_SECONDS)
-            .contains(&requested_duration_seconds)
-        {
-            bail!(
-                "AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS must be between {MIN_RELAY_BOOKING_DURATION_SECONDS} and {MAX_RELAY_BOOKING_DURATION_SECONDS}, got {requested_duration_seconds}"
-            );
-        }
-        if !(MIN_RELAY_COUNT..=MAX_RELAY_COUNT).contains(&relay_count) {
-            bail!(
-                "AUKI_P2P_RELAY_COUNT must be between {MIN_RELAY_COUNT} and {MAX_RELAY_COUNT}, got {relay_count}"
-            );
-        }
-        let poll_seconds = status_poll_interval.as_secs();
-        if status_poll_interval.subsec_nanos() != 0
-            || !(MIN_RELAY_STATUS_POLL_INTERVAL_SECONDS..=MAX_RELAY_STATUS_POLL_INTERVAL_SECONDS)
-                .contains(&poll_seconds)
-        {
-            bail!(
-                "AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS must be a whole number between {MIN_RELAY_STATUS_POLL_INTERVAL_SECONDS} and {MAX_RELAY_STATUS_POLL_INTERVAL_SECONDS}"
-            );
-        }
-        Ok(Self {
-            mode,
-            booking_mode,
-            requested_duration_seconds,
-            relay_count,
-            status_poll_interval,
-        })
-    }
-
-    pub fn mode(self) -> RelayMode {
-        self.mode
-    }
-
-    pub fn booking_mode(self) -> RelayBookingMode {
-        self.booking_mode
-    }
-
-    pub fn requested_duration_seconds(self) -> u64 {
-        self.requested_duration_seconds
-    }
-
-    pub fn relay_count(self) -> u8 {
-        self.relay_count
-    }
-
-    pub fn status_poll_interval(self) -> Duration {
-        self.status_poll_interval
-    }
-
-    fn validate_route_bound(self, direct_route_count: usize) -> Result<()> {
-        let relay_route_count = usize::from(if self.mode.is_enabled() {
-            self.relay_count
-        } else {
-            0
-        });
-        let total = direct_route_count
-            .checked_add(relay_route_count)
-            .ok_or_else(|| anyhow::anyhow!("configured direct and relay route count overflowed"))?;
-        if total > MAX_DATASET_ROUTES {
-            bail!(
-                "configured direct advertised route count ({direct_route_count}) plus requested relay route count ({relay_route_count}) exceeds the {MAX_DATASET_ROUTES}-route reference limit"
-            );
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 /// Node configuration loaded from environment (SPECS §8 Configuration).
@@ -387,7 +266,7 @@ pub struct RobotNodeConfig {
     pub auki_p2p_listen_multiaddrs: Vec<String>,
     pub auki_p2p_advertised_multiaddrs: Vec<String>,
     p2p_private_key: Option<P2pPrivateKey>,
-    relay_booking: RelayBookingConfig,
+    relay: Option<AukiRelayConfig>,
     pub max_concurrency: u32,
     pub log_format: LogFormat,
     pub enable_noop: bool,
@@ -420,7 +299,7 @@ impl fmt::Debug for RobotNodeConfig {
                 &self.auki_p2p_advertised_multiaddrs,
             )
             .field("p2p_private_key", &self.p2p_private_key)
-            .field("relay_booking", &self.relay_booking)
+            .field("relay", &self.relay)
             .field("max_concurrency", &self.max_concurrency)
             .field("log_format", &self.log_format)
             .field("enable_noop", &self.enable_noop)
@@ -463,7 +342,7 @@ impl RobotNodeConfig {
             auki_p2p_listen_multiaddrs: Vec::new(),
             auki_p2p_advertised_multiaddrs: Vec::new(),
             p2p_private_key: None,
-            relay_booking: RelayBookingConfig::default(),
+            relay: None,
             max_concurrency: 1,
             log_format: LogFormat::default(),
             enable_noop: false,
@@ -500,11 +379,11 @@ impl RobotNodeConfig {
         cfg.auki_p2p_listen_multiaddrs = parse_csv_opt("AUKI_P2P_LISTEN_MULTIADDRS");
         cfg.auki_p2p_advertised_multiaddrs = parse_csv_opt("AUKI_P2P_ADVERTISED_MULTIADDRS");
         cfg.p2p_private_key = p2p_private_key_from_env()?;
-        cfg.relay_booking = relay_booking_config_from_env(cfg.auki_p2p_enabled)?;
+        cfg.relay = relay_config_from_env(cfg.auki_p2p_enabled)?;
         require_p2p_private_key_when_enabled(cfg.auki_p2p_enabled, &cfg.p2p_private_key)?;
         let direct_route_count =
             usize::from(cfg.auki_p2p_enabled) * cfg.auki_p2p_advertised_multiaddrs.len();
-        cfg.relay_booking.validate_route_bound(direct_route_count)?;
+        validate_dataset_route_budget(direct_route_count, cfg.relay)?;
         cfg.max_concurrency = parse_u32_opt("MAX_CONCURRENCY", 1)?;
         cfg.log_format = parse_log_format("LOG_FORMAT").unwrap_or_default();
         cfg.enable_noop = parse_bool_opt("ENABLE_NOOP", false)?;
@@ -517,9 +396,9 @@ impl RobotNodeConfig {
         &self.registration_credentials
     }
 
-    /// Return the validated relay policy used by the Robot peer facade.
-    pub fn relay_booking_config(&self) -> RelayBookingConfig {
-        self.relay_booking
+    /// Return the SDK-owned relay policy used by the Robot peer facade.
+    pub fn relay_config(&self) -> Option<AukiRelayConfig> {
+        self.relay
     }
 
     /// Peer ID that will be restored at startup.
@@ -535,24 +414,24 @@ impl RobotNodeConfig {
         self.p2p_private_key = private_key;
     }
 
-    /// Set a programmatic Robot relay policy while enforcing the reference
-    /// route bound against the currently configured direct advertisements.
-    pub fn set_relay_booking_config(&mut self, config: RelayBookingConfig) -> Result<()> {
-        validate_relay_requires_p2p(self.auki_p2p_enabled, config.mode())?;
+    /// Set a programmatic Robot relay policy while enforcing Posemesh's
+    /// dataset-reference route budget.
+    pub fn set_relay_config(&mut self, relay: Option<AukiRelayConfig>) -> Result<()> {
+        validate_relay_requires_p2p(self.auki_p2p_enabled, relay.is_some())?;
         let direct_route_count =
             usize::from(self.auki_p2p_enabled) * self.auki_p2p_advertised_multiaddrs.len();
-        config.validate_route_bound(direct_route_count)?;
-        self.relay_booking = config;
+        validate_dataset_route_budget(direct_route_count, relay)?;
+        self.relay = relay;
         Ok(())
     }
 
-    /// Revalidate cross-field relay constraints after changing public direct
-    /// address fields programmatically.
-    pub fn validate_relay_booking_config(&self) -> Result<()> {
-        validate_relay_requires_p2p(self.auki_p2p_enabled, self.relay_booking.mode())?;
+    /// Revalidate Posemesh cross-field constraints after changing public
+    /// direct-address fields programmatically.
+    pub fn validate_relay_config(&self) -> Result<()> {
+        validate_relay_requires_p2p(self.auki_p2p_enabled, self.relay.is_some())?;
         let direct_route_count =
             usize::from(self.auki_p2p_enabled) * self.auki_p2p_advertised_multiaddrs.len();
-        self.relay_booking.validate_route_bound(direct_route_count)
+        validate_dataset_route_budget(direct_route_count, self.relay)
     }
 
     /// Produce the existing engine configuration used by the shared runner,
@@ -588,48 +467,50 @@ impl RobotNodeConfig {
     }
 }
 
-fn relay_booking_config_from_env(p2p_enabled: bool) -> Result<RelayBookingConfig> {
-    let mode = match env_var_trimmed("AUKI_P2P_RELAY_MODE").as_deref() {
-        None if p2p_enabled => RelayMode::Always,
-        None | Some("disabled") => RelayMode::Disabled,
-        Some("auto") => RelayMode::Auto,
-        Some("always") => RelayMode::Always,
+fn relay_config_from_env(p2p_enabled: bool) -> Result<Option<AukiRelayConfig>> {
+    let relay_enabled = match env_var_trimmed("AUKI_P2P_RELAY_MODE").as_deref() {
+        None => p2p_enabled,
+        Some("disabled") => false,
+        Some("auto" | "always") => true,
         Some(value) => {
             bail!("invalid AUKI_P2P_RELAY_MODE {value:?}; expected disabled, auto, or always")
         }
     };
-    validate_relay_requires_p2p(p2p_enabled, mode)?;
-    let booking_mode = match env_var_trimmed("AUKI_P2P_RELAY_BOOKING_MODE").as_deref() {
-        None | Some("public") => RelayBookingMode::Public,
-        Some("dedicated") => RelayBookingMode::Dedicated,
+    validate_relay_requires_p2p(p2p_enabled, relay_enabled)?;
+
+    let defaults = AukiRelayConfig::default();
+    let mode = match env_var_trimmed("AUKI_P2P_RELAY_BOOKING_MODE").as_deref() {
+        None | Some("public") => AukiRelayMode::Public,
+        Some("dedicated") => AukiRelayMode::Dedicated,
         Some(value) => {
             bail!("invalid AUKI_P2P_RELAY_BOOKING_MODE {value:?}; expected public or dedicated")
         }
     };
     let requested_duration_seconds = parse_u64_default(
         "AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS",
-        DEFAULT_RELAY_BOOKING_DURATION_SECONDS,
+        defaults.requested_duration.as_secs(),
     )?;
     let relay_count_raw =
-        parse_u64_default("AUKI_P2P_RELAY_COUNT", u64::from(DEFAULT_RELAY_COUNT))?;
+        parse_u64_default("AUKI_P2P_RELAY_COUNT", u64::from(defaults.relay_count))?;
     let relay_count = u8::try_from(relay_count_raw)
         .with_context(|| "AUKI_P2P_RELAY_COUNT exceeds the supported integer range")?;
     let status_poll_interval_seconds = parse_u64_default(
         "AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS",
-        DEFAULT_RELAY_STATUS_POLL_INTERVAL_SECONDS,
+        defaults.status_poll_interval.as_secs(),
     )?;
 
-    RelayBookingConfig::new(
+    let relay = AukiRelayConfig::new(
         mode,
-        booking_mode,
-        requested_duration_seconds,
         relay_count,
+        Duration::from_secs(requested_duration_seconds),
         Duration::from_secs(status_poll_interval_seconds),
     )
+    .map_err(|error| anyhow::anyhow!("invalid AUKI P2P relay configuration: {error}"))?;
+    Ok(relay_enabled.then_some(relay))
 }
 
-fn validate_relay_requires_p2p(p2p_enabled: bool, relay_mode: RelayMode) -> Result<()> {
-    if !p2p_enabled && relay_mode.is_enabled() {
+fn validate_relay_requires_p2p(p2p_enabled: bool, relay_enabled: bool) -> Result<()> {
+    if !p2p_enabled && relay_enabled {
         bail!("AUKI_P2P_ENABLED=true is required when AUKI_P2P_RELAY_MODE is auto or always");
     }
     Ok(())
