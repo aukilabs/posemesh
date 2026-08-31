@@ -707,44 +707,7 @@ fn rejects_invalid_robot_relay_booking_environment_values() {
 }
 
 #[test]
-fn enforces_the_total_direct_and_requested_relay_route_bound() {
-    let _g = ENV_GUARD.lock().unwrap();
-    clear(&[
-        "AUKI_P2P_ENABLED",
-        "AUKI_P2P_ADVERTISED_MULTIADDRS",
-        "ROBOT_REGISTRATION_CREDENTIALS",
-        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
-    ]);
-    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-credentials");
-    std::env::set_var("AUKI_P2P_ENABLED", "true");
-    std::env::set_var("AUKI_P2P_RELAY_MODE", "auto");
-    std::env::set_var("AUKI_P2P_RELAY_COUNT", "3");
-    std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(13));
-    install_test_p2p_identity();
-    RobotNodeConfig::from_env().expect("thirteen direct plus three relays fits");
-
-    std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(14));
-    let error = RobotNodeConfig::from_env().expect_err("seventeen possible routes must fail");
-    assert!(error.to_string().contains("16-route reference limit"));
-
-    std::env::set_var("AUKI_P2P_RELAY_MODE", "disabled");
-    std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(16));
-    RobotNodeConfig::from_env().expect("disabled mode permits sixteen direct routes");
-
-    std::env::set_var("AUKI_P2P_ADVERTISED_MULTIADDRS", direct_addresses(17));
-    let error = RobotNodeConfig::from_env().expect_err("seventeen direct routes must fail");
-    assert!(error.to_string().contains("16-route reference limit"));
-
-    clear(&[
-        "AUKI_P2P_ENABLED",
-        "AUKI_P2P_ADVERTISED_MULTIADDRS",
-        "ROBOT_REGISTRATION_CREDENTIALS",
-        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
-    ]);
-}
-
-#[test]
-fn programmatic_relay_config_enforces_p2p_gate_and_dataset_route_bound() {
+fn programmatic_relay_config_enforces_p2p_gate() {
     let mut cfg = RobotNodeConfig::new(
         "https://dds.example".parse().unwrap(),
         "https://dms.example/v1".parse().unwrap(),
@@ -764,19 +727,6 @@ fn programmatic_relay_config_enforces_p2p_gate_and_dataset_route_bound() {
     assert!(error.to_string().contains("AUKI_P2P_ENABLED=true"));
 
     cfg.auki_p2p_enabled = true;
-    cfg.auki_p2p_advertised_multiaddrs = direct_addresses(15)
-        .split(',')
-        .map(str::to_string)
-        .collect();
-    let error = cfg
-        .set_relay_config(Some(relay))
-        .expect_err("fifteen direct plus two relays must fail");
-    assert!(error.to_string().contains("16-route reference limit"));
-}
-
-fn direct_addresses(count: usize) -> String {
-    (0..count)
-        .map(|index| format!("/ip4/192.0.2.{}/tcp/41001", index + 1))
-        .collect::<Vec<_>>()
-        .join(",")
+    cfg.set_relay_config(Some(relay)).unwrap();
+    assert_eq!(cfg.relay_config(), Some(relay));
 }

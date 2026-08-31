@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use auki_p2p::{Identity, PeerId};
-use auki_p2p_dataset::MAX_DATASET_ROUTES;
 use auki_sdk::{AukiRelayConfig, AukiRelayMode};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -82,22 +81,6 @@ impl P2pPrivateKey {
         Identity::from_protobuf_encoding(&self.protobuf)
             .context("validated AUKI P2P private key could not be restored")
     }
-}
-
-fn validate_dataset_route_budget(
-    direct_route_count: usize,
-    relay: Option<AukiRelayConfig>,
-) -> Result<()> {
-    let relay_route_count = relay.map_or(0, |relay| usize::from(relay.relay_count));
-    let total = direct_route_count
-        .checked_add(relay_route_count)
-        .ok_or_else(|| anyhow::anyhow!("configured direct and relay route count overflowed"))?;
-    if total > MAX_DATASET_ROUTES {
-        bail!(
-            "configured direct advertised route count ({direct_route_count}) plus requested relay route count ({relay_route_count}) exceeds the {MAX_DATASET_ROUTES}-route reference limit"
-        );
-    }
-    Ok(())
 }
 
 /// Node configuration loaded from environment (SPECS §8 Configuration).
@@ -381,9 +364,6 @@ impl RobotNodeConfig {
         cfg.p2p_private_key = p2p_private_key_from_env()?;
         cfg.relay = relay_config_from_env(cfg.auki_p2p_enabled)?;
         require_p2p_private_key_when_enabled(cfg.auki_p2p_enabled, &cfg.p2p_private_key)?;
-        let direct_route_count =
-            usize::from(cfg.auki_p2p_enabled) * cfg.auki_p2p_advertised_multiaddrs.len();
-        validate_dataset_route_budget(direct_route_count, cfg.relay)?;
         cfg.max_concurrency = parse_u32_opt("MAX_CONCURRENCY", 1)?;
         cfg.log_format = parse_log_format("LOG_FORMAT").unwrap_or_default();
         cfg.enable_noop = parse_bool_opt("ENABLE_NOOP", false)?;
@@ -414,24 +394,16 @@ impl RobotNodeConfig {
         self.p2p_private_key = private_key;
     }
 
-    /// Set a programmatic Robot relay policy while enforcing Posemesh's
-    /// dataset-reference route budget.
+    /// Set the SDK-owned relay policy for a programmatic Robot host.
     pub fn set_relay_config(&mut self, relay: Option<AukiRelayConfig>) -> Result<()> {
         validate_relay_requires_p2p(self.auki_p2p_enabled, relay.is_some())?;
-        let direct_route_count =
-            usize::from(self.auki_p2p_enabled) * self.auki_p2p_advertised_multiaddrs.len();
-        validate_dataset_route_budget(direct_route_count, relay)?;
         self.relay = relay;
         Ok(())
     }
 
-    /// Revalidate Posemesh cross-field constraints after changing public
-    /// direct-address fields programmatically.
+    /// Revalidate the explicit P2P opt-in after programmatic changes.
     pub fn validate_relay_config(&self) -> Result<()> {
-        validate_relay_requires_p2p(self.auki_p2p_enabled, self.relay.is_some())?;
-        let direct_route_count =
-            usize::from(self.auki_p2p_enabled) * self.auki_p2p_advertised_multiaddrs.len();
-        validate_dataset_route_budget(direct_route_count, self.relay)
+        validate_relay_requires_p2p(self.auki_p2p_enabled, self.relay.is_some())
     }
 
     /// Produce the existing engine configuration used by the shared runner,

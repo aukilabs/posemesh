@@ -2075,6 +2075,38 @@ mod tests {
         assert_eq!(config.advertised_direct_routes().len(), 16);
     }
 
+    #[test]
+    fn facade_config_accepts_the_sdk_route_capacity_boundary() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x4a; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
+        robot.auki_p2p_advertised_multiaddrs = (1..=13)
+            .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
+            .collect();
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Public,
+            3,
+            StdDuration::from_secs(300),
+            StdDuration::from_secs(5),
+        )
+        .unwrap();
+
+        let config =
+            peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, Some(relay))
+                .unwrap();
+        assert_eq!(config.advertised_direct_routes().len(), 13);
+        assert_eq!(config.relay(), Some(relay));
+    }
+
     #[tokio::test]
     async fn dropping_a_lease_execution_aborts_its_heartbeat_task() {
         let runner_cancel = CancellationToken::new();
