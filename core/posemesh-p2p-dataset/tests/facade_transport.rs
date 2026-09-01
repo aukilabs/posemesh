@@ -8,15 +8,15 @@ use auki_p2p::{
     P2PAccessClaims, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL,
     P2P_TOKEN_TYPE,
 };
-use auki_p2p_dataset::{
-    DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetError, P2pDatasetRegistration,
-};
 use auki_sdk::{
     AukiPeer, AukiPeerConfig, DdsVerificationKeys, ExternalAuthorityUpdate, Identity, Multiaddr,
     SignedP2pCredential,
 };
 use chrono::{TimeZone, Utc};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use posemesh_p2p_dataset::{
+    DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetError, P2pDatasetRegistration,
+};
 use tempfile::TempDir;
 use tokio::fs;
 use uuid::Uuid;
@@ -46,17 +46,13 @@ async fn run_direct_only_transfer() {
     let port = available_port();
     let route = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{port}")).unwrap();
 
-    let robot_config = AukiPeerConfig::new(
-        "http://127.0.0.1:9",
-        "dataset-facade-test",
-        temp.path().join("robot"),
-    )
-    .unwrap()
-    .direct_only()
-    .with_listen_addresses([route.clone()])
-    .unwrap()
-    .with_advertised_direct_routes([route])
-    .unwrap();
+    let robot_config = AukiPeerConfig::new("http://127.0.0.1:9")
+        .unwrap()
+        .direct_only()
+        .with_listen_addresses([route.clone()])
+        .unwrap()
+        .with_advertised_direct_routes([route])
+        .unwrap();
     let (robot, _robot_authority) = AukiPeer::start_external(
         robot_identity.clone(),
         authority(&robot_identity, domain_id, "robot"),
@@ -68,13 +64,9 @@ async fn run_direct_only_transfer() {
         P2pDatasetAdapter::new(robot.protocol_context(), DatasetRoutePolicy::DirectOnly).unwrap();
     let server = robot_dataset.start_serving().await.unwrap();
 
-    let compute_config = AukiPeerConfig::new(
-        "http://127.0.0.1:9",
-        "dataset-facade-test",
-        temp.path().join("compute"),
-    )
-    .unwrap()
-    .direct_only();
+    let compute_config = AukiPeerConfig::new("http://127.0.0.1:9")
+        .unwrap()
+        .direct_only();
     let (compute, _compute_authority) = AukiPeer::start_external(
         compute_identity.clone(),
         authority(&compute_identity, domain_id, "compute"),

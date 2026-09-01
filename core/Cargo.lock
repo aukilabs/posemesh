@@ -524,13 +524,14 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=672cab735328c916b87a1d6d257aff9a3f3370bc#672cab735328c916b87a1d6d257aff9a3f3370bc"
 dependencies = [
  "async-trait",
  "auki-p2p",
  "base64 0.22.1",
  "chrono",
  "futures",
+ "futures-timer",
  "hex",
  "p256",
  "reqwest",
@@ -542,111 +543,25 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zeroize",
-]
-
-[[package]]
-name = "auki-datatypes"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-logs",
- "prost 0.13.5",
- "prost-build",
- "protoc-bin-vendored",
-]
-
-[[package]]
-name = "auki-domain"
-version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-datatypes",
- "auki-hash",
- "auki-p2p",
- "auki-protocols",
- "auki-registry",
- "auki-session",
- "chrono",
- "futures",
- "parking_lot",
- "prost 0.13.5",
- "serde_json",
- "thiserror 2.0.16",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "auki-hash"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "xxhash-rust",
-]
-
-[[package]]
-name = "auki-identity"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-hash",
- "auki-jcs",
- "ed25519-dalek",
- "rand_core 0.6.4",
- "serde",
- "serde_bytes",
- "serde_json",
-]
-
-[[package]]
-name = "auki-jcs"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "serde_jcs",
- "serde_json",
-]
-
-[[package]]
-name = "auki-layout"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-
-[[package]]
-name = "auki-logs"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-jcs",
- "serde_json",
-]
-
-[[package]]
-name = "auki-manifests"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-hash",
- "auki-jcs",
- "auki-registry",
- "serde",
- "serde_json",
 ]
 
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=672cab735328c916b87a1d6d257aff9a3f3370bc#672cab735328c916b87a1d6d257aff9a3f3370bc"
 dependencies = [
+ "async-channel 2.5.0",
  "chrono",
  "futures",
+ "futures-timer",
+ "getrandom 0.2.16",
+ "getrandom 0.3.3",
  "hickory-resolver",
  "http 1.4.0",
- "jsonwebtoken",
+ "jsonwebtoken 10.4.0",
  "libc",
  "libp2p",
+ "libp2p-identity",
  "libp2p-stream",
  "p256",
  "parking_lot",
@@ -658,123 +573,49 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+ "wasm-bindgen-futures",
+ "web-time",
  "zeroize",
 ]
 
 [[package]]
-name = "auki-p2p-dataset"
+name = "auki-relay-booking"
 version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=672cab735328c916b87a1d6d257aff9a3f3370bc#672cab735328c916b87a1d6d257aff9a3f3370bc"
 dependencies = [
- "anyhow",
  "async-trait",
- "auki-p2p",
- "auki-sdk",
- "axum",
  "chrono",
  "futures",
- "hex",
- "jsonwebtoken",
- "libp2p",
- "libp2p-stream",
- "parking_lot",
+ "reqwest",
  "serde",
  "serde_json",
- "sha2",
- "tempfile",
  "thiserror 2.0.16",
- "tokio",
- "tokio-util",
- "tracing",
  "uuid",
-]
-
-[[package]]
-name = "auki-protocols"
-version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-datatypes",
- "auki-jcs",
- "auki-manifests",
- "auki-registry",
- "futures",
- "libp2p-identity",
- "prost 0.13.5",
- "serde",
- "serde_json",
- "thiserror 2.0.16",
-]
-
-[[package]]
-name = "auki-registry"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-hash",
- "auki-jcs",
- "auki-layout",
- "quick-xml",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=672cab735328c916b87a1d6d257aff9a3f3370bc#672cab735328c916b87a1d6d257aff9a3f3370bc"
 dependencies = [
+ "async-channel 2.5.0",
  "async-trait",
  "auki-auth",
- "auki-domain",
  "auki-p2p",
- "auki-session",
+ "auki-relay-booking",
  "chrono",
+ "futures",
+ "futures-timer",
  "parking_lot",
  "rand 0.8.5",
  "reqwest",
- "serde",
  "serde_json",
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "auki-session"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-datatypes",
- "auki-hash",
- "auki-identity",
- "auki-jcs",
- "auki-logs",
- "auki-manifests",
- "auki-registry",
- "auki-time",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.16",
- "tokio",
- "ulid",
-]
-
-[[package]]
-name = "auki-time"
-version = "0.0.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=f4af3772dc0001f6c78ff3831744ec57da00b74d#f4af3772dc0001f6c78ff3831744ec57da00b74d"
-dependencies = [
- "auki-datatypes",
- "auki-logs",
- "auki-manifests",
- "auki-registry",
- "libc",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -1068,6 +909,12 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.16",
 ]
+
+[[package]]
+name = "cast"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cbc"
@@ -1454,7 +1301,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -1627,7 +1474,6 @@ checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
- "rand_core 0.6.4",
  "serde",
  "sha2",
  "subtle",
@@ -2724,11 +2570,12 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.80"
+version = "0.3.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "852f13bec5eba4ba9afbeb93fd7c13fe56147f055939ae21c43a29a0ecb2702e"
+checksum = "0e0c1080212aad755ea003d18543e8768dd432c48819efd73a7bf1e39b7a5a3a"
 dependencies = [
- "once_cell",
+ "cfg-if",
+ "futures-util",
  "wasm-bindgen",
 ]
 
@@ -2745,6 +2592,30 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_asn1",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "10.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eba32bfb4ffdeaca3e34431072faf01745c9b26d25504aa7a6cf5684334fc4fc"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "getrandom 0.2.16",
+ "hmac",
+ "js-sys",
+ "p256",
+ "p384",
+ "pem",
+ "rand 0.8.5",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2",
+ "signature",
+ "simple_asn1",
+ "zeroize",
 ]
 
 [[package]]
@@ -2815,6 +2686,9 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+dependencies = [
+ "spin",
+]
 
 [[package]]
 name = "levenshtein"
@@ -2865,6 +2739,7 @@ dependencies = [
  "libp2p-tcp",
  "libp2p-upnp",
  "libp2p-websocket",
+ "libp2p-websocket-websys",
  "libp2p-yamux",
  "multiaddr",
  "pin-project",
@@ -3044,7 +2919,7 @@ dependencies = [
  "ed25519-dalek",
  "hkdf",
  "multihash",
- "prost 0.14.4",
+ "prost",
  "rand 0.8.5",
  "serde",
  "sha2",
@@ -3548,9 +3423,9 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "minicov"
-version = "0.3.7"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f27fe9f1cc3c22e1687f9446c2083c4c5fc7f0bcf1c7a86bdbded14985895b4b"
+checksum = "c3aa3aa12b448ac225b3102217d1ac5cc717908f02722926524b0599c933c7a0"
 dependencies = [
  "cc",
  "walkdir",
@@ -3665,12 +3540,6 @@ dependencies = [
  "serde",
  "unsigned-varint 0.8.0",
 ]
-
-[[package]]
-name = "multimap"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "multistream-select"
@@ -3805,6 +3674,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint-dig"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e661dda6640fad38e827a6d4a310ff4763082116fe217f279885c97f511bb0b7"
+dependencies = [
+ "lazy_static",
+ "libm",
+ "num-integer",
+ "num-iter",
+ "num-traits",
+ "rand 0.8.5",
+ "smallvec",
+ "zeroize",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3820,12 +3705,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-iter"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c92800bd69a1eac91786bcfe9da64a897eb72911b8dc3095decbd07429e8048b"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -3880,6 +3776,12 @@ name = "once_cell_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
+
+[[package]]
+name = "oorandom"
+version = "11.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "opaque-debug"
@@ -4084,6 +3986,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkcs1"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8ffb9f10fa047879315e6625af03c164b16962a5368d724ed16323b68ace47f"
+dependencies = [
+ "der",
+ "pkcs8",
+ "spki",
+]
+
+[[package]]
 name = "pkcs8"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4155,7 +4068,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "auki-p2p",
- "auki-p2p-dataset",
  "auki-sdk",
  "axum",
  "base64 0.22.1",
@@ -4163,7 +4075,7 @@ dependencies = [
  "futures",
  "hex",
  "httpmock",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "k256",
  "once_cell",
  "p256",
@@ -4171,6 +4083,7 @@ dependencies = [
  "posemesh-compute-node-runner-api",
  "posemesh-domain-http",
  "posemesh-node-registration",
+ "posemesh-p2p-dataset",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -4217,7 +4130,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.3",
  "hex",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "libp2p",
  "mockall",
  "pb-rs",
@@ -4342,18 +4255,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "posemesh-p2p-dataset"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "auki-p2p",
+ "auki-sdk",
+ "axum",
+ "chrono",
+ "futures",
+ "hex",
+ "jsonwebtoken 9.3.1",
+ "libp2p",
+ "libp2p-stream",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.16",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "posemesh-relay-file-demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "auki-p2p-dataset",
  "chrono",
  "dotenvy",
  "hex",
  "httpmock",
  "posemesh-compute-node",
  "posemesh-compute-node-runner-api",
+ "posemesh-p2p-dataset",
  "reqwest",
  "serde",
  "serde_json",
@@ -4468,16 +4408,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.2.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
-dependencies = [
- "proc-macro2",
- "syn 2.0.106",
-]
-
-[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4520,55 +4450,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
-dependencies = [
- "bytes",
- "prost-derive 0.13.5",
-]
-
-[[package]]
-name = "prost"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
- "prost-derive 0.14.4",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
-dependencies = [
- "heck 0.4.1",
- "itertools",
- "log",
- "multimap",
- "once_cell",
- "petgraph",
- "prettyplease",
- "prost 0.13.5",
- "prost-types",
- "regex",
- "syn 2.0.106",
- "tempfile",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
-dependencies = [
- "anyhow",
- "itertools",
- "proc-macro2",
- "quote",
- "syn 2.0.106",
+ "prost-derive",
 ]
 
 [[package]]
@@ -4583,79 +4470,6 @@ dependencies = [
  "quote",
  "syn 2.0.106",
 ]
-
-[[package]]
-name = "prost-types"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
-dependencies = [
- "prost 0.13.5",
-]
-
-[[package]]
-name = "protoc-bin-vendored"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1c381df33c98266b5f08186583660090a4ffa0889e76c7e9a5e175f645a67fa"
-dependencies = [
- "protoc-bin-vendored-linux-aarch_64",
- "protoc-bin-vendored-linux-ppcle_64",
- "protoc-bin-vendored-linux-s390_64",
- "protoc-bin-vendored-linux-x86_32",
- "protoc-bin-vendored-linux-x86_64",
- "protoc-bin-vendored-macos-aarch_64",
- "protoc-bin-vendored-macos-x86_64",
- "protoc-bin-vendored-win32",
-]
-
-[[package]]
-name = "protoc-bin-vendored-linux-aarch_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c350df4d49b5b9e3ca79f7e646fde2377b199e13cfa87320308397e1f37e1a4c"
-
-[[package]]
-name = "protoc-bin-vendored-linux-ppcle_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a55a63e6c7244f19b5c6393f025017eb5d793fd5467823a099740a7a4222440c"
-
-[[package]]
-name = "protoc-bin-vendored-linux-s390_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dba5565db4288e935d5330a07c264a4ee8e4a5b4a4e6f4e83fad824cc32f3b0"
-
-[[package]]
-name = "protoc-bin-vendored-linux-x86_32"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8854774b24ee28b7868cd71dccaae8e02a2365e67a4a87a6cd11ee6cdbdf9cf5"
-
-[[package]]
-name = "protoc-bin-vendored-linux-x86_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b38b07546580df720fa464ce124c4b03630a6fb83e05c336fea2a241df7e5d78"
-
-[[package]]
-name = "protoc-bin-vendored-macos-aarch_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89278a9926ce312e51f1d999fee8825d324d603213344a9a706daa009f1d8092"
-
-[[package]]
-name = "protoc-bin-vendored-macos-x86_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81745feda7ccfb9471d7a4de888f0652e806d5795b61480605d4943176299756"
-
-[[package]]
-name = "protoc-bin-vendored-win32"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
 name = "quick-error"
@@ -4683,15 +4497,6 @@ dependencies = [
  "quick-protobuf",
  "thiserror 1.0.69",
  "unsigned-varint 0.8.0",
-]
-
-[[package]]
-name = "quick-xml"
-version = "0.37.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -4980,6 +4785,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsa"
+version = "0.9.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8573f03f5883dcaebdfcf4725caa1ecb9c15b2ef50c43a07b816e06799bb12d"
+dependencies = [
+ "const-oid",
+ "digest",
+ "num-bigint-dig",
+ "num-integer",
+ "num-traits",
+ "pkcs1",
+ "pkcs8",
+ "rand_core 0.6.4",
+ "signature",
+ "spki",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "rtcp"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5125,12 +4950,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
-name = "ryu-js"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6518fc26bced4d53678a22d6e423e9d8716377def84545fe328236e3af070e7f"
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5235,9 +5054,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.225"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6c24dee235d0da097043389623fb913daddf92c76e9f5a1db88607a0bcbd1d"
+checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
@@ -5255,44 +5074,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_bytes"
-version = "0.11.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
-dependencies = [
- "serde",
- "serde_core",
-]
-
-[[package]]
 name = "serde_core"
-version = "1.0.225"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "659356f9a0cb1e529b24c01e43ad2bdf520ec4ceaf83047b83ddcc2251f96383"
+checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.225"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ea936adf78b1f766949a4977b91d2f5595825bd6ec079aa9543ad2685fc4516"
+checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.106",
-]
-
-[[package]]
-name = "serde_jcs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3a60f3fda61525e439ef6d67422118f11e986566997d9021c56867ad814a0aa"
-dependencies = [
- "ryu-js",
- "serde",
- "serde_json",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -5531,6 +5329,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
+
+[[package]]
 name = "spki"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5637,6 +5441,17 @@ name = "syn"
 version = "2.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ede7c438028d4436d71104916910f5bb611972c5cfd7f89b8300a8186e6fada6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5755,7 +5570,7 @@ name = "test-concurrent"
 version = "0.1.0"
 dependencies = [
  "futures",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "libp2p",
  "posemesh-domain",
  "posemesh-networking",
@@ -6235,16 +6050,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ulid"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
-dependencies = [
- "rand 0.9.2",
- "web-time",
-]
-
-[[package]]
 name = "unicode-bidi"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6562,9 +6367,9 @@ checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.103"
+version = "0.2.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab10a69fbd0a177f5f649ad4d8d3305499c42bab9aef2f7ff592d0ec8f833819"
+checksum = "1b70935747edd64d89de3efa29d73789b806c15798f8e7dca4d8ac356b50ce70"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -6574,37 +6379,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-bindgen-backend"
-version = "0.2.103"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bb702423545a6007bbc368fde243ba47ca275e549c8a28617f56f6ba53b1d1c"
-dependencies = [
- "bumpalo",
- "log",
- "proc-macro2",
- "quote",
- "syn 2.0.106",
- "wasm-bindgen-shared",
-]
-
-[[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.53"
+version = "0.4.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0b221ff421256839509adbb55998214a70d829d3a28c69b4a6672e9d2a42f67"
+checksum = "6b7777d5cc23d0e91404e53ce2d5e8ec7acae3026b16233dba62cd3246457950"
 dependencies = [
- "cfg-if",
  "js-sys",
- "once_cell",
  "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.103"
+version = "0.2.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc65f4f411d91494355917b605e1480033152658d71f722a90647f56a70c88a0"
+checksum = "77775f8f3f7217702089053b94958f8f54061a3f663417df76e19cbdcca29bc1"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -6612,49 +6400,64 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.103"
+version = "0.2.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc003a991398a8ee604a401e194b6b3a39677b3173d6e74495eb51b82e99a32"
+checksum = "e11d33f857dc2fb11b8bc75aee111aa9cbeb12cd9f25efd3d4c2a3dd4e235284"
 dependencies = [
+ "bumpalo",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
- "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.103"
+version = "0.2.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "293c37f4efa430ca14db3721dfbe48d8c33308096bd44d80ebaa775ab71ba1cf"
+checksum = "7ef64dbcc55df09c7e5a46182d181c2cfa3e925f3da937ea764728b4bbb9dcbf"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "wasm-bindgen-test"
-version = "0.3.53"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aee0a0f5343de9221a0d233b04520ed8dc2e6728dce180b1dcd9288ec9d9fa3c"
+checksum = "895a2607575412a4eda1df892084a375ea10dfeadc4d7d2ab87b854e4ddc7ba1"
 dependencies = [
+ "async-trait",
+ "cast",
  "js-sys",
+ "libm",
  "minicov",
+ "nu-ansi-term",
+ "num-traits",
+ "oorandom",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test-macro",
+ "wasm-bindgen-test-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-test-macro"
-version = "0.3.53"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a369369e4360c2884c3168d22bded735c43cccae97bbc147586d4b480edd138d"
+checksum = "4288cb0ebe215033bf949ae1fd046726daa4c32a157f24b9dc6ac387a52aa759"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
 ]
+
+[[package]]
+name = "wasm-bindgen-test-shared"
+version = "0.2.127"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33ff1c1b360982e93b6d8ea9c04836f71dba0817a16f91e229cf3a51bdd9d987"
 
 [[package]]
 name = "wasm-streams"
@@ -6671,9 +6474,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.80"
+version = "0.3.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe734895e869dc429d78c4b433f8d17d95f8d05317440b4fad5ab2d33e596dc"
+checksum = "c435338968042f4f59a557f690a253676d47ce13ceb55d70100e7facf6620a30"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -7401,12 +7204,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "xxhash-rust"
-version = "0.8.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aee1b19627c7c60102ab80d3a9cbe18de90bfe03bfa6c3715447681f0e8c8af6"
-
-[[package]]
 name = "yamux"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7513,18 +7310,18 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.8.1"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
+checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
 dependencies = [
  "zeroize_derive",
 ]
 
 [[package]]
 name = "zeroize_derive"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
+checksum = "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328"
 dependencies = [
  "proc-macro2",
  "quote",

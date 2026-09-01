@@ -1,10 +1,10 @@
 [package]
-name = "auki-p2p-dataset"
+name = "posemesh-p2p-dataset"
 version = "0.1.0"
 edition = "2021"
 rust-version.workspace = true
 publish = false
-description = "Authenticated immutable dataset protocol for auki-p2p"
+description = "Posemesh authenticated immutable dataset protocol built on the Auki SDK"
 readme = "README.md"
 
 [dependencies]

@@ -10,7 +10,6 @@ use auki_p2p::{
     P2PAccessClaims, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL,
     P2P_TOKEN_TYPE,
 };
-use auki_p2p_dataset::{DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetRegistration};
 use auki_sdk::{
     AukiPeer, AukiPeerConfig, AukiRelayConfig, AukiRelayMode, DdsVerificationKeys,
     ExternalAuthorityUpdate, Identity, SignedP2pCredential,
@@ -34,6 +33,7 @@ use libp2p::{
     tcp, yamux, PeerId, StreamProtocol, SwarmBuilder,
 };
 use libp2p_stream::{Behaviour as StreamBehaviour, IncomingStreams};
+use posemesh_p2p_dataset::{DatasetRoutePolicy, P2pDatasetAdapter, P2pDatasetRegistration};
 use serde_json::json;
 use tempfile::TempDir;
 use tokio::{fs, net::TcpListener, sync::mpsc, task::JoinHandle};
@@ -71,22 +71,18 @@ async fn relay_transfer() {
     let temp = TempDir::new().unwrap();
     let domain_id = Uuid::new_v4();
     let robot_identity = Identity::generate();
-    let robot_config = AukiPeerConfig::new(
-        dms.base_url(),
-        "dataset-relay-facade-test",
-        temp.path().join("robot"),
-    )
-    .unwrap()
-    .with_relay(
-        AukiRelayConfig::new(
-            AukiRelayMode::Public,
-            1,
-            CIRCUIT_DURATION,
-            Duration::from_secs(1),
+    let robot_config = AukiPeerConfig::new(dms.base_url())
+        .unwrap()
+        .with_relay(
+            AukiRelayConfig::new(
+                AukiRelayMode::Public,
+                1,
+                CIRCUIT_DURATION,
+                Duration::from_secs(1),
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    )
-    .unwrap();
+        .unwrap();
     let (robot, _robot_authority) = AukiPeer::start_external(
         robot_identity.clone(),
         authority(&robot_identity, domain_id, "robot"),
@@ -103,7 +99,11 @@ async fn relay_transfer() {
     assert_eq!(relay_route.relay_peer_id, relay.peer_id);
     assert_eq!(relay_route.limits.duration(), CIRCUIT_DURATION);
     assert_eq!(relay_route.limits.data_bytes_per_direction(), CIRCUIT_BYTES);
-    let published_route = relay_route.route.to_string();
+    let published_tcp_route = relay_route.routes.tcp().to_string();
+    let published_wss_route = relay_route.routes.wss().to_string();
+    assert!(!published_tcp_route.contains("/wss/"));
+    assert!(published_wss_route.contains("/wss/"));
+    assert_ne!(published_tcp_route, published_wss_route);
 
     let robot_dataset =
         P2pDatasetAdapter::new(robot.protocol_context(), DatasetRoutePolicy::RelayRequired)
@@ -122,17 +122,19 @@ async fn relay_transfer() {
         })
         .await
         .unwrap();
-    assert_eq!(reference.multiaddrs, vec![published_route]);
-    assert!(reference.multiaddrs[0].contains("/p2p-circuit/"));
+    assert_eq!(
+        reference.multiaddrs,
+        vec![published_tcp_route, published_wss_route]
+    );
+    assert!(reference
+        .multiaddrs
+        .iter()
+        .all(|route| route.contains("/p2p-circuit/")));
 
     let compute_identity = Identity::generate();
-    let compute_config = AukiPeerConfig::new(
-        "http://127.0.0.1:9",
-        "dataset-relay-facade-test",
-        temp.path().join("compute"),
-    )
-    .unwrap()
-    .direct_only();
+    let compute_config = AukiPeerConfig::new("http://127.0.0.1:9")
+        .unwrap()
+        .direct_only();
     let (compute, _compute_authority) = AukiPeer::start_external(
         compute_identity.clone(),
         authority(&compute_identity, domain_id, "compute"),
@@ -184,10 +186,11 @@ fn ready_booking(booking_id: Uuid, relay_peer_id: PeerId, port: u16) -> serde_js
             "state": "ready",
             "assignment_id": Uuid::new_v4(),
             "reservation_epoch": Uuid::new_v4(),
-            "provider_peer_id": relay_peer_id,
-            "provider_base_addresses": [format!(
-                "/dns4/relay.127-0-0-1.nip.io/tcp/{port}/p2p/{relay_peer_id}"
-            )],
+            "provider_peer_id": relay_peer_id.to_string(),
+            "provider_base_addresses": [
+                format!("/dns4/relay.127-0-0-1.nip.io/tcp/{port}/p2p/{relay_peer_id}"),
+                format!("/dns4/relay.127-0-0-1.nip.io/tcp/{port}/wss/p2p/{relay_peer_id}")
+            ],
             "limits": {
                 "duration_seconds": CIRCUIT_DURATION.as_secs(),
                 "data_bytes_per_direction": CIRCUIT_BYTES

@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use auki_p2p::{Identity, Multiaddr, PeerIdentityProof, Protocol};
-use auki_p2p_dataset::{
-    DatasetRoutePolicy, DatasetService, P2pDataset, P2pDatasetAdapter, P2pDatasetServer,
-};
 use auki_sdk::{
     AukiPeer, AukiPeerConfig, AukiPeerStatus, AukiRelayConfig, ExternalAuthorityControl,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
+use posemesh_p2p_dataset::{
+    DatasetRoutePolicy, DatasetService, P2pDataset, P2pDatasetAdapter, P2pDatasetServer,
+};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -130,36 +130,7 @@ struct TaskDatasetActivation {
     generation: u64,
 }
 
-#[derive(Clone, Copy)]
-enum PeerRuntimeKind {
-    Robot,
-    Compute,
-}
-
-impl PeerRuntimeKind {
-    fn app_id(self) -> &'static str {
-        match self {
-            Self::Robot => "posemesh-robot-node",
-            Self::Compute => "posemesh-compute-node",
-        }
-    }
-
-    fn storage_directory(self) -> &'static str {
-        match self {
-            Self::Robot => "robot",
-            Self::Compute => "compute",
-        }
-    }
-}
-
-fn peer_facade_config(
-    cfg: &NodeConfig,
-    kind: PeerRuntimeKind,
-    relay: Option<AukiRelayConfig>,
-) -> Result<AukiPeerConfig> {
-    let peer_id = cfg
-        .p2p_peer_id()
-        .ok_or_else(|| anyhow!("a persisted P2P identity is required for the Auki peer facade"))?;
+fn peer_facade_config(cfg: &NodeConfig, relay: Option<AukiRelayConfig>) -> Result<AukiPeerConfig> {
     let listen_addresses = parse_p2p_multiaddrs(
         &cfg.auki_p2p_listen_multiaddrs,
         "AUKI_P2P_LISTEN_MULTIADDRS",
@@ -168,12 +139,8 @@ fn peer_facade_config(
         &cfg.auki_p2p_advertised_multiaddrs,
         "AUKI_P2P_ADVERTISED_MULTIADDRS",
     )?;
-    let storage_root = std::env::temp_dir()
-        .join("posemesh-auki-peer")
-        .join(peer_id.to_string())
-        .join(kind.storage_directory());
-    let config = AukiPeerConfig::new(cfg.dms_base_url.as_str(), kind.app_id(), storage_root)?
-        .with_listen_addresses(listen_addresses)?;
+    let config =
+        AukiPeerConfig::new(cfg.dms_base_url.as_str())?.with_listen_addresses(listen_addresses)?;
     let config = match relay {
         Some(relay) => config.with_relay(relay)?,
         None => config.direct_only(),
@@ -399,14 +366,14 @@ impl Drop for TaskDatasetActivation {
 impl P2pDataset for TaskDatasetSlot {
     async fn register(
         &self,
-        registration: auki_p2p_dataset::P2pDatasetRegistration,
-    ) -> anyhow::Result<auki_p2p_dataset::P2pDatasetReference> {
+        registration: posemesh_p2p_dataset::P2pDatasetRegistration,
+    ) -> anyhow::Result<posemesh_p2p_dataset::P2pDatasetReference> {
         self.current()?.register(registration).await
     }
 
     async fn fetch(
         &self,
-        reference: &auki_p2p_dataset::P2pDatasetReference,
+        reference: &posemesh_p2p_dataset::P2pDatasetReference,
         destination: &std::path::Path,
     ) -> anyhow::Result<()> {
         self.current()?.fetch(reference, destination).await
@@ -481,7 +448,7 @@ pub async fn run_node_with_shutdown(
     let prepared_peer = prepare_peer_identity(&cfg)?;
     let compute_peer_config = prepared_peer
         .as_ref()
-        .map(|_| peer_facade_config(&cfg, PeerRuntimeKind::Compute, None))
+        .map(|_| peer_facade_config(&cfg, None))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
     let runners = runners
@@ -619,7 +586,7 @@ pub async fn run_robot_node_with_shutdowns(
     let prepared_peer = prepare_peer_identity(&runtime_cfg)?;
     let peer_config = prepared_peer
         .as_ref()
-        .map(|_| peer_facade_config(&runtime_cfg, PeerRuntimeKind::Robot, relay_config))
+        .map(|_| peer_facade_config(&runtime_cfg, relay_config))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
     let runners = runners
@@ -723,8 +690,8 @@ pub async fn run_robot_node_with_shutdowns(
     ) {
         Ok(driver) => driver,
         Err(error) => {
-            let _ = peer.shutdown().await;
             authority_lifecycle.cancel();
+            let _ = peer.shutdown().await;
             robot_handle.shutdown().await;
             return Err(anyhow::Error::new(error).context("start Robot P2P authority driver"));
         }
@@ -732,9 +699,9 @@ pub async fn run_robot_node_with_shutdowns(
     let dataset = match P2pDatasetAdapter::new(peer.protocol_context(), route_policy) {
         Ok(dataset) => Arc::new(dataset),
         Err(error) => {
-            let _ = peer.shutdown().await;
             authority_lifecycle.cancel();
             authority_driver.shutdown().await;
+            let _ = peer.shutdown().await;
             robot_handle.shutdown().await;
             return Err(error.into());
         }
@@ -743,9 +710,9 @@ pub async fn run_robot_node_with_shutdowns(
     let dataset_activation = match dataset_slot.activate(active_dataset) {
         Ok(activation) => activation,
         Err(error) => {
-            let _ = peer.shutdown().await;
             authority_lifecycle.cancel();
             authority_driver.shutdown().await;
+            let _ = peer.shutdown().await;
             robot_handle.shutdown().await;
             return Err(error);
         }
@@ -754,9 +721,9 @@ pub async fn run_robot_node_with_shutdowns(
         Ok(server) => server,
         Err(error) => {
             drop(dataset_activation);
-            let _ = peer.shutdown().await;
             authority_lifecycle.cancel();
             authority_driver.shutdown().await;
+            let _ = peer.shutdown().await;
             robot_handle.shutdown().await;
             return Err(error.into());
         }
@@ -786,14 +753,16 @@ pub async fn run_robot_node_with_shutdowns(
     }
     shutdown_dataset_server(Some(dataset_server)).await;
     drop(dataset_activation);
+    // Keep renewal alive through the reference drain, then stop and join its
+    // external-authority control loop before the facade tears authority down.
+    authority_lifecycle.cancel();
+    authority_driver.shutdown().await;
     if let Err(error) = peer.shutdown().await {
         warn!(error = %error, "Robot Auki peer shutdown failed");
         if result.is_ok() {
             result = Err(error.into());
         }
     }
-    authority_lifecycle.cancel();
-    authority_driver.shutdown().await;
     robot_handle.shutdown().await;
     info!("Shutdown signal received; exiting robot node loop");
 
@@ -1047,9 +1016,7 @@ async fn wait_until_peer_ready(
             AukiPeerStatus::Stopping | AukiPeerStatus::Stopped => {
                 return Err(anyhow!("Auki peer stopped unexpectedly"));
             }
-            AukiPeerStatus::Starting
-            | AukiPeerStatus::AuthorityUnavailable
-            | AukiPeerStatus::RelayUnavailable => {}
+            AukiPeerStatus::AuthorityUnavailable | AukiPeerStatus::RelayUnavailable => {}
         }
         tokio::select! {
             _ = shutdown.cancelled() => return Ok(false),
@@ -1066,9 +1033,6 @@ async fn wait_for_peer_loss(
     loop {
         match *status.borrow_and_update() {
             AukiPeerStatus::Ready => {}
-            AukiPeerStatus::Starting => {
-                return anyhow!("Auki peer unexpectedly returned to startup");
-            }
             AukiPeerStatus::AuthorityUnavailable => {
                 return anyhow!("Auki peer authority became unavailable");
             }
@@ -1864,8 +1828,8 @@ mod tests {
     use super::*;
     use crate::config::{P2pPrivateKey, RobotNodeConfig};
     use auki_p2p::Identity;
-    use auki_p2p_dataset::{P2pDatasetReference, P2pDatasetRegistration};
     use auki_sdk::AukiRelayMode;
+    use posemesh_p2p_dataset::{P2pDatasetReference, P2pDatasetRegistration};
 
     struct SuccessfulDataset;
 
@@ -1996,7 +1960,7 @@ mod tests {
     }
 
     #[test]
-    fn facade_config_maps_compute_to_direct_only_and_robot_to_sdk_relay() {
+    fn facade_config_maps_relay_selection_to_sdk() {
         let mut robot = RobotNodeConfig::new(
             "https://dds.example.test".parse().unwrap(),
             "https://dms.example.test/v1".parse().unwrap(),
@@ -2004,11 +1968,6 @@ mod tests {
         )
         .unwrap();
         robot.auki_p2p_enabled = true;
-        let identity = Identity::from_ed25519_seed(&[0x47; 32]);
-        robot.set_p2p_private_key(Some(
-            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
-                .unwrap(),
-        ));
         let relay = AukiRelayConfig::new(
             AukiRelayMode::Dedicated,
             2,
@@ -2019,13 +1978,11 @@ mod tests {
         robot.set_relay_config(Some(relay)).unwrap();
         let runtime = robot.runtime_config();
 
-        let compute = peer_facade_config(&runtime, PeerRuntimeKind::Compute, None).unwrap();
-        assert_eq!(compute.app_id(), "posemesh-compute-node");
-        assert!(!compute.relay_required());
+        let direct = peer_facade_config(&runtime, None).unwrap();
+        assert!(!direct.relay_required());
 
-        let robot = peer_facade_config(&runtime, PeerRuntimeKind::Robot, Some(relay)).unwrap();
-        assert_eq!(robot.app_id(), "posemesh-robot-node");
-        assert_eq!(robot.relay(), Some(relay));
+        let relayed = peer_facade_config(&runtime, Some(relay)).unwrap();
+        assert_eq!(relayed.relay(), Some(relay));
     }
 
     #[test]
@@ -2037,14 +1994,9 @@ mod tests {
         )
         .unwrap();
         robot.auki_p2p_enabled = true;
-        let identity = Identity::from_ed25519_seed(&[0x48; 32]);
-        robot.set_p2p_private_key(Some(
-            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
-                .unwrap(),
-        ));
         robot.auki_p2p_advertised_multiaddrs = vec!["/ip4/0.0.0.0/tcp/41001".into()];
 
-        let error = peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, None)
+        let error = peer_facade_config(&robot.runtime_config(), None)
             .expect_err("the SDK must reject an unspecified advertised address");
         assert!(error
             .to_string()
@@ -2060,17 +2012,11 @@ mod tests {
         )
         .unwrap();
         robot.auki_p2p_enabled = true;
-        let identity = Identity::from_ed25519_seed(&[0x49; 32]);
-        robot.set_p2p_private_key(Some(
-            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
-                .unwrap(),
-        ));
         robot.auki_p2p_advertised_multiaddrs = (1..=16)
             .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
             .collect();
 
-        let config =
-            peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, None).unwrap();
+        let config = peer_facade_config(&robot.runtime_config(), None).unwrap();
         assert!(!config.relay_required());
         assert_eq!(config.advertised_direct_routes().len(), 16);
     }
@@ -2084,11 +2030,6 @@ mod tests {
         )
         .unwrap();
         robot.auki_p2p_enabled = true;
-        let identity = Identity::from_ed25519_seed(&[0x4a; 32]);
-        robot.set_p2p_private_key(Some(
-            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
-                .unwrap(),
-        ));
         robot.auki_p2p_advertised_multiaddrs = (1..=13)
             .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
             .collect();
@@ -2100,9 +2041,7 @@ mod tests {
         )
         .unwrap();
 
-        let config =
-            peer_facade_config(&robot.runtime_config(), PeerRuntimeKind::Robot, Some(relay))
-                .unwrap();
+        let config = peer_facade_config(&robot.runtime_config(), Some(relay)).unwrap();
         assert_eq!(config.advertised_direct_routes().len(), 13);
         assert_eq!(config.relay(), Some(relay));
     }

@@ -1,6 +1,8 @@
-use auki_p2p_dataset::{DatasetService, P2pDataset, P2pDatasetReference, P2pDatasetRegistration};
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, Runner, TaskCtx};
 use posemesh_compute_node::engine::RunnerRegistry;
+use posemesh_p2p_dataset::{
+    DatasetService, P2pDataset, P2pDatasetReference, P2pDatasetRegistration,
+};
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},

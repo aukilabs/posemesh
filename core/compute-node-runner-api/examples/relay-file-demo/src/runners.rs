@@ -2,15 +2,15 @@ use std::{path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use auki_p2p_dataset::{
-    DatasetService, P2pDatasetReference, P2pDatasetRegistration, P2P_DATASET_SCHEMA,
-};
 use chrono::{DateTime, Utc};
 use compute_runner_api::{
     runner::{DomainArtifactContent, DomainArtifactRequest},
     Runner, TaskCtx,
 };
 use posemesh_compute_node_runner_api as compute_runner_api;
+use posemesh_p2p_dataset::{
+    DatasetService, P2pDatasetReference, P2pDatasetRegistration, P2P_DATASET_SCHEMA,
+};
 use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};

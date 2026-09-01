@@ -18,13 +18,12 @@ use std::{
 
 use async_trait::async_trait;
 use auki_p2p::{
-    canonicalize_circuit_route, validate_direct_route, AuthenticatedRouteStream, Multiaddr, PeerId,
-    PeerRole, Protocol, RouteSnapshot,
+    validate_direct_route, AuthenticatedRouteStream, ExpectedRelayLimits, Multiaddr, PeerId,
+    PeerRole, Protocol, RelayBaseTransport, RelayProvider, RouteSnapshot,
 };
 use auki_sdk::{
-    AukiPeerAuthorizationError, AukiPeerProtocolContext, AukiPeerProtocolsError,
-    AukiPeerRoutesError, DomainProtocolError, DomainProtocolRegistration, DomainProtocolSpec,
-    DomainProtocolStream,
+    AukiPeerAuthorizationError, AukiPeerProtocolContext, AukiPeerRoutesError, AukiProtocolError,
+    AukiProtocolRegistration, AukiProtocolSpec, AukiProtocolStream,
 };
 use chrono::{DateTime, Utc};
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -40,9 +39,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
 
-pub const DATASET_PROTOCOL: &str = "/auki-p2p/dataset/0";
-pub const P2P_DATASET_SCHEMA: &str = "auki-p2p-dataset/v0";
-const DATASET_REQUEST_VERSION: u8 = 0;
+pub const DATASET_PROTOCOL: &str = "/posemesh/dataset/1.0.0";
+pub const P2P_DATASET_SCHEMA: &str = "posemesh-dataset/v1";
+const DATASET_REQUEST_VERSION: u8 = 1;
 const MAX_REQUEST_BYTES: usize = 4 * 1024;
 const MAX_RESPONSE_HEADER_BYTES: usize = 16 * 1024;
 const MAX_DATASET_ID_BYTES: usize = 512;
@@ -52,10 +51,17 @@ const TRANSFER_BUFFER_BYTES: usize = 64 * 1024;
 const FETCH_ATTEMPTS: usize = 2;
 const FETCH_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const FETCH_CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
-/// Maximum routes carried by one immutable dataset reference.
-pub const MAX_DATASET_ROUTES: usize = 16;
-/// Maximum relay circuits carried by one immutable dataset reference.
-pub const MAX_DATASET_RELAY_ROUTES: usize = 3;
+/// Maximum logical local-route slots represented by one dataset reference.
+/// A direct route consumes one slot; a relay provider consumes one slot while
+/// expanding to two physical circuit addresses.
+pub const MAX_DATASET_ROUTE_SLOTS: usize = 16;
+/// Maximum relay providers carried by one immutable dataset reference.
+pub const MAX_DATASET_RELAY_PROVIDERS: usize = 3;
+/// Maximum relay circuit addresses carried by one immutable dataset reference.
+pub const MAX_DATASET_RELAY_ROUTES: usize = MAX_DATASET_RELAY_PROVIDERS * 2;
+/// Maximum physical addresses carried by one immutable dataset reference.
+/// Three paired providers add three addresses beyond the sixteen logical slots.
+pub const MAX_DATASET_ROUTES: usize = MAX_DATASET_ROUTE_SLOTS + MAX_DATASET_RELAY_PROVIDERS;
 const MAX_PUBLISHED_ROUTES: usize = MAX_DATASET_ROUTES;
 const MAX_CIRCUIT_ROUTES: usize = MAX_DATASET_RELAY_ROUTES;
 const MIN_CIRCUIT_DURATION: Duration = Duration::from_secs(15 * 60);
@@ -136,9 +142,9 @@ pub enum P2pDatasetError {
     #[error("P2P dataset local authorization is unavailable")]
     Authorization(#[source] AukiPeerAuthorizationError),
     #[error("P2P dataset protocol operation failed")]
-    Protocol(#[source] AukiPeerProtocolsError),
+    Protocol(#[source] AukiProtocolError),
     #[error("P2P dataset protocol specification is invalid")]
-    ProtocolSpec(#[source] DomainProtocolError),
+    ProtocolSpec(#[source] AukiProtocolError),
     #[error("P2P dataset route view failed")]
     Routes(#[source] AukiPeerRoutesError),
     #[error("P2P dataset local peer type must be {expected}; got {actual}")]
@@ -189,6 +195,8 @@ pub enum P2pDatasetError {
     RelayBudgetOverflow,
     #[error("P2P dataset route set exceeds the {maximum}-route limit")]
     RouteLimitExceeded { maximum: usize },
+    #[error("P2P dataset route set exceeds the {maximum}-logical-slot limit")]
+    RouteSlotLimitExceeded { maximum: usize },
     #[error("P2P dataset route set exceeds the {maximum}-circuit limit")]
     CircuitRouteLimitExceeded { maximum: usize },
     #[error("P2P dataset transfer generation is exhausted")]
@@ -319,6 +327,13 @@ struct DatasetResponseHeader {
 enum DatasetRouteCandidate {
     Direct(Multiaddr),
     Circuit(Multiaddr),
+}
+
+struct CanonicalDatasetCircuitRoute {
+    route: Multiaddr,
+    relay_peer_id: PeerId,
+    endpoint_key: String,
+    transport: RelayBaseTransport,
 }
 
 impl DatasetRouteCandidate {
@@ -527,12 +542,7 @@ impl P2pDatasetAdapter {
             }
         }
         require_local_dataset_role(&self.inner.context, PeerRole::Robot)?;
-        let spec = DomainProtocolSpec::new(
-            DATASET_PROTOCOL,
-            MAX_CONCURRENT_TRANSFERS,
-            MAX_REQUEST_BYTES as u32,
-        )
-        .map_err(P2pDatasetError::ProtocolSpec)?;
+        let spec = dataset_protocol_spec().map_err(P2pDatasetError::ProtocolSpec)?;
 
         {
             let mut state = self.inner.state.lock();
@@ -897,7 +907,7 @@ impl P2pDatasetAdapter {
         Ok(stream)
     }
 
-    async fn serve_stream(&self, mut stream: DomainProtocolStream) -> Result<()> {
+    async fn serve_stream(&self, mut stream: AukiProtocolStream) -> Result<()> {
         require_remote_dataset_role(stream.remote_peer(), PeerRole::Compute)?;
         require_local_dataset_role(&self.inner.context, PeerRole::Robot)?;
         let request: DatasetRequest = read_json_frame(&mut stream, MAX_REQUEST_BYTES).await?;
@@ -1140,7 +1150,7 @@ impl P2pDataset for P2pDatasetAdapter {
 
 pub struct P2pDatasetServer {
     adapter: P2pDatasetAdapter,
-    server: Option<DomainProtocolRegistration>,
+    server: Option<AukiProtocolRegistration>,
     route_watch_stop: CancellationToken,
     route_watch_task: Option<JoinHandle<()>>,
 }
@@ -1148,15 +1158,16 @@ pub struct P2pDatasetServer {
 impl P2pDatasetServer {
     pub async fn shutdown(mut self) -> Result<()> {
         self.adapter.close_registrations();
-        if let Some(server) = self.server.take() {
-            server.close().await;
-        }
+        let close_result = match self.server.take() {
+            Some(server) => server.close().await.map_err(P2pDatasetError::Protocol),
+            None => Ok(()),
+        };
         self.route_watch_stop.cancel();
         if let Some(task) = self.route_watch_task.take() {
             let _ = task.await;
         }
         self.adapter.clear_serving();
-        Ok(())
+        close_result
     }
 }
 
@@ -1187,6 +1198,17 @@ fn validate_dataset_id(dataset_id: &str) -> Result<()> {
         return Err(P2pDatasetError::InvalidDatasetId);
     }
     Ok(())
+}
+
+fn dataset_protocol_spec() -> std::result::Result<AukiProtocolSpec, AukiProtocolError> {
+    // The protocol contract covers every framed message in either direction.
+    // Requests are capped more tightly, while response headers may use the
+    // full advertised bound.
+    AukiProtocolSpec::new(
+        DATASET_PROTOCOL,
+        MAX_CONCURRENT_TRANSFERS,
+        MAX_REQUEST_BYTES.max(MAX_RESPONSE_HEADER_BYTES) as u32,
+    )
 }
 
 fn validate_dataset_name(name: &str) -> Result<()> {
@@ -1230,6 +1252,11 @@ fn select_registration_routes(
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
+    if routes.direct_routes.len() > MAX_DATASET_ROUTE_SLOTS {
+        return Err(P2pDatasetError::RouteSlotLimitExceeded {
+            maximum: MAX_DATASET_ROUTE_SLOTS,
+        });
+    }
     if policy == DatasetRoutePolicy::RelayRequired {
         let required_data_bytes = required_relay_data_bytes(size_bytes)?;
         let eligible = routes
@@ -1240,17 +1267,28 @@ fn select_registration_routes(
                     && entry.limits.duration() >= MIN_CIRCUIT_DURATION
                     && entry.limits.data_bytes_per_direction() >= required_data_bytes
             })
-            .map(|entry| entry.route.to_string())
             .collect::<Vec<_>>();
         if eligible.is_empty() {
             return Err(P2pDatasetError::NoEligibleRelayRoute);
         }
-        if eligible.len() > MAX_CIRCUIT_ROUTES {
+        if eligible.len() > MAX_DATASET_RELAY_PROVIDERS {
             return Err(P2pDatasetError::CircuitRouteLimitExceeded {
                 maximum: MAX_CIRCUIT_ROUTES,
             });
         }
-        selected.extend(eligible);
+        if routes.direct_routes.len() + eligible.len() > MAX_DATASET_ROUTE_SLOTS {
+            return Err(P2pDatasetError::RouteSlotLimitExceeded {
+                maximum: MAX_DATASET_ROUTE_SLOTS,
+            });
+        }
+        selected.extend(eligible.into_iter().flat_map(|entry| {
+            // One SDK publication entry owns an atomic transport pair. Keep
+            // provider order stable and always publish TCP before WSS.
+            [
+                entry.routes.tcp().to_string(),
+                entry.routes.wss().to_string(),
+            ]
+        }));
     }
     if selected.len() > MAX_PUBLISHED_ROUTES {
         return Err(P2pDatasetError::RouteLimitExceeded {
@@ -1295,6 +1333,60 @@ fn serving_status(
             .map(|transfer| transfer.deadline)
             .max(),
     }
+}
+
+fn canonicalize_dataset_circuit_route(
+    route: &Multiaddr,
+    expected_target_peer_id: PeerId,
+) -> std::result::Result<CanonicalDatasetCircuitRoute, String> {
+    let mut provider_base = route.clone();
+    let target_peer_id = match provider_base.pop() {
+        Some(Protocol::P2p(peer_id)) => peer_id,
+        _ => return Err("route is missing its target Peer ID".to_owned()),
+    };
+    if target_peer_id != expected_target_peer_id {
+        return Err("route target Peer ID does not match the reference".to_owned());
+    }
+    if !matches!(provider_base.pop(), Some(Protocol::P2pCircuit)) {
+        return Err("route is missing p2p-circuit".to_owned());
+    }
+    let relay_peer_id = match provider_base.iter().last() {
+        Some(Protocol::P2p(peer_id)) => peer_id,
+        _ => return Err("route is missing its relay Peer ID".to_owned()),
+    };
+    let validation_limits = ExpectedRelayLimits::new(Duration::from_secs(1), 1)
+        .expect("the fixed dataset route-validation limits are valid");
+
+    for transport in [RelayBaseTransport::Tcp, RelayBaseTransport::Wss] {
+        let Ok(provider) = RelayProvider::new_for_transport(
+            relay_peer_id,
+            [provider_base.to_string()],
+            transport,
+            validation_limits,
+        ) else {
+            continue;
+        };
+        let Ok(canonical) =
+            provider.circuit_route_for_transport(transport, expected_target_peer_id)
+        else {
+            continue;
+        };
+        if canonical != *route {
+            continue;
+        }
+        let mut endpoint = provider.selected_base().clone();
+        if !matches!(endpoint.pop(), Some(Protocol::P2p(_))) {
+            return Err("canonical relay base omitted its Peer ID".to_owned());
+        }
+        return Ok(CanonicalDatasetCircuitRoute {
+            route: canonical,
+            relay_peer_id,
+            endpoint_key: endpoint.to_string(),
+            transport,
+        });
+    }
+
+    Err("route is not a canonical TCP or WSS relay circuit".to_owned())
 }
 
 fn validate_reference(
@@ -1368,40 +1460,55 @@ fn validate_reference(
     let mut direct = Vec::new();
     let mut circuit = Vec::new();
     let mut direct_routes = HashSet::new();
-    let mut relay_peer_ids = HashSet::new();
+    let mut relay_order = Vec::new();
+    let mut relay_pairs = HashMap::<PeerId, (Option<Multiaddr>, Option<Multiaddr>)>::new();
     let mut relay_endpoint_keys = HashSet::new();
     for (route_index, raw, route) in parsed {
         let is_circuit = route
             .iter()
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit));
         if is_circuit {
-            let canonical = match canonicalize_circuit_route(&route, peer_id) {
+            let canonical = match canonicalize_dataset_circuit_route(&route, peer_id) {
                 Ok(canonical) => canonical,
                 Err(error) => {
                     warn!(
                         route_index,
                         route = %raw,
                         error = %error,
-                        "skipping unsafe P2P dataset circuit candidate"
+                        "rejecting unsafe P2P dataset circuit candidate"
                     );
-                    continue;
+                    return Err(P2pDatasetError::InvalidReference);
                 }
             };
-            if relay_peer_ids.contains(&canonical.relay_peer_id)
-                || relay_endpoint_keys.contains(&canonical.endpoint_key)
-            {
+            if !relay_pairs.contains_key(&canonical.relay_peer_id) {
+                relay_order.push(canonical.relay_peer_id);
+            }
+            let pair = relay_pairs.entry(canonical.relay_peer_id).or_default();
+            let transport_route = match canonical.transport {
+                RelayBaseTransport::Tcp => &mut pair.0,
+                RelayBaseTransport::Wss => &mut pair.1,
+            };
+            if transport_route.is_some() {
+                warn!(
+                    route_index,
+                    route = %raw,
+                    relay_peer_id = %canonical.relay_peer_id,
+                    transport = %canonical.transport,
+                    "rejecting duplicate P2P dataset relay transport candidate"
+                );
+                return Err(P2pDatasetError::InvalidReference);
+            }
+            if !relay_endpoint_keys.insert(canonical.endpoint_key.clone()) {
                 warn!(
                     route_index,
                     route = %raw,
                     relay_peer_id = %canonical.relay_peer_id,
                     endpoint_key = %canonical.endpoint_key,
-                    "skipping duplicate P2P dataset circuit candidate"
+                    "rejecting duplicate P2P dataset relay endpoint"
                 );
-                continue;
+                return Err(P2pDatasetError::InvalidReference);
             }
-            relay_peer_ids.insert(canonical.relay_peer_id);
-            relay_endpoint_keys.insert(canonical.endpoint_key);
-            circuit.push(DatasetRouteCandidate::Circuit(canonical.route));
+            *transport_route = Some(canonical.route);
         } else {
             let canonical = match validate_direct_route(&route, peer_id) {
                 Ok(canonical) => canonical,
@@ -1425,6 +1532,23 @@ fn validate_reference(
             }
             direct.push(DatasetRouteCandidate::Direct(canonical));
         }
+    }
+    let relay_provider_count = relay_order.len();
+    for relay_peer_id in relay_order {
+        let (Some(tcp), Some(wss)) = relay_pairs.remove(&relay_peer_id).unwrap_or_default() else {
+            warn!(
+                %relay_peer_id,
+                "rejecting incomplete P2P dataset relay transport pair"
+            );
+            return Err(P2pDatasetError::InvalidReference);
+        };
+        circuit.push(DatasetRouteCandidate::Circuit(tcp));
+        circuit.push(DatasetRouteCandidate::Circuit(wss));
+    }
+    if direct.len() + relay_provider_count > MAX_DATASET_ROUTE_SLOTS {
+        return Err(P2pDatasetError::RouteSlotLimitExceeded {
+            maximum: MAX_DATASET_ROUTE_SLOTS,
+        });
     }
     direct.extend(circuit);
     if direct.is_empty() {
@@ -1507,10 +1631,210 @@ where
 
 #[cfg(test)]
 mod tests {
-    use auki_p2p::Identity;
+    use auki_p2p::{Identity, PublishedRoute, RouteFence};
     use tempfile::TempDir;
 
     use super::*;
+
+    fn relay_route_pair(
+        relay_peer_id: PeerId,
+        target_peer_id: PeerId,
+        host: &str,
+        port: u16,
+    ) -> [String; 2] {
+        let limits = ExpectedRelayLimits::new(Duration::from_secs(900), 2 * 1024 * 1024).unwrap();
+        let provider = RelayProvider::new_dual_transport(
+            relay_peer_id,
+            [
+                format!("/dns4/{host}/tcp/{port}/p2p/{relay_peer_id}"),
+                format!("/dns4/{host}/tcp/{port}/wss/p2p/{relay_peer_id}"),
+            ],
+            RelayBaseTransport::Tcp,
+            limits,
+        )
+        .unwrap();
+        let routes = provider.circuit_routes(target_peer_id).unwrap();
+        [routes.tcp().to_string(), routes.wss().to_string()]
+    }
+
+    fn reference_with_routes(peer_id: PeerId, multiaddrs: Vec<String>) -> P2pDatasetReference {
+        P2pDatasetReference {
+            schema: P2P_DATASET_SCHEMA.into(),
+            dataset_id: "dataset-1".into(),
+            domain_id: Uuid::new_v4(),
+            name: "capture".into(),
+            peer_id: peer_id.to_string(),
+            multiaddrs,
+            size_bytes: 4,
+            sha256: "00".repeat(32),
+            available_until: Utc::now() + chrono::Duration::minutes(5),
+        }
+    }
+
+    #[test]
+    fn protocol_frame_contract_covers_the_largest_framed_message() {
+        let spec = dataset_protocol_spec().unwrap();
+
+        assert_eq!(DATASET_PROTOCOL, "/posemesh/dataset/1.0.0");
+        assert_eq!(P2P_DATASET_SCHEMA, "posemesh-dataset/v1");
+        assert_eq!(DATASET_REQUEST_VERSION, 1);
+        assert_eq!(spec.protocol_id(), DATASET_PROTOCOL);
+        assert_eq!(
+            spec.max_frame_bytes() as usize,
+            MAX_REQUEST_BYTES.max(MAX_RESPONSE_HEADER_BYTES)
+        );
+        assert_eq!(spec.max_frame_bytes(), 16 * 1024);
+    }
+
+    #[test]
+    fn relay_reference_contract_accepts_and_normalizes_tcp_wss_provider_pairs() {
+        assert_eq!(MAX_DATASET_ROUTE_SLOTS, 16);
+        assert_eq!(MAX_DATASET_RELAY_PROVIDERS, 3);
+        assert_eq!(MAX_DATASET_RELAY_ROUTES, 6);
+        assert_eq!(MAX_DATASET_ROUTES, 19);
+
+        let target = Identity::generate().peer_id();
+        let relay_a = relay_route_pair(
+            Identity::generate().peer_id(),
+            target,
+            "relay-a.example.com",
+            4101,
+        );
+        let relay_b = relay_route_pair(
+            Identity::generate().peer_id(),
+            target,
+            "relay-b.example.com",
+            4102,
+        );
+        let reference = reference_with_routes(
+            target,
+            vec![
+                relay_a[1].clone(),
+                relay_a[0].clone(),
+                relay_b[0].clone(),
+                relay_b[1].clone(),
+            ],
+        );
+
+        let (_, candidates) = validate_reference(&reference).unwrap();
+        let routes = candidates
+            .iter()
+            .map(|candidate| candidate.route().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            routes,
+            vec![
+                relay_a[0].clone(),
+                relay_a[1].clone(),
+                relay_b[0].clone(),
+                relay_b[1].clone(),
+            ]
+        );
+    }
+
+    #[test]
+    fn logical_route_slots_allow_sixteen_direct_but_not_an_extra_provider_pair() {
+        let target = Identity::generate().peer_id();
+        let direct = (0..MAX_DATASET_ROUTE_SLOTS)
+            .map(|index| format!("/ip4/192.0.2.1/tcp/{}", 4000 + index))
+            .collect::<Vec<_>>();
+        let direct_reference = reference_with_routes(target, direct.clone());
+        assert_eq!(
+            validate_reference(&direct_reference).unwrap().1.len(),
+            MAX_DATASET_ROUTE_SLOTS
+        );
+
+        let relay_peer_id = Identity::generate().peer_id();
+        let pair = relay_route_pair(relay_peer_id, target, "relay.example.com", 4101);
+        let mut overfilled_reference_routes = direct.clone();
+        overfilled_reference_routes.extend(pair);
+        assert!(matches!(
+            validate_reference(&reference_with_routes(target, overfilled_reference_routes)),
+            Err(P2pDatasetError::RouteSlotLimitExceeded { maximum: 16 })
+        ));
+
+        let limits = ExpectedRelayLimits::new(Duration::from_secs(900), 2 * 1024 * 1024).unwrap();
+        let provider = RelayProvider::new_dual_transport(
+            relay_peer_id,
+            [
+                format!("/dns4/relay.example.com/tcp/4101/p2p/{relay_peer_id}"),
+                format!("/dns4/relay.example.com/tcp/4101/wss/p2p/{relay_peer_id}"),
+            ],
+            RelayBaseTransport::Tcp,
+            limits,
+        )
+        .unwrap();
+        let mut snapshot = RouteSnapshot {
+            revision: 1,
+            direct_routes: direct
+                .into_iter()
+                .map(|route| route.parse().unwrap())
+                .collect(),
+            relay_routes: Vec::new(),
+        };
+        assert_eq!(
+            select_registration_routes(&snapshot, DatasetRoutePolicy::DirectOnly, 1, Utc::now())
+                .unwrap()
+                .len(),
+            MAX_DATASET_ROUTE_SLOTS
+        );
+        snapshot.relay_routes.push(PublishedRoute {
+            fence: RouteFence {
+                route_id: Uuid::new_v4(),
+                authority_id: Uuid::new_v4(),
+                authority_epoch: Uuid::new_v4(),
+                local_generation: 1,
+            },
+            relay_peer_id,
+            routes: provider.circuit_routes(target).unwrap(),
+            limits,
+            authorized_until: Utc::now() + chrono::Duration::minutes(5),
+        });
+        assert!(matches!(
+            select_registration_routes(&snapshot, DatasetRoutePolicy::RelayRequired, 1, Utc::now()),
+            Err(P2pDatasetError::RouteSlotLimitExceeded { maximum: 16 })
+        ));
+    }
+
+    #[test]
+    fn relay_reference_contract_rejects_incomplete_duplicate_and_additional_variants() {
+        let target = Identity::generate().peer_id();
+        let relay_peer_id = Identity::generate().peer_id();
+        let pair = relay_route_pair(relay_peer_id, target, "relay.example.com", 4101);
+        let alternate = relay_route_pair(relay_peer_id, target, "relay-alt.example.com", 4199);
+        let invalid_route_sets = [
+            vec![pair[0].clone()],
+            vec![pair[0].clone(), pair[1].clone(), pair[0].clone()],
+            vec![pair[0].clone(), pair[1].clone(), alternate[0].clone()],
+        ];
+
+        for multiaddrs in invalid_route_sets {
+            assert!(matches!(
+                validate_reference(&reference_with_routes(target, multiaddrs)),
+                Err(P2pDatasetError::InvalidReference)
+            ));
+        }
+    }
+
+    #[test]
+    fn relay_reference_contract_rejects_more_than_three_provider_pairs() {
+        let target = Identity::generate().peer_id();
+        let multiaddrs = (0..4)
+            .flat_map(|index| {
+                relay_route_pair(
+                    Identity::generate().peer_id(),
+                    target,
+                    &format!("relay-{index}.example.com"),
+                    4100 + index,
+                )
+            })
+            .collect();
+
+        assert!(matches!(
+            validate_reference(&reference_with_routes(target, multiaddrs)),
+            Err(P2pDatasetError::CircuitRouteLimitExceeded { maximum: 6 })
+        ));
+    }
 
     #[test]
     fn dataset_identifiers_and_names_are_bounded() {

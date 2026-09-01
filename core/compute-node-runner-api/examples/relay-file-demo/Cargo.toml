@@ -8,7 +8,7 @@ default-run = "posemesh-relay-file-robot"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-auki-p2p-dataset = { workspace = true }
+posemesh-p2p-dataset = { workspace = true }
 chrono = { workspace = true }
 dotenvy = "0.15"
 hex = { workspace = true }

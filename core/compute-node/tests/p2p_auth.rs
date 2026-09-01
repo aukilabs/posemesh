@@ -485,14 +485,9 @@ async fn compute_facade_atomically_replaces_credential_and_rotated_keys() {
         .external_authority_update(&identity.proof(), domain_id, &first_token, first_expiry)
         .await
         .unwrap();
-    let storage = tempfile::tempdir().unwrap();
-    let config = AukiPeerConfig::new(
-        "http://127.0.0.1:9",
-        "posemesh-p2p-auth-test",
-        storage.path(),
-    )
-    .unwrap()
-    .direct_only();
+    let config = AukiPeerConfig::new("http://127.0.0.1:9")
+        .unwrap()
+        .direct_only();
     let (peer, control) = AukiPeer::start_external(identity.clone(), initial, config)
         .await
         .unwrap();
@@ -654,14 +649,9 @@ async fn robot_authority_source_refresh_hot_swaps_the_facade() {
     let initial = source.prepare().await.unwrap();
     assert_eq!(initial.domain_id(), domain_id);
     assert_eq!(initial.expires_at(), expires_at_a);
-    let storage = tempfile::tempdir().unwrap();
-    let config = AukiPeerConfig::new(
-        "http://127.0.0.1:9",
-        "posemesh-robot-p2p-auth-test",
-        storage.path(),
-    )
-    .unwrap()
-    .direct_only();
+    let config = AukiPeerConfig::new("http://127.0.0.1:9")
+        .unwrap()
+        .direct_only();
     let (peer, control) = AukiPeer::start_external(identity.clone(), initial.into_update(), config)
         .await
         .unwrap();
