@@ -13,7 +13,8 @@ SDK-owned
 [`AukiPeer`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-sdk)
 facade owns the Domain runtime, mutual authentication, relay booking and
 reservations, route catalog, readiness, and ordered shutdown. The Posemesh-owned
-[`auki-p2p-dataset`](../auki-p2p-dataset/README.md) owns the dataset protocol.
+[`posemesh-p2p-dataset`](../posemesh-p2p-dataset/README.md) owns the dataset
+protocol.
 Compute-node remains the composition root for DDS authority acquisition,
 facade configuration, task lifecycle, and dataset-reference draining. Runners
 receive protocol-specific facades explicitly in their constructors, never
@@ -121,12 +122,12 @@ Optional environment variables:
   requires at least one explicit value; `auto` and `always` may leave it empty
   and become ready through a confirmed circuit listener. Tests may use
   `/ip4/127.0.0.1/tcp/0`.
-- `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated TCP
-  multiaddrs placed in dataset references. Direct-only Robot serving requires
-  explicit addresses that Compute Nodes can reach. `auto` and `always` may
-  leave this empty, but cannot register a dataset until a relay route is
-  confirmed. There is no direct-address discovery or guessing, and an
-  ephemeral `tcp/0` address must not be advertised.
+- `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated direct
+  TCP multiaddrs placed in dataset references. Direct-only Robot serving
+  requires explicit addresses that Compute Nodes can reach. `auto` and
+  `always` may leave this empty, but cannot register a dataset until a relay
+  provider is confirmed. There is no direct-address discovery or guessing,
+  and an ephemeral `tcp/0` address must not be advertised.
 - `AUKI_P2P_RELAY_MODE` (Robot only) — one of `disabled`, `auto`, or `always`.
   When P2P is enabled and this setting is omitted, the Robot defaults to one
   public relay. Explicit `disabled` selects direct-only mode. `auto` remains
@@ -139,7 +140,8 @@ Optional environment variables:
 - `AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS` (Robot only; default `86400`) —
   requested rolling horizon, accepted range `300..=86400`.
 - `AUKI_P2P_RELAY_COUNT` (Robot only; default `1`) — desired distinct relay
-  children, accepted range `1..=3`.
+  providers, accepted range `1..=3`. Each provider contributes one atomic
+  TCP/WSS route pair.
 - `AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS` (Robot only; default `5`) —
   child-status cadence, accepted whole-second range `1..=60`.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
@@ -153,10 +155,13 @@ Optional environment variables:
 - `ENABLE_NOOP` (default `false`) — when true the binary registers noop runners.
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
 
-Startup rejects configurations whose direct advertised-route count plus
-requested relay count could exceed the 16-route reference limit. At most three
-of those routes may be circuits. Relay retry, recovery, and cleanup timing are
-SDK facade implementation details rather than Posemesh configuration.
+The SDK validates a 16-slot local publication limit: each direct route consumes
+one slot and each relay provider consumes one slot. A Posemesh dataset
+reference expands every confirmed provider into its TCP and WSS circuit
+addresses, so the serialized reference may contain up to 19 addresses: 13
+direct addresses plus three provider pairs. Relay retry, recovery, and cleanup
+timing are SDK facade implementation details rather than Posemesh
+configuration.
 
 ### Robot relay readiness and shutdown
 
@@ -173,9 +178,11 @@ they no longer select different lifecycle behavior.
 `AUKI_P2P_RELAY_COUNT` is desired redundancy, not a quorum. One confirmed relay
 is enough for the facade to become ready when more were requested; missing or
 recovering siblings continue in the background. Each immutable reference
-snapshots its explicit direct routes plus the confirmed, dataset-limit-eligible
-relay routes available at that commit. A route confirmed later appears only in
-future references and does not rewrite an existing reference.
+snapshots its explicit direct routes plus both the TCP and WSS circuit routes
+for every confirmed, dataset-limit-eligible provider available at that commit.
+Native Compute fetches prefer direct and TCP routes; the paired WSS route is
+published for browser-capable consumers. A provider confirmed later appears
+only in future references and does not rewrite an existing reference.
 
 Graceful Robot shutdown first stops new dataset registrations and waits for
 published references and active transfers to drain. It then awaits
