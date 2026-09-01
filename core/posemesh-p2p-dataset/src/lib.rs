@@ -18,12 +18,13 @@ use std::{
 
 use async_trait::async_trait;
 use auki_p2p::{
-    validate_direct_route, AuthenticatedRouteStream, ExpectedRelayLimits, Multiaddr, PeerId,
-    PeerRole, Protocol, RelayBaseTransport, RelayProvider, RouteSnapshot,
+    validate_direct_route, AuthenticatedRouteStream, Multiaddr, PeerId, PeerRole, Protocol,
+    RouteSnapshot,
 };
 use auki_sdk::{
-    AukiPeerAuthorizationError, AukiPeerProtocolContext, AukiPeerRoutesError, AukiProtocolError,
-    AukiProtocolRegistration, AukiProtocolSpec, AukiProtocolStream,
+    validate_relay_circuit_routes, AukiPeerAuthorizationError, AukiPeerProtocolContext,
+    AukiPeerRoutesError, AukiProtocolError, AukiProtocolRegistration, AukiProtocolSpec,
+    AukiProtocolStream,
 };
 use chrono::{DateTime, Utc};
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -327,13 +328,6 @@ struct DatasetResponseHeader {
 enum DatasetRouteCandidate {
     Direct(Multiaddr),
     Circuit(Multiaddr),
-}
-
-struct CanonicalDatasetCircuitRoute {
-    route: Multiaddr,
-    relay_peer_id: PeerId,
-    endpoint_key: String,
-    transport: RelayBaseTransport,
 }
 
 impl DatasetRouteCandidate {
@@ -1335,58 +1329,77 @@ fn serving_status(
     }
 }
 
-fn canonicalize_dataset_circuit_route(
-    route: &Multiaddr,
+fn validate_dataset_circuit_routes(
+    candidates: &[(usize, &str, Multiaddr)],
     expected_target_peer_id: PeerId,
-) -> std::result::Result<CanonicalDatasetCircuitRoute, String> {
-    let mut provider_base = route.clone();
-    let target_peer_id = match provider_base.pop() {
-        Some(Protocol::P2p(peer_id)) => peer_id,
-        _ => return Err("route is missing its target Peer ID".to_owned()),
-    };
-    if target_peer_id != expected_target_peer_id {
-        return Err("route target Peer ID does not match the reference".to_owned());
-    }
-    if !matches!(provider_base.pop(), Some(Protocol::P2pCircuit)) {
-        return Err("route is missing p2p-circuit".to_owned());
-    }
-    let relay_peer_id = match provider_base.iter().last() {
-        Some(Protocol::P2p(peer_id)) => peer_id,
-        _ => return Err("route is missing its relay Peer ID".to_owned()),
-    };
-    let validation_limits = ExpectedRelayLimits::new(Duration::from_secs(1), 1)
-        .expect("the fixed dataset route-validation limits are valid");
-
-    for transport in [RelayBaseTransport::Tcp, RelayBaseTransport::Wss] {
-        let Ok(provider) = RelayProvider::new_for_transport(
-            relay_peer_id,
-            [provider_base.to_string()],
-            transport,
-            validation_limits,
-        ) else {
-            continue;
-        };
-        let Ok(canonical) =
-            provider.circuit_route_for_transport(transport, expected_target_peer_id)
-        else {
-            continue;
-        };
-        if canonical != *route {
-            continue;
+) -> Result<Vec<DatasetRouteCandidate>> {
+    let mut participation = vec![0_usize; candidates.len()];
+    let mut pairs = Vec::new();
+    for tcp_index in 0..candidates.len() {
+        for wss_index in 0..candidates.len() {
+            if tcp_index == wss_index {
+                continue;
+            }
+            let Ok(routes) = validate_relay_circuit_routes(
+                &candidates[tcp_index].2,
+                &candidates[wss_index].2,
+                expected_target_peer_id,
+            ) else {
+                continue;
+            };
+            participation[tcp_index] += 1;
+            participation[wss_index] += 1;
+            pairs.push((candidates[tcp_index].0.min(candidates[wss_index].0), routes));
         }
-        let mut endpoint = provider.selected_base().clone();
-        if !matches!(endpoint.pop(), Some(Protocol::P2p(_))) {
-            return Err("canonical relay base omitted its Peer ID".to_owned());
-        }
-        return Ok(CanonicalDatasetCircuitRoute {
-            route: canonical,
-            relay_peer_id,
-            endpoint_key: endpoint.to_string(),
-            transport,
-        });
     }
 
-    Err("route is not a canonical TCP or WSS relay circuit".to_owned())
+    if let Some((candidate_index, valid_pair_count)) = participation
+        .iter()
+        .enumerate()
+        .find(|(_, count)| **count != 1)
+    {
+        let (route_index, raw, _) = &candidates[candidate_index];
+        warn!(
+            route_index = *route_index,
+            route = %raw,
+            valid_pair_count = *valid_pair_count,
+            "rejecting unpaired or ambiguous P2P dataset circuit candidate"
+        );
+        return Err(P2pDatasetError::InvalidReference);
+    }
+
+    pairs.sort_unstable_by_key(|(first_route_index, _)| *first_route_index);
+    let mut endpoint_keys = HashSet::new();
+    let mut circuit = Vec::with_capacity(candidates.len());
+    for (_, routes) in pairs {
+        for route in [routes.tcp(), routes.wss()] {
+            let endpoint_key = validated_circuit_endpoint_key(route);
+            if !endpoint_keys.insert(endpoint_key.clone()) {
+                warn!(
+                    route = %route,
+                    endpoint_key,
+                    "rejecting duplicate P2P dataset relay endpoint"
+                );
+                return Err(P2pDatasetError::InvalidReference);
+            }
+        }
+        circuit.push(DatasetRouteCandidate::Circuit(routes.tcp().clone()));
+        circuit.push(DatasetRouteCandidate::Circuit(routes.wss().clone()));
+    }
+    Ok(circuit)
+}
+
+/// Recover the provider endpoint only after the SDK proved the exact circuit
+/// grammar. This retains Posemesh's cross-provider endpoint deduplication
+/// without duplicating the SDK's route parser.
+fn validated_circuit_endpoint_key(route: &Multiaddr) -> String {
+    let mut endpoint = route.clone();
+    for _ in 0..3 {
+        endpoint
+            .pop()
+            .expect("an SDK-validated circuit route has target, circuit, and relay components");
+    }
+    endpoint.to_string()
 }
 
 fn validate_reference(
@@ -1458,57 +1471,14 @@ fn validate_reference(
     }
 
     let mut direct = Vec::new();
-    let mut circuit = Vec::new();
     let mut direct_routes = HashSet::new();
-    let mut relay_order = Vec::new();
-    let mut relay_pairs = HashMap::<PeerId, (Option<Multiaddr>, Option<Multiaddr>)>::new();
-    let mut relay_endpoint_keys = HashSet::new();
+    let mut circuit_candidates = Vec::with_capacity(circuit_count);
     for (route_index, raw, route) in parsed {
         let is_circuit = route
             .iter()
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit));
         if is_circuit {
-            let canonical = match canonicalize_dataset_circuit_route(&route, peer_id) {
-                Ok(canonical) => canonical,
-                Err(error) => {
-                    warn!(
-                        route_index,
-                        route = %raw,
-                        error = %error,
-                        "rejecting unsafe P2P dataset circuit candidate"
-                    );
-                    return Err(P2pDatasetError::InvalidReference);
-                }
-            };
-            if !relay_pairs.contains_key(&canonical.relay_peer_id) {
-                relay_order.push(canonical.relay_peer_id);
-            }
-            let pair = relay_pairs.entry(canonical.relay_peer_id).or_default();
-            let transport_route = match canonical.transport {
-                RelayBaseTransport::Tcp => &mut pair.0,
-                RelayBaseTransport::Wss => &mut pair.1,
-            };
-            if transport_route.is_some() {
-                warn!(
-                    route_index,
-                    route = %raw,
-                    relay_peer_id = %canonical.relay_peer_id,
-                    transport = %canonical.transport,
-                    "rejecting duplicate P2P dataset relay transport candidate"
-                );
-                return Err(P2pDatasetError::InvalidReference);
-            }
-            if !relay_endpoint_keys.insert(canonical.endpoint_key.clone()) {
-                warn!(
-                    route_index,
-                    route = %raw,
-                    relay_peer_id = %canonical.relay_peer_id,
-                    endpoint_key = %canonical.endpoint_key,
-                    "rejecting duplicate P2P dataset relay endpoint"
-                );
-                return Err(P2pDatasetError::InvalidReference);
-            }
-            *transport_route = Some(canonical.route);
+            circuit_candidates.push((route_index, raw, route));
         } else {
             let canonical = match validate_direct_route(&route, peer_id) {
                 Ok(canonical) => canonical,
@@ -1533,18 +1503,9 @@ fn validate_reference(
             direct.push(DatasetRouteCandidate::Direct(canonical));
         }
     }
-    let relay_provider_count = relay_order.len();
-    for relay_peer_id in relay_order {
-        let (Some(tcp), Some(wss)) = relay_pairs.remove(&relay_peer_id).unwrap_or_default() else {
-            warn!(
-                %relay_peer_id,
-                "rejecting incomplete P2P dataset relay transport pair"
-            );
-            return Err(P2pDatasetError::InvalidReference);
-        };
-        circuit.push(DatasetRouteCandidate::Circuit(tcp));
-        circuit.push(DatasetRouteCandidate::Circuit(wss));
-    }
+    let circuit = validate_dataset_circuit_routes(&circuit_candidates, peer_id)?;
+    debug_assert!(circuit.len().is_multiple_of(2));
+    let relay_provider_count = circuit.len() / 2;
     if direct.len() + relay_provider_count > MAX_DATASET_ROUTE_SLOTS {
         return Err(P2pDatasetError::RouteSlotLimitExceeded {
             maximum: MAX_DATASET_ROUTE_SLOTS,
@@ -1631,7 +1592,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use auki_p2p::{Identity, PublishedRoute, RouteFence};
+    use auki_p2p::{
+        ExpectedRelayLimits, Identity, PublishedRoute, RelayBaseTransport, RelayProvider,
+        RouteFence,
+    };
     use tempfile::TempDir;
 
     use super::*;
@@ -1710,8 +1674,8 @@ mod tests {
             target,
             vec![
                 relay_a[1].clone(),
-                relay_a[0].clone(),
                 relay_b[0].clone(),
+                relay_a[0].clone(),
                 relay_b[1].clone(),
             ],
         );
@@ -1805,7 +1769,53 @@ mod tests {
         let invalid_route_sets = [
             vec![pair[0].clone()],
             vec![pair[0].clone(), pair[1].clone(), pair[0].clone()],
+            vec![pair[0].clone(), pair[1].clone(), pair[1].clone()],
             vec![pair[0].clone(), pair[1].clone(), alternate[0].clone()],
+            vec![
+                pair[0].clone(),
+                pair[1].clone(),
+                alternate[0].clone(),
+                alternate[1].clone(),
+            ],
+        ];
+
+        for multiaddrs in invalid_route_sets {
+            assert!(matches!(
+                validate_reference(&reference_with_routes(target, multiaddrs)),
+                Err(P2pDatasetError::InvalidReference)
+            ));
+        }
+    }
+
+    #[test]
+    fn relay_reference_contract_rejects_mismatched_pairs_and_shared_endpoints() {
+        let target = Identity::generate().peer_id();
+        let wrong_target = Identity::generate().peer_id();
+        let relay_peer_id = Identity::generate().peer_id();
+        let pair = relay_route_pair(relay_peer_id, target, "relay.example.com", 4101);
+        let wrong_relay = relay_route_pair(
+            Identity::generate().peer_id(),
+            target,
+            "other-relay.example.com",
+            4102,
+        );
+        let wrong_target_pair =
+            relay_route_pair(relay_peer_id, wrong_target, "relay.example.com", 4101);
+        let shared_endpoints = relay_route_pair(
+            Identity::generate().peer_id(),
+            target,
+            "relay.example.com",
+            4101,
+        );
+        let invalid_route_sets = [
+            vec![pair[0].clone(), wrong_relay[1].clone()],
+            vec![pair[0].clone(), wrong_target_pair[1].clone()],
+            vec![
+                pair[0].clone(),
+                pair[1].clone(),
+                shared_endpoints[0].clone(),
+                shared_endpoints[1].clone(),
+            ],
         ];
 
         for multiaddrs in invalid_route_sets {
