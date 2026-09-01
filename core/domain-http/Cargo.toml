@@ -15,7 +15,7 @@ futures = { workspace = true }
 tracing = { workspace = true }
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "stream", "rustls-tls"]}
 posemesh-utils = { workspace = true }
-bytes = "1.10.1"
+bytes = "1.11.1"
 thiserror.workspace = true
 
 [target.'cfg(not(target_family="wasm"))'.dependencies]
