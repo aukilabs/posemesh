@@ -142,8 +142,9 @@ Optional environment variables:
 - `AUKI_P2P_RELAY_COUNT` (Robot only; default `1`) — desired distinct relay
   providers, accepted range `1..=3`. Each provider contributes one atomic
   TCP/WSS route pair.
-- `AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS` (Robot only; default `5`) —
-  child-status cadence, accepted whole-second range `1..=60`.
+- `AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS` (Robot only; default `30`) —
+  steady-state child-status cadence, accepted whole-second range `1..=60`.
+  Assignment and recovery are polled at most every five seconds.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
   registration attempts while the node is not yet registered or is recovering.
 - `REGISTER_MAX_RETRY` (legacy SIWE only; default `-1`, meaning infinite
