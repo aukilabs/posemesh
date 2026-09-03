@@ -74,6 +74,24 @@ pub trait ArtifactSink: Send + Sync {
     ) -> Result<Option<String>> {
         Err(anyhow::anyhow!("domain artifact uploads not supported"))
     }
+
+    /// Like [`Self::put_domain_artifact`], but additionally attaches
+    /// `metadata` to this artifact's entry in the DMS completion receipt's
+    /// `meta.artifacts[]` (see `posemesh-compute-node`'s engine). Use this
+    /// when a caller reading the completion receipt needs a field from the
+    /// artifact's own content (e.g. a P2P dataset reference's relay
+    /// addresses) without a second fetch of the artifact body.
+    ///
+    /// Default implementation ignores `metadata` and delegates to
+    /// [`Self::put_domain_artifact`], so existing implementors need no
+    /// changes.
+    async fn put_domain_artifact_with_metadata(
+        &self,
+        request: DomainArtifactRequest<'_>,
+        _metadata: serde_json::Value,
+    ) -> Result<Option<String>> {
+        self.put_domain_artifact(request).await
+    }
 }
 
 /// Handle returned by `ArtifactSink::open_multipart`.

@@ -1508,6 +1508,7 @@ async fn run_leased_cycle_inner(
                 "name": artifact.name,
                 "data_type": artifact.data_type,
                 "id": artifact.id,
+                "metadata": artifact.metadata.clone().unwrap_or(Value::Null),
             })
         })
         .collect();
