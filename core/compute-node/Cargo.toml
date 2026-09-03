@@ -11,15 +11,20 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
+auki-p2p = { workspace = true }
+posemesh-p2p-dataset = { workspace = true }
+auki-sdk = { workspace = true }
 compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.2", path = "../compute-node-runner-api" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+base64 = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 k256 = { workspace = true }
 parking_lot = { workspace = true }
+p256 = { workspace = true }
 posemesh-node-registration = { version = "0.2.1", path = "../node-registration" }
 rand = { workspace = true }
 regex = { workspace = true }
@@ -27,6 +32,7 @@ reqwest = { workspace = true, features = ["json", "rustls-tls", "stream"] }
 semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time", "macros", "fs", "signal", "io-util"] }
@@ -42,6 +48,7 @@ posemesh-domain-http = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }
+jsonwebtoken = "9.3.0"
 once_cell = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features = [

@@ -11,6 +11,12 @@ pub struct LeaseEnvelope {
     pub access_token: Option<String>,
     #[serde(default)]
     pub access_token_expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    #[doc(hidden)]
+    pub p2p_access_token: Option<String>,
+    #[serde(default)]
+    #[doc(hidden)]
+    pub p2p_access_token_expires_at: Option<DateTime<Utc>>,
 
     #[serde(default)]
     pub lease_expires_at: Option<DateTime<Utc>>,
@@ -25,6 +31,16 @@ pub struct LeaseEnvelope {
     pub domain_server_url: Option<Url>,
 
     pub task: TaskSpec,
+}
+
+impl LeaseEnvelope {
+    /// Clone the runner-visible lease without internal peer credentials.
+    pub fn without_p2p_credentials(&self) -> Self {
+        let mut lease = self.clone();
+        lease.p2p_access_token = None;
+        lease.p2p_access_token_expires_at = None;
+        lease
+    }
 }
 
 /// Task specification (see SPECS §3.2).

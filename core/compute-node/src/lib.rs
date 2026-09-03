@@ -11,6 +11,7 @@ pub mod engine;
 pub mod errors;
 pub mod heartbeat;
 pub mod http;
+pub mod p2p_dataset;
 pub mod poller;
 pub mod session;
 pub mod storage;

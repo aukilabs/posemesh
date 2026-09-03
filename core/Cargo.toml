@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "posemesh-p2p-dataset",
     "networking",
     "domain",
     "examples/client",
@@ -10,6 +11,7 @@ members = [
     "domain-http",
     "compute-node-runner-api",
     "compute-node-runner-api/examples/hello-runner",
+    "compute-node-runner-api/examples/relay-file-demo",
     "compute-node",
     "node-registration", "uniffi-bindgen",
 ]
@@ -19,12 +21,17 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-libp2p = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-stream = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-webrtc-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-websocket = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
-libp2p-websocket-websys = { git = "https://github.com/aukilabs/rust-libp2p.git", branch = "fix/gossipsub-wasm" }
+auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "8650a8dbea2d5ff08eb04b8f58c59124df229f5b" }
+auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "8650a8dbea2d5ff08eb04b8f58c59124df229f5b" }
+posemesh-p2p-dataset = { path = "posemesh-p2p-dataset" }
+libp2p = { version = "0.56.0", default-features = false }
+# `libp2p-stream` is still pre-release and must match libp2p 0.56's
+# libp2p-swarm 0.47 type family exactly.
+libp2p-stream = "=0.4.0-alpha"
+libp2p-webrtc = "=0.9.0-alpha.1"
+libp2p-webrtc-websys = "0.4.0"
+libp2p-websocket = "0.45.1"
+libp2p-websocket-websys = "0.5.0"
 futures = "0.3.30"
 serde = "1.0.210"
 serde_json = "1.0.128"
@@ -65,6 +72,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 url = { version = "2.5.7", features = ["serde"] }
 uuid = { version = "1.10.1", features = ["v4", "serde"] }
 parking_lot = "0.12.3"
+p256 = "0.13.2"
 scopeguard = "1.2.0"
 uniffi = { version = "0.30", features = [ "cli" ] }
 httpmock = "0.7.0"

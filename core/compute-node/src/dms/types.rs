@@ -14,6 +14,10 @@ pub struct HeartbeatResponse {
     #[serde(default)]
     pub access_token_expires_at: Option<DateTime<Utc>>,
     #[serde(default)]
+    pub p2p_access_token: Option<String>,
+    #[serde(default)]
+    pub p2p_access_token_expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub lease_expires_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub cancel: Option<bool>,

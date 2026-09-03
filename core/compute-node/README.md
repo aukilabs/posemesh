@@ -8,6 +8,18 @@ server on behalf of capability-specific runners. Legacy SIWE and robot machine
 authentication use separate, explicit entrypoints while sharing the task
 engine.
 
+The authenticated P2P stack is intentionally split out of this crate. The
+SDK-owned
+[`AukiPeer`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-sdk)
+facade owns the Domain runtime, mutual authentication, relay booking and
+reservations, route catalog, readiness, and ordered shutdown. The Posemesh-owned
+[`posemesh-p2p-dataset`](../posemesh-p2p-dataset/README.md) owns the dataset
+protocol.
+Compute-node remains the composition root for DDS authority acquisition,
+facade configuration, task lifecycle, and dataset-reference draining. Runners
+receive protocol-specific facades explicitly in their constructors, never
+through `TaskCtx` and never as the raw P2P node or credentials.
+
 ## Responsibilities
 - Environment-driven configuration (`config`) with typed accessors and sane
   defaults where permitted.
@@ -17,7 +29,10 @@ engine.
   used by legacy registration callbacks (`dds::persist`).
 - Authentication state machines for SIWE after registration and opt-in robot
   machine authentication (`auth` module).
-- DMS HTTP client (`dms::client`) plus request/response data contracts.
+- DMS task HTTP client (`dms::client`) plus strict request/response data
+  contracts.
+- `AukiPeer` composition for process-long Robot peers and task-scoped Compute
+  peers, including external authority updates and typed protocol contexts.
 - Storage façade that turns leases into runner-facing input/output ports
   (`storage::{input, output, client, token}`).
 - Session lifecycle management and heartbeat scheduling (`session`, `heartbeat`,
@@ -30,20 +45,26 @@ engine.
 1. `telemetry::init_from_env()` installs logging based on `LOG_FORMAT`.
 2. The selected entrypoint loads either `NodeConfig` for legacy SIWE or the
    separate `RobotNodeConfig` for robot machine authentication.
-3. Runners are registered in a `RunnerRegistry`; the binary decides which
-   capabilities to advertise.
+3. A `RunnerComposition` constructs protocol-aware runners with typed
+   dependencies such as `DatasetService`. Plain runners can still be registered
+   directly in a `RunnerRegistry`.
 4. The legacy entrypoint starts
    `dds::register::spawn_registration_if_configured()` and then
    `auth::SiweAfterRegistration`. The robot entrypoint registers directly with
    its opaque DDS-issued credential and never starts legacy registration or
    falls back to SIWE.
-5. The main `run_node` loop obtains an access token from DDS, builds a DMS
+5. After machine authentication, Peer-ID binding, and Domain assignment, the
+   Robot starts one process-long `AukiPeer` with externally supplied authority.
+   When relay mode is enabled, that facade books and reserves relays and exposes
+   confirmed routes through its protocol context. Compute peers are instead
+   task-scoped and explicitly direct-only.
+6. The main `run_node` loop obtains an access token from DDS, builds a DMS
    client, leases tasks, initializes session state, and dispatches to the
    correct runner via `RunnerRegistry::run_for_lease`.
-6. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
+7. `HeartbeatDriver` coalesces progress updates and posts heartbeats on the TTL
    schedule computed by `session::HeartbeatPolicy`, refreshing storage tokens
    when DDS returns new ones.
-7. When a runner finishes, artifacts discovered by the storage layer are
+8. When a runner finishes, artifacts discovered by the storage layer are
    reported to DMS via `complete` or `fail`, and the cycle restarts.
 
 ## Configuration surface
@@ -71,7 +92,7 @@ Optional environment variables:
 - `DDS_BASE_URL` (default `https://dds.auki.network`) — base URL of the DDS API
   used by the selected authentication flow.
 - `REQUEST_TIMEOUT_SECS` (default `60`) — per-request timeout applied to DDS
-  authentication and DMS calls.
+  authentication and ordinary task DMS calls.
 - `NODE_VERSION` (default crate version) — optional override for the advertised
   node version.
 - `HEARTBEAT_JITTER_MS` (default `250`) — backoff applied when coalescing
@@ -84,6 +105,46 @@ Optional environment variables:
 - `TOKEN_REAUTH_MAX_RETRIES` (default `3`) — retries before bailing on token
   refresh.
 - `TOKEN_REAUTH_JITTER_MS` (default `500`) — jitter applied between retries.
+- `AUKI_P2P_ENABLED` (default `false`) — enables the process-level P2P runtime,
+  including libp2p identity binding and DDS P2P-token refresh. This is the sole
+  opt-in gate: configuring relay mode without setting this to `true` is an
+  error.
+- `AUKI_P2P_PRIVATE_KEY_FILE` (required when P2P or relay booking is enabled;
+  preferred over inline configuration) — path to a raw canonical
+  Ed25519 libp2p protobuf private key. The file must be a regular file of at
+  most 4 KiB with no group/other permission bits (normally mode `0600`).
+- `AUKI_P2P_PRIVATE_KEY` (alternative required form) — canonical padded RFC
+  4648 Base64 of the same protobuf bytes. It is mutually exclusive with
+  `AUKI_P2P_PRIVATE_KEY_FILE`. If neither value is configured, production P2P
+  startup fails closed; it never substitutes an ephemeral identity.
+- `AUKI_P2P_LISTEN_MULTIADDRS` (default empty) — comma-separated native TCP
+  multiaddrs for the process-level libp2p node. Direct-only Robot serving
+  requires at least one explicit value; `auto` and `always` may leave it empty
+  and become ready through a confirmed circuit listener. Tests may use
+  `/ip4/127.0.0.1/tcp/0`.
+- `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated direct
+  TCP multiaddrs placed in dataset references. Direct-only Robot serving
+  requires explicit addresses that Compute Nodes can reach. `auto` and
+  `always` may leave this empty, but cannot register a dataset until a relay
+  provider is confirmed. There is no direct-address discovery or guessing,
+  and an ephemeral `tcp/0` address must not be advertised.
+- `AUKI_P2P_RELAY_MODE` (Robot only) — one of `disabled`, `auto`, or `always`.
+  When P2P is enabled and this setting is omitted, the Robot defaults to one
+  public relay. Explicit `disabled` selects direct-only mode. `auto` remains
+  accepted for compatibility and has the same facade relay-ready behavior as
+  `always`.
+- `AUKI_P2P_RELAY_BOOKING_MODE` (Robot only; default `public`) — `public`
+  permits an eligible public relay, while `dedicated` restricts selection to
+  the Robot's organization. DMS never relaxes the selected policy to fill a
+  shortfall.
+- `AUKI_P2P_RELAY_BOOKING_DURATION_SECONDS` (Robot only; default `86400`) —
+  requested rolling horizon, accepted range `300..=86400`.
+- `AUKI_P2P_RELAY_COUNT` (Robot only; default `1`) — desired distinct relay
+  providers, accepted range `1..=3`. Each provider contributes one atomic
+  TCP/WSS route pair.
+- `AUKI_P2P_RELAY_STATUS_POLL_INTERVAL_SECONDS` (Robot only; default `30`) —
+  steady-state child-status cadence, accepted whole-second range `1..=60`.
+  Assignment and recovery are polled at most every five seconds.
 - `REGISTER_INTERVAL_SECS` (legacy SIWE only; default `120`) — cooldown between
   registration attempts while the node is not yet registered or is recovering.
 - `REGISTER_MAX_RETRY` (legacy SIWE only; default `-1`, meaning infinite
@@ -94,6 +155,61 @@ Optional environment variables:
 - `LOG_FORMAT` (default `json`) — set to `text` for pretty console logs.
 - `ENABLE_NOOP` (default `false`) — when true the binary registers noop runners.
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
+
+The SDK validates a 16-slot local publication limit: each direct route consumes
+one slot and each relay provider consumes one slot. A Posemesh dataset
+reference expands every confirmed provider into its TCP and WSS circuit
+addresses, so the serialized reference may contain up to 19 addresses: 13
+direct addresses plus three provider pairs. Relay retry, recovery, and cleanup
+timing are SDK facade implementation details rather than Posemesh
+configuration.
+
+### Robot relay readiness and shutdown
+
+`disabled` never creates a relay booking. When P2P serving is enabled in this
+mode, operators must supply explicit listen and advertised direct routes and
+accept that an immutable direct-only reference cannot be repaired if the route
+is private, stale, blackholed, or later becomes unreachable.
+
+`auto` and `always` both ask the SDK facade for relay-ready operation. The
+Robot does not begin its normal peer work until at least one eligible relay is
+confirmed. The two values are retained as compatible configuration spellings;
+they no longer select different lifecycle behavior.
+
+`AUKI_P2P_RELAY_COUNT` is desired redundancy, not a quorum. One confirmed relay
+is enough for the facade to become ready when more were requested; missing or
+recovering siblings continue in the background. Each immutable reference
+snapshots its explicit direct routes plus both the TCP and WSS circuit routes
+for every confirmed, dataset-limit-eligible provider available at that commit.
+Native Compute fetches prefer direct and TCP routes; the paired WSS route is
+published for browser-capable consumers. A provider confirmed later appears
+only in future references and does not rewrite an existing reference.
+
+Graceful Robot shutdown first stops new dataset registrations and waits for
+published references and active transfers to drain. It then awaits
+`AukiPeer::shutdown`, which fences protocol work, drains relay reservations,
+requests DMS booking deletion, stops authority, and leaves the Domain. Forced
+process termination cannot complete that sequence and may break published
+references. A persistent P2P key lets a later process prove the same Peer ID,
+but it does not reconstruct prior in-memory dataset registrations. Exactly one
+live process may own a given P2P private key at a time.
+
+Generate a dedicated Ed25519 identity without printing the private key:
+
+```sh
+cargo run -p posemesh-compute-node --bin posemesh-p2p-keygen -- \
+  "$HOME/.auki/robot/libp2p-private-key"
+```
+
+The generator refuses to overwrite a path and creates the raw key with mode
+`0600`. Configure that path as `AUKI_P2P_PRIVATE_KEY_FILE`. Do not reuse a SIWE,
+wallet, or registration private key for libp2p identity.
+
+Relay policy and credentials remain host-only. The host supplies complete
+external authority updates, and `AukiPeer` consumes relay authorization without
+exposing it to the dataset adapter or runners. Neither the runner nor `TaskCtx`
+receives machine, booking, relay, or P2P credentials, and relay count does not
+alter the ordinary runner `MAX_CONCURRENCY` setting.
 
 ## Hello runner entrypoints
 
@@ -132,9 +248,12 @@ the robot binary does not read `REG_SECRET` or `SECP256K1_PRIVHEX`.
   secp256k1 key, and launches the registration task using
   `posemesh-node-registration`. Once acquired, registration is parked until the
   runtime needs recovery instead of being refreshed on a fixed cadence.
-- `engine` — orchestrates leasing, cancellation, heartbeat posting, and
-  completion/failure reporting. The `RunnerRegistry` façade makes it easy to add
-  new capabilities.
+- `dds::p2p` — obtains peer-bound external authority and refreshes complete
+  replacements without exposing credentials to protocols or runners.
+- `engine` — orchestrates leasing, cancellation, heartbeat posting,
+  completion/failure reporting, `AukiPeer` lifetimes, and graceful dataset
+  draining. The `RunnerRegistry` facade makes it easy to add capabilities
+  without exposing peer authority.
 - `storage::client` — performs authenticated multipart downloads/uploads
   against the domain server using safe temporary directories.
 - `session` — tracks lease metadata, computes TTL-driven heartbeat deadlines,

@@ -21,6 +21,9 @@ pub struct UploadedArtifact {
     pub name: String,
     pub data_type: String,
     pub id: Option<String>,
+    /// Caller-supplied metadata echoed into this artifact's entry in the DMS
+    /// completion receipt (see `ArtifactSink::put_domain_artifact_with_metadata`).
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Domain ArtifactSink implementation (skeleton).
@@ -135,6 +138,24 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
         &self,
         request: DomainArtifactRequest<'_>,
     ) -> Result<Option<String>> {
+        self.put_domain_artifact_impl(request, None).await
+    }
+
+    async fn put_domain_artifact_with_metadata(
+        &self,
+        request: DomainArtifactRequest<'_>,
+        metadata: serde_json::Value,
+    ) -> Result<Option<String>> {
+        self.put_domain_artifact_impl(request, Some(metadata)).await
+    }
+}
+
+impl DomainOutput {
+    async fn put_domain_artifact_impl(
+        &self,
+        request: DomainArtifactRequest<'_>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<Option<String>> {
         let logical_path = self.apply_outputs_prefix(request.rel_path);
         let key = logical_path.clone();
         let mut existing_id = request.existing_id.map(|s| s.to_string());
@@ -190,6 +211,7 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
                 name: request.name.to_string(),
                 data_type: request.data_type.to_string(),
                 id: final_id.clone(),
+                metadata,
             },
         );
 
@@ -213,6 +235,7 @@ impl DomainOutput {
                 name: descriptor.name,
                 data_type: descriptor.data_type,
                 id: Some(id.into()),
+                metadata: None,
             },
         );
     }

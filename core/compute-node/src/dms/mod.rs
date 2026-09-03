@@ -1,4 +1,4 @@
-//! DMS path builders and DTO shells (no HTTP).
+//! DMS HTTP clients, path builders, and typed DTOs.
 
 use url::Url;
 use uuid::Uuid;

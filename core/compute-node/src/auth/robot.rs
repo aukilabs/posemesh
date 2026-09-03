@@ -3,7 +3,9 @@ use super::token_manager::{
     AccessAuthenticator, SystemClock, TokenManager, TokenManagerConfig, TokenProvider,
     TokenProviderError,
 };
+use super::PeerBoundAuthenticator;
 use crate::config::RobotNodeConfig;
+use crate::dds::p2p::PeerBindingClient;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -20,7 +22,7 @@ const REGISTER_PATH: &str = "/internal/v1/robots/register";
 const VERIFY_PATH: &str = "/internal/v1/auth/robot/verify";
 
 type ManagerCell = Arc<Mutex<Option<Arc<RobotTokenManager>>>>;
-type RobotTokenManager = TokenManager<RobotAuthenticator, SystemClock>;
+type RobotTokenManager = TokenManager<PeerBoundAuthenticator<RobotAuthenticator>, SystemClock>;
 
 #[derive(Serialize)]
 struct RegisterRequest<'a> {
@@ -157,26 +159,35 @@ async fn decode_access_response(
 /// A new instance always registers first. Once registration succeeds, all
 /// token refreshes use the verify endpoint and never fall back to SIWE.
 pub struct RobotMachineAuth {
-    authenticator: Arc<RobotAuthenticator>,
+    authenticator: Arc<PeerBoundAuthenticator<RobotAuthenticator>>,
     config: TokenManagerConfig,
     manager: ManagerCell,
 }
 
 impl RobotMachineAuth {
     pub fn from_config(cfg: &RobotNodeConfig, capabilities: Vec<String>) -> Result<Self> {
+        Self::from_config_with_peer_binding(cfg, capabilities, None)
+    }
+
+    pub(crate) fn from_config_with_peer_binding(
+        cfg: &RobotNodeConfig,
+        capabilities: Vec<String>,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
         let token_config = TokenManagerConfig {
             safety_ratio: cfg.token_safety_ratio as f64,
             max_retries: cfg.token_reauth_max_retries,
             jitter: Duration::from_millis(cfg.token_reauth_jitter_ms),
         };
 
-        Self::new(
+        Self::new_inner(
             cfg.dds_base_url.clone(),
             cfg.registration_credentials().to_string(),
             cfg.node_version.clone(),
             capabilities,
             Duration::from_secs(cfg.request_timeout_secs.max(1)),
             token_config,
+            peer_binding,
         )
     }
 
@@ -188,13 +199,54 @@ impl RobotMachineAuth {
         request_timeout: Duration,
         token_config: TokenManagerConfig,
     ) -> Result<Self> {
-        let authenticator = Arc::new(RobotAuthenticator::new(
+        Self::new_inner(
+            dds_base_url,
+            registration_credentials,
+            node_version,
+            capabilities,
+            request_timeout,
+            token_config,
+            None,
+        )
+    }
+
+    pub fn new_peer_bound(
+        dds_base_url: Url,
+        registration_credentials: impl Into<String>,
+        node_version: impl Into<String>,
+        capabilities: Vec<String>,
+        request_timeout: Duration,
+        token_config: TokenManagerConfig,
+        peer_binding: PeerBindingClient,
+    ) -> Result<Self> {
+        Self::new_inner(
+            dds_base_url,
+            registration_credentials,
+            node_version,
+            capabilities,
+            request_timeout,
+            token_config,
+            Some(peer_binding),
+        )
+    }
+
+    fn new_inner(
+        dds_base_url: Url,
+        registration_credentials: impl Into<String>,
+        node_version: impl Into<String>,
+        capabilities: Vec<String>,
+        request_timeout: Duration,
+        token_config: TokenManagerConfig,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
+        let base = RobotAuthenticator::new(
             dds_base_url,
             registration_credentials.into(),
             node_version.into(),
             capabilities,
             request_timeout,
-        )?);
+        )?;
+        let authenticator = Arc::new(PeerBoundAuthenticator::new(base, peer_binding));
         Ok(Self {
             authenticator,
             config: token_config,

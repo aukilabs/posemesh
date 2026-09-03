@@ -130,6 +130,7 @@ impl DmsClient {
                 task_id = %lease.task.id,
                 capability = %lease.task.capability,
                 access_token_updated = lease.access_token.is_some(),
+                p2p_access_token_updated = lease.p2p_access_token.is_some(),
                 "Decoded DMS lease response"
             );
         }
@@ -337,6 +338,7 @@ impl DmsClient {
                 status = %status,
                 task_id = %task_id,
                 access_token_updated = hb.access_token.is_some(),
+                p2p_access_token_updated = hb.p2p_access_token.is_some(),
                 cancel = ?hb.cancel,
                 "Decoded DMS heartbeat response"
             );

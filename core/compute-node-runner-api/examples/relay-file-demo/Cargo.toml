@@ -1,0 +1,30 @@
+[package]
+name = "posemesh-relay-file-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+default-run = "posemesh-relay-file-robot"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+posemesh-p2p-dataset = { workspace = true }
+chrono = { workspace = true }
+dotenvy = "0.15"
+hex = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt-multi-thread", "signal", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+posemesh-compute-node = { path = "../../../compute-node" }
+posemesh-compute-node-runner-api = { path = "../.." }
+
+[dev-dependencies]
+httpmock = { workspace = true }
+tempfile = { workspace = true }
