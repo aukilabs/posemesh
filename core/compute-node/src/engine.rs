@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use auki_p2p::{Identity, Multiaddr, PeerIdentityProof, Protocol};
 use auki_sdk::{
-    AukiPeer, AukiPeerConfig, AukiPeerProtocols, AukiPeerStatus, AukiRelayConfig,
+    AukiPeer, AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig,
     ExternalAuthorityControl,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
@@ -120,9 +120,15 @@ impl RunnerDependencies {
 }
 
 /// Lazily-populated handle to the Robot's authenticated peer protocol
-/// surface -- the same [`AukiPeerProtocols`] the engine's own dataset
-/// adapter mounts on, so a runner can register its own protocol (e.g. Blob
-/// v1) on the *same* peer identity instead of standing up a second one.
+/// context -- the same [`AukiPeerProtocolContext`] the engine's own dataset
+/// adapter is built from, so a runner can register its own protocol (e.g.
+/// Blob v1) on the *same* peer identity instead of standing up a second one.
+/// `AukiPeerProtocolContext` bundles the registration/opening surface
+/// (`.protocols()`), this peer's own published routes (`.routes()`), and its
+/// `peer_id()`/`domain_id()` -- a runner that needs to hand out a route hint
+/// alongside a content address (so a receiver can `open_exact`/`fetch_exact`
+/// without already having this peer wired into its own `InitialPeerRoutes`)
+/// needs all of these, not just the bare registration surface.
 ///
 /// Empty until the Robot's fixed-Domain peer finishes starting
 /// ([`run_robot_node_with_shutdowns`]); by the time any runner's `run()` is
@@ -139,17 +145,29 @@ impl RunnerDependencies {
 /// gets.
 #[derive(Clone, Default)]
 pub struct AukiProtocolsHandle {
-    state: Arc<SyncRwLock<Option<AukiPeerProtocols>>>,
+    state: Arc<SyncRwLock<Option<AukiPeerProtocolContext>>>,
 }
 
 impl AukiProtocolsHandle {
-    fn activate(&self, protocols: AukiPeerProtocols) {
-        *self.state.write() = Some(protocols);
+    fn activate(&self, context: AukiPeerProtocolContext) {
+        *self.state.write() = Some(context);
     }
 
-    /// Borrow the underlying protocol registration/opening surface, once the
-    /// Robot's P2P peer has finished starting.
-    pub fn get(&self) -> Result<AukiPeerProtocols> {
+    /// Build an already-activated handle from a real (or test-fixture)
+    /// [`AukiPeerProtocolContext`] -- e.g. one obtained by starting a local
+    /// `AukiPeer` with `AukiPeer::start_external` in a test, the same way
+    /// [`DatasetService::new`] lets tests hand a runner a fake dataset.
+    /// Production code never calls this: only `run_robot_node_with_shutdowns`
+    /// populates the process-wide handle, via `activate`.
+    pub fn for_testing(context: AukiPeerProtocolContext) -> Self {
+        let handle = Self::default();
+        handle.activate(context);
+        handle
+    }
+
+    /// Borrow the underlying protocol context, once the Robot's P2P peer has
+    /// finished starting.
+    pub fn get(&self) -> Result<AukiPeerProtocolContext> {
         self.state
             .read()
             .clone()
@@ -760,7 +778,7 @@ pub async fn run_robot_node_with_shutdowns(
         }
     };
     info!(peer_id = %peer.peer_id(), %domain_id, "Robot Auki peer is ready");
-    protocols_handle.activate(peer.protocols());
+    protocols_handle.activate(peer.protocol_context());
     let authority_lifecycle = CancellationToken::new();
     let authority_driver = match RobotP2pAuthorityDriver::start(
         authority_source,
