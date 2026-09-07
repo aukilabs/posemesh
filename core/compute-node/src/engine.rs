@@ -681,7 +681,9 @@ pub async fn run_robot_node_with_shutdowns(
         .map(|_| peer_facade_config(&runtime_cfg, relay_config))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
-    let protocols_handle = prepared_peer.as_ref().map(|_| AukiProtocolsHandle::default());
+    let protocols_handle = prepared_peer
+        .as_ref()
+        .map(|_| AukiProtocolsHandle::default());
     let runners = runners
         .into()
         .compose(runner_dependencies(
@@ -737,8 +739,7 @@ pub async fn run_robot_node_with_shutdowns(
         return result;
     };
     let dataset_slot = dataset_slot.expect("P2P identity creates a dataset slot");
-    let protocols_handle =
-        protocols_handle.expect("P2P identity creates a protocols handle");
+    let protocols_handle = protocols_handle.expect("P2P identity creates a protocols handle");
     let authority_source = RobotP2pAuthoritySource::new(
         prepared_peer.dds.clone(),
         Arc::clone(&auth),
