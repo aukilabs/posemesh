@@ -2,7 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use auki_p2p::{Identity, Multiaddr, PeerIdentityProof, Protocol};
 use auki_sdk::{
-    AukiPeer, AukiPeerConfig, AukiPeerStatus, AukiRelayConfig, ExternalAuthorityControl,
+    AukiPeer, AukiPeerConfig, AukiPeerProtocols, AukiPeerStatus, AukiRelayConfig,
+    ExternalAuthorityControl,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
@@ -101,6 +102,7 @@ impl RunnerRegistry {
 #[derive(Clone, Default)]
 struct RunnerDependencies {
     dataset: Option<DatasetService>,
+    protocols: Option<AukiProtocolsHandle>,
 }
 
 impl RunnerDependencies {
@@ -108,6 +110,50 @@ impl RunnerDependencies {
         self.dataset
             .clone()
             .context("the authenticated P2P dataset protocol is unavailable")
+    }
+
+    fn require_protocols(&self) -> Result<AukiProtocolsHandle> {
+        self.protocols
+            .clone()
+            .context("the authenticated P2P protocol surface is unavailable")
+    }
+}
+
+/// Lazily-populated handle to the Robot's authenticated peer protocol
+/// surface -- the same [`AukiPeerProtocols`] the engine's own dataset
+/// adapter mounts on, so a runner can register its own protocol (e.g. Blob
+/// v1) on the *same* peer identity instead of standing up a second one.
+///
+/// Empty until the Robot's fixed-Domain peer finishes starting
+/// ([`run_robot_node_with_shutdowns`]); by the time any runner's `run()` is
+/// invoked for a real task, it is always populated, since activation
+/// happens before the task loop starts (mirrors [`TaskDatasetSlot`]'s
+/// timing). Deliberately simpler than `TaskDatasetSlot`: the Robot path
+/// activates this exactly once for the process's whole lifetime, so no
+/// generation counter or re-activation guard is needed.
+///
+/// Not yet wired for the Compute (per-task-peer) path -- see
+/// `ComputeP2pHost::start_task`, whose `AukiPeer` is scoped to one task's
+/// lease rather than the process lifetime; extending this there needs the
+/// same per-task activate/deactivate treatment `TaskDatasetSlot` already
+/// gets.
+#[derive(Clone, Default)]
+pub struct AukiProtocolsHandle {
+    state: Arc<SyncRwLock<Option<AukiPeerProtocols>>>,
+}
+
+impl AukiProtocolsHandle {
+    fn activate(&self, protocols: AukiPeerProtocols) {
+        *self.state.write() = Some(protocols);
+    }
+
+    /// Borrow the underlying protocol registration/opening surface, once the
+    /// Robot's P2P peer has finished starting.
+    pub fn get(&self) -> Result<AukiPeerProtocols> {
+        self.state
+            .read()
+            .clone()
+            .context("the authenticated P2P protocol surface is unavailable")
     }
 }
 
@@ -407,6 +453,32 @@ impl RunnerComposition {
         Self::new(move |dependencies| Ok(build(dependencies.require_dataset()?)))
     }
 
+    /// Construct runners that require the general authenticated peer
+    /// protocol surface (to mount their own protocol, e.g. Blob v1, on the
+    /// Robot's peer) rather than the dataset-specific protocol.
+    pub fn with_protocols<F>(build: F) -> Self
+    where
+        F: FnOnce(AukiProtocolsHandle) -> RunnerRegistry + Send + 'static,
+    {
+        Self::new(move |dependencies| Ok(build(dependencies.require_protocols()?)))
+    }
+
+    /// Construct runners that require both the dataset protocol and the
+    /// general authenticated peer protocol surface -- e.g. one process
+    /// mixing a runner that still publishes P2P datasets with another that
+    /// mounts its own protocol directly.
+    pub fn with_dataset_and_protocols<F>(build: F) -> Self
+    where
+        F: FnOnce(DatasetService, AukiProtocolsHandle) -> RunnerRegistry + Send + 'static,
+    {
+        Self::new(move |dependencies| {
+            Ok(build(
+                dependencies.require_dataset()?,
+                dependencies.require_protocols()?,
+            ))
+        })
+    }
+
     fn compose(self, dependencies: RunnerDependencies) -> Result<RunnerRegistry> {
         (self.build)(dependencies)
     }
@@ -451,9 +523,11 @@ pub async fn run_node_with_shutdown(
         .map(|_| peer_facade_config(&cfg, None))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
+    // Compute's per-task peer (ComputeP2pHost::start_task) doesn't populate an
+    // AukiProtocolsHandle yet -- see the doc comment on AukiProtocolsHandle.
     let runners = runners
         .into()
-        .compose(runner_dependencies(dataset_slot.as_ref()))
+        .compose(runner_dependencies(dataset_slot.as_ref(), None))
         .context("construct task runners")?;
     let peer_binding = prepared_peer
         .as_ref()
@@ -589,9 +663,13 @@ pub async fn run_robot_node_with_shutdowns(
         .map(|_| peer_facade_config(&runtime_cfg, relay_config))
         .transpose()?;
     let dataset_slot = prepared_peer.as_ref().map(|_| TaskDatasetSlot::default());
+    let protocols_handle = prepared_peer.as_ref().map(|_| AukiProtocolsHandle::default());
     let runners = runners
         .into()
-        .compose(runner_dependencies(dataset_slot.as_ref()))
+        .compose(runner_dependencies(
+            dataset_slot.as_ref(),
+            protocols_handle.as_ref(),
+        ))
         .context("construct task runners")?;
     let peer_binding = prepared_peer
         .as_ref()
@@ -641,6 +719,8 @@ pub async fn run_robot_node_with_shutdowns(
         return result;
     };
     let dataset_slot = dataset_slot.expect("P2P identity creates a dataset slot");
+    let protocols_handle =
+        protocols_handle.expect("P2P identity creates a protocols handle");
     let authority_source = RobotP2pAuthoritySource::new(
         prepared_peer.dds.clone(),
         Arc::clone(&auth),
@@ -680,6 +760,7 @@ pub async fn run_robot_node_with_shutdowns(
         }
     };
     info!(peer_id = %peer.peer_id(), %domain_id, "Robot Auki peer is ready");
+    protocols_handle.activate(peer.protocols());
     let authority_lifecycle = CancellationToken::new();
     let authority_driver = match RobotP2pAuthorityDriver::start(
         authority_source,
@@ -775,12 +856,18 @@ struct NodeLoopP2p {
     forced_shutdown: Option<CancellationToken>,
 }
 
-fn runner_dependencies(dataset_slot: Option<&TaskDatasetSlot>) -> RunnerDependencies {
+fn runner_dependencies(
+    dataset_slot: Option<&TaskDatasetSlot>,
+    protocols_handle: Option<&AukiProtocolsHandle>,
+) -> RunnerDependencies {
     let dataset = dataset_slot.map(|slot| {
         let dataset: Arc<dyn P2pDataset> = Arc::new(slot.clone());
         DatasetService::new(dataset)
     });
-    RunnerDependencies { dataset }
+    RunnerDependencies {
+        dataset,
+        protocols: protocols_handle.cloned(),
+    }
 }
 
 fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<Multiaddr>> {
