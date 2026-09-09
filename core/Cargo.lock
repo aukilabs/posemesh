@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -558,7 +558,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -591,7 +591,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
 dependencies = [
  "async-trait",
  "chrono",
@@ -606,7 +606,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
