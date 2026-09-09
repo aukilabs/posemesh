@@ -107,38 +107,109 @@ impl RunnerDependencies {
     }
 }
 
-/// Lazily populated handle to the Robot's authenticated peer protocol context.
+/// One typed, fail-closed protocol slot shared with process-constructed runners.
 ///
 /// Runners receive this handle through [`RunnerComposition::with_protocols`]
-/// and mount their application protocols on the same peer identity. The context
-/// provides protocol registration/opening, published routes, Peer ID and Domain.
+/// and mount their application protocols on the peer identity that is active
+/// at the time. The context provides protocol registration/opening, published
+/// routes, Peer ID and Domain.
 ///
-/// The handle is populated after the Robot's fixed-Domain peer starts and before
-/// task execution begins. Compute's per-task peer does not expose this handle.
+/// Populated in both roles, with different lifetimes:
+///
+/// * **Robot** — once, after the fixed-Domain peer starts and before task
+///   execution begins; the activation lives for the whole process.
+/// * **Compute** — per task, from the peer `ComputeP2pHost::start_task` creates
+///   for the lease, released when that peer shuts down. The peer's lifetime
+///   already brackets the runner call exactly.
+///
+/// **A runner must call [`get`](Self::get) at the point of use and must not
+/// cache the returned context.** On Compute the context belongs to one task's
+/// peer; holding it across tasks means holding a context whose peer has gone,
+/// which surfaces as an obscure transport error instead of a clear
+/// "unavailable". `get` is a lock read and a clone, so calling it per operation
+/// is cheap.
 #[derive(Clone, Default)]
 pub struct AukiProtocolsHandle {
-    state: Arc<SyncRwLock<Option<AukiPeerProtocolContext>>>,
+    state: Arc<SyncRwLock<ProtocolsSlotState>>,
+}
+
+#[derive(Default)]
+struct ProtocolsSlotState {
+    /// Bumped on every activation so a late `Drop` cannot deactivate whoever
+    /// replaced it. See [`AukiProtocolsActivation`].
+    generation: u64,
+    active: Option<AukiPeerProtocolContext>,
+}
+
+/// RAII activation of an [`AukiProtocolsHandle`].
+///
+/// Dropping it deactivates the slot — but only if no newer activation has taken
+/// its place, which is what the generation counter is for. Holding the
+/// deactivation in `Drop` rather than at an explicit call site means every exit
+/// path is covered, including the ones that unwind.
+#[must_use = "the protocol surface is deactivated as soon as this guard is dropped"]
+pub struct AukiProtocolsActivation {
+    handle: AukiProtocolsHandle,
+    generation: u64,
 }
 
 impl AukiProtocolsHandle {
-    fn activate(&self, context: AukiPeerProtocolContext) {
-        *self.state.write() = Some(context);
+    /// Publish `context` to every runner holding this handle.
+    ///
+    /// Fails if the slot is already active. That is deliberate: a second
+    /// activation means two peers believe they own the surface, and silently
+    /// swapping one for the other would hand runners a context they did not
+    /// expect.
+    fn activate(&self, context: AukiPeerProtocolContext) -> Result<AukiProtocolsActivation> {
+        let mut state = self.state.write();
+        if state.active.is_some() {
+            return Err(anyhow!(
+                "the authenticated P2P protocol surface is already active"
+            ));
+        }
+        state.generation = state
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("the protocol activation generation is exhausted"))?;
+        state.active = Some(context);
+        Ok(AukiProtocolsActivation {
+            handle: self.clone(),
+            generation: state.generation,
+        })
     }
 
     /// Build an already activated handle from a real or test-fixture peer context.
+    ///
+    /// The activation is permanent — there is no guard to drop — which is what
+    /// a test wants and what production code must never do.
     pub fn for_testing(context: AukiPeerProtocolContext) -> Self {
         let handle = Self::default();
-        handle.activate(context);
+        {
+            let mut state = handle.state.write();
+            state.generation = 1;
+            state.active = Some(context);
+        }
         handle
     }
 
-    /// Borrow the underlying protocol context, once the Robot's P2P peer has
-    /// finished starting.
+    /// The protocol context of whichever peer is active right now.
+    ///
+    /// Resolve per operation; see the type-level note on caching.
     pub fn get(&self) -> Result<AukiPeerProtocolContext> {
         self.state
             .read()
+            .active
             .clone()
             .context("the authenticated P2P protocol surface is unavailable")
+    }
+}
+
+impl Drop for AukiProtocolsActivation {
+    fn drop(&mut self) {
+        let mut state = self.handle.state.write();
+        if state.generation == self.generation {
+            state.active = None;
+        }
     }
 }
 
@@ -204,6 +275,12 @@ struct ComputeP2pHost {
     proof: PeerIdentityProof,
     dds: DdsP2pClient,
     config: AukiPeerConfig,
+    /// Published to runners for the lifetime of each task peer, so Compute
+    /// runners can mount their own protocols the way Robot runners already do.
+    ///
+    /// Carried here rather than threaded separately because `compute_peer` is
+    /// already passed down the whole lease path.
+    protocols: AukiProtocolsHandle,
 }
 
 #[derive(Clone)]
@@ -218,6 +295,9 @@ pub struct ComputeAuthorityUpdater {
 struct ComputeTaskPeer {
     peer: Option<AukiPeer>,
     authority: ComputeAuthorityUpdater,
+    /// Dropped before the peer shuts down, so a runner can never resolve a
+    /// context whose peer has already gone.
+    protocols_activation: Option<AukiProtocolsActivation>,
 }
 
 impl ComputeP2pHost {
@@ -241,8 +321,15 @@ impl ComputeP2pHost {
             AukiPeer::start_external(self.identity.clone(), update, self.config.clone())
                 .await
                 .context("start task-scoped Auki peer")?;
+        // Activated before the runner runs and released after it returns: the
+        // task peer's lifetime already brackets `run_for_lease` exactly.
+        let protocols_activation = self
+            .protocols
+            .activate(peer.protocol_context())
+            .context("publish the task peer's protocol surface to runners")?;
         Ok(Some(ComputeTaskPeer {
             peer: Some(peer),
+            protocols_activation: Some(protocols_activation),
             authority: ComputeAuthorityUpdater {
                 domain_id,
                 proof: self.proof.clone(),
@@ -292,6 +379,9 @@ impl ComputeTaskPeer {
     }
 
     async fn shutdown(mut self) -> Result<()> {
+        // Deactivate first: a runner resolving the slot between the peer's
+        // shutdown and the guard's drop would get a context backed by nothing.
+        drop(self.protocols_activation.take());
         if let Some(peer) = self.peer.take() {
             peer.shutdown().await.context("shut down task Auki peer")?;
         }
@@ -389,11 +479,17 @@ pub async fn run_node_with_shutdown(
         .as_ref()
         .map(|_| peer_facade_config(&cfg, None))
         .transpose()?;
-    // Compute's per-task peer (ComputeP2pHost::start_task) doesn't populate an
-    // AukiProtocolsHandle yet -- see the doc comment on AukiProtocolsHandle.
+    // Composed empty and activated per task, mirroring the Robot path. The slot
+    // is lazily populated precisely so composition can run before any peer
+    // exists -- which it must, since the capability list is needed to register.
+    let protocols_handle = prepared_peer
+        .as_ref()
+        .map(|_| AukiProtocolsHandle::default());
     let runners = runners
         .into()
-        .compose(RunnerDependencies::default())
+        .compose(RunnerDependencies {
+            protocols: protocols_handle.clone(),
+        })
         .context("construct task runners")?;
     let peer_binding = prepared_peer
         .as_ref()
@@ -427,6 +523,7 @@ pub async fn run_node_with_shutdown(
         identity: prepared.identity,
         proof: prepared.proof,
         dds: prepared.dds,
+        protocols: protocols_handle.expect("P2P identity creates a protocols handle"),
     });
     let result = run_authenticated_node_loop(
         &cfg,
@@ -611,7 +708,11 @@ pub async fn run_robot_node_with_shutdowns(
         }
     };
     info!(peer_id = %peer.peer_id(), %domain_id, "Robot Auki peer is ready");
-    protocols_handle.activate(peer.protocol_context());
+    // Held until this function returns, i.e. for the process's whole life.
+    // The Robot has one fixed-Domain peer, so this never re-activates.
+    let _protocols_activation = protocols_handle
+        .activate(peer.protocol_context())
+        .context("publish the Robot peer's protocol surface to runners")?;
     let authority_lifecycle = CancellationToken::new();
     let authority_driver = match RobotP2pAuthorityDriver::start(
         authority_source,
@@ -1849,5 +1950,166 @@ mod tests {
             .expect("heartbeat abort is bounded")
             .expect_err("heartbeat task was aborted");
         assert!(error.is_cancelled());
+    }
+}
+
+#[cfg(test)]
+mod protocols_handle_tests {
+    //! `AukiProtocolsHandle` activation lifecycle.
+    //!
+    //! The Robot activates once for the process; Compute activates per task.
+    //! These cover the second, which is the one with sharp edges: the slot has
+    //! to be reusable across tasks, refuse two simultaneous owners, and go
+    //! empty the moment a task peer is released.
+    //!
+    //! In-crate rather than under `tests/` because `activate` is deliberately
+    //! private -- production code activates only from the engine.
+
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use auki_p2p::{
+        Identity, P2PAccessClaims, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE,
+        P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
+    };
+    use auki_sdk::{
+        AukiPeer, AukiPeerConfig, DdsVerificationKeys, ExternalAuthorityUpdate, SignedP2pCredential,
+    };
+    use chrono::{TimeZone, Utc};
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use uuid::Uuid;
+
+    const TEST_DDS_PRIVATE_KEY: &[u8] = br#"-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggm4twpf4y/yNNw/k
+fqecEEl4zBTwZdRDFUFp/fSxV8qhRANCAARUxrDWJ0AtEGTAYZ4412VPHqMCKoPw
+UphDkcOIk7SODsKwUvTIiUr11NbXBJmbBRfhERczsuK4PVha5eg0fVqo
+-----END PRIVATE KEY-----"#;
+
+    const TEST_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
+8FKYQ5HDiJO0jg7CsFL0yIlK9dTW1wSZmwUX4REXM7LiuD1YWuXoNH1aqA==
+-----END PUBLIC KEY-----"#;
+
+    /// A locally self-signed peer -- no DDS, no mock server.
+    async fn test_peer(domain_id: Uuid) -> AukiPeer {
+        let identity = Identity::generate();
+        let issued_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let expiration = issued_at + P2P_TOKEN_TTL.as_secs();
+        let claims = P2PAccessClaims {
+            token_type: P2P_TOKEN_TYPE.into(),
+            iss: P2P_TOKEN_ISSUER.into(),
+            aud: vec![P2P_TOKEN_AUDIENCE.into()],
+            sub: Uuid::new_v4().to_string(),
+            organization_id: None,
+            peer_type: Some("compute".into()),
+            peer_id: identity.peer_id().to_string(),
+            domain_ids: vec![domain_id.to_string()],
+            scopes: vec![P2P_TOKEN_SCOPE.into()],
+            application: None,
+            iat: issued_at,
+            nbf: None,
+            exp: expiration,
+        };
+        let token = encode(
+            &Header::new(Algorithm::ES256),
+            &claims,
+            &EncodingKey::from_ec_pem(TEST_DDS_PRIVATE_KEY).unwrap(),
+        )
+        .unwrap();
+        let update = ExternalAuthorityUpdate::new(
+            domain_id,
+            identity.peer_id(),
+            DdsVerificationKeys::new(0, TEST_DDS_PUBLIC_KEY.to_vec(), None),
+            SignedP2pCredential::new(token).unwrap(),
+            Utc.timestamp_opt(expiration as i64, 0).unwrap(),
+        );
+        let config = AukiPeerConfig::new("http://127.0.0.1:9")
+            .unwrap()
+            .direct_only();
+        let (peer, _authority) = AukiPeer::start_external(identity, update, config)
+            .await
+            .unwrap();
+        peer
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_unactivated_slot_reports_unavailable() {
+        let error = AukiProtocolsHandle::default()
+            .get()
+            .err()
+            .expect("an unactivated slot must not resolve");
+        assert!(
+            error
+                .to_string()
+                .contains("authenticated P2P protocol surface is unavailable"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn activation_publishes_the_context_and_release_takes_it_away() {
+        let peer = test_peer(Uuid::new_v4()).await;
+        let handle = AukiProtocolsHandle::default();
+
+        let activation = handle.activate(peer.protocol_context()).unwrap();
+        assert_eq!(
+            handle.get().unwrap().peer_id(),
+            peer.protocol_context().peer_id()
+        );
+
+        // Releasing the task peer must empty the slot: a runner resolving it
+        // afterwards should be told the surface is unavailable, not handed a
+        // context whose peer has gone.
+        drop(activation);
+        assert!(handle.get().is_err());
+
+        peer.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_second_simultaneous_activation_is_refused() {
+        // Two peers believing they own the surface would hand runners a context
+        // they did not expect. Fail loudly instead of silently swapping.
+        let first = test_peer(Uuid::new_v4()).await;
+        let second = test_peer(Uuid::new_v4()).await;
+        let handle = AukiProtocolsHandle::default();
+
+        let _activation = handle.activate(first.protocol_context()).unwrap();
+        let error = handle
+            .activate(second.protocol_context())
+            .err()
+            .expect("a second simultaneous activation must be refused");
+        assert!(error.to_string().contains("already active"), "{error}");
+
+        // The original owner is untouched.
+        assert_eq!(
+            handle.get().unwrap().peer_id(),
+            first.protocol_context().peer_id()
+        );
+
+        first.shutdown().await.unwrap();
+        second.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_slot_is_reusable_across_tasks() {
+        // The Compute case: one handle, composed once at startup, serving a
+        // different task peer on every lease.
+        let handle = AukiProtocolsHandle::default();
+
+        for _ in 0..3 {
+            let peer = test_peer(Uuid::new_v4()).await;
+            let activation = handle.activate(peer.protocol_context()).unwrap();
+            assert_eq!(
+                handle.get().unwrap().peer_id(),
+                peer.protocol_context().peer_id()
+            );
+            drop(activation);
+            assert!(handle.get().is_err());
+            peer.shutdown().await.unwrap();
+        }
     }
 }
