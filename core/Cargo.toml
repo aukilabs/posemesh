@@ -10,6 +10,7 @@ members = [
     "domain-http",
     "compute-node-runner-api",
     "compute-node-runner-api/examples/hello-runner",
+    "compute-node-runner-api/examples/p2p-echo",
     "compute-node",
     "node-registration", "uniffi-bindgen",
 ]
@@ -23,6 +24,7 @@ auki-dms = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f6
 auki-auth = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
 auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
 auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
+auki-portable-echo = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
 libp2p = { version = "0.56.0", default-features = false }
 # `libp2p-stream` is still pre-release and must match libp2p 0.56's
 # libp2p-swarm 0.47 type family exactly.

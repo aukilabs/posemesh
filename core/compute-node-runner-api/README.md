@@ -52,6 +52,11 @@ impl Runner for HelloRunner {
 ```
 
 ## Development notes
+
+The [P2P Echo example](examples/p2p-echo/README.md) composes Compute and Robot
+runners with the host's authenticated SDK protocol context. It keeps this
+crate's `Runner` and `TaskCtx` interface unchanged.
+
 - `cargo test -p posemesh-compute-node-runner-api` exercises trait object safety and serde
   round-trips of the contract types.
 - The crate is `no_std`-out-of-scope by design; runner implementers are expected

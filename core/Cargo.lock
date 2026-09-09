@@ -606,6 +606,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "auki-portable-echo"
+version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+dependencies = [
+ "async-channel 2.5.0",
+ "auki-sdk",
+ "futures",
+ "futures-timer",
+ "thiserror 2.0.16",
+]
+
+[[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
 source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
@@ -1329,7 +1341,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -4282,6 +4294,24 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "posemesh-p2p-echo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "auki-p2p",
+ "auki-portable-echo",
+ "auki-sdk",
+ "posemesh-compute-node",
+ "posemesh-compute-node-runner-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 

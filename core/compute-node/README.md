@@ -13,7 +13,7 @@ The SDK-owned
 facade owns the Domain runtime, mutual authentication, relay booking,
 reservations, route catalog, readiness, and ordered shutdown. Compute-node
 composes DDS authority acquisition, facade configuration and task lifecycle.
-Robot applications mount their own protocols through
+Compute and Robot applications mount their own protocols through
 `RunnerComposition::with_protocols` and `AukiProtocolsHandle`; no application
 protocol is mounted automatically. Protocol handles are supplied to runner
 constructors, while `TaskCtx` keeps its task, storage and control ports.
@@ -43,7 +43,7 @@ constructors, while `TaskCtx` keeps its task, storage and control ports.
 1. `telemetry::init_from_env()` installs logging based on `LOG_FORMAT`.
 2. The selected entrypoint loads either `NodeConfig` for legacy SIWE or the
    separate `RobotNodeConfig` for robot machine authentication.
-3. A `RunnerComposition::with_protocols` constructs Robot runners that need
+3. A `RunnerComposition::with_protocols` constructs runners that need
    the authenticated peer protocol context. Plain runners can still be
    registered directly in a `RunnerRegistry`.
 4. The legacy entrypoint starts
@@ -55,7 +55,8 @@ constructors, while `TaskCtx` keeps its task, storage and control ports.
    Robot starts one process-long `AukiPeer` with externally supplied authority.
    When relay mode is enabled, that facade books and reserves relays and exposes
    confirmed routes through its protocol context. Compute peers are instead
-   task-scoped and explicitly direct-only.
+   task-scoped and do not book relays of their own. They can open streams to
+   another peer through that peer's confirmed relay route.
 6. The main `run_node` loop obtains an access token from DDS, builds a DMS
    client, leases tasks, initializes session state, and dispatches to the
    correct runner via `RunnerRegistry::run_for_lease`.
@@ -64,6 +65,13 @@ constructors, while `TaskCtx` keeps its task, storage and control ports.
    when DDS returns new ones.
 8. When a runner finishes, artifacts discovered by the storage layer are
    reported to DMS via `complete` or `fail`, and the cycle restarts.
+
+With P2P enabled, every Compute capability can use the protocol handle when
+DMS supplies peer-bound authority for the leased Domain. Call `get()` inside
+each runner invocation: the handle is empty between tasks or when the lease
+has no P2P authority. Completion, failure, cancellation and dropped task
+execution clear it and stop the old context. Robot's peer lives for the
+process; each runner owns the lifetime of its protocol registrations.
 
 ## Configuration surface
 
@@ -225,7 +233,12 @@ Choosing a binary is the authentication-mode switch. Supplying either robot
 credential source to the default SIWE binary does not select robot mode, and
 the robot binary does not read `REG_SECRET` or `SECP256K1_PRIVHEX`.
 
+For a paired Compute/Robot example that polls dedicated DMS tasks and exchanges
+an Echo message over P2P, see
+[P2P Echo](../compute-node-runner-api/examples/p2p-echo/README.md).
+
 ## Notable modules
+
 - `auth::siwe_after_registration` — waits for DDS registration, then spins up
   the SIWE token manager and refresh loop.
 - `auth::robot` — registers and renews robot machine credentials without a
