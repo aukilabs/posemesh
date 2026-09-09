@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -556,9 +556,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "auki-dms"
+version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+dependencies = [
+ "anyhow",
+ "auki-auth",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -591,7 +608,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -606,7 +623,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=c5d65ad2b4d8972a59cede329cd647eee4387f36#c5d65ad2b4d8972a59cede329cd647eee4387f36"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
@@ -4079,6 +4096,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "auki-auth",
+ "auki-dms",
  "auki-p2p",
  "auki-sdk",
  "axum",
@@ -4122,6 +4140,7 @@ version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
+ "auki-dms",
  "chrono",
  "serde",
  "serde_json",

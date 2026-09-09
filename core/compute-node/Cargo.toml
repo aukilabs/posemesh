@@ -11,6 +11,7 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
+auki-dms = { workspace = true, features = ["client"] }
 auki-auth = { workspace = true }
 auki-p2p = { workspace = true }
 posemesh-p2p-dataset = { workspace = true }

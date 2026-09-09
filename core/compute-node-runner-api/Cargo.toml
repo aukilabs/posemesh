@@ -11,6 +11,7 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
+auki-dms = { workspace = true, default-features = false }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
