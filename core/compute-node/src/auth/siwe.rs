@@ -1,73 +1,15 @@
 use chrono::{DateTime, Utc};
-use hex::FromHexError;
-use k256::ecdsa::{self, SigningKey};
+use k256::ecdsa::SigningKey;
 use k256::FieldBytes;
 use reqwest::Client;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use thiserror::Error;
 
 const API_PREFIX: &str = "/internal/v1";
 const REQUEST_PATH: &str = "/auth/siwe/request";
 const VERIFY_PATH: &str = "/auth/siwe/verify";
 
-#[derive(Debug, Error)]
-pub enum SiweError {
-    #[error("invalid private key hex: {0}")]
-    InvalidHex(FromHexError),
-    #[error("invalid private key length: expected 32 bytes, got {0}")]
-    InvalidPrivateKeyLength(usize),
-    #[error("failed to initialize signing key: {0}")]
-    InvalidSigningKey(ecdsa::Error),
-    #[error("failed to sign SIWE message: {0}")]
-    Signing(ecdsa::Error),
-    #[error(transparent)]
-    Request(#[from] reqwest::Error),
-    #[error("dds siwe upstream returned status {0}")]
-    UpstreamStatus(StatusCode),
-    #[error(transparent)]
-    InvalidExpiration(#[from] chrono::ParseError),
-    #[error("missing field '{0}' in response")]
-    MissingField(&'static str),
-    #[error("DDS peer binding failed: {0}")]
-    PeerBinding(String),
-}
-
-pub type Result<T> = std::result::Result<T, SiweError>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccessBundle {
-    token: String,
-    expires_at: DateTime<Utc>,
-}
-
-impl AccessBundle {
-    pub fn new(token: impl Into<String>, expires_at: DateTime<Utc>) -> Self {
-        Self {
-            token: token.into(),
-            expires_at,
-        }
-    }
-
-    pub fn token(&self) -> &str {
-        &self.token
-    }
-
-    pub fn expires_at(&self) -> DateTime<Utc> {
-        self.expires_at
-    }
-}
-
-impl SiweError {
-    pub fn status_code(&self) -> Option<StatusCode> {
-        match self {
-            SiweError::Request(err) => err.status(),
-            SiweError::UpstreamStatus(status) => Some(*status),
-            _ => None,
-        }
-    }
-}
+pub use auki_auth::machine::{AccessBundle, Result, SiweError};
 
 pub fn sign_message(priv_hex: &str, message: &str) -> Result<String> {
     let key_bytes = decode_priv_key(priv_hex)?;
@@ -159,7 +101,7 @@ pub async fn verify(
         .or(body.expires_at)
         .ok_or(SiweError::MissingField("access_expires_at"))?;
     let expires_at = DateTime::parse_from_rfc3339(&expires_at_raw)?.with_timezone(&Utc);
-    Ok(AccessBundle { token, expires_at })
+    Ok(AccessBundle::new(token, expires_at))
 }
 
 fn decode_priv_key(priv_hex: &str) -> Result<[u8; 32]> {

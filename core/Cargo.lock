@@ -524,8 +524,9 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
 dependencies = [
+ "anyhow",
  "async-trait",
  "auki-p2p",
  "base64 0.22.1",
@@ -534,7 +535,9 @@ dependencies = [
  "futures-timer",
  "hex",
  "js-sys",
+ "k256",
  "p256",
+ "rand 0.8.5",
  "reqwest",
  "serde",
  "serde_json",
@@ -542,6 +545,7 @@ dependencies = [
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
+ "tracing",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -552,7 +556,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -585,7 +589,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -600,7 +604,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
@@ -4072,6 +4076,7 @@ version = "0.3.3"
 dependencies = [
  "anyhow",
  "async-trait",
+ "auki-auth",
  "auki-p2p",
  "auki-sdk",
  "axum",
