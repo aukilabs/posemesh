@@ -14,7 +14,6 @@ path = "src/lib.rs"
 auki-dms = { workspace = true, features = ["client"] }
 auki-auth = { workspace = true }
 auki-p2p = { workspace = true }
-posemesh-p2p-dataset = { workspace = true }
 auki-sdk = { workspace = true }
 compute-runner-api = { package = "posemesh-compute-node-runner-api", version = "0.1.2", path = "../compute-node-runner-api" }
 anyhow = { workspace = true }

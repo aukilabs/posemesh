@@ -722,6 +722,180 @@ fn robot_machine_token(assigned_domain_id: Option<Uuid>) -> String {
     format!("{header}.{payload}.signature")
 }
 
+#[tokio::test]
+async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
+    use futures::{AsyncReadExt, AsyncWriteExt};
+    use posemesh_compute_node::{
+        config::{P2pPrivateKey, RobotNodeConfig},
+        engine::{run_robot_node_with_shutdowns, RunnerComposition, RunnerRegistry},
+    };
+    use tokio_util::sync::CancellationToken;
+
+    struct IdleRunner;
+    #[async_trait]
+    impl compute_runner_api::Runner for IdleRunner {
+        fn capability(&self) -> &'static str {
+            "/test/idle/v1"
+        }
+        async fn run(&self, _: compute_runner_api::TaskCtx<'_>) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    let server = MockServer::start();
+    let _keys = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
+    let identity = Identity::generate();
+    let domain_id = Uuid::new_v4();
+    let bound = robot_machine_token(Some(domain_id));
+    let (token, expires_at) = signed_robot_p2p_token(&identity, domain_id);
+    let _register = server.mock(|when, then| {
+        when.method(POST).path(ROBOT_REGISTER_PATH);
+        then.status(200).json_body(json!({
+            "robot_id": Uuid::new_v4(), "access_token": "robot-base",
+            "access_expires_at": expires_at,
+        }));
+    });
+    let (_challenge, _verify) = binding_mocks(
+        &server,
+        &identity.proof(),
+        "robot-base",
+        &bound,
+        "robot-proof",
+        b"robot proof",
+    );
+    let _exchange = server.mock(|when, then| {
+        when.method(POST).path(ROBOT_P2P_TOKEN_PATH);
+        then.status(200).json_body(json!({
+            "p2p_access_token": token, "p2p_access_expires_at": expires_at,
+        }));
+    });
+    let _no_work = server.mock(|when, then| {
+        when.method(GET).path("/tasks");
+        then.status(204);
+    });
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!(
+        "/ip4/127.0.0.1/tcp/{}",
+        listener.local_addr().unwrap().port()
+    );
+    drop(listener);
+    let mut cfg = RobotNodeConfig::new(
+        server.base_url().parse().unwrap(),
+        server.base_url().parse().unwrap(),
+        "robot-test-credential",
+    )
+    .unwrap();
+    cfg.auki_p2p_enabled = true;
+    cfg.set_relay_config(None).unwrap();
+    cfg.auki_p2p_listen_multiaddrs = vec![address.clone()];
+    cfg.auki_p2p_advertised_multiaddrs = vec![address.clone()];
+    cfg.set_p2p_private_key(Some(
+        P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap()).unwrap(),
+    ));
+    cfg.poll_backoff_ms_min = 10;
+    cfg.poll_backoff_ms_max = 10;
+
+    let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
+    let runners = RunnerComposition::with_protocols(move |handle| {
+        assert!(handle.get().is_err(), "composition precedes peer startup");
+        assert!(handle_tx.send(handle).is_ok());
+        RunnerRegistry::new().register(IdleRunner)
+    });
+    let shutdown = CancellationToken::new();
+    let _shutdown_guard = shutdown.clone().drop_guard();
+    let engine = tokio::spawn(run_robot_node_with_shutdowns(
+        cfg,
+        runners,
+        shutdown.clone(),
+        CancellationToken::new(),
+    ));
+    let context = tokio::time::timeout(Duration::from_secs(5), async {
+        let handle = handle_rx.await.unwrap();
+        loop {
+            if let Ok(context) = handle.get() {
+                break context;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Robot peer startup");
+    assert_eq!(context.peer_id(), identity.peer_id());
+    assert_eq!(context.domain_id(), domain_id);
+    let registration = context
+        .protocols()
+        .register(
+            auki_sdk::AukiProtocolSpec::new("/test/application/1", 1, 16).unwrap(),
+            |mut stream| async move {
+                let mut request = [0; 4];
+                stream.read_exact(&mut request).await.unwrap();
+                assert_eq!(&request, b"ping");
+                stream.write_all(b"pong").await.unwrap();
+                stream.close().await.unwrap();
+            },
+        )
+        .unwrap();
+
+    let remote_identity = Identity::generate();
+    let (token, expires_at) = signed_p2p_token(
+        &remote_identity,
+        domain_id,
+        PeerRole::Compute,
+        Uuid::new_v4(),
+    );
+    let update = client(&server)
+        .external_authority_update(&remote_identity.proof(), domain_id, &token, expires_at)
+        .await
+        .unwrap();
+    let (remote, _) = AukiPeer::start_external(
+        remote_identity,
+        update,
+        AukiPeerConfig::new(server.base_url())
+            .unwrap()
+            .direct_only(),
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut stream = remote
+            .protocols()
+            .open_exact(
+                identity.peer_id(),
+                address.parse().unwrap(),
+                "/test/application/1",
+            )
+            .await
+            .unwrap();
+        stream.write_all(b"ping").await.unwrap();
+        stream.flush().await.unwrap();
+        let mut response = [0; 4];
+        stream.read_exact(&mut response).await.unwrap();
+        assert_eq!(&response, b"pong");
+        stream.close().await.unwrap();
+    })
+    .await
+    .expect("authenticated custom protocol exchange");
+
+    shutdown.cancel();
+    tokio::time::timeout(Duration::from_secs(5), engine)
+        .await
+        .expect("Robot shutdown is bounded")
+        .unwrap()
+        .unwrap();
+    assert!(
+        context
+            .protocols()
+            .register(
+                auki_sdk::AukiProtocolSpec::new("/test/after-shutdown/1", 1, 16).unwrap(),
+                |_| async {},
+            )
+            .is_err(),
+        "shutdown fences application protocol work"
+    );
+    registration.close().await.unwrap();
+    remote.shutdown().await.unwrap();
+}
+
 fn signed_robot_p2p_token(identity: &Identity, domain_id: Uuid) -> (String, DateTime<Utc>) {
     signed_p2p_token(identity, domain_id, PeerRole::Robot, Uuid::new_v4())
 }

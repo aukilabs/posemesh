@@ -8,17 +8,15 @@ server on behalf of capability-specific runners. Legacy SIWE and robot machine
 authentication use separate, explicit entrypoints while sharing the task
 engine.
 
-The authenticated P2P stack is intentionally split out of this crate. The
-SDK-owned
+The SDK-owned
 [`AukiPeer`](https://github.com/aukilabs/auki-sdk/tree/main/crates/auki-sdk)
-facade owns the Domain runtime, mutual authentication, relay booking and
-reservations, route catalog, readiness, and ordered shutdown. The Posemesh-owned
-[`posemesh-p2p-dataset`](../posemesh-p2p-dataset/README.md) owns the dataset
-protocol.
-Compute-node remains the composition root for DDS authority acquisition,
-facade configuration, task lifecycle, and dataset-reference draining. Runners
-receive protocol-specific facades explicitly in their constructors, never
-through `TaskCtx` and never as the raw P2P node or credentials.
+facade owns the Domain runtime, mutual authentication, relay booking,
+reservations, route catalog, readiness, and ordered shutdown. Compute-node
+composes DDS authority acquisition, facade configuration and task lifecycle.
+Robot applications mount their own protocols through
+`RunnerComposition::with_protocols` and `AukiProtocolsHandle`; no application
+protocol is mounted automatically. Protocol handles are supplied to runner
+constructors, while `TaskCtx` keeps its task, storage and control ports.
 
 ## Responsibilities
 - Environment-driven configuration (`config`) with typed accessors and sane
@@ -45,9 +43,9 @@ through `TaskCtx` and never as the raw P2P node or credentials.
 1. `telemetry::init_from_env()` installs logging based on `LOG_FORMAT`.
 2. The selected entrypoint loads either `NodeConfig` for legacy SIWE or the
    separate `RobotNodeConfig` for robot machine authentication.
-3. A `RunnerComposition` constructs protocol-aware runners with typed
-   dependencies such as `DatasetService`. Plain runners can still be registered
-   directly in a `RunnerRegistry`.
+3. A `RunnerComposition::with_protocols` constructs Robot runners that need
+   the authenticated peer protocol context. Plain runners can still be
+   registered directly in a `RunnerRegistry`.
 4. The legacy entrypoint starts
    `dds::register::spawn_registration_if_configured()` and then
    `auth::SiweAfterRegistration`. The robot entrypoint registers directly with
@@ -123,10 +121,10 @@ Optional environment variables:
   and become ready through a confirmed circuit listener. Tests may use
   `/ip4/127.0.0.1/tcp/0`.
 - `AUKI_P2P_ADVERTISED_MULTIADDRS` (default empty) — comma-separated direct
-  TCP multiaddrs placed in dataset references. Direct-only Robot serving
-  requires explicit addresses that Compute Nodes can reach. `auto` and
-  `always` may leave this empty, but cannot register a dataset until a relay
-  provider is confirmed. There is no direct-address discovery or guessing,
+  TCP multiaddrs published in the SDK route catalog. Direct-only Robot serving
+  requires explicit addresses that remote peers can reach. `auto` and
+  `always` may leave this empty and use confirmed relay routes.
+  There is no direct-address discovery or guessing,
   and an ephemeral `tcp/0` address must not be advertised.
 - `AUKI_P2P_RELAY_MODE` (Robot only) — one of `disabled`, `auto`, or `always`.
   When P2P is enabled and this setting is omitted, the Robot defaults to one
@@ -157,42 +155,30 @@ Optional environment variables:
 - `NOOP_SLEEP_SECS` (default `5`) — noop runner sleep duration.
 
 The SDK validates a 16-slot local publication limit: each direct route consumes
-one slot and each relay provider consumes one slot. A Posemesh dataset
-reference expands every confirmed provider into its TCP and WSS circuit
-addresses, so the serialized reference may contain up to 19 addresses: 13
-direct addresses plus three provider pairs. Relay retry, recovery, and cleanup
-timing are SDK facade implementation details rather than Posemesh
-configuration.
+one slot and each relay provider consumes one slot. Relay retry, recovery and
+cleanup timing are SDK facade implementation details.
 
 ### Robot relay readiness and shutdown
 
 `disabled` never creates a relay booking. When P2P serving is enabled in this
-mode, operators must supply explicit listen and advertised direct routes and
-accept that an immutable direct-only reference cannot be repaired if the route
-is private, stale, blackholed, or later becomes unreachable.
+mode, operators must supply explicit listen and advertised direct routes that
+remote peers can reach.
 
 `auto` and `always` both ask the SDK facade for relay-ready operation. The
 Robot does not begin its normal peer work until at least one eligible relay is
-confirmed. The two values are retained as compatible configuration spellings;
-they no longer select different lifecycle behavior.
+confirmed. The two values are retained as compatible configuration spellings.
 
-`AUKI_P2P_RELAY_COUNT` is desired redundancy, not a quorum. One confirmed relay
-is enough for the facade to become ready when more were requested; missing or
-recovering siblings continue in the background. Each immutable reference
-snapshots its explicit direct routes plus both the TCP and WSS circuit routes
-for every confirmed, dataset-limit-eligible provider available at that commit.
-Native Compute fetches prefer direct and TCP routes; the paired WSS route is
-published for browser-capable consumers. A provider confirmed later appears
-only in future references and does not rewrite an existing reference.
+`AUKI_P2P_RELAY_COUNT` is desired redundancy. One confirmed relay is enough for
+the facade to become ready when more were requested; missing or recovering
+siblings continue in the background. Applications read confirmed routes from the
+SDK protocol context when publishing their own references.
 
-Graceful Robot shutdown first stops new dataset registrations and waits for
-published references and active transfers to drain. It then awaits
-`AukiPeer::shutdown`, which fences protocol work, drains relay reservations,
-requests DMS booking deletion, stops authority, and leaves the Domain. Forced
-process termination cannot complete that sequence and may break published
-references. A persistent P2P key lets a later process prove the same Peer ID,
-but it does not reconstruct prior in-memory dataset registrations. Exactly one
-live process may own a given P2P private key at a time.
+Graceful Robot shutdown stops task polling and lets the active task finish,
+then stops the authority-renewal driver and awaits `AukiPeer::shutdown`. The SDK
+fences protocol work, drains relay reservations, requests DMS booking deletion,
+stops authority, and leaves the Domain. A second shutdown signal interrupts an
+active task. Application protocols own any additional retention requirements.
+Exactly one live process may own a given P2P private key at a time.
 
 Generate a dedicated Ed25519 identity without printing the private key:
 
@@ -207,7 +193,7 @@ wallet, or registration private key for libp2p identity.
 
 Relay policy and credentials remain host-only. The host supplies complete
 external authority updates, and `AukiPeer` consumes relay authorization without
-exposing it to the dataset adapter or runners. Neither the runner nor `TaskCtx`
+exposing it to application protocols or runners. Neither the runner nor `TaskCtx`
 receives machine, booking, relay, or P2P credentials, and relay count does not
 alter the ordinary runner `MAX_CONCURRENCY` setting.
 
@@ -251,9 +237,9 @@ the robot binary does not read `REG_SECRET` or `SECP256K1_PRIVHEX`.
 - `dds::p2p` — obtains peer-bound external authority and refreshes complete
   replacements without exposing credentials to protocols or runners.
 - `engine` — orchestrates leasing, cancellation, heartbeat posting,
-  completion/failure reporting, `AukiPeer` lifetimes, and graceful dataset
-  draining. The `RunnerRegistry` facade makes it easy to add capabilities
-  without exposing peer authority.
+  completion/failure reporting, `AukiPeer` lifetimes, and graceful shutdown.
+  The `RunnerRegistry` facade makes it easy to add capabilities without exposing
+  peer authority.
 - `storage::client` — performs authenticated multipart downloads/uploads
   against the domain server using safe temporary directories.
 - `session` — tracks lease metadata, computes TTL-driven heartbeat deadlines,

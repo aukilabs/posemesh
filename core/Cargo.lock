@@ -4113,7 +4113,6 @@ dependencies = [
  "posemesh-compute-node-runner-api",
  "posemesh-domain-http",
  "posemesh-node-registration",
- "posemesh-p2p-dataset",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -4283,58 +4282,6 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "posemesh-p2p-dataset"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "auki-p2p",
- "auki-sdk",
- "axum",
- "chrono",
- "futures",
- "hex",
- "jsonwebtoken 9.3.1",
- "libp2p",
- "libp2p-stream",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.16",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "posemesh-relay-file-demo"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dotenvy",
- "hex",
- "httpmock",
- "posemesh-compute-node",
- "posemesh-compute-node-runner-api",
- "posemesh-p2p-dataset",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
  "uuid",
 ]
 

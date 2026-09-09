@@ -1,9 +1,5 @@
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, Runner, TaskCtx};
 use posemesh_compute_node::engine::RunnerRegistry;
-use posemesh_p2p_dataset::{
-    DatasetService, P2pDataset, P2pDatasetReference, P2pDatasetRegistration,
-};
-use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
@@ -61,29 +57,8 @@ impl Runner for RCount {
     }
 }
 
-struct DummyP2pDataset;
-
-#[async_trait::async_trait]
-impl P2pDataset for DummyP2pDataset {
-    async fn register(
-        &self,
-        _registration: P2pDatasetRegistration,
-    ) -> anyhow::Result<P2pDatasetReference> {
-        anyhow::bail!("not used")
-    }
-
-    async fn fetch(
-        &self,
-        _reference: &P2pDatasetReference,
-        _destination: &Path,
-    ) -> anyhow::Result<()> {
-        anyhow::bail!("not used")
-    }
-}
-
 struct BoundaryRunner {
-    dataset: DatasetService,
-    saw_narrow_handle: Arc<AtomicBool>,
+    saw_redacted_lease: Arc<AtomicBool>,
 }
 
 #[async_trait::async_trait]
@@ -100,8 +75,7 @@ impl Runner for BoundaryRunner {
         assert_eq!(ctx.access_token.get(), "domain-http-secret");
         assert!(ctx.lease.p2p_access_token.is_none());
         assert!(ctx.lease.p2p_access_token_expires_at.is_none());
-        let _dataset = &self.dataset;
-        self.saw_narrow_handle.store(true, Ordering::SeqCst);
+        self.saw_redacted_lease.store(true, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -180,12 +154,10 @@ async fn dispatches_to_correct_runner_only() {
 }
 
 #[tokio::test]
-async fn runner_receives_constructor_injected_handle_but_not_p2p_credentials() {
-    let saw_narrow_handle = Arc::new(AtomicBool::new(false));
-    let p2p: Arc<dyn P2pDataset> = Arc::new(DummyP2pDataset);
+async fn runner_receives_domain_access_but_not_p2p_credentials() {
+    let saw_redacted_lease = Arc::new(AtomicBool::new(false));
     let registry = RunnerRegistry::new().register(BoundaryRunner {
-        dataset: DatasetService::new(p2p),
-        saw_narrow_handle: saw_narrow_handle.clone(),
+        saw_redacted_lease: saw_redacted_lease.clone(),
     });
     let mut lease = fake_lease("/p2p-boundary");
     lease.access_token = Some("domain-http-secret".into());
@@ -206,6 +178,6 @@ async fn runner_receives_constructor_injected_handle_but_not_p2p_credentials() {
         .await
         .expect("runner boundary");
 
-    assert!(saw_narrow_handle.load(Ordering::SeqCst));
+    assert!(saw_redacted_lease.load(Ordering::SeqCst));
     assert_eq!(lease.p2p_access_token.as_deref(), Some("dds-p2p-secret"));
 }

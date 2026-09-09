@@ -63,16 +63,14 @@ unit-tests: ci-compute-node
 	@cargo test --locked -p posemesh-domain-http -p posemesh-utils --release --all-features -- --test-threads=1
 
 fmt-rust:
-	cargo fmt -p posemesh-p2p-dataset -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils -- --check
+	cargo fmt -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils -- --check
 
 clippy-rust:
-	cargo clippy --locked --no-deps -p posemesh-p2p-dataset -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils --all-targets -- -D warnings
+	cargo clippy --locked --no-deps -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-domain-http -p posemesh-utils --all-targets -- -D warnings
 
 test-compute-node:
-	cargo test --locked -p posemesh-p2p-dataset
 	cargo test --locked -p posemesh-compute-node-runner-api
 	cargo test --locked -p posemesh-compute-node
-	cargo test --locked -p posemesh-relay-file-demo
 
 ci-compute-node: fmt-rust clippy-rust test-compute-node
 
