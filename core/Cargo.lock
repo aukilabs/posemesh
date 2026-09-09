@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=8650a8dbea2d5ff08eb04b8f58c59124df229f5b#8650a8dbea2d5ff08eb04b8f58c59124df229f5b"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
 dependencies = [
  "async-trait",
  "auki-p2p",
@@ -533,6 +533,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "hex",
+ "js-sys",
  "p256",
  "reqwest",
  "serde",
@@ -542,13 +543,16 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "zeroize",
 ]
 
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=8650a8dbea2d5ff08eb04b8f58c59124df229f5b#8650a8dbea2d5ff08eb04b8f58c59124df229f5b"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -581,7 +585,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=8650a8dbea2d5ff08eb04b8f58c59124df229f5b#8650a8dbea2d5ff08eb04b8f58c59124df229f5b"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
 dependencies = [
  "async-trait",
  "chrono",
@@ -596,7 +600,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=8650a8dbea2d5ff08eb04b8f58c59124df229f5b#8650a8dbea2d5ff08eb04b8f58c59124df229f5b"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=5023955e8ce253ce9b4e0e113467ea6e8130fddb#5023955e8ce253ce9b4e0e113467ea6e8130fddb"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
