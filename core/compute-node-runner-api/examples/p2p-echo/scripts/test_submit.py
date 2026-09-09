@@ -50,13 +50,20 @@ class SubmissionTests(unittest.TestCase):
 
     def test_job_token_must_match_the_configured_placement(self):
         organization_id, domain_id = uuid.uuid4(), uuid.uuid4()
-        claims = {"organization_id": str(organization_id), "domain_id": str(domain_id), "exp": 4102444800}
+        claims = {"org": str(organization_id), "domain_id": str(domain_id), "exp": 4102444800}
         token = "header." + base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=") + ".signature"
         submit.token_scope(token, organization_id, domain_id)
         with self.assertRaises(ValueError):
             submit.token_scope(token, uuid.uuid4(), domain_id)
         with self.assertRaises(ValueError):
             submit.token_scope(token, organization_id, uuid.uuid4())
+
+    def test_job_token_requires_the_dds_org_claim(self):
+        organization_id, domain_id = uuid.uuid4(), uuid.uuid4()
+        claims = {"organization_id": str(organization_id), "domain_id": str(domain_id), "exp": 4102444800}
+        token = "header." + base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=") + ".signature"
+        with self.assertRaisesRegex(ValueError, "DDS-signed Domain job token"):
+            submit.token_scope(token, organization_id, domain_id)
 
 
 if __name__ == "__main__":

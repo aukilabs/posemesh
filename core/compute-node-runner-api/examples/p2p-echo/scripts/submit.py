@@ -42,7 +42,7 @@ def token_scope(token, organization_id, domain_id):
     try:
         payload = token.split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        if uuid.UUID(claims["organization_id"]) != organization_id:
+        if uuid.UUID(claims["org"]) != organization_id:
             raise ValueError("job token organization differs from ECHO_ORGANIZATION_ID")
         if uuid.UUID(claims["domain_id"]) != domain_id:
             raise ValueError("job token Domain differs from ECHO_DOMAIN_ID")
