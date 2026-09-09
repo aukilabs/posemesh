@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -558,7 +558,7 @@ dependencies = [
 [[package]]
 name = "auki-dms"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
 dependencies = [
  "anyhow",
  "auki-auth",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -608,7 +608,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
 dependencies = [
  "async-trait",
  "chrono",
@@ -623,7 +623,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=b638f97a5af160a2e50cc40e1fac431c7dba85c6#b638f97a5af160a2e50cc40e1fac431c7dba85c6"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
