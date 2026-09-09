@@ -896,6 +896,272 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
     remote.shutdown().await.unwrap();
 }
 
+#[tokio::test]
+async fn compute_protocols_follow_each_lease_and_are_cleared_on_every_exit() {
+    use auki_sdk::{AukiPeerProtocolContext, AukiProtocolSpec};
+    use posemesh_compute_node::{
+        config::{LogFormat, NodeConfig, P2pPrivateKey},
+        engine::{run_node_with_shutdown, AukiProtocolsHandle, RunnerComposition, RunnerRegistry},
+    };
+    use tokio::sync::{mpsc, oneshot};
+    use tokio_util::sync::CancellationToken;
+
+    const CAPABILITY: &str = "/test/arbitrary-capability/v42";
+    type Invocation = (Option<AukiPeerProtocolContext>, oneshot::Sender<bool>);
+    struct ProbeRunner {
+        protocols: AukiProtocolsHandle,
+        started: mpsc::UnboundedSender<Invocation>,
+    }
+    #[async_trait]
+    impl compute_runner_api::Runner for ProbeRunner {
+        fn capability(&self) -> &'static str {
+            CAPABILITY
+        }
+
+        async fn run(&self, ctx: compute_runner_api::TaskCtx<'_>) -> anyhow::Result<()> {
+            let (release, result) = oneshot::channel();
+            self.started
+                .send((self.protocols.get().ok(), release))
+                .unwrap();
+            tokio::select! {
+                result = result => {
+                    anyhow::ensure!(result?, "requested runner failure");
+                    Ok(())
+                }
+                _ = async {
+                    while !ctx.ctrl.is_cancelled().await {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                } => anyhow::bail!("runner observed cancellation"),
+            }
+        }
+    }
+
+    fn assert_stopped(context: &AukiPeerProtocolContext) {
+        assert!(
+            context
+                .protocols()
+                .register(
+                    AukiProtocolSpec::new("/test/stale-context/1", 1, 16).unwrap(),
+                    |_| async {},
+                )
+                .is_err(),
+            "a retained context must not register protocols after its task ends"
+        );
+    }
+
+    async fn wait_until(condition: impl Fn() -> bool) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("engine transition should be bounded");
+    }
+
+    let server = MockServer::start();
+    let _keys = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
+    let identity = Identity::generate();
+    let _nonce = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/request");
+        then.status(200).json_body(json!({
+            "nonce": "nonce-123", "domain": "dds.example.test",
+            "uri": "https://dds.example.test/login", "version": "1",
+            "chainId": 1, "issuedAt": Utc::now().to_rfc3339(),
+        }));
+    });
+    let _login = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/auth/siwe/verify");
+        then.status(200).json_body(json!({
+            "access_token": "compute-base",
+            "access_expires_at": Utc::now() + chrono::Duration::hours(1),
+        }));
+    });
+    let (_challenge, _verify) = binding_mocks(
+        &server,
+        &identity.proof(),
+        "compute-base",
+        "compute-bound",
+        "compute-proof",
+        b"compute proof",
+    );
+    let mut idle = server.mock(|when, then| {
+        when.method(GET).path("/tasks");
+        then.status(204);
+    });
+    let cfg = NodeConfig {
+        dms_base_url: server.base_url().parse().unwrap(),
+        dds_base_url: Some(server.base_url().parse().unwrap()),
+        node_version: "test".into(),
+        request_timeout_secs: 2,
+        reg_secret: Some("test-registration-secret".into()),
+        secp256k1_privhex: Some("01".repeat(32)),
+        heartbeat_jitter_ms: 0,
+        heartbeat_min_ratio: 0.01,
+        heartbeat_max_ratio: 0.01,
+        poll_backoff_ms_min: 10,
+        poll_backoff_ms_max: 10,
+        token_safety_ratio: 0.75,
+        token_reauth_max_retries: 0,
+        token_reauth_jitter_ms: 0,
+        auki_p2p_enabled: true,
+        auki_p2p_listen_multiaddrs: Vec::new(),
+        auki_p2p_advertised_multiaddrs: Vec::new(),
+        auki_p2p_private_key: Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ),
+        register_interval_secs: None,
+        register_max_retry: None,
+        max_concurrency: 1,
+        log_format: LogFormat::Json,
+        enable_noop: false,
+        noop_sleep_secs: 0,
+    };
+    // Registration state is in memory, local to this integration-test process.
+    posemesh_node_registration::state::set_status(
+        posemesh_node_registration::state::STATUS_REGISTERED,
+    )
+    .unwrap();
+    let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+    let (handle_tx, handle_rx) = oneshot::channel();
+    let runners = RunnerComposition::with_protocols(move |protocols| {
+        assert!(protocols.get().is_err(), "composition precedes any task");
+        assert!(handle_tx.send(protocols.clone()).is_ok());
+        RunnerRegistry::new().register(ProbeRunner {
+            protocols,
+            started: started_tx,
+        })
+    });
+    let shutdown = CancellationToken::new();
+    let _shutdown_guard = shutdown.clone().drop_guard();
+    let mut engine = tokio::spawn(run_node_with_shutdown(cfg, runners, shutdown));
+    let handle = tokio::time::timeout(Duration::from_secs(5), handle_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut old_contexts = Vec::new();
+
+    for outcome in ["complete", "fail", "cancel", "http-only", "abort"] {
+        let task_id = Uuid::new_v4();
+        let domain_id = Uuid::new_v4();
+        let (token, expiry) =
+            signed_p2p_token(&identity, domain_id, PeerRole::Compute, Uuid::new_v4());
+        let mut lease = json!({
+            "access_token": "domain-http-token",
+            "access_token_expires_at": Utc::now() + chrono::Duration::seconds(30),
+            "lease_expires_at": Utc::now() + chrono::Duration::seconds(30),
+            "domain_id": domain_id, "domain_server_url": server.base_url(),
+            "cancel": false, "status": "running",
+            "task": {
+                "id": task_id, "capability": CAPABILITY, "mode": "dedicated",
+                "inputs_cids": [], "outputs_prefix": "test/",
+            },
+        });
+        if outcome != "http-only" {
+            lease["p2p_access_token"] = json!(token);
+            lease["p2p_access_token_expires_at"] = json!(expiry);
+        }
+        let heartbeat_path = format!("/tasks/{task_id}/heartbeat");
+        let mut heartbeat = server.mock(|when, then| {
+            when.method(POST)
+                .path(&heartbeat_path)
+                .header("authorization", "Bearer compute-bound");
+            then.status(200).json_body(lease.clone());
+        });
+        let complete = server.mock(|when, then| {
+            when.method(POST).path(format!("/tasks/{task_id}/complete"));
+            then.status(200);
+        });
+        let fail = server.mock(|when, then| {
+            when.method(POST).path(format!("/tasks/{task_id}/fail"));
+            then.status(200);
+        });
+        idle.delete();
+        let mut claim = server.mock(|when, then| {
+            when.method(GET)
+                .path("/tasks")
+                .header("authorization", "Bearer compute-bound");
+            then.status(200).json_body(lease.clone());
+        });
+        let (context, release) = tokio::time::timeout(Duration::from_secs(5), started_rx.recv())
+            .await
+            .unwrap_or_else(|_| panic!("runner dispatch timed out for {outcome}"))
+            .unwrap();
+        claim.delete();
+        idle = server.mock(|when, then| {
+            when.method(GET).path("/tasks");
+            then.status(204);
+        });
+        assert_eq!(context.is_some(), outcome != "http-only");
+        for old in &old_contexts {
+            assert_stopped(old);
+        }
+        if let Some(context) = context {
+            assert_eq!(context.peer_id(), identity.peer_id());
+            assert_eq!(context.domain_id(), domain_id);
+            assert_eq!(handle.get().unwrap().domain_id(), domain_id);
+            let registration = context
+                .protocols()
+                .register(
+                    AukiProtocolSpec::new("/test/current-context/1", 1, 16).unwrap(),
+                    |_| async {},
+                )
+                .expect("every capability gets a usable protocol surface");
+            registration.close().await.unwrap();
+            old_contexts.push(context);
+        } else {
+            assert!(
+                handle.get().is_err(),
+                "HTTP-only tasks cannot reuse old authority"
+            );
+        }
+
+        match outcome {
+            "cancel" => {
+                heartbeat.delete();
+                lease["cancel"] = json!(true);
+                lease["p2p_access_token"] = serde_json::Value::Null;
+                lease["p2p_access_token_expires_at"] = serde_json::Value::Null;
+                let _cancel = server.mock(|when, then| {
+                    when.method(POST).path(&heartbeat_path);
+                    then.status(200).json_body(lease.clone());
+                });
+                wait_until(|| handle.get().is_err()).await;
+                complete.assert_hits(0);
+                fail.assert_hits(0);
+            }
+            "abort" => {
+                engine.abort();
+                assert!((&mut engine).await.unwrap_err().is_cancelled());
+                assert!(
+                    handle.get().is_err(),
+                    "dropping the cycle clears the shared handle"
+                );
+                complete.assert_hits(0);
+                fail.assert_hits(0);
+            }
+            _ => {
+                release.send(outcome == "complete").unwrap();
+                let terminal = if outcome == "complete" {
+                    &complete
+                } else {
+                    &fail
+                };
+                wait_until(|| terminal.hits() == 1).await;
+                assert!(
+                    handle.get().is_err(),
+                    "terminal reporting follows peer shutdown"
+                );
+            }
+        }
+        for old in &old_contexts {
+            assert_stopped(old);
+        }
+    }
+}
+
 fn signed_robot_p2p_token(identity: &Identity, domain_id: Uuid) -> (String, DateTime<Utc>) {
     signed_p2p_token(identity, domain_id, PeerRole::Robot, Uuid::new_v4())
 }

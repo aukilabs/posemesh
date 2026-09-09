@@ -107,14 +107,16 @@ impl RunnerDependencies {
     }
 }
 
-/// Lazily populated handle to the Robot's authenticated peer protocol context.
+/// Lazily populated handle to the host's authenticated peer protocol context.
 ///
 /// Runners receive this handle through [`RunnerComposition::with_protocols`]
 /// and mount their application protocols on the same peer identity. The context
 /// provides protocol registration/opening, published routes, Peer ID and Domain.
 ///
-/// The handle is populated after the Robot's fixed-Domain peer starts and before
-/// task execution begins. Compute's per-task peer does not expose this handle.
+/// Robot populates the handle after its fixed-Domain peer starts. Compute
+/// populates it before dispatching a task with P2P authority and clears it when
+/// that task ends, including cancellation and errors. Call `get()` inside the
+/// runner for each task; a context retained from an earlier task is stopped.
 #[derive(Clone, Default)]
 pub struct AukiProtocolsHandle {
     state: Arc<SyncRwLock<Option<AukiPeerProtocolContext>>>,
@@ -125,6 +127,15 @@ impl AukiProtocolsHandle {
         *self.state.write() = Some(context);
     }
 
+    fn activate_task(&self, context: AukiPeerProtocolContext) -> Result<TaskProtocolActivation> {
+        let mut state = self.state.write();
+        if state.is_some() {
+            return Err(anyhow!("the task peer protocol surface is already active"));
+        }
+        *state = Some(context);
+        Ok(TaskProtocolActivation(self.clone()))
+    }
+
     /// Build an already activated handle from a real or test-fixture peer context.
     pub fn for_testing(context: AukiPeerProtocolContext) -> Self {
         let handle = Self::default();
@@ -132,13 +143,21 @@ impl AukiProtocolsHandle {
         handle
     }
 
-    /// Borrow the underlying protocol context, once the Robot's P2P peer has
-    /// finished starting.
+    /// Obtain the current peer context. Compute has no context between tasks
+    /// or for a task whose lease has no P2P authority.
     pub fn get(&self) -> Result<AukiPeerProtocolContext> {
         self.state
             .read()
             .clone()
             .context("the authenticated P2P protocol surface is unavailable")
+    }
+}
+
+struct TaskProtocolActivation(AukiProtocolsHandle);
+
+impl Drop for TaskProtocolActivation {
+    fn drop(&mut self) {
+        self.0.state.write().take();
     }
 }
 
@@ -204,6 +223,7 @@ struct ComputeP2pHost {
     proof: PeerIdentityProof,
     dds: DdsP2pClient,
     config: AukiPeerConfig,
+    protocols: AukiProtocolsHandle,
 }
 
 #[derive(Clone)]
@@ -216,6 +236,8 @@ pub struct ComputeAuthorityUpdater {
 }
 
 struct ComputeTaskPeer {
+    // Clear the shared slot before dropping the peer on aborted task futures.
+    protocols: Option<TaskProtocolActivation>,
     peer: Option<AukiPeer>,
     authority: ComputeAuthorityUpdater,
 }
@@ -241,7 +263,15 @@ impl ComputeP2pHost {
             AukiPeer::start_external(self.identity.clone(), update, self.config.clone())
                 .await
                 .context("start task-scoped Auki peer")?;
+        let protocols = match self.protocols.activate_task(peer.protocol_context()) {
+            Ok(protocols) => protocols,
+            Err(error) => {
+                let _ = peer.shutdown().await;
+                return Err(error);
+            }
+        };
         Ok(Some(ComputeTaskPeer {
+            protocols: Some(protocols),
             peer: Some(peer),
             authority: ComputeAuthorityUpdater {
                 domain_id,
@@ -292,6 +322,7 @@ impl ComputeTaskPeer {
     }
 
     async fn shutdown(mut self) -> Result<()> {
+        drop(self.protocols.take());
         if let Some(peer) = self.peer.take() {
             peer.shutdown().await.context("shut down task Auki peer")?;
         }
@@ -338,7 +369,7 @@ impl RunnerComposition {
     }
 
     /// Construct runners that require the general authenticated peer
-    /// protocol surface to mount their own protocol on the Robot's peer.
+    /// protocol surface to mount protocols or open streams on the host's peer.
     pub fn with_protocols<F>(build: F) -> Self
     where
         F: FnOnce(AukiProtocolsHandle) -> RunnerRegistry + Send + 'static,
@@ -389,11 +420,14 @@ pub async fn run_node_with_shutdown(
         .as_ref()
         .map(|_| peer_facade_config(&cfg, None))
         .transpose()?;
-    // Compute's per-task peer (ComputeP2pHost::start_task) doesn't populate an
-    // AukiProtocolsHandle yet -- see the doc comment on AukiProtocolsHandle.
+    let protocols = prepared_peer
+        .as_ref()
+        .map(|_| AukiProtocolsHandle::default());
     let runners = runners
         .into()
-        .compose(RunnerDependencies::default())
+        .compose(RunnerDependencies {
+            protocols: protocols.clone(),
+        })
         .context("construct task runners")?;
     let peer_binding = prepared_peer
         .as_ref()
@@ -427,6 +461,7 @@ pub async fn run_node_with_shutdown(
         identity: prepared.identity,
         proof: prepared.proof,
         dds: prepared.dds,
+        protocols: protocols.expect("P2P identity creates a protocol handle"),
     });
     let result = run_authenticated_node_loop(
         &cfg,
