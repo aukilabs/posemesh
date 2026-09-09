@@ -26,7 +26,9 @@ jobs. The sample files contain placeholders and do not provision anything.
   Robot, Domain, and job-submitting account/application.
 - Provision a **dedicated Compute node** with the send capability and a Robot
   with the serve capability. Assign the Robot to the chosen Domain in DDS.
-  Add both capabilities to the DDS catalog with `public_url_required=false`.
+  Use a DDS version that supports third-party capabilities for both Compute
+  and Robot; the example capabilities are created during provisioning or
+  registration without a manual catalog entry.
   Robot workers must be enabled in DMS.
 - Use isolated example workers for these capabilities. DMS schedules by
   capability and placement, not by the expected Peer IDs in task metadata.
