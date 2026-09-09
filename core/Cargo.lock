@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -539,9 +539,11 @@ dependencies = [
  "p256",
  "rand 0.8.5",
  "reqwest",
+ "secp256k1",
  "serde",
  "serde_json",
  "sha2",
+ "sha3",
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
@@ -556,7 +558,7 @@ dependencies = [
 [[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -589,7 +591,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -604,7 +606,7 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=4150cae0d1d43637193867ca52f48e2b69b108c3#4150cae0d1d43637193867ca52f48e2b69b108c3"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1#c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
@@ -4246,6 +4248,7 @@ name = "posemesh-node-registration"
 version = "0.2.1"
 dependencies = [
  "anyhow",
+ "auki-auth",
  "axum",
  "chrono",
  "hex",

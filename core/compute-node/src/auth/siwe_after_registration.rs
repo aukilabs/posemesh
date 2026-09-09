@@ -1,4 +1,5 @@
 use super::siwe;
+use super::siwe::derive_eth_address;
 use super::token_manager::{
     AccessAuthenticator, SystemClock, TokenManager, TokenManagerConfig, TokenProvider,
     TokenProviderError,
@@ -13,7 +14,6 @@ use posemesh_node_registration::state::{
     read_state, set_status, STATUS_DISCONNECTED, STATUS_REGISTERED,
 };
 use reqwest::StatusCode;
-use sha3::{Digest, Keccak256};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -262,31 +262,6 @@ impl TokenProvider for SiweHandle {
         // Force early refresh on next bearer() call
         self.manager.on_unauthorized_retry().await;
     }
-}
-
-fn derive_eth_address(priv_hex: &str) -> Result<String> {
-    use k256::{ecdsa::SigningKey, FieldBytes};
-
-    let trimmed = priv_hex.trim_start_matches("0x");
-    let key_bytes =
-        hex::decode(trimmed).map_err(|_| anyhow!("invalid secp256k1 private key hex"))?;
-    if key_bytes.len() != 32 {
-        return Err(anyhow!("secp256k1 private key must be 32 bytes"));
-    }
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&key_bytes);
-    let field_bytes: FieldBytes = key.into();
-    let signing_key = SigningKey::from_bytes(&field_bytes)
-        .map_err(|e| anyhow!("failed to construct signing key: {e}"))?;
-    let verifying_key = signing_key.verifying_key();
-    let encoded = verifying_key.to_encoded_point(false);
-    let pubkey = encoded.as_bytes();
-
-    let mut hasher = Keccak256::new();
-    hasher.update(&pubkey[1..]);
-    let hashed = hasher.finalize();
-    let address_bytes = &hashed[12..];
-    Ok(format!("0x{}", hex::encode(address_bytes)))
 }
 
 #[cfg(test)]

@@ -21,9 +21,9 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-auki-auth = { git = "https://github.com/aukilabs/auki-sdk", rev = "4150cae0d1d43637193867ca52f48e2b69b108c3" }
-auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "4150cae0d1d43637193867ca52f48e2b69b108c3" }
-auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "4150cae0d1d43637193867ca52f48e2b69b108c3" }
+auki-auth = { git = "https://github.com/aukilabs/auki-sdk", rev = "c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1" }
+auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1" }
+auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "c67b9e9ba8fc60bd605b7b844b64d5cd4e3856d1" }
 posemesh-p2p-dataset = { path = "posemesh-p2p-dataset" }
 libp2p = { version = "0.56.0", default-features = false }
 # `libp2p-stream` is still pre-release and must match libp2p 0.56's
