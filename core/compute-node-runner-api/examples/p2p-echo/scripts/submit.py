@@ -27,9 +27,11 @@ def job(domain_id, run_id, capability, meta):
     return {
         "label": f"p2p-echo-{stage}-{run_id}",
         "domain_id": str(domain_id),
+        "priority": 0,
         "meta": {"example": "p2p-echo", "run_id": str(run_id)},
         "tasks": [{
-            "stage": stage, "capability": capability, "capability_filters": {},
+            "label": f"echo-{stage}", "stage": stage,
+            "capability": capability, "capability_filters": {},
             "mode": "dedicated", "inputs_cids": [], "max_attempts": 1,
             "outputs_prefix": f"p2p-echo/{run_id}/{stage}/", "meta": meta,
         }],

@@ -39,6 +39,20 @@ class SubmissionTests(unittest.TestCase):
             self.assertEqual(payload["tasks"][0]["max_attempts"], 1)
             self.assertEqual(payload["edges"], [])
 
+    def test_both_jobs_include_required_dms_request_fields(self):
+        # DMS CreateJobRequest requires priority, and CreateJobTaskRequest
+        # requires its own label even when the enclosing job has a label.
+        for capability in (submit.SERVE, submit.SEND):
+            with self.subTest(capability=capability):
+                payload = submit.job(uuid.uuid4(), uuid.uuid4(), capability, {})
+                self.assertTrue({"label", "domain_id", "priority"} <= payload.keys())
+                self.assertIsInstance(payload["priority"], int)
+                self.assertGreaterEqual(payload["priority"], 0)
+                task = payload["tasks"][0]
+                self.assertTrue({"label", "stage", "capability", "max_attempts"} <= task.keys())
+                self.assertIsInstance(task["label"], str)
+                self.assertTrue(task["label"].strip())
+
     def test_ready_route_is_bound_to_both_peers_run_organization_and_domain(self):
         args = SimpleNamespace(organization_id=uuid.uuid4(), domain_id=uuid.uuid4(), robot_peer_id="robot", compute_peer_id="compute")
         run_id = uuid.uuid4()
