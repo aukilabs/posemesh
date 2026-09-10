@@ -4,7 +4,7 @@ version = "0.3.3"
 edition = "2021"
 license = "MIT"
 description = "Posemesh compute node engine: config, DDS/DMS, heartbeat, storage (no persistence)."
-repository = "https://github.com/aukilabs/prompting"
+repository = "https://github.com/aukilabs/posemesh"
 readme = "README.md"
 
 [lib]

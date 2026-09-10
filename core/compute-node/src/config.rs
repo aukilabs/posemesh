@@ -83,7 +83,7 @@ impl P2pPrivateKey {
     }
 }
 
-/// Node configuration loaded from environment (SPECS §8 Configuration).
+/// Compute host configuration loaded from environment variables.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeConfig {
     // Core settings (defaults available).
@@ -91,7 +91,7 @@ pub struct NodeConfig {
     pub node_version: String,
     pub request_timeout_secs: u64,
 
-    // Auth: either static node identity or SIWE via DDS
+    // Compute authentication through DDS registration and wallet signatures.
     pub dds_base_url: Option<Url>,
     pub reg_secret: Option<String>,
     pub secp256k1_privhex: Option<String>,

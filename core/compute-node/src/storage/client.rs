@@ -10,7 +10,6 @@ use std::time::Duration;
 use tokio::fs;
 use url::Url;
 use uuid::Uuid;
-// zip extraction moved to reconstruction-specific runner
 
 /// Representation of one multipart section downloaded from Domain.
 #[derive(Debug, Clone)]
@@ -81,7 +80,7 @@ struct DomainDataMetadataV1 {
     id: String,
 }
 
-/// Domain server HTTP client (skeleton; HTTP added later).
+/// Domain server HTTP client using the task's renewable access token.
 #[derive(Clone)]
 pub struct DomainClient {
     pub base: Url,

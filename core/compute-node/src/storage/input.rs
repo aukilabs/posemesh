@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use tokio::fs;
 
-/// Domain InputSource implementation (skeleton).
+/// Task input reader backed by Domain storage.
 #[derive(Clone)]
 pub struct DomainInput {
     client: DomainClient,

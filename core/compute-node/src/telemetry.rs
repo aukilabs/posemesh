@@ -50,7 +50,7 @@ pub fn task_span(
 
 #[cfg(feature = "metrics")]
 pub mod metrics {
-    /// Metric names as per §10 Telemetry.
+    /// Metric names reserved for a future exporter.
     pub const DMS_POLL_LATENCY_MS: &str = "dms.poll.latency_ms";
     pub const DMS_ACTIVE_TASK: &str = "dms.active_task";
     pub const RUNNER_RUN_LATENCY_MS: &str = "runner.run.latency_ms";

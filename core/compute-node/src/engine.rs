@@ -388,7 +388,7 @@ impl From<RunnerRegistry> for RunnerComposition {
     }
 }
 
-/// Run the node main loop. Networking and storage are wired in later prompts.
+/// Run a compute host with DDS authentication, DMS tasks, and lease-backed storage.
 pub async fn run_node(
     cfg: crate::config::NodeConfig,
     runners: impl Into<RunnerComposition> + Send,
