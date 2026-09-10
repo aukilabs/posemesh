@@ -26,7 +26,7 @@ pub struct UploadedArtifact {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Domain ArtifactSink implementation (skeleton).
+/// Domain artifact uploader that collects task completion metadata.
 #[derive(Clone)]
 pub struct DomainOutput {
     client: DomainClient,
@@ -130,7 +130,7 @@ impl compute_runner_api::ArtifactSink for DomainOutput {
         &self,
         _rel_path: &str,
     ) -> Result<Box<dyn compute_runner_api::runner::MultipartUpload>> {
-        // Implemented in later prompt.
+        // The host currently supports whole-artifact uploads only.
         unimplemented!("multipart not implemented yet")
     }
 

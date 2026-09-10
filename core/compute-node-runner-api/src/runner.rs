@@ -79,8 +79,7 @@ pub trait ArtifactSink: Send + Sync {
     /// `metadata` to this artifact's entry in the DMS completion receipt's
     /// `meta.artifacts[]` (see `posemesh-compute-node`'s engine). Use this
     /// when a caller reading the completion receipt needs a field from the
-    /// artifact's own content (e.g. a P2P dataset reference's relay
-    /// addresses) without a second fetch of the artifact body.
+    /// artifact's own content without a second fetch of the artifact body.
     ///
     /// Default implementation ignores `metadata` and delegates to
     /// [`Self::put_domain_artifact`], so existing implementors need no

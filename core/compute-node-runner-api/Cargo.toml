@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2021"
 license = "MIT"
 description = "Runner trait + ports + shared types (no HTTP)."
-repository = "https://github.com/aukilabs/prompting"
+repository = "https://github.com/aukilabs/posemesh"
 readme = "README.md"
 
 [lib]

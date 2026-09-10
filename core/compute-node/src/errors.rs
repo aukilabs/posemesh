@@ -29,7 +29,7 @@ pub enum TokenManagerError {
     Rotation(String),
 }
 
-/// Storage client error mapping (see SPECS §9 Errors).
+/// Errors from Domain storage requests.
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("bad request (400)")]

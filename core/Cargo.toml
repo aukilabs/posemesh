@@ -9,7 +9,6 @@ members = [
     "utils",
     "domain-http",
     "compute-node-runner-api",
-    "compute-node-runner-api/examples/hello-runner",
     "compute-node-runner-api/examples/p2p-echo",
     "compute-node",
     "node-registration", "uniffi-bindgen",
