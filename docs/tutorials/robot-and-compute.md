@@ -4,7 +4,7 @@ Run two Rust workers that claim tasks through DMS and exchange
 `hello from Compute to Robot` over P2P. Both tasks then complete in DMS.
 
 You need Rust 1.89+, Python 3, this repository, three terminals, and
-[configured workers and a Domain job token](../how-to/configure-workers.md).
+[configured workers](../how-to/configure-workers.md).
 Use one organization and Domain for this example. The robot serves
 `/examples/p2p-echo/serve/v1`; the dedicated compute node sends with
 `/examples/p2p-echo/send/v1`.
@@ -65,7 +65,7 @@ if a worker cannot become ready.
 ## Submit the work
 
 In the third terminal, set the same DMS endpoint, organization, and Domain.
-Use the Peer IDs recorded above and the [job token file](../how-to/configure-workers.md#get-a-domain-job-token):
+Use the Peer IDs recorded above and a [Domain access token for job submission](../how-to/provision-workers.md#authorize-job-submission):
 
 ~~~sh
 export DMS_BASE_URL='https://DMS_HOST/v1'
@@ -73,7 +73,7 @@ export ECHO_ORGANIZATION_ID='<organization UUID>'
 export ECHO_DOMAIN_ID='<robot Domain UUID>'
 export ECHO_COMPUTE_PEER_ID='<compute Peer ID>'
 export ECHO_ROBOT_PEER_ID='<robot Peer ID>'
-export APP_JWT_FILE='/absolute/path/to/domain-job-token'
+export APP_JWT_FILE='/absolute/path/to/domain-access-token'
 python3 compute-node-runner-api/examples/p2p-echo/scripts/submit.py --dry-run
 ~~~
 

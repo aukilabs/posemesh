@@ -31,7 +31,8 @@ For user apps and backend services that connect to peers, start with
 
 | I want to… | Read |
 | --- | --- |
-| Provision identities and get a job token | [Configure workers](docs/how-to/configure-workers.md) |
+| Configure host credentials, endpoints, and P2P | [Configure workers](docs/how-to/configure-workers.md) |
+| Create workers or authorize job submission | [Provision workers](docs/how-to/provision-workers.md) |
 | Implement my own task capability | [Write a runner](docs/how-to/write-a-runner.md) |
 | Exchange data with another peer | [Use P2P in a runner](docs/how-to/use-p2p.md) |
 | Handle cancellation, retries, and shutdown | [Manage task lifecycle](docs/how-to/task-lifecycle.md) |

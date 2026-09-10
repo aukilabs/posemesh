@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
 ~~~
 
 The robot entrypoint registers the registry's capabilities itself. Provision
-and assign the robot as described in [worker setup](configure-workers.md#robot),
+and assign the robot as described in [provisioning](provision-workers.md#create-and-assign-a-robot),
 using `/my-team/uppercase/v1` as its capability.
 
 From `my-runner`, compile both without contacting DDS or DMS:
@@ -143,7 +143,7 @@ and run **one** host with `cargo run --locked --bin compute` or
 ## Submit a task and read its artifact
 
 With `DMS_BASE_URL`, `DOMAIN_ID`, `APP_JWT_FILE`, and `WORKER_STATE_DIR` from
-[worker setup](configure-workers.md#get-a-domain-job-token), use `curl` and `jq`:
+[job authorization](provision-workers.md#authorize-job-submission), use `curl` and `jq`:
 
 ~~~sh
 umask 077

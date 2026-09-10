@@ -13,7 +13,9 @@ caller's responsibility. Parsing and defaults are defined in
 | Robot | Exactly one of `ROBOT_REGISTRATION_CREDENTIALS` and `ROBOT_REGISTRATION_CREDENTIALS_FILE` |
 | Either, with P2P enabled | Exactly one of `AUKI_P2P_PRIVATE_KEY_FILE` and `AUKI_P2P_PRIVATE_KEY` |
 
-[Worker setup](../how-to/configure-workers.md) explains how to obtain these.
+[Provisioning](../how-to/provision-workers.md) explains how to obtain worker
+credentials. [Configure workers](../how-to/configure-workers.md) shows how to
+pass them to a host.
 Robot and P2P files are read at startup; replacing a file requires restarting
 the host. Robot credentials are opaque and whitespace is trimmed on load.
 
