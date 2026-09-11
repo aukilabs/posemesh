@@ -58,9 +58,10 @@ anyhow = "1.0.95"
 axum = "0.7.5"
 chrono = { version = "0.4.38", features = ["serde"] }
 hex = "0.4.3"
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["rust_crypto", "use_pem"] }
 k256 = { version = "0.13.4", features = ["ecdsa"] }
 regex = "1.11.2"
-rand = "0.8.5"
+rand = "0.8.6"
 reqwest = { version = "0.12.8", default-features = false, features = ["json", "rustls-tls"] }
 semver = "1.0.26"
 secp256k1 = { version = "0.28.2", features = ["recovery"] }

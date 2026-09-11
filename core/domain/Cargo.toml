@@ -6,7 +6,8 @@ rust-version.workspace = true
 
 [build-dependencies]
 cbindgen = "0.28.0"
-pb-rs = "0.10.0"
+# Only the generator library is used; the CLI enables obsolete clap/atty dependencies.
+pb-rs = { version = "0.10.0", default-features = false }
 
 [dependencies]
 futures = { workspace = true } 
@@ -15,14 +16,15 @@ serde_json = { workspace = true }
 quick-protobuf = { workspace = true }
 quick-protobuf-codec = { workspace = true }
 async-trait = {workspace = true} 
-jsonwebtoken = "9.3.0"
+jsonwebtoken = { workspace = true }
 tracing = { workspace = true }
 posemesh-networking = { workspace = true }
 rs_merkle = "1.5.0"
 sha2 = "0.10.8"
 hex = "0.4.3"
 thiserror = { workspace = true }
-ring = "0.17.14"
+# JWT v10 no longer enables these ring features transitively.
+ring = { version = "0.17.14", features = ["std", "wasm32_unknown_unknown_js"] }
 posemesh-utils = {workspace = true}
 async-timer = "0.7.4"
 base64 = {workspace = true}

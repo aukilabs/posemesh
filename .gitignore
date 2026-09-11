@@ -36,6 +36,9 @@ target/
 
 node_modules
 **/package-lock.json
+!core/domain/examples/browser/package-lock.json
+!core/domain-http/bindings/javascript/tests/package-lock.json
+!sdk/platform/Web/package-lock.json
 
 /sdk/build/
 /sdk/src/Protobuf

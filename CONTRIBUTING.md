@@ -81,6 +81,10 @@ workflow's platform/architecture arguments and prerequisite installation.
 
 ## Submitting a change
 
+For dependency updates, follow the [dependency maintenance reference](docs/reference/dependencies.md)
+for SDK/Rust compatibility, lockfiles, offline checks and outstanding upstream
+advisories.
+
 Use the existing formatters (`cargo fmt` for Rust and the root `.clang-format`
 for C++) and Conventional Commits. Keep the README and guides focused on
 supported developer tasks. Put API

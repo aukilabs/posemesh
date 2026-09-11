@@ -5,7 +5,7 @@ OS ?= "macOS"
 ARCH ?= "ARM64"
 CONFIG ?= "Release"
 
-.PHONY: build-domain build-domain-wasm unit-tests build-domain-http-wasm publish-domain-http publish-utils
+.PHONY: build-domain build-domain-wasm unit-tests build-domain-http-wasm publish-domain-http publish-utils test-domain-auth
 
 build-domain:
 ifeq ($(ARCH),WASM)
@@ -48,9 +48,9 @@ build-domain-http-uniffi:
 		cargo run --features=uniffi/cli --bin uniffi-bindgen -p uniffi-bindgen generate domain-http/src/domain-client.udl --language $(LANG) --out-dir $$OUT_DIR; \
 	fi
 
-unit-tests: ci-compute-node
+unit-tests: ci-compute-node test-domain-auth
 	@make build-domain-http-wasm
-	@cd domain-http/bindings/javascript/tests && npm install && npx playwright install chromium && npm run test:all
+	@cd domain-http/bindings/javascript/tests && npm ci && npx playwright install chromium && npm run test:all
 	@make build-domain-http-uniffi LANG=python
 	@cd domain-http/bindings/python && \
 		if [ -f "../../../.env" ]; then \
@@ -67,6 +67,9 @@ fmt-rust:
 
 clippy-rust:
 	cargo clippy --locked --no-deps -p posemesh-compute-node-runner-api -p posemesh-compute-node -p posemesh-p2p-echo -p posemesh-domain-http -p posemesh-utils --all-targets -- -D warnings
+
+test-domain-auth:
+	cargo test --locked -p posemesh-domain --test auth_jwt
 
 test-compute-node:
 	cargo test --locked -p posemesh-compute-node-runner-api
