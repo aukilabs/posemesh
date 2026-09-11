@@ -8,7 +8,7 @@ futures = { workspace = true }
 libp2p-stream = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-rand = "0.8.5"
+rand = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 posemesh-utils = {workspace = true }
@@ -30,6 +30,7 @@ tracing-wasm = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
+web-sys = { version = "0.3", features = ["Window"] }
 gloo-timers = { workspace = true, features = ["futures"] }
 console_error_panic_hook = { workspace = true }
 

@@ -1,9 +1,12 @@
 use super::siwe;
+use super::siwe::derive_eth_address;
 use super::token_manager::{
     AccessAuthenticator, SystemClock, TokenManager, TokenManagerConfig, TokenProvider,
     TokenProviderError,
 };
+use super::PeerBoundAuthenticator;
 use crate::config::NodeConfig;
+use crate::dds::p2p::PeerBindingClient;
 use crate::dds::persist as dds_state;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -11,7 +14,6 @@ use posemesh_node_registration::state::{
     read_state, set_status, STATUS_DISCONNECTED, STATUS_REGISTERED,
 };
 use reqwest::StatusCode;
-use sha3::{Digest, Keccak256};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -19,7 +21,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 type ManagerCell = Arc<Mutex<Option<Arc<SiweTokenManager>>>>;
-type SiweTokenManager = TokenManager<DdsAuthenticator, SystemClock>;
+type SiweTokenManager = TokenManager<PeerBoundAuthenticator<DdsAuthenticator>, SystemClock>;
 
 #[derive(Clone)]
 struct DdsAuthenticator {
@@ -90,13 +92,20 @@ fn rearm_registration_if_invalid(err: &siwe::SiweError) {
 }
 
 pub struct SiweAfterRegistration {
-    authenticator: Arc<DdsAuthenticator>,
+    authenticator: Arc<PeerBoundAuthenticator<DdsAuthenticator>>,
     config: TokenManagerConfig,
     manager: ManagerCell,
 }
 
 impl SiweAfterRegistration {
     pub fn from_config(cfg: &NodeConfig) -> Result<Self> {
+        Self::from_config_with_peer_binding(cfg, None)
+    }
+
+    pub(crate) fn from_config_with_peer_binding(
+        cfg: &NodeConfig,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
         let dds_base_url = cfg
             .dds_base_url
             .as_ref()
@@ -117,11 +126,30 @@ impl SiweAfterRegistration {
             jitter: Duration::from_millis(cfg.token_reauth_jitter_ms),
         };
 
-        Self::new(dds_base_url, priv_hex, config)
+        Self::new_inner(dds_base_url, priv_hex, config, peer_binding)
     }
 
     pub fn new(dds_base_url: String, priv_hex: String, config: TokenManagerConfig) -> Result<Self> {
-        let authenticator = Arc::new(DdsAuthenticator::new(dds_base_url, priv_hex)?);
+        Self::new_inner(dds_base_url, priv_hex, config, None)
+    }
+
+    pub fn new_peer_bound(
+        dds_base_url: String,
+        priv_hex: String,
+        config: TokenManagerConfig,
+        peer_binding: PeerBindingClient,
+    ) -> Result<Self> {
+        Self::new_inner(dds_base_url, priv_hex, config, Some(peer_binding))
+    }
+
+    fn new_inner(
+        dds_base_url: String,
+        priv_hex: String,
+        config: TokenManagerConfig,
+        peer_binding: Option<PeerBindingClient>,
+    ) -> Result<Self> {
+        let base = DdsAuthenticator::new(dds_base_url, priv_hex)?;
+        let authenticator = Arc::new(PeerBoundAuthenticator::new(base, peer_binding));
         Ok(Self {
             authenticator,
             config,
@@ -149,7 +177,6 @@ impl SiweAfterRegistration {
             Arc::new(SystemClock),
             self.config.clone(),
         ));
-        manager.start_bg().await;
 
         manager
             .bearer()
@@ -158,11 +185,19 @@ impl SiweAfterRegistration {
 
         let mut guard = self.manager.lock().await;
         if let Some(existing) = guard.as_ref() {
-            manager.stop_bg().await;
             return Ok(existing.clone());
         }
         *guard = Some(manager.clone());
+        manager.start_bg().await;
         Ok(manager)
+    }
+
+    /// Stop and discard any token manager installed by [`Self::start`].
+    pub async fn shutdown(&self) {
+        let manager = self.manager.lock().await.take();
+        if let Some(manager) = manager {
+            manager.stop_bg().await;
+        }
     }
 
     async fn wait_for_registration(&self) -> Result<()> {
@@ -229,31 +264,6 @@ impl TokenProvider for SiweHandle {
     }
 }
 
-fn derive_eth_address(priv_hex: &str) -> Result<String> {
-    use k256::{ecdsa::SigningKey, FieldBytes};
-
-    let trimmed = priv_hex.trim_start_matches("0x");
-    let key_bytes =
-        hex::decode(trimmed).map_err(|_| anyhow!("invalid secp256k1 private key hex"))?;
-    if key_bytes.len() != 32 {
-        return Err(anyhow!("secp256k1 private key must be 32 bytes"));
-    }
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&key_bytes);
-    let field_bytes: FieldBytes = key.into();
-    let signing_key = SigningKey::from_bytes(&field_bytes)
-        .map_err(|e| anyhow!("failed to construct signing key: {e}"))?;
-    let verifying_key = signing_key.verifying_key();
-    let encoded = verifying_key.to_encoded_point(false);
-    let pubkey = encoded.as_bytes();
-
-    let mut hasher = Keccak256::new();
-    hasher.update(&pubkey[1..]);
-    let hashed = hasher.finalize();
-    let address_bytes = &hashed[12..];
-    Ok(format!("0x{}", hex::encode(address_bytes)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +293,10 @@ mod tests {
             token_safety_ratio: 0.75,
             token_reauth_max_retries: 3,
             token_reauth_jitter_ms: 500,
+            auki_p2p_enabled: false,
+            auki_p2p_listen_multiaddrs: Vec::new(),
+            auki_p2p_advertised_multiaddrs: Vec::new(),
+            auki_p2p_private_key: None,
             register_interval_secs: None,
             register_max_retry: None,
             max_concurrency: 1,

@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import topLevelAwait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
 import { defineConfig } from 'vitest/config';
+import { playwright } from '@vitest/browser-playwright';
 import path from 'path';
 import dotenv from 'dotenv';
 
@@ -22,9 +23,6 @@ export default defineConfig({
       },
     },
     test: {
-        // Test environment
-        environment: 'jsdom',
-
         // Glob patterns for test files
         include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
 
@@ -43,8 +41,7 @@ export default defineConfig({
         // Browser-specific configuration
         browser: {
             enabled: true,
-            name: 'chromium', // or 'firefox', 'safari', 'edge'
-            provider: 'playwright', // or 'webdriver'
+            provider: playwright(),
             headless: true,
             instances: [
                 { browser: 'chromium' },

@@ -13,6 +13,8 @@ fn engine_builds_storage_ports_from_lease() {
     let lease = LeaseEnvelope {
         access_token: Some("tok123".into()),
         access_token_expires_at: Some(Utc::now()),
+        p2p_access_token: None,
+        p2p_access_token_expires_at: None,
         lease_expires_at: Some(Utc::now()),
         cancel: false,
         status: Some("leased".into()),

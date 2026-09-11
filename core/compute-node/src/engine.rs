@@ -1,6 +1,12 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use auki_p2p::{Identity, Multiaddr, PeerIdentityProof, Protocol};
+use auki_sdk::{
+    AukiPeer, AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig,
+    ExternalAuthorityControl,
+};
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
+use parking_lot::RwLock as SyncRwLock;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -16,6 +22,7 @@ use uuid::Uuid;
 use crate::{
     auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
     config::{NodeConfig, RobotNodeConfig},
+    dds::p2p::{DdsP2pClient, PeerBindingClient, RobotP2pAuthorityDriver, RobotP2pAuthoritySource},
     dms::client::DmsClient,
     heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
     poller::{jittered_delay_ms, PollerConfig},
@@ -68,8 +75,9 @@ impl RunnerRegistry {
         let runner = self
             .get(cap)
             .ok_or_else(|| crate::errors::ExecutorError::NoRunner(cap.to_string()))?;
+        let runner_lease = lease.without_p2p_credentials();
         let ctx = TaskCtx {
-            lease,
+            lease: &runner_lease,
             input,
             output,
             ctrl,
@@ -82,8 +90,309 @@ impl RunnerRegistry {
     }
 }
 
-/// Run the node main loop. Networking and storage are wired in later prompts.
-pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -> Result<()> {
+/// Typed process-level dependencies available while constructing runners.
+///
+/// A runner takes the protocol handles it needs in its constructor. They are
+/// deliberately absent from [`TaskCtx`], whose fields vary for every task.
+#[derive(Clone, Default)]
+struct RunnerDependencies {
+    protocols: Option<AukiProtocolsHandle>,
+}
+
+impl RunnerDependencies {
+    fn require_protocols(&self) -> Result<AukiProtocolsHandle> {
+        self.protocols
+            .clone()
+            .context("the authenticated P2P protocol surface is unavailable")
+    }
+}
+
+/// Lazily populated handle to the host's authenticated peer protocol context.
+///
+/// Runners receive this handle through [`RunnerComposition::with_protocols`]
+/// and mount their application protocols on the same peer identity. The context
+/// provides protocol registration/opening, published routes, Peer ID and Domain.
+///
+/// Robot populates the handle after its fixed-Domain peer starts. Compute
+/// populates it before dispatching a task with P2P authority and clears it when
+/// that task ends, including cancellation and errors. Call `get()` inside the
+/// runner for each task; a context retained from an earlier task is stopped.
+#[derive(Clone, Default)]
+pub struct AukiProtocolsHandle {
+    state: Arc<SyncRwLock<Option<AukiPeerProtocolContext>>>,
+}
+
+impl AukiProtocolsHandle {
+    fn activate(&self, context: AukiPeerProtocolContext) {
+        *self.state.write() = Some(context);
+    }
+
+    fn activate_task(&self, context: AukiPeerProtocolContext) -> Result<TaskProtocolActivation> {
+        let mut state = self.state.write();
+        if state.is_some() {
+            return Err(anyhow!("the task peer protocol surface is already active"));
+        }
+        *state = Some(context);
+        Ok(TaskProtocolActivation(self.clone()))
+    }
+
+    /// Build an already activated handle from a real or test-fixture peer context.
+    pub fn for_testing(context: AukiPeerProtocolContext) -> Self {
+        let handle = Self::default();
+        handle.activate(context);
+        handle
+    }
+
+    /// Obtain the current peer context. Compute has no context between tasks
+    /// or for a task whose lease has no P2P authority.
+    pub fn get(&self) -> Result<AukiPeerProtocolContext> {
+        self.state
+            .read()
+            .clone()
+            .context("the authenticated P2P protocol surface is unavailable")
+    }
+}
+
+struct TaskProtocolActivation(AukiProtocolsHandle);
+
+impl Drop for TaskProtocolActivation {
+    fn drop(&mut self) {
+        self.0.state.write().take();
+    }
+}
+
+fn peer_facade_config(cfg: &NodeConfig, relay: Option<AukiRelayConfig>) -> Result<AukiPeerConfig> {
+    let listen_addresses = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_listen_multiaddrs,
+        "AUKI_P2P_LISTEN_MULTIADDRS",
+    )?;
+    let direct_routes = parse_p2p_multiaddrs(
+        &cfg.auki_p2p_advertised_multiaddrs,
+        "AUKI_P2P_ADVERTISED_MULTIADDRS",
+    )?;
+    let config =
+        AukiPeerConfig::new(cfg.dms_base_url.as_str())?.with_listen_addresses(listen_addresses)?;
+    let config = match relay {
+        Some(relay) => config.with_relay(relay)?,
+        None => config.direct_only(),
+    };
+    Ok(config.with_advertised_direct_routes(direct_routes)?)
+}
+
+struct PreparedPeerIdentity {
+    identity: Identity,
+    proof: PeerIdentityProof,
+    dds: DdsP2pClient,
+    binding: PeerBindingClient,
+}
+
+fn prepare_peer_identity(cfg: &NodeConfig) -> Result<Option<PreparedPeerIdentity>> {
+    if !cfg.auki_p2p_enabled {
+        return Ok(None);
+    }
+    let identity = cfg
+        .auki_p2p_private_key
+        .as_ref()
+        .ok_or_else(|| {
+            anyhow!(
+                "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
+            )
+        })?
+        .identity()?;
+    let dds_base_url = cfg
+        .dds_base_url
+        .clone()
+        .ok_or_else(|| anyhow!("DDS_BASE_URL required when AUKI_P2P_ENABLED=true"))?;
+    let dds = DdsP2pClient::new(
+        dds_base_url,
+        StdDuration::from_secs(cfg.request_timeout_secs.max(1)),
+    )?;
+    let proof = identity.proof();
+    let binding = PeerBindingClient::new(dds.clone(), proof.clone());
+    Ok(Some(PreparedPeerIdentity {
+        identity,
+        proof,
+        dds,
+        binding,
+    }))
+}
+
+#[derive(Clone)]
+struct ComputeP2pHost {
+    identity: Identity,
+    proof: PeerIdentityProof,
+    dds: DdsP2pClient,
+    config: AukiPeerConfig,
+    protocols: AukiProtocolsHandle,
+}
+
+#[derive(Clone)]
+#[doc(hidden)]
+pub struct ComputeAuthorityUpdater {
+    domain_id: Uuid,
+    proof: PeerIdentityProof,
+    dds: DdsP2pClient,
+    control: Arc<ExternalAuthorityControl>,
+}
+
+struct ComputeTaskPeer {
+    // Clear the shared slot before dropping the peer on aborted task futures.
+    protocols: Option<TaskProtocolActivation>,
+    peer: Option<AukiPeer>,
+    authority: ComputeAuthorityUpdater,
+}
+
+impl ComputeP2pHost {
+    async fn start_task(&self, lease: &LeaseEnvelope) -> Result<Option<ComputeTaskPeer>> {
+        let Some((token, expires_at)) = complete_p2p_credential(
+            lease.p2p_access_token.as_deref(),
+            lease.p2p_access_token_expires_at,
+        )?
+        else {
+            return Ok(None);
+        };
+        let domain_id = lease
+            .domain_id
+            .ok_or_else(|| anyhow!("P2P task lease is missing its Domain"))?;
+        let update = self
+            .dds
+            .external_authority_update(&self.proof, domain_id, token, expires_at)
+            .await
+            .context("prepare task peer authority")?;
+        let (peer, control) =
+            AukiPeer::start_external(self.identity.clone(), update, self.config.clone())
+                .await
+                .context("start task-scoped Auki peer")?;
+        let protocols = match self.protocols.activate_task(peer.protocol_context()) {
+            Ok(protocols) => protocols,
+            Err(error) => {
+                let _ = peer.shutdown().await;
+                return Err(error);
+            }
+        };
+        Ok(Some(ComputeTaskPeer {
+            protocols: Some(protocols),
+            peer: Some(peer),
+            authority: ComputeAuthorityUpdater {
+                domain_id,
+                proof: self.proof.clone(),
+                dds: self.dds.clone(),
+                control: Arc::new(control),
+            },
+        }))
+    }
+}
+
+impl ComputeAuthorityUpdater {
+    async fn apply(
+        &self,
+        domain_id: Option<Uuid>,
+        token: Option<&str>,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<()> {
+        if domain_id.is_some_and(|domain_id| domain_id != self.domain_id) {
+            return Err(anyhow!("heartbeat moved the task peer to another Domain"));
+        }
+        let Some((token, expires_at)) = complete_p2p_credential(token, expires_at)? else {
+            return Ok(());
+        };
+        let update = self
+            .dds
+            .external_authority_update(&self.proof, self.domain_id, token, expires_at)
+            .await
+            .context("prepare heartbeat peer authority")?;
+        self.control
+            .replace(update)
+            .await
+            .context("replace heartbeat peer authority")?;
+        Ok(())
+    }
+}
+
+impl ComputeTaskPeer {
+    fn authority(&self) -> ComputeAuthorityUpdater {
+        self.authority.clone()
+    }
+
+    fn subscribe_status(&self) -> tokio::sync::watch::Receiver<AukiPeerStatus> {
+        self.peer
+            .as_ref()
+            .expect("live task peer")
+            .subscribe_status()
+    }
+
+    async fn shutdown(mut self) -> Result<()> {
+        drop(self.protocols.take());
+        if let Some(peer) = self.peer.take() {
+            peer.shutdown().await.context("shut down task Auki peer")?;
+        }
+        Ok(())
+    }
+}
+
+async fn shutdown_task_peer(task_peer: &mut Option<ComputeTaskPeer>) -> Result<()> {
+    match task_peer.take() {
+        Some(peer) => peer.shutdown().await,
+        None => Ok(()),
+    }
+}
+
+fn complete_p2p_credential(
+    token: Option<&str>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Option<(&str, chrono::DateTime<chrono::Utc>)>> {
+    match (token, expires_at) {
+        (Some(token), Some(expires_at)) => Ok(Some((token, expires_at))),
+        (None, None) => Ok(None),
+        _ => Err(anyhow!(
+            "P2P access token and expiration must be supplied together"
+        )),
+    }
+}
+
+/// Builds the runner registry with the host's protocol handles.
+///
+/// Plain registries convert into a fixed composition automatically. Applications
+/// that mount their own protocols use [`RunnerComposition::with_protocols`].
+pub struct RunnerComposition {
+    build: Box<dyn FnOnce(RunnerDependencies) -> Result<RunnerRegistry> + Send>,
+}
+
+impl RunnerComposition {
+    fn new<F>(build: F) -> Self
+    where
+        F: FnOnce(RunnerDependencies) -> Result<RunnerRegistry> + Send + 'static,
+    {
+        Self {
+            build: Box::new(build),
+        }
+    }
+
+    /// Construct runners that require the general authenticated peer
+    /// protocol surface to mount protocols or open streams on the host's peer.
+    pub fn with_protocols<F>(build: F) -> Self
+    where
+        F: FnOnce(AukiProtocolsHandle) -> RunnerRegistry + Send + 'static,
+    {
+        Self::new(move |dependencies| Ok(build(dependencies.require_protocols()?)))
+    }
+
+    fn compose(self, dependencies: RunnerDependencies) -> Result<RunnerRegistry> {
+        (self.build)(dependencies)
+    }
+}
+
+impl From<RunnerRegistry> for RunnerComposition {
+    fn from(runners: RunnerRegistry) -> Self {
+        Self::new(move |_| Ok(runners))
+    }
+}
+
+/// Run a compute host with DDS authentication, DMS tasks, and lease-backed storage.
+pub async fn run_node(
+    cfg: crate::config::NodeConfig,
+    runners: impl Into<RunnerComposition> + Send,
+) -> Result<()> {
     let shutdown = CancellationToken::new();
     let signal_token = shutdown.clone();
     let signal_task = tokio::spawn(async move {
@@ -92,9 +401,10 @@ pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -
         }
     });
 
-    let result = run_node_with_shutdown(cfg, runners, shutdown.clone()).await;
+    let result = run_node_with_shutdown(cfg, runners.into(), shutdown.clone()).await;
 
     shutdown.cancel();
+    signal_task.abort();
     let _ = signal_task.await;
 
     result
@@ -102,16 +412,71 @@ pub async fn run_node(cfg: crate::config::NodeConfig, runners: RunnerRegistry) -
 
 pub async fn run_node_with_shutdown(
     cfg: crate::config::NodeConfig,
-    runners: RunnerRegistry,
+    runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    let siwe = crate::auth::SiweAfterRegistration::from_config(&cfg)?;
+    let prepared_peer = prepare_peer_identity(&cfg)?;
+    let compute_peer_config = prepared_peer
+        .as_ref()
+        .map(|_| peer_facade_config(&cfg, None))
+        .transpose()?;
+    let protocols = prepared_peer
+        .as_ref()
+        .map(|_| AukiProtocolsHandle::default());
+    let runners = runners
+        .into()
+        .compose(RunnerDependencies {
+            protocols: protocols.clone(),
+        })
+        .context("construct task runners")?;
+    let peer_binding = prepared_peer
+        .as_ref()
+        .map(|prepared| prepared.binding.clone());
+    let siwe =
+        match crate::auth::SiweAfterRegistration::from_config_with_peer_binding(&cfg, peer_binding)
+        {
+            Ok(siwe) => siwe,
+            Err(error) => return Err(error),
+        };
     info!("DDS SIWE authentication configured; waiting for DDS registration");
-    let siwe_handle = siwe.start().await?;
+    let siwe_handle = tokio::select! {
+        result = siwe.start() => match result {
+            Ok(handle) => handle,
+            Err(error) => {
+                siwe.shutdown().await;
+                return Err(error);
+            }
+        },
+        _ = shutdown.cancelled() => {
+            siwe.shutdown().await;
+            info!("Shutdown signal received before SIWE authentication completed");
+            return Ok(());
+        }
+    };
     info!("DDS SIWE token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
-    let result = run_authenticated_node_loop(&cfg, &runners, auth, shutdown, "SIWE", false).await;
+    let compute_peer = prepared_peer.map(|prepared| ComputeP2pHost {
+        config: compute_peer_config.expect("P2P identity creates a peer config"),
+        identity: prepared.identity,
+        proof: prepared.proof,
+        dds: prepared.dds,
+        protocols: protocols.expect("P2P identity creates a protocol handle"),
+    });
+    let result = run_authenticated_node_loop(
+        &cfg,
+        &runners,
+        auth,
+        shutdown,
+        "SIWE",
+        cfg.auki_p2p_enabled,
+        NodeLoopP2p {
+            compute_peer,
+            fixed_peer_status: None,
+            forced_shutdown: None,
+        },
+    )
+    .await;
 
     siwe_handle.shutdown().await;
     info!("Shutdown signal received; exiting run_node loop");
@@ -120,18 +485,33 @@ pub async fn run_node_with_shutdown(
 }
 
 /// Run a robot-authenticated node until interrupted.
-pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Result<()> {
+pub async fn run_robot_node(
+    cfg: RobotNodeConfig,
+    runners: impl Into<RunnerComposition> + Send,
+) -> Result<()> {
     let shutdown = CancellationToken::new();
+    let forced_shutdown = CancellationToken::new();
     let signal_token = shutdown.clone();
+    let force_token = forced_shutdown.clone();
     let signal_task = tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
             signal_token.cancel();
         }
+        if tokio::signal::ctrl_c().await.is_ok() {
+            force_token.cancel();
+        }
     });
 
-    let result = run_robot_node_with_shutdown(cfg, runners, shutdown.clone()).await;
+    let result = run_robot_node_with_shutdowns(
+        cfg,
+        runners.into(),
+        shutdown.clone(),
+        forced_shutdown.clone(),
+    )
+    .await;
 
     shutdown.cancel();
+    forced_shutdown.cancel();
     signal_task.abort();
     let _ = signal_task.await;
 
@@ -141,14 +521,64 @@ pub async fn run_robot_node(cfg: RobotNodeConfig, runners: RunnerRegistry) -> Re
 /// Run a robot-authenticated node until the supplied cancellation token fires.
 pub async fn run_robot_node_with_shutdown(
     cfg: RobotNodeConfig,
-    runners: RunnerRegistry,
+    runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
 ) -> Result<()> {
+    run_robot_node_with_shutdowns(cfg, runners.into(), shutdown, CancellationToken::new()).await
+}
+
+/// Run a robot-authenticated node with separate graceful and forced shutdown
+/// signals.
+///
+/// The first token stops task polling and lets the active task finish.
+/// The second token interrupts an active task before peer shutdown.
+pub async fn run_robot_node_with_shutdowns(
+    cfg: RobotNodeConfig,
+    runners: impl Into<RunnerComposition> + Send,
+    shutdown: CancellationToken,
+    forced_shutdown: CancellationToken,
+) -> Result<()> {
+    cfg.validate_relay_config()?;
     let runtime_cfg = cfg.runtime_config();
-    let robot = crate::auth::RobotMachineAuth::from_config(&cfg, runners.capabilities())?;
+    let relay_config = cfg.relay_config();
+    validate_robot_p2p_config(&runtime_cfg, relay_config.is_some())?;
+    if shutdown.is_cancelled() {
+        return Ok(());
+    }
+    let prepared_peer = prepare_peer_identity(&runtime_cfg)?;
+    let peer_config = prepared_peer
+        .as_ref()
+        .map(|_| peer_facade_config(&runtime_cfg, relay_config))
+        .transpose()?;
+    let protocols_handle = prepared_peer
+        .as_ref()
+        .map(|_| AukiProtocolsHandle::default());
+    let runners = runners
+        .into()
+        .compose(RunnerDependencies {
+            protocols: protocols_handle.clone(),
+        })
+        .context("construct task runners")?;
+    let peer_binding = prepared_peer
+        .as_ref()
+        .map(|prepared| prepared.binding.clone());
+    let robot = match crate::auth::RobotMachineAuth::from_config_with_peer_binding(
+        &cfg,
+        runners.capabilities(),
+        peer_binding,
+    ) {
+        Ok(robot) => robot,
+        Err(error) => return Err(error),
+    };
     info!("DDS robot authentication configured");
     let robot_handle = tokio::select! {
-        result = robot.start() => result?,
+        result = robot.start() => match result {
+            Ok(handle) => handle,
+            Err(error) => {
+                robot.shutdown().await;
+                return Err(error);
+            }
+        },
         _ = shutdown.cancelled() => {
             robot.shutdown().await;
             info!("Shutdown signal received before robot authentication completed");
@@ -158,13 +588,153 @@ pub async fn run_robot_node_with_shutdown(
     info!("DDS robot token manager started");
 
     let auth: Arc<dyn TokenProvider> = Arc::new(robot_handle.clone());
-    let result =
-        run_authenticated_node_loop(&runtime_cfg, &runners, auth, shutdown, "robot", true).await;
+    let Some(prepared_peer) = prepared_peer else {
+        let result = run_authenticated_node_loop(
+            &runtime_cfg,
+            &runners,
+            auth,
+            shutdown,
+            "robot",
+            true,
+            NodeLoopP2p {
+                compute_peer: None,
+                fixed_peer_status: None,
+                forced_shutdown: Some(forced_shutdown),
+            },
+        )
+        .await;
+        robot_handle.shutdown().await;
+        return result;
+    };
+    let protocols_handle = protocols_handle.expect("P2P identity creates a protocols handle");
+    let authority_source = RobotP2pAuthoritySource::new(
+        prepared_peer.dds.clone(),
+        Arc::clone(&auth),
+        prepared_peer.proof.clone(),
+    );
+    let prepared_authority = tokio::select! {
+        result = authority_source.prepare() => match result {
+            Ok(authority) => authority,
+            Err(error) => {
+                robot_handle.shutdown().await;
+                return Err(anyhow::Error::new(error).context("prepare Robot P2P authority"));
+            }
+        },
+        _ = shutdown.cancelled() => {
+            robot_handle.shutdown().await;
+            return Ok(());
+        }
+    };
+    let domain_id = prepared_authority.domain_id();
+    let authority_expires_at = prepared_authority.expires_at();
+    let peer_config = peer_config.expect("P2P identity creates a peer config");
+    let (peer, authority_control) = tokio::select! {
+        result = AukiPeer::start_external(
+            prepared_peer.identity,
+            prepared_authority.into_update(),
+            peer_config,
+        ) => match result {
+            Ok(peer) => peer,
+            Err(error) => {
+                robot_handle.shutdown().await;
+                return Err(error).context("start Robot Auki peer");
+            }
+        },
+        _ = shutdown.cancelled() => {
+            robot_handle.shutdown().await;
+            return Ok(());
+        }
+    };
+    info!(peer_id = %peer.peer_id(), %domain_id, "Robot Auki peer is ready");
+    protocols_handle.activate(peer.protocol_context());
+    let authority_lifecycle = CancellationToken::new();
+    let authority_driver = match RobotP2pAuthorityDriver::start(
+        authority_source,
+        domain_id,
+        authority_expires_at,
+        authority_control,
+        &authority_lifecycle,
+    ) {
+        Ok(driver) => driver,
+        Err(error) => {
+            authority_lifecycle.cancel();
+            let _ = peer.shutdown().await;
+            robot_handle.shutdown().await;
+            return Err(anyhow::Error::new(error).context("start Robot P2P authority driver"));
+        }
+    };
+    let peer_status = peer.subscribe_status();
+    let mut result = run_authenticated_node_loop(
+        &runtime_cfg,
+        &runners,
+        auth,
+        shutdown,
+        "robot",
+        true,
+        NodeLoopP2p {
+            compute_peer: None,
+            fixed_peer_status: Some(peer_status),
+            forced_shutdown: Some(forced_shutdown.clone()),
+        },
+    )
+    .await;
 
+    // Stop the renewal control loop before the facade tears down authority.
+    authority_lifecycle.cancel();
+    authority_driver.shutdown().await;
+    if let Err(error) = peer.shutdown().await {
+        warn!(error = %error, "Robot Auki peer shutdown failed");
+        if result.is_ok() {
+            result = Err(error.into());
+        }
+    }
     robot_handle.shutdown().await;
     info!("Shutdown signal received; exiting robot node loop");
 
     result
+}
+
+struct NodeLoopP2p {
+    compute_peer: Option<ComputeP2pHost>,
+    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
+    forced_shutdown: Option<CancellationToken>,
+}
+
+fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<Multiaddr>> {
+    values
+        .iter()
+        .map(|value| {
+            let address = value
+                .parse::<Multiaddr>()
+                .with_context(|| format!("invalid TCP multiaddr in {setting}"))?;
+            if !address
+                .iter()
+                .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+            {
+                return Err(anyhow!("non-TCP multiaddr in {setting}"));
+            }
+            Ok(address)
+        })
+        .collect()
+}
+
+fn validate_robot_p2p_config(cfg: &NodeConfig, relay_enabled: bool) -> Result<()> {
+    if cfg.auki_p2p_enabled && cfg.auki_p2p_private_key.is_none() {
+        return Err(anyhow!(
+            "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
+        ));
+    }
+    if cfg.auki_p2p_enabled && !relay_enabled && cfg.auki_p2p_listen_multiaddrs.is_empty() {
+        return Err(anyhow!(
+            "AUKI_P2P_LISTEN_MULTIADDRS required for Robot P2P serving"
+        ));
+    }
+    if cfg.auki_p2p_enabled && !relay_enabled && cfg.auki_p2p_advertised_multiaddrs.is_empty() {
+        return Err(anyhow!(
+            "AUKI_P2P_ADVERTISED_MULTIADDRS required for Robot P2P serving"
+        ));
+    }
+    Ok(())
 }
 
 async fn run_authenticated_node_loop(
@@ -174,7 +744,13 @@ async fn run_authenticated_node_loop(
     shutdown: CancellationToken,
     auth_kind: &'static str,
     interrupt_on_shutdown: bool,
+    p2p: NodeLoopP2p,
 ) -> Result<()> {
+    let NodeLoopP2p {
+        compute_peer,
+        mut fixed_peer_status,
+        forced_shutdown,
+    } = p2p;
     let poll_cfg = PollerConfig {
         backoff_ms_min: cfg.poll_backoff_ms_min,
         backoff_ms_max: cfg.poll_backoff_ms_max,
@@ -183,6 +759,12 @@ async fn run_authenticated_node_loop(
     loop {
         if shutdown.is_cancelled() {
             break;
+        }
+
+        if let Some(status) = fixed_peer_status.as_mut() {
+            if !wait_until_peer_ready(status, &shutdown).await? {
+                break;
+            }
         }
 
         // Ensure a token is available before attempting DMS operations.
@@ -234,13 +816,37 @@ async fn run_authenticated_node_loop(
             };
             match acquired {
                 Ok(Some(acquired)) => {
-                    run_leased_cycle_with_dms(cfg, &dms_client, runners, acquired).await
+                    run_leased_cycle_with_abort(
+                        cfg,
+                        &dms_client,
+                        runners,
+                        acquired,
+                        compute_peer.clone(),
+                        fixed_peer_status.clone(),
+                        forced_shutdown.as_ref(),
+                    )
+                    .await
                 }
                 Ok(None) => Ok(false),
                 Err(err) => Err(err),
             }
         } else {
-            run_cycle_with_dms(cfg, &dms_client, runners).await
+            match acquire_lease_with_dms(&dms_client, runners).await {
+                Ok(Some(acquired)) => {
+                    run_leased_cycle_with_abort(
+                        cfg,
+                        &dms_client,
+                        runners,
+                        acquired,
+                        compute_peer.clone(),
+                        fixed_peer_status.clone(),
+                        forced_shutdown.as_ref(),
+                    )
+                    .await
+                }
+                Ok(None) => Ok(false),
+                Err(error) => Err(error),
+            }
         };
 
         match cycle {
@@ -270,6 +876,55 @@ async fn run_authenticated_node_loop(
     Ok(())
 }
 
+async fn wait_until_peer_ready(
+    status: &mut tokio::sync::watch::Receiver<AukiPeerStatus>,
+    shutdown: &CancellationToken,
+) -> Result<bool> {
+    loop {
+        match *status.borrow_and_update() {
+            AukiPeerStatus::Ready => return Ok(true),
+            AukiPeerStatus::Failed(failure) => {
+                return Err(anyhow!("Auki peer failed: {failure:?}"));
+            }
+            AukiPeerStatus::Stopping | AukiPeerStatus::Stopped => {
+                return Err(anyhow!("Auki peer stopped unexpectedly"));
+            }
+            AukiPeerStatus::AuthorityUnavailable | AukiPeerStatus::RelayUnavailable => {}
+        }
+        tokio::select! {
+            _ = shutdown.cancelled() => return Ok(false),
+            changed = status.changed() => {
+                changed.map_err(|_| anyhow!("Auki peer status channel closed"))?;
+            }
+        }
+    }
+}
+
+async fn wait_for_peer_loss(
+    status: &mut tokio::sync::watch::Receiver<AukiPeerStatus>,
+) -> anyhow::Error {
+    loop {
+        match *status.borrow_and_update() {
+            AukiPeerStatus::Ready => {}
+            AukiPeerStatus::AuthorityUnavailable => {
+                return anyhow!("Auki peer authority became unavailable");
+            }
+            AukiPeerStatus::RelayUnavailable => {
+                return anyhow!("Auki peer relay became unavailable");
+            }
+            AukiPeerStatus::Failed(failure) => {
+                return anyhow!("Auki peer failed: {failure:?}");
+            }
+            AukiPeerStatus::Stopping | AukiPeerStatus::Stopped => {
+                return anyhow!("Auki peer stopped during task execution");
+            }
+        }
+        if status.changed().await.is_err() {
+            return anyhow!("Auki peer status channel closed during task execution");
+        }
+    }
+}
+
 /// Build storage ports (input/output) for a given lease by constructing a TokenRef
 /// from the lease's access token and delegating to storage::build_ports.
 pub fn build_storage_for_lease(lease: &LeaseEnvelope) -> Result<crate::storage::Ports> {
@@ -288,6 +943,21 @@ pub fn apply_heartbeat_token_update(
     }
 }
 
+async fn apply_compute_authority_update(
+    authority: Option<&ComputeAuthorityUpdater>,
+    domain_id: Option<Uuid>,
+    token: Option<&str>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<()> {
+    match authority {
+        Some(authority) => authority.apply(domain_id, token, expires_at).await,
+        None if token.is_none() && expires_at.is_none() => Ok(()),
+        None => Err(anyhow!(
+            "DMS returned a P2P credential to a node without a P2P runtime"
+        )),
+    }
+}
+
 /// Merge fields from a heartbeat response into the cached lease.
 pub fn merge_heartbeat_into_lease(
     lease: &mut LeaseEnvelope,
@@ -298,6 +968,12 @@ pub fn merge_heartbeat_into_lease(
     }
     if let Some(expiry) = hb.access_token_expires_at {
         lease.access_token_expires_at = Some(expiry);
+    }
+    if let Some(token) = hb.p2p_access_token.clone() {
+        lease.p2p_access_token = Some(token);
+    }
+    if let Some(expiry) = hb.p2p_access_token_expires_at {
+        lease.p2p_access_token_expires_at = Some(expiry);
     }
     if let Some(expiry) = hb.lease_expires_at {
         lease.lease_expires_at = Some(expiry);
@@ -345,12 +1021,26 @@ pub async fn run_cycle_with_dms(
     let Some(acquired) = acquire_lease_with_dms(dms, reg).await? else {
         return Ok(false);
     };
-    run_leased_cycle_with_dms(cfg, dms, reg, acquired).await
+    run_leased_cycle_with_dms(cfg, dms, reg, acquired, None, None).await
 }
 
 struct AcquiredLease {
     capabilities: Vec<String>,
     lease: LeaseEnvelope,
+}
+
+struct LeaseExecutionGuard {
+    runner_cancel: CancellationToken,
+    heartbeat_shutdown: CancellationToken,
+    heartbeat_abort: tokio::task::AbortHandle,
+}
+
+impl Drop for LeaseExecutionGuard {
+    fn drop(&mut self) {
+        self.runner_cancel.cancel();
+        self.heartbeat_shutdown.cancel();
+        self.heartbeat_abort.abort();
+    }
 }
 
 async fn acquire_lease_with_dms(
@@ -378,6 +1068,43 @@ async fn run_leased_cycle_with_dms(
     dms: &DmsClient,
     reg: &RunnerRegistry,
     acquired: AcquiredLease,
+    compute_peer: Option<ComputeP2pHost>,
+    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
+) -> Result<bool> {
+    run_leased_cycle_inner(cfg, dms, reg, acquired, compute_peer, fixed_peer_status).await
+}
+
+async fn run_leased_cycle_with_abort(
+    cfg: &crate::config::NodeConfig,
+    dms: &DmsClient,
+    reg: &RunnerRegistry,
+    acquired: AcquiredLease,
+    compute_peer: Option<ComputeP2pHost>,
+    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
+    forced_shutdown: Option<&CancellationToken>,
+) -> Result<bool> {
+    let cycle = run_leased_cycle_with_dms(cfg, dms, reg, acquired, compute_peer, fixed_peer_status);
+    match forced_shutdown {
+        Some(forced_shutdown) => {
+            tokio::select! {
+                biased;
+                _ = forced_shutdown.cancelled() => {
+                    Err(anyhow!("forced shutdown interrupted the active Robot task"))
+                }
+                result = cycle => result,
+            }
+        }
+        None => cycle.await,
+    }
+}
+
+async fn run_leased_cycle_inner(
+    cfg: &crate::config::NodeConfig,
+    dms: &DmsClient,
+    reg: &RunnerRegistry,
+    acquired: AcquiredLease,
+    compute_peer: Option<ComputeP2pHost>,
+    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
 ) -> Result<bool> {
     use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
     use serde_json::json;
@@ -476,9 +1203,52 @@ async fn run_leased_cycle_with_dms(
         .await
         .map_err(|err| anyhow!("failed to refresh session after heartbeat: {err}"))?;
 
+    let mut task_peer = match compute_peer.as_ref() {
+        Some(host) => match host.start_task(&lease).await {
+            Ok(peer) => peer,
+            Err(error) => {
+                if let Err(fail_error) = report_setup_failure("start_task_peer", &error).await {
+                    warn!(error = %fail_error, task_id = %task_id, "failed to report P2P setup failure");
+                    return Err(error);
+                }
+                return Ok(true);
+            }
+        },
+        None => {
+            if let Err(error) = apply_compute_authority_update(
+                None,
+                lease.domain_id,
+                lease.p2p_access_token.as_deref(),
+                lease.p2p_access_token_expires_at,
+            )
+            .await
+            {
+                if let Err(fail_error) = report_setup_failure("unexpected_task_peer", &error).await
+                {
+                    warn!(error = %fail_error, task_id = %task_id, "failed to report P2P setup failure");
+                    return Err(error);
+                }
+                return Ok(true);
+            }
+            None
+        }
+    };
+    let task_authority = task_peer.as_ref().map(ComputeTaskPeer::authority);
+    let task_peer_status = task_peer
+        .as_ref()
+        .map(ComputeTaskPeer::subscribe_status)
+        .or(fixed_peer_status);
+
     let ports = match crate::storage::build_ports(&lease, token_ref.clone()) {
         Ok(ports) => ports,
         Err(err) => {
+            if let Err(shutdown_error) = shutdown_task_peer(&mut task_peer).await {
+                warn!(
+                    error = %shutdown_error,
+                    task_id = %task_id,
+                    "failed to shut down task peer after storage setup failure"
+                );
+            }
             if let Err(fail_err) = report_setup_failure("build_ports", &err).await {
                 warn!(
                     error = %fail_err,
@@ -520,16 +1290,32 @@ async fn run_leased_cycle_with_dms(
             progress_rx,
             state: control_state.clone(),
             token_ref: token_ref.clone(),
+            p2p_authority: task_authority,
             runner_cancel: runner_cancel.clone(),
             shutdown: heartbeat_shutdown.clone(),
             task_id: lease.task.id,
         },
     );
     let heartbeat_handle = tokio::spawn(async move { heartbeat_driver.run().await });
+    let _execution_guard = LeaseExecutionGuard {
+        runner_cancel: runner_cancel.clone(),
+        heartbeat_shutdown: heartbeat_shutdown.clone(),
+        heartbeat_abort: heartbeat_handle.abort_handle(),
+    };
 
-    let run_res = reg
-        .run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref)
-        .await;
+    let runner = reg.run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref);
+    tokio::pin!(runner);
+    let mut run_res = if let Some(mut peer_status) = task_peer_status {
+        tokio::select! {
+            result = &mut runner => result,
+            error = wait_for_peer_loss(&mut peer_status) => {
+                runner_cancel.cancel();
+                Err(crate::errors::ExecutorError::Runner(error.to_string()))
+            }
+        }
+    } else {
+        runner.await
+    };
 
     // Re-broadcast the latest progress/events so the heartbeat loop can flush
     // them before shutdown. Without this, very short tasks may complete before
@@ -557,6 +1343,9 @@ async fn run_leased_cycle_with_dms(
                 "Lease cancelled during execution; skipping completion"
             );
             runner_cancel.cancel();
+            if let Err(error) = shutdown_task_peer(&mut task_peer).await {
+                warn!(error = %error, task_id = %task_id, "failed to shut down cancelled task peer");
+            }
             return Ok(true);
         }
         HeartbeatLoopResult::LostLease(err) => {
@@ -566,7 +1355,20 @@ async fn run_leased_cycle_with_dms(
                 "Lease lost during heartbeat; abandoning task"
             );
             runner_cancel.cancel();
+            if let Err(shutdown_error) = shutdown_task_peer(&mut task_peer).await {
+                warn!(error = %shutdown_error, task_id = %task_id, "failed to shut down abandoned task peer");
+            }
             return Ok(true);
+        }
+    }
+
+    if let Err(error) = shutdown_task_peer(&mut task_peer).await {
+        if run_res.is_ok() {
+            run_res = Err(crate::errors::ExecutorError::Runner(format!(
+                "task peer shutdown failed: {error:#}"
+            )));
+        } else {
+            warn!(error = %error, task_id = %task_id, "task peer shutdown also failed");
         }
     }
 
@@ -579,6 +1381,7 @@ async fn run_leased_cycle_with_dms(
                 "name": artifact.name,
                 "data_type": artifact.data_type,
                 "id": artifact.id,
+                "metadata": artifact.metadata.clone().unwrap_or(Value::Null),
             })
         })
         .collect();
@@ -716,6 +1519,7 @@ pub struct HeartbeatDriverArgs {
     pub progress_rx: ProgressReceiver,
     pub state: Arc<Mutex<ControlState>>,
     pub token_ref: crate::storage::TokenRef,
+    pub p2p_authority: Option<ComputeAuthorityUpdater>,
     pub runner_cancel: CancellationToken,
     pub shutdown: CancellationToken,
     pub task_id: Uuid,
@@ -732,6 +1536,7 @@ where
     progress_rx: ProgressReceiver,
     state: Arc<Mutex<ControlState>>,
     token_ref: crate::storage::TokenRef,
+    p2p_authority: Option<ComputeAuthorityUpdater>,
     runner_cancel: CancellationToken,
     shutdown: CancellationToken,
     task_id: Uuid,
@@ -751,6 +1556,7 @@ where
             progress_rx: args.progress_rx,
             state: args.state,
             token_ref: args.token_ref,
+            p2p_authority: args.p2p_authority,
             runner_cancel: args.runner_cancel,
             shutdown: args.shutdown,
             task_id: args.task_id,
@@ -848,6 +1654,17 @@ where
                     }
                 }
                 apply_heartbeat_token_update(&self.token_ref, &update);
+                if let Err(error) = apply_compute_authority_update(
+                    self.p2p_authority.as_ref(),
+                    update.domain_id,
+                    update.p2p_access_token.as_deref(),
+                    update.p2p_access_token_expires_at,
+                )
+                .await
+                {
+                    self.runner_cancel.cancel();
+                    return Some(HeartbeatLoopResult::LostLease(error));
+                }
                 if let Some(task) = &update.task {
                     self.task_id = task.id;
                 } else if let Some(task_id) = update.task_id {
@@ -877,5 +1694,195 @@ where
                 Some(HeartbeatLoopResult::LostLease(err))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{P2pPrivateKey, RobotNodeConfig};
+    use auki_p2p::Identity;
+    use auki_sdk::AukiRelayMode;
+    #[test]
+    fn protocol_runner_composition_fails_without_p2p_runtime() {
+        let result = RunnerComposition::with_protocols(|_| RunnerRegistry::new())
+            .compose(RunnerDependencies::default());
+        let error = result.err().expect("missing P2P must fail composition");
+
+        assert!(error
+            .to_string()
+            .contains("authenticated P2P protocol surface is unavailable"));
+    }
+
+    #[test]
+    fn p2p_listener_multiaddrs_are_explicit_tcp() {
+        let listen = parse_p2p_multiaddrs(
+            &["/ip4/127.0.0.1/tcp/0".into()],
+            "AUKI_P2P_LISTEN_MULTIADDRS",
+        )
+        .unwrap();
+        assert_eq!(listen.len(), 1);
+        assert!(parse_p2p_multiaddrs(
+            &["/ip4/127.0.0.1/udp/41001".into()],
+            "AUKI_P2P_LISTEN_MULTIADDRS"
+        )
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn production_p2p_start_rejects_a_missing_identity_before_network_io() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let runtime = robot.runtime_config();
+
+        let error = prepare_peer_identity(&runtime)
+            .err()
+            .expect("missing production identity must fail before DDS access");
+        assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
+    }
+
+    #[test]
+    fn robot_p2p_address_requirements_are_mode_sensitive() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let identity = Identity::from_ed25519_seed(&[0x53; 32]);
+        robot.set_p2p_private_key(Some(
+            P2pPrivateKey::from_protobuf_encoding(identity.to_protobuf_encoding().unwrap())
+                .unwrap(),
+        ));
+
+        let disabled = robot.runtime_config();
+        assert!(validate_robot_p2p_config(&disabled, false).is_err());
+
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Public,
+            1,
+            StdDuration::from_secs(300),
+            StdDuration::from_secs(5),
+        )
+        .unwrap();
+        robot.set_relay_config(Some(relay)).unwrap();
+        let runtime = robot.runtime_config();
+        assert!(runtime.auki_p2p_enabled);
+        assert!(validate_robot_p2p_config(&runtime, true).is_ok());
+    }
+
+    #[test]
+    fn facade_config_maps_relay_selection_to_sdk() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Dedicated,
+            2,
+            StdDuration::from_secs(600),
+            StdDuration::from_secs(7),
+        )
+        .unwrap();
+        robot.set_relay_config(Some(relay)).unwrap();
+        let runtime = robot.runtime_config();
+
+        let direct = peer_facade_config(&runtime, None).unwrap();
+        assert!(!direct.relay_required());
+
+        let relayed = peer_facade_config(&runtime, Some(relay)).unwrap();
+        assert_eq!(relayed.relay(), Some(relay));
+    }
+
+    #[test]
+    fn facade_config_delegates_advertised_route_validation_to_sdk() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        robot.auki_p2p_advertised_multiaddrs = vec!["/ip4/0.0.0.0/tcp/41001".into()];
+
+        let error = peer_facade_config(&robot.runtime_config(), None)
+            .expect_err("the SDK must reject an unspecified advertised address");
+        assert!(error
+            .to_string()
+            .contains("advertised direct route is invalid"));
+    }
+
+    #[test]
+    fn facade_config_selects_direct_only_before_applying_full_route_set() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        robot.auki_p2p_advertised_multiaddrs = (1..=16)
+            .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
+            .collect();
+
+        let config = peer_facade_config(&robot.runtime_config(), None).unwrap();
+        assert!(!config.relay_required());
+        assert_eq!(config.advertised_direct_routes().len(), 16);
+    }
+
+    #[test]
+    fn facade_config_accepts_the_sdk_route_capacity_boundary() {
+        let mut robot = RobotNodeConfig::new(
+            "https://dds.example.test".parse().unwrap(),
+            "https://dms.example.test/v1".parse().unwrap(),
+            "opaque-registration-credential",
+        )
+        .unwrap();
+        robot.auki_p2p_enabled = true;
+        robot.auki_p2p_advertised_multiaddrs = (1..=13)
+            .map(|last_octet| format!("/ip4/192.0.2.{last_octet}/tcp/41001"))
+            .collect();
+        let relay = AukiRelayConfig::new(
+            AukiRelayMode::Public,
+            3,
+            StdDuration::from_secs(300),
+            StdDuration::from_secs(5),
+        )
+        .unwrap();
+
+        let config = peer_facade_config(&robot.runtime_config(), Some(relay)).unwrap();
+        assert_eq!(config.advertised_direct_routes().len(), 13);
+        assert_eq!(config.relay(), Some(relay));
+    }
+
+    #[tokio::test]
+    async fn dropping_a_lease_execution_aborts_its_heartbeat_task() {
+        let runner_cancel = CancellationToken::new();
+        let heartbeat_shutdown = CancellationToken::new();
+        let heartbeat = tokio::spawn(std::future::pending::<()>());
+        let guard = LeaseExecutionGuard {
+            runner_cancel: runner_cancel.clone(),
+            heartbeat_shutdown: heartbeat_shutdown.clone(),
+            heartbeat_abort: heartbeat.abort_handle(),
+        };
+
+        drop(guard);
+
+        assert!(runner_cancel.is_cancelled());
+        assert!(heartbeat_shutdown.is_cancelled());
+        let error = tokio::time::timeout(StdDuration::from_secs(1), heartbeat)
+            .await
+            .expect("heartbeat abort is bounded")
+            .expect_err("heartbeat task was aborted");
+        assert!(error.is_cancelled());
     }
 }

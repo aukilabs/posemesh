@@ -1,5 +1,6 @@
-//! DDS router/client skeleton (no HTTP).
+//! DDS registration, peer binding, and registration-state helpers.
 
+pub mod p2p;
 pub mod persist;
 pub mod register;
 

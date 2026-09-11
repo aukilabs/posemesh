@@ -1,41 +1,54 @@
-## The Real World Web.
+# Posemesh
 
-The posemesh underpins the real world web - a decentralized machine perception network and collaborative spatial computing protocol for the next 100 billion robots, devices and AI on Earth and beyond.
+Build compute nodes and robots on the Auki network with a Rust `Runner`.
+Posemesh handles machine authentication, DMS task polling, heartbeats, storage
+access, and reporting results. Your runner implements the capability.
 
-Our mission is to help machines browse, search and navigate the physical world, to enable the future of AI, robotics and the metaverse. To this end, we aim to develop and deploy civilization-scale network infrastructure funded, owned and operated by the people. We build together in public, with the support of our community and backers. This is how we win.
+Use [Auki SDK](https://github.com/aukilabs/auki-sdk) protocols to exchange data
+with other peers during a task.
 
-To learn more about this vision, read the [whitepaper](https://auki.com/whitepaper).
+## Start here
 
-## Getting Started:
+[Run a robot and compute node together](docs/tutorials/robot-and-compute.md).
+Both claim dedicated DMS tasks, exchange an Echo message over P2P, and report
+completion.
 
-To get started building on the posemesh, check out the [Examples](https://github.com/aukilabs/posemesh/blob/main/samples/example-projects.md) for sample code, or [build the Posemesh SDK](https://github.com/aukilabs/posemesh/tree/main/sdk) for your platform of choice.
+You need Rust 1.89+, Python 3, and [configured workers](docs/how-to/configure-workers.md)
+in a compatible DDS/DMS environment.
 
-## Contributors:
+## What are you building?
 
-The posemesh is an open protocol built by the community. It is currently managed by [Auki Labs](https://auki.com). Whether you're fixing bugs, adding new features, or improving documentation, your help is appreciated.
+| Build | Identity | Task placement |
+| --- | --- | --- |
+| Compute node | DDS registration and a signing wallet; DDS applies staking requirements | Public or dedicated work across eligible Domains |
+| Robot | DDS robot credentials, without a compute wallet or stake | Dedicated work in its assigned Domain |
 
-**- Fork the Repository:** Start by forking the repository and creating a new branch for your feature or bugfix.
+Both use the same runner interface. The entrypoint selects machine authentication.
+For user apps and backend services that connect to peers, start with
+[Auki SDK](https://github.com/aukilabs/auki-sdk).
 
-**- Create a Pull Request:** Once your changes are ready, submit a pull request.
+## Documentation
 
-**- Discuss:** We encourage discussions about this project to happen on the [Auki community Discord server](https://discord.gg/auki).
+| I want to… | Read |
+| --- | --- |
+| Configure host credentials, endpoints, and P2P | [Configure workers](docs/how-to/configure-workers.md) |
+| Create workers or authorize job submission | [Provision workers](docs/how-to/provision-workers.md) |
+| Implement my own task capability | [Write a runner](docs/how-to/write-a-runner.md) |
+| Exchange data with another peer | [Use P2P in a runner](docs/how-to/use-p2p.md) |
+| Handle cancellation, retries, and shutdown | [Manage task lifecycle](docs/how-to/task-lifecycle.md) |
+| Understand the runtime and services | [How tasks execute](docs/explanation/task-execution.md) |
+| Look up traits, ports, and results | [Runner reference](docs/reference/runner.md) |
+| Look up environment variables or troubleshoot | [Configuration reference](docs/reference/configuration.md) |
 
-### Conventions
-- Coding: [WebKit code style guidelines](https://webkit.org/code-style-guidelines/) (`.clang-format` file in root of the project, can be used by IDEs e.g. in Visual Studio Code if the `C_Cpp: Clang_format_style` setting is set to `file`).
-- Commits: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
-- Branch naming:
-    - **feature/** - for development or changes of features/functionality
-    - **bug/** - for fixing a bug, a good idea is to name it from a bug number or title of a bug report
-    - **chore/** - for cleaning/refactoring
-    - **hotfix/** - for hotfixes without bug tickets
-- Changelog: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## Repository
 
-## Contact:
+| Directory | Contents |
+| --- | --- |
+| [`core/compute-node/`](core/compute-node/) | Shared host for compute nodes and robots |
+| [`core/compute-node-runner-api/`](core/compute-node-runner-api/) | Runner interface and the paired Echo example |
+| [`core/domain-http/`](core/domain-http/) | Domain HTTP client and bindings |
 
-For any questions or support, please open an issue, or reach out to Auki Labs via [Discord](https://discord.gg/auki) or [email](mailto:contact@aukilabs.com).
-If you believe you have found a vulnerability/security issue, please send details of it to security@aukilabs.com. Please do not open an issue on GitHub
-for it or spread info about it publicly.
+The Rust workspace is in `core/`. To work on the implementation or other
+components in this repository, see [Contributing](CONTRIBUTING.md).
 
-## Backers:
-
-This project was made possible through the generous support of [Outlier Ventures](https://outlierventures.io/), [Kenetic Capital](https://www.kenetic.capital/), [Shima Capital](https://shima.capital/), [Escape Velocity](https://ev3.xyz/), [Tribe Capital](https://tribecap.co/), [Primal Capital](https://www.primalcapital.io/), [NGC Ventures](https://ngc.fund/), [Animoca Brands](https://www.animocabrands.com/), [Baboon VC](https://www.baboon.vc/), [Pulsar Trading](https://pulsar.com/), [Maelstrom](https://maelstrom.fund/), [the vVv Fund](https://vvv.net/), [Vespertine Capital](https://www.vespertine.capital/), [ARKN Ventures](https://arkn.io/), [Exnetwork Capital](https://exnetworkcapital.com/).
+[MIT license](LICENSE). Report security issues privately to security@aukilabs.com.

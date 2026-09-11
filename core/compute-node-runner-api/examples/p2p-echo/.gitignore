@@ -1,0 +1,4 @@
+.env.compute
+.env.robot
+__pycache__/
+*.key

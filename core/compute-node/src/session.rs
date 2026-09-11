@@ -29,6 +29,8 @@ pub struct SessionState {
     pub lease_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub access_token: Option<String>,
     pub access_token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub p2p_access_token: Option<String>,
+    pub p2p_access_token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_progress: Option<Value>,
     pub next_heartbeat_due: Option<Instant>,
     pub status: SessionStatus,
@@ -74,6 +76,14 @@ impl SessionSnapshot {
 
     pub fn access_token_expires_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         self.0.access_token_expires_at
+    }
+
+    pub fn p2p_access_token(&self) -> Option<&str> {
+        self.0.p2p_access_token.as_deref()
+    }
+
+    pub fn p2p_access_token_expires_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.0.p2p_access_token_expires_at
     }
 
     pub fn lease_expires_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -210,6 +220,8 @@ impl SessionManager {
             lease_expires_at: lease.lease_expires_at,
             access_token: lease.access_token.clone(),
             access_token_expires_at: lease.access_token_expires_at,
+            p2p_access_token: lease.p2p_access_token.clone(),
+            p2p_access_token_expires_at: lease.p2p_access_token_expires_at,
             last_progress: None,
             next_heartbeat_due: None,
             status: SessionStatus::Pending,
@@ -266,6 +278,12 @@ impl SessionManager {
         }
         if let Some(expiry) = update.access_token_expires_at {
             state.access_token_expires_at = Some(expiry);
+        }
+        if let Some(token) = &update.p2p_access_token {
+            state.p2p_access_token = Some(token.clone());
+        }
+        if let Some(expiry) = update.p2p_access_token_expires_at {
+            state.p2p_access_token_expires_at = Some(expiry);
         }
         if let Some(lease_expiry) = update.lease_expires_at {
             state.lease_expires_at = Some(lease_expiry);
@@ -346,6 +364,8 @@ mod tests {
         LeaseEnvelope {
             access_token: Some("token".into()),
             access_token_expires_at: Some(now + ChronoDuration::minutes(5)),
+            p2p_access_token: None,
+            p2p_access_token_expires_at: None,
             lease_expires_at: Some(now + ChronoDuration::minutes(10)),
             cancel: false,
             status: None,
@@ -381,6 +401,8 @@ mod tests {
         HeartbeatResponse {
             access_token: lease.access_token.clone(),
             access_token_expires_at: lease.access_token_expires_at,
+            p2p_access_token: lease.p2p_access_token.clone(),
+            p2p_access_token_expires_at: lease.p2p_access_token_expires_at,
             lease_expires_at: lease.lease_expires_at,
             cancel: Some(lease.cancel),
             status: lease.status.clone(),
@@ -446,6 +468,8 @@ mod tests {
 
         lease.cancel = true;
         lease.access_token = Some("new-token".into());
+        lease.p2p_access_token = Some("new-p2p-token".into());
+        lease.p2p_access_token_expires_at = Some(Utc::now() + ChronoDuration::minutes(20));
         let update = heartbeat_from_lease(&lease);
         let snapshot = manager
             .apply_heartbeat(
@@ -459,6 +483,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(snapshot.access_token(), Some("new-token"));
+        assert_eq!(snapshot.p2p_access_token(), Some("new-p2p-token"));
+        assert_eq!(
+            snapshot.p2p_access_token_expires_at(),
+            lease.p2p_access_token_expires_at
+        );
         assert!(snapshot.cancel());
         assert_eq!(snapshot.status(), SessionStatus::Running);
         assert!(snapshot.next_heartbeat_due().is_some());

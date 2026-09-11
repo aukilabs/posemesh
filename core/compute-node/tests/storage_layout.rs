@@ -20,6 +20,8 @@ fn build_ports_returns_trait_objects() {
     let lease = LeaseEnvelope {
         access_token: Some("tkn".into()),
         access_token_expires_at: Some(Utc::now()),
+        p2p_access_token: None,
+        p2p_access_token_expires_at: None,
         lease_expires_at: Some(Utc::now()),
         cancel: false,
         status: Some("leased".into()),
