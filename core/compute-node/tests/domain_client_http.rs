@@ -213,3 +213,44 @@ async fn upload_refined_scan_zip_uses_expected_data_type_and_records_id() {
     assert_eq!(artifacts[0].data_type, "zip_data");
     assert_eq!(artifacts[0].id, Some(id.to_string()));
 }
+
+#[tokio::test]
+async fn materialized_file_is_complete_when_download_returns() {
+    let server = MockServer::start();
+    let domain = Uuid::new_v4();
+    let id = Uuid::new_v4();
+    let client = client(&server, domain);
+    let path = format!("/api/v1/domains/{domain}/data");
+    let payload = vec![42; 8192];
+    server.mock(|when, then| {
+        when.method(GET)
+            .path(&path)
+            .query_param("ids", id.to_string());
+        then.header("content-type", "application/json")
+            .json_body(json!({
+                "data": [sdk::metadata(domain, id, "ready", "binary", payload.len())]
+            }));
+    });
+    server.mock(|when, then| {
+        when.method(GET)
+            .path(format!("{path}/{id}"))
+            .query_param("raw", "true");
+        then.body(payload.clone());
+    });
+    // Runners can pass the returned path directly to synchronous libraries.
+    // Repeated small writes exercise the queued Tokio file-write completion.
+    for _ in 0..64 {
+        let parts = client
+            .download_cid(&domain.to_string(), &id.to_string())
+            .await
+            .unwrap();
+        let bytes = std::fs::read(&parts[0].path).unwrap();
+        std::fs::remove_dir_all(&parts[0].root).unwrap();
+        assert_eq!(
+            bytes.len(),
+            payload.len(),
+            "download returned before the file was written"
+        );
+        assert_eq!(bytes, payload);
+    }
+}

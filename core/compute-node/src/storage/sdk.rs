@@ -121,11 +121,14 @@ impl SdkDomainClient {
                         move |bytes| {
                             let file = file.clone();
                             async move {
-                                file.lock()
+                                let mut file = file.lock().await;
+                                file.write_all(&bytes)
                                     .await
-                                    .write_all(&bytes)
-                                    .await
-                                    .map_err(|_| DataError::Callback)
+                                    .map_err(|_| DataError::Callback)?;
+                                // Tokio can return from write_all before its blocking
+                                // file write finishes. Keep flush inside the SDK's
+                                // awaited callback/timeout before exposing the path.
+                                file.flush().await.map_err(|_| DataError::Callback)
                             }
                         },
                     )
