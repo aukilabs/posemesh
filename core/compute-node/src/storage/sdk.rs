@@ -16,7 +16,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-const BUFFER_LIMIT: usize = 64 * 1024 * 1024;
+pub(super) const BUFFER_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub(super) struct SdkDomainClient {
@@ -37,6 +37,13 @@ impl SdkDomainClient {
             .in_domain(task.credential.domain_id()),
             cancellation: task.cancellation(),
         })
+    }
+
+    pub(super) fn from_data(data: DomainDataClient) -> Self {
+        Self {
+            data,
+            cancellation: CancellationToken::new(),
+        }
     }
 
     pub(super) async fn close(&self) {
@@ -81,24 +88,12 @@ impl SdkDomainClient {
     pub(super) async fn download(
         &self,
         domain: &str,
-        query: posemesh_domain_http::domain_data::DownloadQuery,
+        query: DataListQuery,
     ) -> Result<Vec<DownloadedPart>, StorageError> {
         self.domain(domain)?;
-        let ids = query
-            .ids
-            .iter()
-            .map(|id| Uuid::parse_str(id).map_err(|_| StorageError::BadRequest))
-            .collect::<Result<_, _>>()?;
         let items = self
             .data
-            .list_with_cancellation(
-                &DataListQuery {
-                    ids,
-                    name: query.name,
-                    data_type: query.data_type,
-                },
-                &self.cancellation,
-            )
+            .list_with_cancellation(&query, &self.cancellation)
             .await
             .map_err(map_error)?;
         if items.is_empty() {
@@ -285,6 +280,15 @@ fn io_error(error: std::io::Error) -> StorageError {
 }
 
 fn map_error(error: DataError) -> StorageError {
+    if matches!(
+        error,
+        DataError::Auth(auki_auth::Error::AuthenticationRequired)
+    ) {
+        return StorageError::Unauthorized;
+    }
+    if matches!(error, DataError::Transport) {
+        return StorageError::Network(error.to_string());
+    }
     match error.status() {
         Some(400) => StorageError::BadRequest,
         Some(401) => StorageError::Unauthorized,

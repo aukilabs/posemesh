@@ -88,7 +88,6 @@ use anyhow::Result;
 use my_runner::UppercaseRunner;
 use posemesh_compute_node::{
     config::NodeConfig,
-    dds::register::spawn_registration_if_configured,
     engine::{run_node, RunnerRegistry},
     telemetry,
 };
@@ -98,13 +97,12 @@ async fn main() -> Result<()> {
     telemetry::init_from_env()?;
     let config = NodeConfig::from_env()?;
     let runners = RunnerRegistry::new().register(UppercaseRunner);
-    spawn_registration_if_configured(&config, &runners.capabilities())?;
     run_node(config, runners).await
 }
 ~~~
 
-The compute host needs the explicit registration call to advertise its
-capabilities. `run_node` handles task execution after authentication.
+`run_node` registers the runner capabilities and owns authentication, task
+execution and cleanup.
 
 Put this in `src/bin/robot.rs`:
 

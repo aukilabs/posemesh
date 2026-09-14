@@ -3,7 +3,7 @@ name = "posemesh-compute-node"
 version = "0.3.3"
 edition = "2021"
 license = "MIT"
-description = "Posemesh compute node engine: config, DDS/DMS, heartbeat, storage (no persistence)."
+description = "Posemesh runner host and storage adapters for SDK-managed workers."
 repository = "https://github.com/aukilabs/posemesh"
 readme = "README.md"
 
@@ -22,30 +22,24 @@ axum = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-hex = { workspace = true }
-k256 = { workspace = true }
 parking_lot = { workspace = true }
-p256 = { workspace = true }
-posemesh-node-registration = { version = "0.2.1", path = "../node-registration" }
 rand = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-tls", "stream"] }
-semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
-sha3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time", "macros", "fs", "signal", "io-util"] }
 tokio-util = { workspace = true, features = ["rt"] }
-tower = { workspace = true, features = ["util"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt", "ansi", "json", "env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true }
-posemesh-domain-http = { workspace = true }
 
 [dev-dependencies]
+hex = { workspace = true }
+p256 = { workspace = true }
+sha2 = { workspace = true }
+tower = { workspace = true, features = ["util"] }
 async-trait = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }
@@ -59,7 +53,6 @@ tokio = { workspace = true, features = [
     "time",
     "test-util",
 ] }
-tower = { workspace = true }
 zip = { workspace = true }
 tempfile = { workspace = true }
 

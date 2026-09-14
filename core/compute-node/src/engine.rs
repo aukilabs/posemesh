@@ -1,29 +1,14 @@
 use crate::{
     config::{NodeConfig, RobotNodeConfig},
-    dds::p2p::DdsP2pClient,
     dms::client::DmsClient,
-    heartbeat::ProgressReceiver,
-    session::{HeartbeatPolicy, SessionManager},
 };
 use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
-use auki_p2p::{Multiaddr, PeerIdentityProof, Protocol};
-use auki_sdk::{
-    AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig,
-    ExternalAuthorityControl,
-};
+use auki_p2p::{Multiaddr, Protocol};
+use auki_sdk::{AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig};
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
-use rand::rngs::StdRng;
-use serde_json::Value;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration as StdDuration, Instant},
-};
-use tokio::sync::Mutex;
+use std::{collections::HashMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 mod sdk;
 
 /// Registry mapping capability strings to runner instances.
@@ -174,54 +159,6 @@ fn peer_facade_config(cfg: &NodeConfig, relay: Option<AukiRelayConfig>) -> Resul
         None => config.direct_only(),
     };
     Ok(config.with_advertised_direct_routes(direct_routes)?)
-}
-
-#[derive(Clone)]
-#[doc(hidden)]
-pub struct ComputeAuthorityUpdater {
-    domain_id: Uuid,
-    proof: PeerIdentityProof,
-    dds: DdsP2pClient,
-    control: Arc<ExternalAuthorityControl>,
-}
-
-impl ComputeAuthorityUpdater {
-    async fn apply(
-        &self,
-        domain_id: Option<Uuid>,
-        token: Option<&str>,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<()> {
-        if domain_id.is_some_and(|domain_id| domain_id != self.domain_id) {
-            return Err(anyhow!("heartbeat moved the task peer to another Domain"));
-        }
-        let Some((token, expires_at)) = complete_p2p_credential(token, expires_at)? else {
-            return Ok(());
-        };
-        let update = self
-            .dds
-            .external_authority_update(&self.proof, self.domain_id, token, expires_at)
-            .await
-            .context("prepare heartbeat peer authority")?;
-        self.control
-            .replace(update)
-            .await
-            .context("replace heartbeat peer authority")?;
-        Ok(())
-    }
-}
-
-fn complete_p2p_credential(
-    token: Option<&str>,
-    expires_at: Option<chrono::DateTime<chrono::Utc>>,
-) -> Result<Option<(&str, chrono::DateTime<chrono::Utc>)>> {
-    match (token, expires_at) {
-        (Some(token), Some(expires_at)) => Ok(Some((token, expires_at))),
-        (None, None) => Ok(None),
-        _ => Err(anyhow!(
-            "P2P access token and expiration must be supplied together"
-        )),
-    }
 }
 
 /// Builds the runner registry with the host's protocol handles.
@@ -442,85 +379,6 @@ pub fn build_storage_for_lease(lease: &LeaseEnvelope) -> Result<crate::storage::
     crate::storage::build_ports(lease, token)
 }
 
-/// Apply heartbeat token refresh: if HeartbeatResponse carries a new access token,
-/// swap it into the provided TokenRef so subsequent storage requests use it.
-pub fn apply_heartbeat_token_update(
-    token: &crate::storage::TokenRef,
-    hb: &crate::dms::types::HeartbeatResponse,
-) {
-    if let Some(new) = hb.access_token.clone() {
-        token.swap(new);
-    }
-}
-
-async fn apply_compute_authority_update(
-    authority: Option<&ComputeAuthorityUpdater>,
-    domain_id: Option<Uuid>,
-    token: Option<&str>,
-    expires_at: Option<chrono::DateTime<chrono::Utc>>,
-) -> Result<()> {
-    match authority {
-        Some(authority) => authority.apply(domain_id, token, expires_at).await,
-        None if token.is_none() && expires_at.is_none() => Ok(()),
-        None => Err(anyhow!(
-            "DMS returned a P2P credential to a node without a P2P runtime"
-        )),
-    }
-}
-
-/// Merge fields from a heartbeat response into the cached lease.
-pub fn merge_heartbeat_into_lease(
-    lease: &mut LeaseEnvelope,
-    hb: &crate::dms::types::HeartbeatResponse,
-) {
-    if let Some(token) = hb.access_token.clone() {
-        lease.access_token = Some(token);
-    }
-    if let Some(expiry) = hb.access_token_expires_at {
-        lease.access_token_expires_at = Some(expiry);
-    }
-    if let Some(token) = hb.p2p_access_token.clone() {
-        lease.p2p_access_token = Some(token);
-    }
-    if let Some(expiry) = hb.p2p_access_token_expires_at {
-        lease.p2p_access_token_expires_at = Some(expiry);
-    }
-    if let Some(expiry) = hb.lease_expires_at {
-        lease.lease_expires_at = Some(expiry);
-    }
-    if let Some(cancel) = hb.cancel {
-        lease.cancel = cancel;
-    }
-    if let Some(status) = hb.status.clone() {
-        lease.status = Some(status);
-    }
-    if let Some(domain_id) = hb.domain_id {
-        lease.domain_id = Some(domain_id);
-    }
-    if let Some(url) = hb.domain_server_url.clone() {
-        lease.domain_server_url = Some(url);
-    }
-    if let Some(task) = hb.task.clone() {
-        lease.task = task;
-    } else {
-        if let Some(task_id) = hb.task_id {
-            lease.task.id = task_id;
-        }
-        if let Some(job_id) = hb.job_id {
-            lease.task.job_id = Some(job_id);
-        }
-        if let Some(attempts) = hb.attempts {
-            lease.task.attempts = Some(attempts);
-        }
-        if let Some(max_attempts) = hb.max_attempts {
-            lease.task.max_attempts = Some(max_attempts);
-        }
-        if let Some(deps_remaining) = hb.deps_remaining {
-            lease.task.deps_remaining = Some(deps_remaining);
-        }
-    }
-}
-
 /// Run one task through the managed SDK lifecycle with host-owned authentication.
 pub async fn run_cycle_with_dms(
     cfg: &NodeConfig,
@@ -530,231 +388,13 @@ pub async fn run_cycle_with_dms(
     sdk::run_cycle(cfg, dms, runners).await
 }
 
-// Retained for native hosts using the public low-level heartbeat API. The
-// production entrypoints above use only the SDK managed lifecycle.
-#[derive(Default)]
-pub struct ControlState {
-    progress: Value,
-    events: Vec<Value>,
-}
-
-pub enum HeartbeatLoopResult {
-    Completed,
-    Cancelled,
-    LostLease(anyhow::Error),
-}
-
-#[async_trait]
-pub trait HeartbeatTransport: Send + Sync + Clone + 'static {
-    async fn post_heartbeat(
-        &self,
-        task_id: Uuid,
-        body: &crate::dms::types::HeartbeatRequest,
-    ) -> Result<crate::dms::types::HeartbeatResponse>;
-}
-
-#[async_trait]
-impl HeartbeatTransport for DmsClient {
-    async fn post_heartbeat(
-        &self,
-        task_id: Uuid,
-        body: &crate::dms::types::HeartbeatRequest,
-    ) -> Result<crate::dms::types::HeartbeatResponse> {
-        self.heartbeat(task_id, body).await
-    }
-}
-
-pub struct HeartbeatDriverArgs {
-    pub session: SessionManager,
-    pub policy: HeartbeatPolicy,
-    pub rng: StdRng,
-    pub progress_rx: ProgressReceiver,
-    pub state: Arc<Mutex<ControlState>>,
-    pub token_ref: crate::storage::TokenRef,
-    pub p2p_authority: Option<ComputeAuthorityUpdater>,
-    pub runner_cancel: CancellationToken,
-    pub shutdown: CancellationToken,
-    pub task_id: Uuid,
-}
-
-pub struct HeartbeatDriver<T>
-where
-    T: HeartbeatTransport,
-{
-    transport: T,
-    session: SessionManager,
-    policy: HeartbeatPolicy,
-    rng: StdRng,
-    progress_rx: ProgressReceiver,
-    state: Arc<Mutex<ControlState>>,
-    token_ref: crate::storage::TokenRef,
-    p2p_authority: Option<ComputeAuthorityUpdater>,
-    runner_cancel: CancellationToken,
-    shutdown: CancellationToken,
-    task_id: Uuid,
-    last_progress: Value,
-}
-
-impl<T> HeartbeatDriver<T>
-where
-    T: HeartbeatTransport,
-{
-    pub fn new(transport: T, args: HeartbeatDriverArgs) -> Self {
-        Self {
-            transport,
-            session: args.session,
-            policy: args.policy,
-            rng: args.rng,
-            progress_rx: args.progress_rx,
-            state: args.state,
-            token_ref: args.token_ref,
-            p2p_authority: args.p2p_authority,
-            runner_cancel: args.runner_cancel,
-            shutdown: args.shutdown,
-            task_id: args.task_id,
-            last_progress: Value::default(),
-        }
-    }
-
-    pub async fn run(mut self) -> HeartbeatLoopResult {
-        loop {
-            if self.shutdown.is_cancelled() || self.runner_cancel.is_cancelled() {
-                return HeartbeatLoopResult::Completed;
-            }
-
-            let snapshot = match self.session.snapshot().await {
-                Some(s) => s,
-                None => return HeartbeatLoopResult::Completed,
-            };
-
-            let ttl_delay = snapshot
-                .next_heartbeat_due()
-                .map(|due| due.saturating_duration_since(Instant::now()));
-
-            if let Some(delay) = ttl_delay {
-                tokio::select! {
-                    _ = self.shutdown.cancelled() => return HeartbeatLoopResult::Completed,
-                    progress = self.progress_rx.recv() => {
-                        if let Some(data) = progress {
-                            if let Some(outcome) = self.handle_progress(data).await {
-                                return outcome;
-                            }
-                        } else {
-                            return HeartbeatLoopResult::Completed;
-                        }
-                    }
-                    _ = tokio::time::sleep(delay) => {
-                        if let Some(outcome) = self.handle_ttl().await {
-                            return outcome;
-                        }
-                    }
-                }
-            } else {
-                tokio::select! {
-                    _ = self.shutdown.cancelled() => return HeartbeatLoopResult::Completed,
-                    progress = self.progress_rx.recv() => {
-                        if let Some(data) = progress {
-                            if let Some(outcome) = self.handle_progress(data).await {
-                                return outcome;
-                            }
-                        } else {
-                            return HeartbeatLoopResult::Completed;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    async fn handle_progress(
-        &mut self,
-        data: crate::heartbeat::HeartbeatData,
-    ) -> Option<HeartbeatLoopResult> {
-        self.last_progress = data.progress.clone();
-        let (progress, events) = self.snapshot_state().await;
-        self.send_and_update(progress, events).await
-    }
-
-    async fn handle_ttl(&mut self) -> Option<HeartbeatLoopResult> {
-        let (progress, events) = self.snapshot_state().await;
-        self.send_and_update(progress, events).await
-    }
-
-    async fn snapshot_state(&self) -> (Value, Vec<Value>) {
-        let state = self.state.lock().await;
-        (state.progress.clone(), state.events.clone())
-    }
-
-    async fn send_and_update(
-        &mut self,
-        progress: Value,
-        events: Vec<Value>,
-    ) -> Option<HeartbeatLoopResult> {
-        let request = crate::dms::types::HeartbeatRequest {
-            progress: progress.clone(),
-            events: events.clone(),
-        };
-
-        match self.transport.post_heartbeat(self.task_id, &request).await {
-            Ok(update) => {
-                if !events.is_empty() {
-                    let mut state = self.state.lock().await;
-                    if state.events.len() >= events.len()
-                        && state.events[..events.len()] == events[..]
-                    {
-                        state.events.drain(0..events.len());
-                    }
-                }
-                apply_heartbeat_token_update(&self.token_ref, &update);
-                if let Err(error) = apply_compute_authority_update(
-                    self.p2p_authority.as_ref(),
-                    update.domain_id,
-                    update.p2p_access_token.as_deref(),
-                    update.p2p_access_token_expires_at,
-                )
-                .await
-                {
-                    self.runner_cancel.cancel();
-                    return Some(HeartbeatLoopResult::LostLease(error));
-                }
-                if let Some(task) = &update.task {
-                    self.task_id = task.id;
-                } else if let Some(task_id) = update.task_id {
-                    self.task_id = task_id;
-                }
-                if let Err(err) = self
-                    .session
-                    .apply_heartbeat(
-                        &update,
-                        Some(progress.clone()),
-                        Instant::now(),
-                        &self.policy,
-                        &mut self.rng,
-                    )
-                    .await
-                {
-                    return Some(HeartbeatLoopResult::LostLease(anyhow::Error::new(err)));
-                }
-                if update.cancel.unwrap_or(false) {
-                    self.runner_cancel.cancel();
-                    return Some(HeartbeatLoopResult::Cancelled);
-                }
-                None
-            }
-            Err(err) => {
-                self.runner_cancel.cancel();
-                Some(HeartbeatLoopResult::LostLease(err))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{P2pPrivateKey, RobotNodeConfig};
     use auki_p2p::Identity;
     use auki_sdk::AukiRelayMode;
+    use std::time::Duration as StdDuration;
     #[test]
     fn protocol_runner_composition_fails_without_p2p_runtime() {
         let result = RunnerComposition::with_protocols(|_| RunnerRegistry::new())

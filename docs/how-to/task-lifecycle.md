@@ -80,10 +80,16 @@ await the host future after signalling it. These entrypoints do not install a
 SIGTERM handler for your application.
 
 Both entrypoints await SDK registration, authentication, transfer and peer
-cleanup, including the compute registrar. The older public registration and
-heartbeat helpers remain available to existing callers; the entrypoints no
-longer start them. Do not start a second registrar or heartbeat owner alongside
-a managed host.
+cleanup, including the compute registrar. Existing hosts may keep their call to
+`dds::register::spawn_registration_if_configured`: it is now a no-op compatibility
+shim, and `run_node` registers the actual runner capabilities. New hosts should
+call only the managed entrypoint.
+
+The old heartbeat/session engine, authentication wrappers, DDS P2P wrappers,
+global registration state and `posemesh-node-registration` crate are removed.
+`http::router()` still serves `/health`; the obsolete
+`/internal/v1/registrations` callback is removed. Low-level callers of those
+removed helpers must migrate to the SDK; runner and host interfaces remain.
 
 Authentication or registration failure stops the managed host after the SDK's
 bounded retries. Robot refresh denial does not fall back to SIWE or loop forever.
@@ -96,13 +102,17 @@ Cancel unfinished demo jobs before stopping workers that are waiting for them.
 ## Domain transfer compatibility
 
 Existing `Runner`, `TaskCtx`, input/output and control traits are unchanged.
-Managed storage keeps CID/Domain URL lookup, temporary `datasets/<scan>/...`
+Storage keeps CID/Domain URL lookup, temporary `datasets/<scan>/...`
 layout, artifact names/types, replacement IDs and receipt metadata. The task's
 selected Domain and renewed server URL determine request authority. A URL for
-another Domain is rejected. Standalone `DomainClient::new` and the existing
-Domain HTTP bindings retain their separate legacy behavior.
+another Domain is rejected. Standalone `DomainClient::new` also uses the SDK;
+its caller supplies an authenticated DDS/DMS grant and owns renewal through
+`TokenRef::swap`. The SDK validates issuer, Domain, server audience and expiry
+before sending it. A rejected, unchanged grant fails without a second login.
+`with_timeout` now enforces the supplied timeout (greater than zero, at most
+300 seconds). The separate Domain HTTP crate and bindings remain unchanged.
 
-Managed buffered uploads require Domain Server `/api/v1/info` upload limits.
+Buffered uploads require Domain Server `/api/v1/info` upload limits.
 Larger files stream through SDK multipart uploads with bounded 16 MiB parts;
 the server must advertise multipart support and return upload/data IDs, part
 size and expiry. Metadata must follow the current UUID-based Domain contract.

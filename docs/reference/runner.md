@@ -12,7 +12,7 @@ complete project.
 | `Runner: Send + Sync` | Implements `capability() -> &'static str` and async `run(TaskCtx) -> anyhow::Result<()>` |
 | `RunnerRegistry::register(runner)` | Adds a runner; a duplicate capability replaces the previous registration |
 | `RunnerRegistry::capabilities()` | Returns the registered strings in sorted order |
-| `run_node(config, runners)` | Runs a compute host; separately call `spawn_registration_if_configured` to advertise capabilities |
+| `run_node(config, runners)` | Runs a compute host and registers its capabilities |
 | `run_robot_node(config, runners)` | Runs a robot host and registers its capabilities |
 | `RunnerComposition::with_protocols(builder)` | Injects the host's lazy `AukiProtocolsHandle` while constructing the registry |
 

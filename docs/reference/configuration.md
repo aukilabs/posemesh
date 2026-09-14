@@ -57,8 +57,8 @@ retry after DMS HTTP 401.
 
 `HEARTBEAT_MIN_RATIO`, `HEARTBEAT_MAX_RATIO`, `HEARTBEAT_JITTER_MS`,
 `TOKEN_SAFETY_RATIO`, `TOKEN_REAUTH_MAX_RETRIES`, `TOKEN_REAUTH_JITTER_MS` and
-`REGISTER_MAX_RETRY` remain parsed for callers of the older public helpers;
-they no longer tune the managed entrypoints. `MAX_CONCURRENCY`, `ENABLE_NOOP`
+`REGISTER_MAX_RETRY` remain parsed to preserve host configuration compatibility;
+they do not tune the managed entrypoints. `MAX_CONCURRENCY`, `ENABLE_NOOP`
 and `NOOP_SLEEP_SECS` remain compatibility fields: they do not enable concurrent
 tasks or install a runner. The managed host executes one lease at a time.
 

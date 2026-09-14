@@ -4225,21 +4225,15 @@ dependencies = [
  "hex",
  "httpmock",
  "jsonwebtoken",
- "k256",
  "once_cell",
  "p256",
  "parking_lot",
  "posemesh-compute-node-runner-api",
- "posemesh-domain-http",
- "posemesh-node-registration",
  "rand 0.8.8",
  "regex",
- "reqwest",
- "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "sha3",
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
@@ -4363,30 +4357,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
-]
-
-[[package]]
-name = "posemesh-node-registration"
-version = "0.2.1"
-dependencies = [
- "anyhow",
- "auki-auth",
- "axum",
- "chrono",
- "hex",
- "parking_lot",
- "rand 0.8.8",
- "reqwest",
- "secp256k1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sha3",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

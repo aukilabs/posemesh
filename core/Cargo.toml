@@ -11,7 +11,7 @@ members = [
     "compute-node-runner-api",
     "compute-node-runner-api/examples/p2p-echo",
     "compute-node",
-    "node-registration", "uniffi-bindgen",
+    "uniffi-bindgen",
 ]
 resolver = "2"
 

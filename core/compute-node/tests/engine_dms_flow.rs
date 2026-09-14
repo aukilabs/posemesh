@@ -538,6 +538,10 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         noop_sleep_secs: 0,
     };
 
+    // Existing hosts may still make this call. It must not start a registrar.
+    posemesh_compute_node::dds::register::spawn_registration_if_configured(&cfg, &capabilities)
+        .unwrap();
+    register.assert_hits(0);
     let shutdown = CancellationToken::new();
     let run_task = tokio::spawn(run_node_with_shutdown(
         cfg.clone(),
@@ -593,6 +597,7 @@ async fn run_node_uses_siwe_token_and_completes_task() {
         .await
         .expect("task join")
         .expect("run_node_with_shutdown should exit cleanly after cancellation");
+    register.assert_hits(1);
 }
 
 #[tokio::test]

@@ -1,13 +1,15 @@
 //! Compatibility adapters. The SDK owns machine, lease, data and peer lifetimes.
 use super::*;
 use crate::poller::{jittered_delay_ms, PollerConfig};
+use async_trait::async_trait;
 use auki_auth::SecretString;
 use auki_sdk::{
     AukiComputeCredential, AukiDmsTasks, AukiRobotCredential, AukiTaskPeerConfig, ComputeConfig,
     MachineCredential, RobotConfig, TaskContext, TaskError, TaskHandler, TaskPeerContext,
     TaskResult, TasksConfig,
 };
-use serde_json::json;
+use serde_json::{json, Value};
+use std::time::Duration as StdDuration;
 
 fn task_config(cfg: &NodeConfig) -> TasksConfig {
     TasksConfig {
