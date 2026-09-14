@@ -380,17 +380,37 @@ describe('Posemesh Domain HTTP', async() => {
         const oidcAccessToken = config.AUTH_TEST_TOKEN;
         let client: DomainClient;
         let clientWithOIDCAccessToken: DomainClient;
-        beforeAll(() => {
+        let oidcDomainId: string | undefined;
+        beforeAll(async () => {
             client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
             clientWithOIDCAccessToken = client.withOIDCAccessToken(oidcAccessToken);
+            // AUTH_TEST_TOKEN can belong to a different organization from the
+            // password-login account. Reading its Domain does not grant writes.
+            // Record the owned Domain before seeding, so failed setup is cleaned up.
+            const domain = await clientWithOIDCAccessToken.createDomain(
+                "OIDC test domain " + new Date().toISOString(),
+                null, config.TEST_DOMAIN_SERVER_URL, null
+            );
+            oidcDomainId = domain.id;
+            await clientWithOIDCAccessToken.uploadDomainData(oidcDomainId, [{
+                name: "test data",
+                data_type: "test",
+                data: new TextEncoder().encode("test data"),
+            }] as UploadDomainData[]);
         });
-        afterAll(() => {
-            clientWithOIDCAccessToken.free();
-            client.free();
+        afterAll(async () => {
+            try {
+                if (oidcDomainId) {
+                    await deleteTestDomain(clientWithOIDCAccessToken, oidcDomainId);
+                }
+            } finally {
+                clientWithOIDCAccessToken?.free();
+                client?.free();
+            }
         });
 
         it('should download domain data', async () => {
-            const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(domainId, {
+            const data: DomainData[] = await clientWithOIDCAccessToken.downloadDomainData(oidcDomainId!, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -407,7 +427,7 @@ describe('Posemesh Domain HTTP', async() => {
         });
 
         it('should download domain data metadata', async () => {
-            const metadata: DomainDataMetadata[] = await clientWithOIDCAccessToken.downloadDomainDataMetadata(domainId, {
+            const metadata: DomainDataMetadata[] = await clientWithOIDCAccessToken.downloadDomainDataMetadata(oidcDomainId!, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -422,7 +442,7 @@ describe('Posemesh Domain HTTP', async() => {
         });
 
         it('should download domain data stream', async () => {
-            const data: ReadableStream<DomainData> = clientWithOIDCAccessToken.downloadDomainDataStream(domainId, {
+            const data: ReadableStream<DomainData> = clientWithOIDCAccessToken.downloadDomainDataStream(oidcDomainId!, {
                 ids: [],
                 name: null,
                 data_type: "test"
@@ -443,7 +463,7 @@ describe('Posemesh Domain HTTP', async() => {
         it('should upload domain data', async () => {
             const data = `{"oidc": "token test"}`;
             const dataBytes = new TextEncoder().encode(data);
-            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(domainId, [{
+            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(oidcDomainId!, [{
                 name: "oidc_access_token test",
                 data_type: "test",
                 data: dataBytes,
@@ -456,7 +476,7 @@ describe('Posemesh Domain HTTP', async() => {
             expect(res[0].created_at).toBeDefined();
             expect(res[0].updated_at).toBeDefined();
 
-            await clientWithOIDCAccessToken.deleteDomainDataById(domainId, res[0].id);
+            await clientWithOIDCAccessToken.deleteDomainDataById(oidcDomainId!, res[0].id);
         });
 
         it('should throw error if oidc_access_token is not valid', async () => {
@@ -466,7 +486,7 @@ describe('Posemesh Domain HTTP', async() => {
             const dataBytes = new TextEncoder().encode(data);
 
             await expect(async () => {
-                await invalidClient.uploadDomainData(domainId, [{
+                await invalidClient.uploadDomainData(oidcDomainId!, [{
                     name: "oidc_access_token test",
                     data_type: "test",
                     data: dataBytes,

@@ -1,8 +1,8 @@
 # Domain HTTP client
 
 `posemesh-domain-http` provides authentication and Domain data operations for
-Rust, JavaScript/WASM, and Python. The Posemesh worker host uses it to implement
-its task-scoped storage ports. Runner authors normally use `TaskCtx.input` and
+Rust, JavaScript/WASM, and Python. The Posemesh worker host now uses the Auki
+SDK for its task storage ports. Runner authors normally use `TaskCtx.input` and
 `TaskCtx.output`; see the
 [runner reference](https://github.com/aukilabs/posemesh/blob/main/docs/reference/runner.md).
 
@@ -17,7 +17,10 @@ its task-scoped storage ports. Runner authors normally use `TaskCtx.input` and
 The client supports User and App credentials, Domain listing, and Domain data
 uploads/downloads. Configure API and DDS endpoints for the same environment.
 The linked integration tests require an account and Domain; inspect their
-setup before running them.
+setup before running them. The JavaScript OIDC suite requires `AUTH_TEST_TOKEN`
+for an identity allowed to create Domains and write data in its own organization.
+It creates and deletes a separate Domain through that identity; it does not
+assume the OIDC identity shares the password-login account's organization.
 
 ## Build from source
 
