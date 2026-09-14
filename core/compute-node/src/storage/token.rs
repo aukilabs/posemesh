@@ -1,22 +1,42 @@
 //! TokenRef for hot-swappable bearer tokens used by storage requests.
 
 #[derive(Clone)]
-pub struct TokenRef(std::sync::Arc<parking_lot::RwLock<String>>);
+pub struct TokenRef {
+    value: std::sync::Arc<parking_lot::RwLock<String>>,
+    task: Option<auki_sdk::TaskAccessToken>,
+}
 
 impl TokenRef {
     /// Create a new token reference with an initial value.
     pub fn new(initial: String) -> Self {
-        Self(std::sync::Arc::new(parking_lot::RwLock::new(initial)))
+        Self {
+            value: std::sync::Arc::new(parking_lot::RwLock::new(initial)),
+            task: None,
+        }
     }
 
-    /// Get a clone of the current token.
+    /// Get the current token. Managed task references return an empty string
+    /// after lease expiry or revocation, preserving the legacy getter signature.
     pub fn get(&self) -> String {
-        self.0.read().clone()
+        match &self.task {
+            Some(task) => task
+                .get()
+                .map(|v| v.expose_secret().to_owned())
+                .unwrap_or_default(),
+            None => self.value.read().clone(),
+        }
     }
 
     /// Swap the token value with a new one.
     pub fn swap(&self, v: String) {
-        *self.0.write() = v;
+        *self.value.write() = v;
+    }
+
+    pub(crate) fn from_task(task: auki_sdk::TaskAccessToken) -> Self {
+        Self {
+            task: Some(task),
+            ..Self::new(String::new())
+        }
     }
 }
 

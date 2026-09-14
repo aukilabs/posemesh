@@ -1,7 +1,9 @@
 # posemesh-compute-node
 
-The shared Rust host for compute nodes and robots. It manages DDS authentication,
-DMS task leases, heartbeats, storage ports, and runner execution.
+The shared Rust host for compute nodes and robots. It adapts the existing
+`Runner`/`TaskCtx` interfaces to SDK-managed machine authentication, DMS leases,
+heartbeats, Domain data transfers and peer lifetimes. Posemesh owns runner
+composition, artifact naming/receipts and application execution.
 
 Start with [robot and compute Echo](../../docs/tutorials/robot-and-compute.md),
 then [write a runner](../../docs/how-to/write-a-runner.md).

@@ -1,3 +1,7 @@
+#[path = "support/sdk.rs"]
+#[allow(dead_code)]
+mod sdk;
+
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -125,7 +129,14 @@ fn binding_mocks<'a>(
     let public_key = URL_SAFE_NO_PAD.encode(identity.public_key_protobuf());
     let challenge = URL_SAFE_NO_PAD.encode(challenge_bytes);
     let signature = URL_SAFE_NO_PAD.encode(identity.sign_challenge(challenge_bytes).unwrap());
-    let expires_at = Utc::now() + chrono::Duration::minutes(10);
+    let expires_at = bound_token
+        .split('.')
+        .nth(1)
+        .and_then(|claims| URL_SAFE_NO_PAD.decode(claims).ok())
+        .and_then(|claims| serde_json::from_slice::<serde_json::Value>(&claims).ok())
+        .and_then(|claims| claims["exp"].as_i64())
+        .and_then(|expiry| DateTime::from_timestamp(expiry, 0))
+        .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(10));
     let challenge_mock = server.mock(|when, then| {
         when.method(POST)
             .path(CHALLENGE_PATH)
@@ -746,19 +757,35 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
     let _keys = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
     let identity = Identity::generate();
     let domain_id = Uuid::new_v4();
-    let bound = robot_machine_token(Some(domain_id));
     let (token, expires_at) = signed_robot_p2p_token(&identity, domain_id);
+    let robot_id = Uuid::new_v4();
+    let base = sdk::robot_token(
+        &server.base_url(),
+        robot_id,
+        domain_id,
+        expires_at,
+        "base",
+        None,
+    );
+    let bound = sdk::robot_token(
+        &server.base_url(),
+        robot_id,
+        domain_id,
+        expires_at,
+        "bound",
+        Some(identity.peer_id().to_string()),
+    );
     let _register = server.mock(|when, then| {
         when.method(POST).path(ROBOT_REGISTER_PATH);
         then.status(200).json_body(json!({
-            "robot_id": Uuid::new_v4(), "access_token": "robot-base",
+            "robot_id": robot_id, "access_token": base,
             "access_expires_at": expires_at,
         }));
     });
     let (_challenge, _verify) = binding_mocks(
         &server,
         &identity.proof(),
-        "robot-base",
+        &base,
         &bound,
         "robot-proof",
         b"robot proof",
@@ -785,6 +812,8 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
         "robot-test-credential",
     )
     .unwrap();
+    cfg.set_audience(format!("{}/robots", server.base_url()))
+        .unwrap();
     cfg.auki_p2p_enabled = true;
     cfg.set_relay_config(None).unwrap();
     cfg.auki_p2p_listen_multiaddrs = vec![address.clone()];
@@ -1019,11 +1048,10 @@ async fn compute_protocols_follow_each_lease_and_are_cleared_on_every_exit() {
         enable_noop: false,
         noop_sleep_secs: 0,
     };
-    // Registration state is in memory, local to this integration-test process.
-    posemesh_node_registration::state::set_status(
-        posemesh_node_registration::state::STATUS_REGISTERED,
-    )
-    .unwrap();
+    let _register = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/nodes/register-wallet");
+        then.status(200);
+    });
     let (started_tx, mut started_rx) = mpsc::unbounded_channel();
     let (handle_tx, handle_rx) = oneshot::channel();
     let runners = RunnerComposition::with_protocols(move |protocols| {
@@ -1049,7 +1077,7 @@ async fn compute_protocols_follow_each_lease_and_are_cleared_on_every_exit() {
         let (token, expiry) =
             signed_p2p_token(&identity, domain_id, PeerRole::Compute, Uuid::new_v4());
         let mut lease = json!({
-            "access_token": "domain-http-token",
+            "access_token": sdk::data_token(&server.base_url(), domain_id, Utc::now() + chrono::Duration::seconds(30), "task"),
             "access_token_expires_at": Utc::now() + chrono::Duration::seconds(30),
             "lease_expires_at": Utc::now() + chrono::Duration::seconds(30),
             "domain_id": domain_id, "domain_server_url": server.base_url(),

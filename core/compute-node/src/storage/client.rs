@@ -86,14 +86,35 @@ pub struct DomainClient {
     pub base: Url,
     pub token: TokenRef,
     client_id: String,
+    sdk: Option<super::sdk::SdkDomainClient>,
 }
 impl DomainClient {
+    pub(crate) fn from_task(task: &auki_sdk::TaskContext) -> Result<Self> {
+        use auki_auth::DomainAccessProvider;
+        let lease = task.credential.lease_snapshot()?;
+        Ok(Self {
+            base: lease
+                .domain_server_url
+                .ok_or_else(|| anyhow::anyhow!("task has no Domain Server"))?,
+            token: TokenRef::from_task(task.access_token.clone()),
+            client_id: task.credential.client_id().to_owned(),
+            sdk: Some(super::sdk::SdkDomainClient::new(task)?),
+        })
+    }
+
+    pub(crate) async fn close(&self) {
+        if let Some(sdk) = &self.sdk {
+            sdk.close().await;
+        }
+    }
+
     pub fn new(base: Url, token: TokenRef) -> Result<Self> {
         let client_id = env_client_id();
         Ok(Self {
             base,
             token,
             client_id,
+            sdk: None,
         })
     }
 
@@ -103,6 +124,7 @@ impl DomainClient {
             base,
             token,
             client_id,
+            sdk: None,
         })
     }
 
@@ -155,6 +177,9 @@ impl DomainClient {
         query: posemesh_domain_http::domain_data::DownloadQuery,
     ) -> std::result::Result<Vec<DownloadedPart>, StorageError> {
         let domain_id = domain_id.trim();
+        if let Some(sdk) = &self.sdk {
+            return sdk.download(domain_id, query).await;
+        }
         if domain_id.is_empty() {
             return Err(StorageError::Other("missing domain_id for download".into()));
         }
@@ -246,6 +271,9 @@ impl DomainClient {
         &self,
         request: UploadRequest<'_>,
     ) -> std::result::Result<Option<String>, StorageError> {
+        if let Some(sdk) = &self.sdk {
+            return sdk.upload(request).await;
+        }
         let domain_id = request.domain_id.trim();
         if domain_id.is_empty() {
             return Err(StorageError::Other(
@@ -316,6 +344,9 @@ impl DomainClient {
         &self,
         request: UploadFileRequest<'_>,
     ) -> std::result::Result<Option<String>, StorageError> {
+        if let Some(sdk) = &self.sdk {
+            return sdk.upload_file(request).await;
+        }
         let domain_id = request.domain_id.trim();
         if domain_id.is_empty() {
             return Err(StorageError::Other(
@@ -790,6 +821,9 @@ impl DomainClient {
         name: &str,
         data_type: &str,
     ) -> std::result::Result<Option<String>, StorageError> {
+        if let Some(sdk) = &self.sdk {
+            return sdk.find(domain_id, name, data_type).await;
+        }
         let domain_id = domain_id.trim();
         if domain_id.is_empty() {
             return Err(StorageError::Other(
@@ -899,7 +933,7 @@ fn map_domain_error(err: posemesh_domain_http::errors::DomainError) -> StorageEr
     }
 }
 
-fn env_client_id() -> String {
+pub(crate) fn env_client_id() -> String {
     std::env::var("CLIENT_ID")
         .ok()
         .map(|v| v.trim().to_string())
@@ -980,7 +1014,7 @@ fn parse_download_target(
 
 // no parse_disposition_params; headers are parsed in posemesh-domain-http
 
-fn sanitize_component(value: &str) -> String {
+pub(super) fn sanitize_component(value: &str) -> String {
     let sanitized: String = value
         .chars()
         .map(|c| {
@@ -998,13 +1032,13 @@ fn sanitize_component(value: &str) -> String {
     }
 }
 
-fn extract_timestamp(name: &str) -> Option<String> {
+pub(super) fn extract_timestamp(name: &str) -> Option<String> {
     Regex::new(r"\d{4}-\d{2}-\d{2}[_-]\d{2}-\d{2}-\d{2}")
         .ok()
         .and_then(|re| re.find(name).map(|m| m.as_str().to_string()))
 }
 
-fn map_filename(data_type: &str, name: &str) -> String {
+pub(super) fn map_filename(data_type: &str, name: &str) -> String {
     format!(
         "{}.{}",
         sanitize_component(name),

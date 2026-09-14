@@ -19,11 +19,11 @@ resolver = "2"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
-auki-dms = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc", default-features = false }
-auki-auth = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
-auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
-auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
-auki-portable-echo = { git = "https://github.com/aukilabs/auki-sdk", rev = "3ee1142529d5f64af87f6fc2276d3a6a78e728cc" }
+auki-dms = { git = "https://github.com/aukilabs/auki-sdk", rev = "d856f308c1c4cf55726910c440c2abd84c54d30b", default-features = false }
+auki-auth = { git = "https://github.com/aukilabs/auki-sdk", rev = "d856f308c1c4cf55726910c440c2abd84c54d30b" }
+auki-p2p = { git = "https://github.com/aukilabs/auki-sdk", rev = "d856f308c1c4cf55726910c440c2abd84c54d30b" }
+auki-sdk = { git = "https://github.com/aukilabs/auki-sdk", rev = "d856f308c1c4cf55726910c440c2abd84c54d30b" }
+auki-portable-echo = { git = "https://github.com/aukilabs/auki-sdk", rev = "d856f308c1c4cf55726910c440c2abd84c54d30b" }
 libp2p = { version = "0.56.0", default-features = false }
 # `libp2p-stream` is still pre-release and must match libp2p 0.56's
 # libp2p-swarm 0.47 type family exactly.

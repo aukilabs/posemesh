@@ -41,11 +41,15 @@ Point the host at the complete, opaque credential returned by DDS:
 
 ~~~sh
 export ROBOT_REGISTRATION_CREDENTIALS_FILE=/absolute/path/to/robot-credential
+export DDS_ROBOT_AUDIENCE=DEPLOYMENT_ROBOT_AUDIENCE
 ~~~
 
 Alternatively, supply `ROBOT_REGISTRATION_CREDENTIALS` inline. Set exactly one
 of those two variables. The credential file is read at startup; replacing it
-requires a restart.
+requires a restart. Obtain the exclusive `DDS_ROBOT_AUDIENCE` from the DDS
+deployment configuration; the SDK validates this audience and the stable robot
+identity/assignment. Programmatic hosts call `cfg.set_audience(...)` before
+starting the existing robot entrypoint.
 
 A robot uses its registration credential without a wallet. It claims dedicated
 tasks in its assigned Domain. See [provisioning and assignment](provision-workers.md#create-and-assign-a-robot)

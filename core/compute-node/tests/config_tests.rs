@@ -730,3 +730,19 @@ fn programmatic_relay_config_enforces_p2p_gate() {
     cfg.set_relay_config(Some(relay)).unwrap();
     assert_eq!(cfg.relay_config(), Some(relay));
 }
+
+#[test]
+fn robot_audience_must_be_supplied_explicitly_and_cannot_contain_whitespace() {
+    let mut cfg = RobotNodeConfig::new(
+        "https://dds.example.test".parse().unwrap(),
+        "https://dms.example.test/v1".parse().unwrap(),
+        "opaque-robot-credential",
+    )
+    .unwrap();
+    assert_eq!(cfg.audience(), None);
+    for invalid in ["", " ", "robot audience", "robots\n"] {
+        assert!(cfg.set_audience(invalid).is_err());
+    }
+    cfg.set_audience("https://dds.example.test/robots").unwrap();
+    assert_eq!(cfg.audience(), Some("https://dds.example.test/robots"));
+}

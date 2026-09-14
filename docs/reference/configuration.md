@@ -10,14 +10,17 @@ caller's responsibility. Parsing and defaults are defined in
 | Host | Variables |
 | --- | --- |
 | Compute | `REG_SECRET`: complete encoded node registration credentials; `SECP256K1_PRIVHEX`: wallet signing private key in hex |
-| Robot | Exactly one of `ROBOT_REGISTRATION_CREDENTIALS` and `ROBOT_REGISTRATION_CREDENTIALS_FILE` |
+| Robot | Exactly one of `ROBOT_REGISTRATION_CREDENTIALS` and `ROBOT_REGISTRATION_CREDENTIALS_FILE`, plus `DDS_ROBOT_AUDIENCE` |
 | Either, with P2P enabled | Exactly one of `AUKI_P2P_PRIVATE_KEY_FILE` and `AUKI_P2P_PRIVATE_KEY` |
 
 [Provisioning](../how-to/provision-workers.md) explains how to obtain worker
 credentials. [Configure workers](../how-to/configure-workers.md) shows how to
 pass them to a host.
 Robot and P2P files are read at startup; replacing a file requires restarting
-the host. Robot credentials are opaque and whitespace is trimmed on load.
+the host. Robot credentials are opaque and whitespace is trimmed on load. Set
+`DDS_ROBOT_AUDIENCE` to the deployment's exclusive robot audience; there is no
+default and it must differ from the normal DDS audience. Programmatic callers
+use `RobotNodeConfig::set_audience`. Never infer it from an unverified token.
 
 P2P key files contain raw Ed25519 libp2p protobuf bytes, must be regular files
 of 1–4096 bytes, and must have mode `0600` on Unix. The inline alternative is
@@ -31,30 +34,33 @@ Keep worker identities distinct and preserve keys across restarts.
 | --- | --- | --- |
 | `DDS_BASE_URL` | `https://dds.auki.network` | DDS root endpoint |
 | `DMS_BASE_URL` | `https://dms.auki.network/v1` | DMS API base, including `/v1` |
-| `REQUEST_TIMEOUT_SECS` | `60` | HTTP request timeout |
+| `REQUEST_TIMEOUT_SECS` | `60` | Machine/DMS request timeout, 1–300 seconds; managed Domain transfers use 30 seconds per request |
 | `NODE_VERSION` | Host crate version | Version reported by the worker |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `RUST_LOG` | `info` | Tracing filter when initializing the provided telemetry |
-| `CLIENT_ID` | `posemesh-compute-node/<random UUID>` | Domain HTTP client identifier |
+| `CLIENT_ID` | `posemesh-compute-node/<random UUID>` | Identifier shared by the managed credential and task data clients |
 | `POLL_BACKOFF_MS_MIN` / `POLL_BACKOFF_MS_MAX` | `1000` / `30000` | Idle polling backoff bounds |
-| `HEARTBEAT_MIN_RATIO` / `HEARTBEAT_MAX_RATIO` | `0.25` / `0.35` | Heartbeat interval as a fraction of remaining lease lifetime |
-| `TOKEN_SAFETY_RATIO` | `0.75` | Fraction of token lifetime used before proactive renewal |
-| `TOKEN_REAUTH_MAX_RETRIES` | `3` | Reauthentication retry setting |
-| `TOKEN_REAUTH_JITTER_MS` | `500` | Reauthentication jitter setting |
+
 
 Endpoint defaults target production. Set both explicitly for another
 environment. Application login additionally needs its matching API endpoint;
 the worker itself authenticates through DDS.
 
-Compute registration uses `REGISTER_INTERVAL_SECS=120` and
-`REGISTER_MAX_RETRY=-1` (retry indefinitely). These configure the registrar
-started by `spawn_registration_if_configured`; they do not apply to robot auth.
+Compute registration uses `REGISTER_INTERVAL_SECS=120`. The SDK bounds transient
+registration failures to three attempts; terminal failure stops the host. Robot
+presence registration repeats every 120 seconds. Both are awaited on shutdown.
 
-`MAX_CONCURRENCY`, `ENABLE_NOOP`, and `NOOP_SLEEP_SECS` are parsed compatibility
-fields, with defaults `1`, `false`, and `5`. The main host loop does not use them
-to enable concurrent tasks or install a runner. `HEARTBEAT_JITTER_MS=250` belongs
-to the older scheduler helper; the main host uses the ratio settings above.
-Do not use these fields to infer runtime capabilities.
+The SDK schedules heartbeats at half the remaining authority/request window,
+capped at 30 seconds, and wakes early for progress, events or rejected data
+credentials. It owns serialized machine renewal and a single authenticated
+retry after DMS HTTP 401.
+
+`HEARTBEAT_MIN_RATIO`, `HEARTBEAT_MAX_RATIO`, `HEARTBEAT_JITTER_MS`,
+`TOKEN_SAFETY_RATIO`, `TOKEN_REAUTH_MAX_RETRIES`, `TOKEN_REAUTH_JITTER_MS` and
+`REGISTER_MAX_RETRY` remain parsed for callers of the older public helpers;
+they no longer tune the managed entrypoints. `MAX_CONCURRENCY`, `ENABLE_NOOP`
+and `NOOP_SLEEP_SECS` remain compatibility fields: they do not enable concurrent
+tasks or install a runner. The managed host executes one lease at a time.
 
 ## P2P
 

@@ -1,33 +1,30 @@
+use crate::{
+    config::{NodeConfig, RobotNodeConfig},
+    dds::p2p::DdsP2pClient,
+    dms::client::DmsClient,
+    heartbeat::ProgressReceiver,
+    session::{HeartbeatPolicy, SessionManager},
+};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use auki_p2p::{Identity, Multiaddr, PeerIdentityProof, Protocol};
+use auki_p2p::{Multiaddr, PeerIdentityProof, Protocol};
 use auki_sdk::{
-    AukiPeer, AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig,
+    AukiPeerConfig, AukiPeerProtocolContext, AukiPeerStatus, AukiRelayConfig,
     ExternalAuthorityControl,
 };
 use compute_runner_api::{ArtifactSink, ControlPlane, InputSource, LeaseEnvelope, Runner, TaskCtx};
 use parking_lot::RwLock as SyncRwLock;
 use rand::rngs::StdRng;
-use rand::SeedableRng;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration as StdDuration, Instant};
-use tokio::sync::Mutex;
-use tokio::time::sleep;
-use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
-
-use crate::{
-    auth::token_manager::{TokenProvider, AUTH_FAILURE_BACKOFF},
-    config::{NodeConfig, RobotNodeConfig},
-    dds::p2p::{DdsP2pClient, PeerBindingClient, RobotP2pAuthorityDriver, RobotP2pAuthoritySource},
-    dms::client::DmsClient,
-    heartbeat::{progress_channel, ProgressReceiver, ProgressSender},
-    poller::{jittered_delay_ms, PollerConfig},
-    session::{CapabilitySelector, HeartbeatPolicy, SessionManager},
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration as StdDuration, Instant},
 };
+use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
+mod sdk;
 
 /// Registry mapping capability strings to runner instances.
 #[derive(Default)]
@@ -179,53 +176,6 @@ fn peer_facade_config(cfg: &NodeConfig, relay: Option<AukiRelayConfig>) -> Resul
     Ok(config.with_advertised_direct_routes(direct_routes)?)
 }
 
-struct PreparedPeerIdentity {
-    identity: Identity,
-    proof: PeerIdentityProof,
-    dds: DdsP2pClient,
-    binding: PeerBindingClient,
-}
-
-fn prepare_peer_identity(cfg: &NodeConfig) -> Result<Option<PreparedPeerIdentity>> {
-    if !cfg.auki_p2p_enabled {
-        return Ok(None);
-    }
-    let identity = cfg
-        .auki_p2p_private_key
-        .as_ref()
-        .ok_or_else(|| {
-            anyhow!(
-                "AUKI_P2P_PRIVATE_KEY_FILE or AUKI_P2P_PRIVATE_KEY required when P2P is enabled"
-            )
-        })?
-        .identity()?;
-    let dds_base_url = cfg
-        .dds_base_url
-        .clone()
-        .ok_or_else(|| anyhow!("DDS_BASE_URL required when AUKI_P2P_ENABLED=true"))?;
-    let dds = DdsP2pClient::new(
-        dds_base_url,
-        StdDuration::from_secs(cfg.request_timeout_secs.max(1)),
-    )?;
-    let proof = identity.proof();
-    let binding = PeerBindingClient::new(dds.clone(), proof.clone());
-    Ok(Some(PreparedPeerIdentity {
-        identity,
-        proof,
-        dds,
-        binding,
-    }))
-}
-
-#[derive(Clone)]
-struct ComputeP2pHost {
-    identity: Identity,
-    proof: PeerIdentityProof,
-    dds: DdsP2pClient,
-    config: AukiPeerConfig,
-    protocols: AukiProtocolsHandle,
-}
-
 #[derive(Clone)]
 #[doc(hidden)]
 pub struct ComputeAuthorityUpdater {
@@ -233,54 +183,6 @@ pub struct ComputeAuthorityUpdater {
     proof: PeerIdentityProof,
     dds: DdsP2pClient,
     control: Arc<ExternalAuthorityControl>,
-}
-
-struct ComputeTaskPeer {
-    // Clear the shared slot before dropping the peer on aborted task futures.
-    protocols: Option<TaskProtocolActivation>,
-    peer: Option<AukiPeer>,
-    authority: ComputeAuthorityUpdater,
-}
-
-impl ComputeP2pHost {
-    async fn start_task(&self, lease: &LeaseEnvelope) -> Result<Option<ComputeTaskPeer>> {
-        let Some((token, expires_at)) = complete_p2p_credential(
-            lease.p2p_access_token.as_deref(),
-            lease.p2p_access_token_expires_at,
-        )?
-        else {
-            return Ok(None);
-        };
-        let domain_id = lease
-            .domain_id
-            .ok_or_else(|| anyhow!("P2P task lease is missing its Domain"))?;
-        let update = self
-            .dds
-            .external_authority_update(&self.proof, domain_id, token, expires_at)
-            .await
-            .context("prepare task peer authority")?;
-        let (peer, control) =
-            AukiPeer::start_external(self.identity.clone(), update, self.config.clone())
-                .await
-                .context("start task-scoped Auki peer")?;
-        let protocols = match self.protocols.activate_task(peer.protocol_context()) {
-            Ok(protocols) => protocols,
-            Err(error) => {
-                let _ = peer.shutdown().await;
-                return Err(error);
-            }
-        };
-        Ok(Some(ComputeTaskPeer {
-            protocols: Some(protocols),
-            peer: Some(peer),
-            authority: ComputeAuthorityUpdater {
-                domain_id,
-                proof: self.proof.clone(),
-                dds: self.dds.clone(),
-                control: Arc::new(control),
-            },
-        }))
-    }
 }
 
 impl ComputeAuthorityUpdater {
@@ -306,34 +208,6 @@ impl ComputeAuthorityUpdater {
             .await
             .context("replace heartbeat peer authority")?;
         Ok(())
-    }
-}
-
-impl ComputeTaskPeer {
-    fn authority(&self) -> ComputeAuthorityUpdater {
-        self.authority.clone()
-    }
-
-    fn subscribe_status(&self) -> tokio::sync::watch::Receiver<AukiPeerStatus> {
-        self.peer
-            .as_ref()
-            .expect("live task peer")
-            .subscribe_status()
-    }
-
-    async fn shutdown(mut self) -> Result<()> {
-        drop(self.protocols.take());
-        if let Some(peer) = self.peer.take() {
-            peer.shutdown().await.context("shut down task Auki peer")?;
-        }
-        Ok(())
-    }
-}
-
-async fn shutdown_task_peer(task_peer: &mut Option<ComputeTaskPeer>) -> Result<()> {
-    match task_peer.take() {
-        Some(peer) => peer.shutdown().await,
-        None => Ok(()),
     }
 }
 
@@ -411,77 +285,11 @@ pub async fn run_node(
 }
 
 pub async fn run_node_with_shutdown(
-    cfg: crate::config::NodeConfig,
+    cfg: NodeConfig,
     runners: impl Into<RunnerComposition> + Send,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    let prepared_peer = prepare_peer_identity(&cfg)?;
-    let compute_peer_config = prepared_peer
-        .as_ref()
-        .map(|_| peer_facade_config(&cfg, None))
-        .transpose()?;
-    let protocols = prepared_peer
-        .as_ref()
-        .map(|_| AukiProtocolsHandle::default());
-    let runners = runners
-        .into()
-        .compose(RunnerDependencies {
-            protocols: protocols.clone(),
-        })
-        .context("construct task runners")?;
-    let peer_binding = prepared_peer
-        .as_ref()
-        .map(|prepared| prepared.binding.clone());
-    let siwe =
-        match crate::auth::SiweAfterRegistration::from_config_with_peer_binding(&cfg, peer_binding)
-        {
-            Ok(siwe) => siwe,
-            Err(error) => return Err(error),
-        };
-    info!("DDS SIWE authentication configured; waiting for DDS registration");
-    let siwe_handle = tokio::select! {
-        result = siwe.start() => match result {
-            Ok(handle) => handle,
-            Err(error) => {
-                siwe.shutdown().await;
-                return Err(error);
-            }
-        },
-        _ = shutdown.cancelled() => {
-            siwe.shutdown().await;
-            info!("Shutdown signal received before SIWE authentication completed");
-            return Ok(());
-        }
-    };
-    info!("DDS SIWE token manager started");
-
-    let auth: Arc<dyn TokenProvider> = Arc::new(siwe_handle.clone());
-    let compute_peer = prepared_peer.map(|prepared| ComputeP2pHost {
-        config: compute_peer_config.expect("P2P identity creates a peer config"),
-        identity: prepared.identity,
-        proof: prepared.proof,
-        dds: prepared.dds,
-        protocols: protocols.expect("P2P identity creates a protocol handle"),
-    });
-    let result = run_authenticated_node_loop(
-        &cfg,
-        &runners,
-        auth,
-        shutdown,
-        "SIWE",
-        cfg.auki_p2p_enabled,
-        NodeLoopP2p {
-            compute_peer,
-            fixed_peer_status: None,
-            forced_shutdown: None,
-        },
-    )
-    .await;
-
-    siwe_handle.shutdown().await;
-    info!("Shutdown signal received; exiting run_node loop");
-
-    result
+    sdk::run_compute(cfg, runners.into(), shutdown).await
 }
 
 /// Run a robot-authenticated node until interrupted.
@@ -538,166 +346,7 @@ pub async fn run_robot_node_with_shutdowns(
     shutdown: CancellationToken,
     forced_shutdown: CancellationToken,
 ) -> Result<()> {
-    cfg.validate_relay_config()?;
-    let runtime_cfg = cfg.runtime_config();
-    let relay_config = cfg.relay_config();
-    validate_robot_p2p_config(&runtime_cfg, relay_config.is_some())?;
-    if shutdown.is_cancelled() {
-        return Ok(());
-    }
-    let prepared_peer = prepare_peer_identity(&runtime_cfg)?;
-    let peer_config = prepared_peer
-        .as_ref()
-        .map(|_| peer_facade_config(&runtime_cfg, relay_config))
-        .transpose()?;
-    let protocols_handle = prepared_peer
-        .as_ref()
-        .map(|_| AukiProtocolsHandle::default());
-    let runners = runners
-        .into()
-        .compose(RunnerDependencies {
-            protocols: protocols_handle.clone(),
-        })
-        .context("construct task runners")?;
-    let peer_binding = prepared_peer
-        .as_ref()
-        .map(|prepared| prepared.binding.clone());
-    let robot = match crate::auth::RobotMachineAuth::from_config_with_peer_binding(
-        &cfg,
-        runners.capabilities(),
-        peer_binding,
-    ) {
-        Ok(robot) => robot,
-        Err(error) => return Err(error),
-    };
-    info!("DDS robot authentication configured");
-    let robot_handle = tokio::select! {
-        result = robot.start() => match result {
-            Ok(handle) => handle,
-            Err(error) => {
-                robot.shutdown().await;
-                return Err(error);
-            }
-        },
-        _ = shutdown.cancelled() => {
-            robot.shutdown().await;
-            info!("Shutdown signal received before robot authentication completed");
-            return Ok(());
-        }
-    };
-    info!("DDS robot token manager started");
-
-    let auth: Arc<dyn TokenProvider> = Arc::new(robot_handle.clone());
-    let Some(prepared_peer) = prepared_peer else {
-        let result = run_authenticated_node_loop(
-            &runtime_cfg,
-            &runners,
-            auth,
-            shutdown,
-            "robot",
-            true,
-            NodeLoopP2p {
-                compute_peer: None,
-                fixed_peer_status: None,
-                forced_shutdown: Some(forced_shutdown),
-            },
-        )
-        .await;
-        robot_handle.shutdown().await;
-        return result;
-    };
-    let protocols_handle = protocols_handle.expect("P2P identity creates a protocols handle");
-    let authority_source = RobotP2pAuthoritySource::new(
-        prepared_peer.dds.clone(),
-        Arc::clone(&auth),
-        prepared_peer.proof.clone(),
-    );
-    let prepared_authority = tokio::select! {
-        result = authority_source.prepare() => match result {
-            Ok(authority) => authority,
-            Err(error) => {
-                robot_handle.shutdown().await;
-                return Err(anyhow::Error::new(error).context("prepare Robot P2P authority"));
-            }
-        },
-        _ = shutdown.cancelled() => {
-            robot_handle.shutdown().await;
-            return Ok(());
-        }
-    };
-    let domain_id = prepared_authority.domain_id();
-    let authority_expires_at = prepared_authority.expires_at();
-    let peer_config = peer_config.expect("P2P identity creates a peer config");
-    let (peer, authority_control) = tokio::select! {
-        result = AukiPeer::start_external(
-            prepared_peer.identity,
-            prepared_authority.into_update(),
-            peer_config,
-        ) => match result {
-            Ok(peer) => peer,
-            Err(error) => {
-                robot_handle.shutdown().await;
-                return Err(error).context("start Robot Auki peer");
-            }
-        },
-        _ = shutdown.cancelled() => {
-            robot_handle.shutdown().await;
-            return Ok(());
-        }
-    };
-    info!(peer_id = %peer.peer_id(), %domain_id, "Robot Auki peer is ready");
-    protocols_handle.activate(peer.protocol_context());
-    let authority_lifecycle = CancellationToken::new();
-    let authority_driver = match RobotP2pAuthorityDriver::start(
-        authority_source,
-        domain_id,
-        authority_expires_at,
-        authority_control,
-        &authority_lifecycle,
-    ) {
-        Ok(driver) => driver,
-        Err(error) => {
-            authority_lifecycle.cancel();
-            let _ = peer.shutdown().await;
-            robot_handle.shutdown().await;
-            return Err(anyhow::Error::new(error).context("start Robot P2P authority driver"));
-        }
-    };
-    let peer_status = peer.subscribe_status();
-    let mut result = run_authenticated_node_loop(
-        &runtime_cfg,
-        &runners,
-        auth,
-        shutdown,
-        "robot",
-        true,
-        NodeLoopP2p {
-            compute_peer: None,
-            fixed_peer_status: Some(peer_status),
-            forced_shutdown: Some(forced_shutdown.clone()),
-        },
-    )
-    .await;
-
-    // Stop the renewal control loop before the facade tears down authority.
-    authority_lifecycle.cancel();
-    authority_driver.shutdown().await;
-    if let Err(error) = peer.shutdown().await {
-        warn!(error = %error, "Robot Auki peer shutdown failed");
-        if result.is_ok() {
-            result = Err(error.into());
-        }
-    }
-    robot_handle.shutdown().await;
-    info!("Shutdown signal received; exiting robot node loop");
-
-    result
-}
-
-struct NodeLoopP2p {
-    compute_peer: Option<ComputeP2pHost>,
-    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
-    forced_shutdown: Option<CancellationToken>,
+    sdk::run_robot(cfg, runners.into(), shutdown, forced_shutdown).await
 }
 
 fn parse_p2p_multiaddrs(values: &[String], setting: &'static str) -> Result<Vec<Multiaddr>> {
@@ -734,145 +383,6 @@ fn validate_robot_p2p_config(cfg: &NodeConfig, relay_enabled: bool) -> Result<()
             "AUKI_P2P_ADVERTISED_MULTIADDRS required for Robot P2P serving"
         ));
     }
-    Ok(())
-}
-
-async fn run_authenticated_node_loop(
-    cfg: &NodeConfig,
-    runners: &RunnerRegistry,
-    auth: Arc<dyn TokenProvider>,
-    shutdown: CancellationToken,
-    auth_kind: &'static str,
-    interrupt_on_shutdown: bool,
-    p2p: NodeLoopP2p,
-) -> Result<()> {
-    let NodeLoopP2p {
-        compute_peer,
-        mut fixed_peer_status,
-        forced_shutdown,
-    } = p2p;
-    let poll_cfg = PollerConfig {
-        backoff_ms_min: cfg.poll_backoff_ms_min,
-        backoff_ms_max: cfg.poll_backoff_ms_max,
-    };
-
-    loop {
-        if shutdown.is_cancelled() {
-            break;
-        }
-
-        if let Some(status) = fixed_peer_status.as_mut() {
-            if !wait_until_peer_ready(status, &shutdown).await? {
-                break;
-            }
-        }
-
-        // Ensure a token is available before attempting DMS operations.
-        let bearer = if interrupt_on_shutdown {
-            tokio::select! {
-                result = auth.bearer() => result,
-                _ = shutdown.cancelled() => break,
-            }
-        } else {
-            auth.bearer().await
-        };
-        if let Err(err) = bearer {
-            warn!(auth_kind, error = %err, "Failed to obtain bearer token; backing off");
-            let delay_ms = jittered_delay_ms(poll_cfg);
-            let delay = StdDuration::from_millis(delay_ms);
-            let delay = if interrupt_on_shutdown {
-                delay.max(AUTH_FAILURE_BACKOFF)
-            } else {
-                delay
-            };
-            tokio::select! {
-                _ = shutdown.cancelled() => break,
-                _ = sleep(delay) => continue,
-            }
-        }
-
-        let timeout = StdDuration::from_secs(cfg.request_timeout_secs);
-        let dms_client = match crate::dms::client::DmsClient::new(
-            cfg.dms_base_url.clone(),
-            timeout,
-            auth.clone(),
-        ) {
-            Ok(client) => client,
-            Err(err) => {
-                warn!(error = %err, "Failed to create DMS client; backing off");
-                let delay_ms = jittered_delay_ms(poll_cfg);
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = sleep(StdDuration::from_millis(delay_ms)) => continue,
-                }
-            }
-        };
-
-        let cycle = if interrupt_on_shutdown {
-            let acquired = tokio::select! {
-                biased;
-                result = acquire_lease_with_dms(&dms_client, runners) => result,
-                _ = shutdown.cancelled() => break,
-            };
-            match acquired {
-                Ok(Some(acquired)) => {
-                    run_leased_cycle_with_abort(
-                        cfg,
-                        &dms_client,
-                        runners,
-                        acquired,
-                        compute_peer.clone(),
-                        fixed_peer_status.clone(),
-                        forced_shutdown.as_ref(),
-                    )
-                    .await
-                }
-                Ok(None) => Ok(false),
-                Err(err) => Err(err),
-            }
-        } else {
-            match acquire_lease_with_dms(&dms_client, runners).await {
-                Ok(Some(acquired)) => {
-                    run_leased_cycle_with_abort(
-                        cfg,
-                        &dms_client,
-                        runners,
-                        acquired,
-                        compute_peer.clone(),
-                        fixed_peer_status.clone(),
-                        forced_shutdown.as_ref(),
-                    )
-                    .await
-                }
-                Ok(None) => Ok(false),
-                Err(error) => Err(error),
-            }
-        };
-
-        match cycle {
-            Ok(true) => {
-                // Successful task execution; immediately attempt next poll.
-                continue;
-            }
-            Ok(false) => {
-                let delay_ms = jittered_delay_ms(poll_cfg);
-                debug!(delay_ms, "No lease available; backing off before next poll");
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = sleep(StdDuration::from_millis(delay_ms)) => {}
-                }
-            }
-            Err(err) => {
-                warn!(error = %err, "DMS cycle failed; backing off");
-                let delay_ms = jittered_delay_ms(poll_cfg);
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = sleep(StdDuration::from_millis(delay_ms)) => {}
-                }
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -1011,479 +521,21 @@ pub fn merge_heartbeat_into_lease(
     }
 }
 
-/// Run a single poll→run→complete/fail cycle using DMS client and the runner registry.
-/// This is a minimal integration used by tests; `run_node` wiring remains separate.
+/// Run one task through the managed SDK lifecycle with host-owned authentication.
 pub async fn run_cycle_with_dms(
-    cfg: &crate::config::NodeConfig,
+    cfg: &NodeConfig,
     dms: &DmsClient,
-    reg: &RunnerRegistry,
+    runners: &RunnerRegistry,
 ) -> Result<bool> {
-    let Some(acquired) = acquire_lease_with_dms(dms, reg).await? else {
-        return Ok(false);
-    };
-    run_leased_cycle_with_dms(cfg, dms, reg, acquired, None, None).await
+    sdk::run_cycle(cfg, dms, runners).await
 }
 
-struct AcquiredLease {
-    capabilities: Vec<String>,
-    lease: LeaseEnvelope,
-}
-
-struct LeaseExecutionGuard {
-    runner_cancel: CancellationToken,
-    heartbeat_shutdown: CancellationToken,
-    heartbeat_abort: tokio::task::AbortHandle,
-}
-
-impl Drop for LeaseExecutionGuard {
-    fn drop(&mut self) {
-        self.runner_cancel.cancel();
-        self.heartbeat_shutdown.cancel();
-        self.heartbeat_abort.abort();
-    }
-}
-
-async fn acquire_lease_with_dms(
-    dms: &DmsClient,
-    reg: &RunnerRegistry,
-) -> Result<Option<AcquiredLease>> {
-    let capabilities = reg.capabilities();
-    let capability = capabilities
-        .first()
-        .cloned()
-        .ok_or_else(|| anyhow!("no runners registered"))?;
-
-    let Some(lease) = dms.lease_by_capability(&capability).await? else {
-        return Ok(None);
-    };
-
-    Ok(Some(AcquiredLease {
-        capabilities,
-        lease,
-    }))
-}
-
-async fn run_leased_cycle_with_dms(
-    cfg: &crate::config::NodeConfig,
-    dms: &DmsClient,
-    reg: &RunnerRegistry,
-    acquired: AcquiredLease,
-    compute_peer: Option<ComputeP2pHost>,
-    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
-) -> Result<bool> {
-    run_leased_cycle_inner(cfg, dms, reg, acquired, compute_peer, fixed_peer_status).await
-}
-
-async fn run_leased_cycle_with_abort(
-    cfg: &crate::config::NodeConfig,
-    dms: &DmsClient,
-    reg: &RunnerRegistry,
-    acquired: AcquiredLease,
-    compute_peer: Option<ComputeP2pHost>,
-    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
-    forced_shutdown: Option<&CancellationToken>,
-) -> Result<bool> {
-    let cycle = run_leased_cycle_with_dms(cfg, dms, reg, acquired, compute_peer, fixed_peer_status);
-    match forced_shutdown {
-        Some(forced_shutdown) => {
-            tokio::select! {
-                biased;
-                _ = forced_shutdown.cancelled() => {
-                    Err(anyhow!("forced shutdown interrupted the active Robot task"))
-                }
-                result = cycle => result,
-            }
-        }
-        None => cycle.await,
-    }
-}
-
-async fn run_leased_cycle_inner(
-    cfg: &crate::config::NodeConfig,
-    dms: &DmsClient,
-    reg: &RunnerRegistry,
-    acquired: AcquiredLease,
-    compute_peer: Option<ComputeP2pHost>,
-    fixed_peer_status: Option<tokio::sync::watch::Receiver<AukiPeerStatus>>,
-) -> Result<bool> {
-    use crate::dms::types::{CompleteTaskRequest, FailTaskRequest, HeartbeatRequest};
-    use serde_json::json;
-
-    let AcquiredLease {
-        capabilities,
-        mut lease,
-    } = acquired;
-    if lease.access_token.is_none() {
-        tracing::warn!(
-            "Lease missing access token; storage client will fall back to legacy token flow"
-        );
-    }
-
-    // Initialise session state for heartbeats and token rotation.
-    let selector = CapabilitySelector::new(capabilities.clone());
-    let session = SessionManager::new(selector);
-    let policy = HeartbeatPolicy::new(cfg.heartbeat_min_ratio, cfg.heartbeat_max_ratio);
-    let mut rng = StdRng::from_entropy();
-    let task_id = lease.task.id;
-    let report_setup_failure = |stage: &'static str, err: &anyhow::Error| {
-        let details = json!({
-            "stage": stage,
-            "error": err.to_string(),
-        });
-        async move {
-            let body = FailTaskRequest {
-                reason: "node_setup_failed".into(),
-                details,
-            };
-            dms.fail(task_id, &body).await
-        }
-    };
-
-    let snapshot = match session
-        .start_session(&lease, Instant::now(), &policy, &mut rng)
-        .await
-    {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
-            let original = anyhow!("failed to initialise session: {err}");
-            if let Err(fail_err) = report_setup_failure("start_session", &original).await {
-                warn!(
-                    error = %fail_err,
-                    task_id = %task_id,
-                    "failed to report setup failure"
-                );
-                return Err(original);
-            }
-            return Ok(true);
-        }
-    };
-    if snapshot.cancel() {
-        warn!(
-            task_id = %snapshot.task_id(),
-            "Lease already marked as cancelled; skipping execution"
-        );
-        return Ok(true);
-    }
-
-    let token_ref = crate::storage::TokenRef::new(lease.access_token.clone().unwrap_or_default());
-
-    let heartbeat_initial = match dms
-        .heartbeat(
-            lease.task.id,
-            &HeartbeatRequest {
-                progress: json!({}),
-                events: Vec::new(),
-            },
-        )
-        .await
-    {
-        Ok(response) => response,
-        Err(err) => {
-            if let Err(fail_err) = report_setup_failure("initial_heartbeat", &err).await {
-                warn!(
-                    error = %fail_err,
-                    task_id = %task_id,
-                    "failed to report setup failure"
-                );
-                return Err(err);
-            }
-            return Ok(true);
-        }
-    };
-    apply_heartbeat_token_update(&token_ref, &heartbeat_initial);
-    merge_heartbeat_into_lease(&mut lease, &heartbeat_initial);
-    session
-        .apply_heartbeat(
-            &heartbeat_initial,
-            Some(json!({})),
-            Instant::now(),
-            &policy,
-            &mut rng,
-        )
-        .await
-        .map_err(|err| anyhow!("failed to refresh session after heartbeat: {err}"))?;
-
-    let mut task_peer = match compute_peer.as_ref() {
-        Some(host) => match host.start_task(&lease).await {
-            Ok(peer) => peer,
-            Err(error) => {
-                if let Err(fail_error) = report_setup_failure("start_task_peer", &error).await {
-                    warn!(error = %fail_error, task_id = %task_id, "failed to report P2P setup failure");
-                    return Err(error);
-                }
-                return Ok(true);
-            }
-        },
-        None => {
-            if let Err(error) = apply_compute_authority_update(
-                None,
-                lease.domain_id,
-                lease.p2p_access_token.as_deref(),
-                lease.p2p_access_token_expires_at,
-            )
-            .await
-            {
-                if let Err(fail_error) = report_setup_failure("unexpected_task_peer", &error).await
-                {
-                    warn!(error = %fail_error, task_id = %task_id, "failed to report P2P setup failure");
-                    return Err(error);
-                }
-                return Ok(true);
-            }
-            None
-        }
-    };
-    let task_authority = task_peer.as_ref().map(ComputeTaskPeer::authority);
-    let task_peer_status = task_peer
-        .as_ref()
-        .map(ComputeTaskPeer::subscribe_status)
-        .or(fixed_peer_status);
-
-    let ports = match crate::storage::build_ports(&lease, token_ref.clone()) {
-        Ok(ports) => ports,
-        Err(err) => {
-            if let Err(shutdown_error) = shutdown_task_peer(&mut task_peer).await {
-                warn!(
-                    error = %shutdown_error,
-                    task_id = %task_id,
-                    "failed to shut down task peer after storage setup failure"
-                );
-            }
-            if let Err(fail_err) = report_setup_failure("build_ports", &err).await {
-                warn!(
-                    error = %fail_err,
-                    task_id = %task_id,
-                    "failed to report setup failure"
-                );
-                return Err(err);
-            }
-            return Ok(true);
-        }
-    };
-
-    let (progress_tx, progress_rx) = progress_channel();
-    let control_state = Arc::new(Mutex::new(ControlState::default()));
-    {
-        let mut guard = control_state.lock().await;
-        guard.progress = json!({});
-        guard.events = Vec::new();
-    }
-
-    let runner_cancel = CancellationToken::new();
-    let heartbeat_shutdown = CancellationToken::new();
-
-    let ctrl = EngineControlPlane::new(
-        runner_cancel.clone(),
-        progress_tx.clone(),
-        control_state.clone(),
-    );
-
-    // Trigger an immediate heartbeat once the loop starts to refresh tokens.
-    progress_tx.update(json!({}), Vec::new());
-
-    let heartbeat_driver = HeartbeatDriver::new(
-        dms.clone(),
-        HeartbeatDriverArgs {
-            session: session.clone(),
-            policy,
-            rng,
-            progress_rx,
-            state: control_state.clone(),
-            token_ref: token_ref.clone(),
-            p2p_authority: task_authority,
-            runner_cancel: runner_cancel.clone(),
-            shutdown: heartbeat_shutdown.clone(),
-            task_id: lease.task.id,
-        },
-    );
-    let heartbeat_handle = tokio::spawn(async move { heartbeat_driver.run().await });
-    let _execution_guard = LeaseExecutionGuard {
-        runner_cancel: runner_cancel.clone(),
-        heartbeat_shutdown: heartbeat_shutdown.clone(),
-        heartbeat_abort: heartbeat_handle.abort_handle(),
-    };
-
-    let runner = reg.run_for_lease(&lease, &*ports.input, &*ports.output, &ctrl, &token_ref);
-    tokio::pin!(runner);
-    let mut run_res = if let Some(mut peer_status) = task_peer_status {
-        tokio::select! {
-            result = &mut runner => result,
-            error = wait_for_peer_loss(&mut peer_status) => {
-                runner_cancel.cancel();
-                Err(crate::errors::ExecutorError::Runner(error.to_string()))
-            }
-        }
-    } else {
-        runner.await
-    };
-
-    // Re-broadcast the latest progress/events so the heartbeat loop can flush
-    // them before shutdown. Without this, very short tasks may complete before
-    // the final heartbeat is delivered, leaving stale progress in DMS.
-    {
-        let state = control_state.lock().await;
-        progress_tx.update(state.progress.clone(), state.events.clone());
-    }
-    sleep(StdDuration::from_millis(200)).await;
-
-    heartbeat_shutdown.cancel();
-    let heartbeat_result = match heartbeat_handle.await {
-        Ok(result) => result,
-        Err(err) => {
-            warn!(error = %err, "heartbeat loop task failed");
-            HeartbeatLoopResult::Completed
-        }
-    };
-
-    match heartbeat_result {
-        HeartbeatLoopResult::Completed => {}
-        HeartbeatLoopResult::Cancelled => {
-            info!(
-                task_id = %lease.task.id,
-                "Lease cancelled during execution; skipping completion"
-            );
-            runner_cancel.cancel();
-            if let Err(error) = shutdown_task_peer(&mut task_peer).await {
-                warn!(error = %error, task_id = %task_id, "failed to shut down cancelled task peer");
-            }
-            return Ok(true);
-        }
-        HeartbeatLoopResult::LostLease(err) => {
-            warn!(
-                task_id = %lease.task.id,
-                error = %err,
-                "Lease lost during heartbeat; abandoning task"
-            );
-            runner_cancel.cancel();
-            if let Err(shutdown_error) = shutdown_task_peer(&mut task_peer).await {
-                warn!(error = %shutdown_error, task_id = %task_id, "failed to shut down abandoned task peer");
-            }
-            return Ok(true);
-        }
-    }
-
-    if let Err(error) = shutdown_task_peer(&mut task_peer).await {
-        if run_res.is_ok() {
-            run_res = Err(crate::errors::ExecutorError::Runner(format!(
-                "task peer shutdown failed: {error:#}"
-            )));
-        } else {
-            warn!(error = %error, task_id = %task_id, "task peer shutdown also failed");
-        }
-    }
-
-    let uploaded_artifacts = ports.uploaded_artifacts();
-    let artifacts_json: Vec<Value> = uploaded_artifacts
-        .iter()
-        .map(|artifact| {
-            json!({
-                "logical_path": artifact.logical_path,
-                "name": artifact.name,
-                "data_type": artifact.data_type,
-                "id": artifact.id,
-                "metadata": artifact.metadata.clone().unwrap_or(Value::Null),
-            })
-        })
-        .collect();
-    let output_cids: Vec<String> = uploaded_artifacts
-        .iter()
-        .filter_map(|artifact| artifact.id.clone())
-        .collect();
-    let job_info = json!({
-        "task_id": lease.task.id,
-        "job_id": lease.task.job_id,
-        "domain_id": lease.domain_id,
-        "capability": lease.task.capability,
-    });
-
-    // Complete or fail the task depending on runner outcome.
-    match run_res {
-        Ok(()) => {
-            let body = CompleteTaskRequest {
-                output_cids,
-                meta: json!({
-                    "job": job_info,
-                    "artifacts": artifacts_json,
-                }),
-            };
-            dms.complete(lease.task.id, &body).await?;
-        }
-        Err(err) => {
-            error!(
-                task_id = %lease.task.id,
-                job_id = ?lease.task.job_id,
-                capability = %lease.task.capability,
-                error = %err,
-                debug = ?err,
-                "Runner execution failed; reporting failure to DMS"
-            );
-            let body = FailTaskRequest {
-                reason: err.to_string(),
-                details: json!({
-                    "job": job_info,
-                    "artifacts": artifacts_json,
-                }),
-            };
-            dms.fail(lease.task.id, &body)
-                .await
-                .with_context(|| format!("report fail for task {} to DMS", lease.task.id))?;
-        }
-    }
-
-    Ok(true)
-}
-
+// Retained for native hosts using the public low-level heartbeat API. The
+// production entrypoints above use only the SDK managed lifecycle.
 #[derive(Default)]
 pub struct ControlState {
     progress: Value,
     events: Vec<Value>,
-}
-
-struct EngineControlPlane {
-    cancel: CancellationToken,
-    progress_tx: ProgressSender,
-    state: Arc<Mutex<ControlState>>,
-}
-
-impl EngineControlPlane {
-    pub fn new(
-        cancel: CancellationToken,
-        progress_tx: ProgressSender,
-        state: Arc<Mutex<ControlState>>,
-    ) -> Self {
-        Self {
-            cancel,
-            progress_tx,
-            state,
-        }
-    }
-}
-
-#[async_trait]
-impl ControlPlane for EngineControlPlane {
-    async fn is_cancelled(&self) -> bool {
-        self.cancel.is_cancelled()
-    }
-
-    async fn progress(&self, value: Value) -> Result<()> {
-        let events = {
-            let mut state = self.state.lock().await;
-            state.progress = value.clone();
-            state.events.clone()
-        };
-        self.progress_tx.update(value, events);
-        Ok(())
-    }
-
-    async fn log_event(&self, fields: Value) -> Result<()> {
-        let (progress, events) = {
-            let mut state = self.state.lock().await;
-            state.events.push(fields.clone());
-            (state.progress.clone(), state.events.clone())
-        };
-        self.progress_tx.update(progress, events);
-        Ok(())
-    }
 }
 
 pub enum HeartbeatLoopResult {
@@ -1740,7 +792,7 @@ mod tests {
         robot.auki_p2p_enabled = true;
         let runtime = robot.runtime_config();
 
-        let error = prepare_peer_identity(&runtime)
+        let error = sdk::peer_config(&runtime, None)
             .err()
             .expect("missing production identity must fail before DDS access");
         assert!(error.to_string().contains("P2P_PRIVATE_KEY"));
@@ -1862,27 +914,5 @@ mod tests {
         let config = peer_facade_config(&robot.runtime_config(), Some(relay)).unwrap();
         assert_eq!(config.advertised_direct_routes().len(), 13);
         assert_eq!(config.relay(), Some(relay));
-    }
-
-    #[tokio::test]
-    async fn dropping_a_lease_execution_aborts_its_heartbeat_task() {
-        let runner_cancel = CancellationToken::new();
-        let heartbeat_shutdown = CancellationToken::new();
-        let heartbeat = tokio::spawn(std::future::pending::<()>());
-        let guard = LeaseExecutionGuard {
-            runner_cancel: runner_cancel.clone(),
-            heartbeat_shutdown: heartbeat_shutdown.clone(),
-            heartbeat_abort: heartbeat.abort_handle(),
-        };
-
-        drop(guard);
-
-        assert!(runner_cancel.is_cancelled());
-        assert!(heartbeat_shutdown.is_cancelled());
-        let error = tokio::time::timeout(StdDuration::from_secs(1), heartbeat)
-            .await
-            .expect("heartbeat abort is bounded")
-            .expect_err("heartbeat task was aborted");
-        assert!(error.is_cancelled());
     }
 }
