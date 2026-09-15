@@ -347,7 +347,11 @@ impl RobotNodeConfig {
         let registration_credentials = robot_registration_credentials_from_env()?;
 
         let mut cfg = Self::new(dds_base_url, dms_base_url, registration_credentials)?;
-        cfg.audience = env_var_trimmed("DDS_ROBOT_AUDIENCE");
+        match env::var("DDS_ROBOT_AUDIENCE") {
+            Ok(audience) => cfg.set_audience(audience).context("DDS_ROBOT_AUDIENCE")?,
+            Err(env::VarError::NotPresent) => {}
+            Err(_) => bail!("DDS_ROBOT_AUDIENCE must be valid Unicode"),
+        }
         cfg.request_timeout_secs =
             parse_u64_default("REQUEST_TIMEOUT_SECS", DEFAULT_REQUEST_TIMEOUT_SECS)?;
         cfg.node_version = env_var_trimmed("NODE_VERSION")
@@ -380,8 +384,9 @@ impl RobotNodeConfig {
         &self.registration_credentials
     }
 
-    /// Expected exclusive robot audience from trusted deployment configuration.
-    /// It is never inferred from a returned token.
+    /// Override the SDK's audience preset for an official Auki DDS endpoint.
+    /// Custom DDS endpoints require an explicit audience from trusted deployment
+    /// configuration. It is never inferred from a returned token.
     pub fn set_audience(&mut self, audience: impl Into<String>) -> Result<()> {
         let audience = audience.into();
         if audience.is_empty() || audience.chars().any(char::is_whitespace) {
@@ -391,6 +396,7 @@ impl RobotNodeConfig {
         Ok(())
     }
 
+    /// Explicit override, or `None` to use the SDK's preset for the DDS endpoint.
     pub fn audience(&self) -> Option<&str> {
         self.audience.as_deref()
     }

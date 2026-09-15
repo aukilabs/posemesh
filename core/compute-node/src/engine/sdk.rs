@@ -113,6 +113,20 @@ pub(super) async fn run_compute(
     .await
 }
 
+fn robot_config(cfg: &RobotNodeConfig, capabilities: Vec<String>) -> Result<RobotConfig> {
+    let mut machine = RobotConfig::new(
+        cfg.dds_base_url.as_str(),
+        cfg.dms_base_url.as_str(),
+        SecretString::new(cfg.registration_credentials()),
+        &cfg.node_version,
+        &crate::storage::client::env_client_id(),
+        cfg.audience(),
+        capabilities,
+    )?;
+    machine.request_timeout = StdDuration::from_secs(cfg.request_timeout_secs);
+    Ok(machine)
+}
+
 pub(super) async fn run_robot(
     cfg: RobotNodeConfig,
     runners: RunnerComposition,
@@ -127,18 +141,7 @@ pub(super) async fn run_robot(
     validate_robot_p2p_config(&runtime_cfg, cfg.relay_config().is_some())?;
     let peer = peer_config(&runtime_cfg, cfg.relay_config())?;
     let (runners, protocols) = compose(runners, peer.is_some())?;
-    let mut machine = RobotConfig::new(
-        cfg.dds_base_url.as_str(),
-        cfg.dms_base_url.as_str(),
-        SecretString::new(cfg.registration_credentials()),
-        &cfg.node_version,
-        &crate::storage::client::env_client_id(),
-        cfg.audience().context(
-            "set DDS_ROBOT_AUDIENCE or RobotNodeConfig::set_audience to the deployment's exclusive robot audience",
-        )?,
-        runners.capabilities(),
-    )?;
-    machine.request_timeout = StdDuration::from_secs(cfg.request_timeout_secs);
+    let mut machine = robot_config(&cfg, runners.capabilities())?;
     machine.peer_identity = peer.as_ref().map(|peer| peer.identity_proof());
     let tasks = runtime(
         AukiRobotCredential::new(machine)?,
@@ -354,5 +357,57 @@ impl ControlPlane for SdkControlPlane {
     }
     async fn log_event(&self, value: Value) -> Result<()> {
         Ok(self.0.log_event(value)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(dds: &str) -> RobotNodeConfig {
+        RobotNodeConfig::new(
+            dds.parse().unwrap(),
+            "http://127.0.0.1:1234/v1".parse().unwrap(),
+            "robot-test-credentials",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn robot_adapter_uses_sdk_audience_defaults() {
+        for dds in [
+            "https://dds.dev.aukiverse.com",
+            "https://dds.staging.aukiverse.com",
+            "https://dds.auki.network",
+        ] {
+            let cfg = config(dds);
+            let machine = robot_config(&cfg, vec!["test.echo:v1".into()]).unwrap();
+            assert_eq!(machine.audience, format!("{dds}/robots"));
+        }
+    }
+
+    #[test]
+    fn robot_adapter_preserves_explicit_audience_overrides() {
+        for dds in ["https://dds.dev.aukiverse.com", "http://127.0.0.1:1234"] {
+            let mut cfg = config(dds);
+            cfg.set_audience("custom-robot-audience").unwrap();
+            let machine = robot_config(&cfg, vec!["test.echo:v1".into()]).unwrap();
+            assert_eq!(machine.audience, "custom-robot-audience");
+        }
+    }
+
+    #[test]
+    fn robot_adapter_requires_an_audience_for_custom_dds() {
+        let error = robot_config(
+            &config("http://127.0.0.1:1234"),
+            vec!["test.echo:v1".into()],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<TaskError>(),
+            Some(TaskError::Configuration(
+                "provide an explicit robot audience for custom DDS endpoints"
+            ))
+        ));
     }
 }

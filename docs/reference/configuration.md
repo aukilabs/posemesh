@@ -10,23 +10,42 @@ caller's responsibility. Parsing and defaults are defined in
 | Host | Variables |
 | --- | --- |
 | Compute | `REG_SECRET`: complete encoded node registration credentials; `SECP256K1_PRIVHEX`: wallet signing private key in hex |
-| Robot | Exactly one of `ROBOT_REGISTRATION_CREDENTIALS` and `ROBOT_REGISTRATION_CREDENTIALS_FILE`, plus `DDS_ROBOT_AUDIENCE` |
+| Robot | Exactly one of `ROBOT_REGISTRATION_CREDENTIALS` and `ROBOT_REGISTRATION_CREDENTIALS_FILE` |
 | Either, with P2P enabled | Exactly one of `AUKI_P2P_PRIVATE_KEY_FILE` and `AUKI_P2P_PRIVATE_KEY` |
 
 [Provisioning](../how-to/provision-workers.md) explains how to obtain worker
 credentials. [Configure workers](../how-to/configure-workers.md) shows how to
 pass them to a host.
 Robot and P2P files are read at startup; replacing a file requires restarting
-the host. Robot credentials are opaque and whitespace is trimmed on load. Set
-`DDS_ROBOT_AUDIENCE` to the deployment's exclusive robot audience; there is no
-default and it must differ from the normal DDS audience. Programmatic callers
-use `RobotNodeConfig::set_audience`. Never infer it from an unverified token.
+the host. Robot credentials are opaque and whitespace is trimmed on load.
 
 P2P key files contain raw Ed25519 libp2p protobuf bytes, must be regular files
 of 1–4096 bytes, and must have mode `0600` on Unix. The inline alternative is
 canonical padded Base64 of those bytes. Generate a persistent file with
 `posemesh-p2p-keygen`, as shown in the [tutorial](../tutorials/robot-and-compute.md).
 Keep worker identities distinct and preserve keys across restarts.
+
+## Robot audience
+
+`DDS_ROBOT_AUDIENCE` is optional for the official DDS endpoints below. When
+unset, the SDK selects the expected JWT audience from `DDS_BASE_URL`:
+
+| `DDS_BASE_URL` | Robot audience |
+| --- | --- |
+| `https://dds.dev.aukiverse.com` | `https://dds.dev.aukiverse.com/robots` |
+| `https://dds.staging.aukiverse.com` | `https://dds.staging.aukiverse.com/robots` |
+| `https://dds.auki.network` | `https://dds.auki.network/robots` |
+
+These are exact root HTTPS endpoints; a trailing slash is accepted. Custom
+hosts, path prefixes and nonstandard ports require an explicit audience from
+the DDS deployment configuration. Set `DDS_ROBOT_AUDIENCE` or call
+`RobotNodeConfig::set_audience` to override the default. Empty or
+whitespace-containing overrides fail instead of selecting a default.
+
+The audience is a token identifier, not a robot-listing endpoint. It must be
+exclusive to robots and differ from the normal DDS audience. Never infer it
+from an unverified token. A preset does not imply deployed robot support;
+check the [deployment requirements](../how-to/provision-workers.md#check-deployment-support).
 
 ## Shared settings
 
