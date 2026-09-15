@@ -17,11 +17,13 @@ SDK for its task storage ports. Runner authors normally use `TaskCtx.input` and
 The client supports User and App credentials, Domain listing, and Domain data
 uploads/downloads. Configure API and DDS endpoints for the same environment.
 The linked integration tests require an account and Domain; inspect their
-setup before running them. The JavaScript OIDC suite uses `AUTH_TEST_TOKEN` for a
-viewer. It checks the API-issued App-style credential, successful reads and
-HTTP 403 on data writes; successful login/read access does not imply write
-permission. User-credential tests cover successful writes. An OIDC writer needs
-a separate fixture with the appropriate role and Domain permissions.
+setup before running them. The JavaScript OIDC suite uses `AUTH_TEST_TOKEN` to
+check authentication and reads; the shared account needs read access to the test
+Domain. Local binding fixtures cover OIDC viewer and writer responses, including
+denied authentication, denied Domain access and HTTP 403 on writes after a
+successful read. Live App tests verify that creates and updates are denied;
+User tests cover successful writes. Run the local fixtures in Node and Chromium
+with `npm run test:bindings` from `core/domain-http/bindings/javascript/tests`.
 
 ## Build from source
 

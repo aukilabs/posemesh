@@ -171,6 +171,20 @@ describe('Posemesh Domain HTTP', async() => {
             }])).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to update data. invalid domain access token/);
         });
 
+        it('should reject creating domain data with App credentials', async () => {
+            await expect(client.uploadDomainData(domainId, [{
+                name: "app_denied_upload",
+                data_type: "test",
+                data: new TextEncoder().encode('{"app":"read-only"}'),
+            }] as UploadDomainData[])).rejects.toThrow(
+                /Auki response - status: 403 Forbidden, error: Failed to create data\./
+            );
+            const created = await userClient.downloadDomainDataMetadata(domainId, {
+                ids: [], name: "app_denied_upload", data_type: "test"
+            } as DownloadQuery);
+            expect(created).toHaveLength(0);
+        });
+
         it('should list all domains within my organization', async () => {
             const domains = await client.listDomains({ org: "own" } as ListDomainsQuery);
             expect(domains).toBeDefined();
@@ -376,26 +390,13 @@ describe('Posemesh Domain HTTP', async() => {
         });
     });
 
-    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('OIDC viewer credential', () => {
+    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('OIDC credential', () => {
         const oidcAccessToken = config.AUTH_TEST_TOKEN;
         let client: DomainClient;
         let clientWithOIDCAccessToken: DomainClient;
         beforeAll(async () => {
-            // The API maps OIDC viewers to read-only App-style DDS credentials.
-            // Check the fixture profile explicitly; a writer token is a different test.
-            const response = await fetch(`${config.API_URL}/service/domains-access-token`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${oidcAccessToken}`,
-                    'Content-Type': 'application/json',
-                    'posemesh-client-id': config.CLIENT_ID,
-                },
-            });
-            expect(response.status).toBe(200);
-            const grant = await response.json();
-            const payload = grant.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-            const claims = JSON.parse(atob(payload));
-            expect(claims.type, 'AUTH_TEST_TOKEN must be an OIDC viewer credential').toBe('app-access');
+            // This shared credential needs read access to the test Domain.
+            // Fixed viewer/writer responses are covered in bindings.test.ts.
             client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
             clientWithOIDCAccessToken = client.withOIDCAccessToken(oidcAccessToken);
         });
@@ -455,20 +456,6 @@ describe('Posemesh Domain HTTP', async() => {
             expect(count).greaterThan(0);
         });
 
-        it('should reject domain data uploads with a viewer credential', async () => {
-            await expect(clientWithOIDCAccessToken.uploadDomainData(domainId, [{
-                name: "oidc_viewer_denied_upload",
-                data_type: "test",
-                data: new TextEncoder().encode('{"oidc":"viewer"}'),
-            }] as UploadDomainData[])).rejects.toThrow(
-                /Auki response - status: 403 Forbidden, error: Failed to create data\./
-            );
-            const created = await userClient.downloadDomainDataMetadata(domainId, {
-                ids: [], name: "oidc_viewer_denied_upload", data_type: "test"
-            } as DownloadQuery);
-            expect(created).toHaveLength(0);
-        });
-
         it('should throw error if oidc_access_token is not valid', async () => {
             const invalidClient = client.withOIDCAccessToken("ddddd");
 
@@ -487,4 +474,3 @@ describe('Posemesh Domain HTTP', async() => {
         });
     });
 });
-
