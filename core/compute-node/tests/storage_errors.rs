@@ -1,3 +1,8 @@
+#[path = "support/sdk.rs"]
+#[allow(dead_code)]
+mod sdk;
+use uuid::Uuid;
+
 use httpmock::prelude::*;
 use posemesh_compute_node::errors::StorageError;
 use posemesh_compute_node::storage::{
@@ -8,20 +13,28 @@ use posemesh_compute_node::storage::{
 #[tokio::test]
 async fn download_error_mapping() {
     let server = MockServer::start();
+    let domain = Uuid::new_v4().to_string();
+    sdk::info(&server);
+    let token = sdk::data_token(
+        &server.base_url(),
+        domain.parse().unwrap(),
+        chrono::Utc::now() + chrono::Duration::hours(1),
+        "A",
+    );
     let statuses = [400, 401, 404, 409, 500];
     for status in statuses {
-        let cid = format!("c{}", status);
+        let cid = Uuid::new_v4().to_string();
         let cid_for_mock = cid.clone();
-        let m = server.mock(move |when, then| {
+        let m = server.mock(|when, then| {
             when.method(GET)
-                .path("/api/v1/domains/dom1/data")
+                .path(format!("/api/v1/domains/{domain}/data"))
                 .query_param("ids", cid_for_mock.as_str());
             then.status(status);
         });
         let base: url::Url = server.base_url().parse().unwrap();
-        let client = DomainClient::new(base.clone(), TokenRef::new("t".into())).unwrap();
+        let client = DomainClient::new(base.clone(), TokenRef::new(token.clone())).unwrap();
         let uri = base
-            .join(&format!("api/v1/domains/dom1/data/{}", cid))
+            .join(&format!("api/v1/domains/{domain}/data/{}", cid))
             .unwrap()
             .to_string();
         let err = client.download_uri(&uri).await.unwrap_err();
@@ -57,57 +70,61 @@ async fn download_error_mapping() {
 }
 
 #[tokio::test]
-async fn download_empty_multipart_maps_to_not_found() {
+async fn download_empty_metadata_maps_to_not_found() {
     let server = MockServer::start();
-    let boundary = "BOUNDARY";
-
+    let domain = Uuid::new_v4();
+    let id = Uuid::new_v4();
     let m = server.mock(|when, then| {
         when.method(GET)
-            .path("/api/v1/domains/dom1/data")
-            .query_param("ids", "missing");
-        then.status(200)
-            .header(
-                "content-type",
-                format!("multipart/form-data; boundary={boundary}"),
-            )
-            .body(format!("--{boundary}--\r\n"));
+            .path(format!("/api/v1/domains/{domain}/data"))
+            .query_param("ids", id.to_string());
+        then.header("content-type", "application/json")
+            .json_body(serde_json::json!({"data":[]}));
     });
-
-    let base: url::Url = server.base_url().parse().unwrap();
-    let client = DomainClient::new(base.clone(), TokenRef::new("t".into())).unwrap();
-    let uri = base
-        .join("api/v1/domains/dom1/data/missing")
-        .unwrap()
-        .to_string();
-    let err = client.download_uri(&uri).await.unwrap_err();
-    assert!(
-        matches!(err, StorageError::NotFound),
-        "expected NotFound, got {:?}",
-        err
+    let token = sdk::data_token(
+        &server.base_url(),
+        domain,
+        chrono::Utc::now() + chrono::Duration::hours(1),
+        "A",
     );
-
+    let client =
+        DomainClient::new(server.base_url().parse().unwrap(), TokenRef::new(token)).unwrap();
+    assert!(matches!(
+        client
+            .download_cid(&domain.to_string(), &id.to_string())
+            .await,
+        Err(StorageError::NotFound)
+    ));
     m.assert();
 }
 
 #[tokio::test]
 async fn upload_error_mapping() {
     let server = MockServer::start();
+    let domain = Uuid::new_v4().to_string();
+    sdk::info(&server);
+    let token = sdk::data_token(
+        &server.base_url(),
+        domain.parse().unwrap(),
+        chrono::Utc::now() + chrono::Duration::hours(1),
+        "A",
+    );
     let statuses = [400, 401, 404, 409, 500];
     for status in statuses {
         let name = format!("f{}", status);
         let marker = name.clone();
-        let m = server.mock(move |when, then| {
+        let m = server.mock(|when, then| {
             when.method(POST)
-                .path("/api/v1/domains/dom1/data")
+                .path(format!("/api/v1/domains/{domain}/data"))
                 .body_contains(marker.as_str());
             then.status(status);
         });
         let base: url::Url = server.base_url().parse().unwrap();
-        let client = DomainClient::new(base.clone(), TokenRef::new("t".into())).unwrap();
+        let client = DomainClient::new(base.clone(), TokenRef::new(token.clone())).unwrap();
         let logical = format!("out/{}", name);
         let err = client
             .upload_artifact(UploadRequest {
-                domain_id: "dom1",
+                domain_id: &domain,
                 name: &name,
                 data_type: "binary",
                 logical_path: &logical,

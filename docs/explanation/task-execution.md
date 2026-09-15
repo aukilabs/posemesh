@@ -10,9 +10,9 @@ and task placement differ; the capability implementation uses the same
 | --- | --- |
 | DDS | Worker identities, capability registration, robot Domain assignment, and Domain/P2P authorization |
 | DMS | Job submission, scheduling, task state, leases, and terminal results |
-| Posemesh host | Machine authentication lifecycle, task polling, execution, heartbeats, and storage ports |
+| Posemesh host | Runner composition, graceful/forced shutdown policy, artifact conventions and adapters to SDK-managed execution |
 | Your runner | Task input validation, application work, progress, cancellation response, and application resource cleanup |
-| Auki SDK | Authenticated peer connections, protocol streams, relay bookings, and peer shutdown |
+| Auki SDK | Machine authentication/registration, DMS leases and heartbeats, renewable Domain transfers, authenticated peers and awaited cleanup |
 
 ~~~mermaid
 flowchart LR
@@ -47,12 +47,13 @@ for the shared terminology.
 
 ## One task's lifecycle
 
-The host polls DMS with its available capabilities. When it obtains a lease,
-it initializes task state, sends a heartbeat, builds storage ports, and calls
+The host uses SDK `claim_any()` so DMS selects among its registered capabilities.
+SDK-managed execution sends the initial heartbeat, then Posemesh builds storage
+ports and calls
 the matching `Runner::run`. For P2P-enabled compute, it also starts a peer using
 the lease's Domain authority.
 
-While the runner executes, the host sends heartbeats and renews Domain/P2P
+While the runner executes, the SDK sends heartbeats and renews Domain/P2P
 authority. It forwards progress and events. After the runner returns, the host
 reports completion or failure with the uploaded artifacts.
 

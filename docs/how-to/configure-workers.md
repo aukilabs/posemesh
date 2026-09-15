@@ -47,6 +47,13 @@ Alternatively, supply `ROBOT_REGISTRATION_CREDENTIALS` inline. Set exactly one
 of those two variables. The credential file is read at startup; replacing it
 requires a restart.
 
+For official Auki DDS endpoints, the SDK selects the robot audience from
+`DDS_BASE_URL`. Custom endpoints require `DDS_ROBOT_AUDIENCE` from the DDS
+deployment configuration, or `cfg.set_audience(...)` in a programmatic host.
+See [robot audience](../reference/configuration.md#robot-audience) for the
+defaults and overrides. The SDK validates the audience and stable robot
+identity/assignment.
+
 A robot uses its registration credential without a wallet. It claims dedicated
 tasks in its assigned Domain. See [provisioning and assignment](provision-workers.md#create-and-assign-a-robot)
 if it has not been assigned yet.

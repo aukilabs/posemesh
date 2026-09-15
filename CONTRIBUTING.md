@@ -26,10 +26,9 @@ as the executable reference and update its guide when behavior changes.
 
 | Path | Purpose |
 | --- | --- |
-| [`core/compute-node/`](core/compute-node/) | Compute and robot hosts, DDS/DMS clients, leases and storage |
+| [`core/compute-node/`](core/compute-node/) | Compute and robot hosts, SDK lifecycle and storage adapters |
 | [`core/compute-node-runner-api/`](core/compute-node-runner-api/) | Runner ports and the paired Echo example |
 | [`core/domain-http/`](core/domain-http/) | Domain HTTP client, WASM and Python bindings |
-| [`core/node-registration/`](core/node-registration/) | Wallet registration helpers used by the compute host |
 | [`core/networking/`](core/networking/), [`core/domain/`](core/domain/), [`core/base/`](core/base/) | Earlier networking/domain stack and native base library |
 | [`sdk/`](sdk/) | C++ spatial SDK and generated C/JavaScript/Objective-C/Swift interfaces |
 | [`third-party/`](third-party/) | Submodules and build scripts for native SDK dependencies |

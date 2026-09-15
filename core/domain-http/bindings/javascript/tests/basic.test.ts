@@ -171,6 +171,20 @@ describe('Posemesh Domain HTTP', async() => {
             }])).rejects.toThrow(/Auki response - status: 403 Forbidden, error: Failed to update data. invalid domain access token/);
         });
 
+        it('should reject creating domain data with App credentials', async () => {
+            await expect(client.uploadDomainData(domainId, [{
+                name: "app_denied_upload",
+                data_type: "test",
+                data: new TextEncoder().encode('{"app":"read-only"}'),
+            }] as UploadDomainData[])).rejects.toThrow(
+                /Auki response - status: 403 Forbidden, error: Failed to create data\./
+            );
+            const created = await userClient.downloadDomainDataMetadata(domainId, {
+                ids: [], name: "app_denied_upload", data_type: "test"
+            } as DownloadQuery);
+            expect(created).toHaveLength(0);
+        });
+
         it('should list all domains within my organization', async () => {
             const domains = await client.listDomains({ org: "own" } as ListDomainsQuery);
             expect(domains).toBeDefined();
@@ -376,17 +390,19 @@ describe('Posemesh Domain HTTP', async() => {
         });
     });
 
-    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('oidc_access_token', () => {
+    describe.skipIf(!config.AUTH_TEST_TOKEN || config.AUTH_TEST_TOKEN === '')('OIDC credential', () => {
         const oidcAccessToken = config.AUTH_TEST_TOKEN;
         let client: DomainClient;
         let clientWithOIDCAccessToken: DomainClient;
-        beforeAll(() => {
+        beforeAll(async () => {
+            // This shared credential needs read access to the test Domain.
+            // Fixed viewer/writer responses are covered in bindings.test.ts.
             client = new DomainClient(config.API_URL, config.DDS_URL, config.CLIENT_ID);
             clientWithOIDCAccessToken = client.withOIDCAccessToken(oidcAccessToken);
         });
         afterAll(() => {
-            clientWithOIDCAccessToken.free();
-            client.free();
+            clientWithOIDCAccessToken?.free();
+            client?.free();
         });
 
         it('should download domain data', async () => {
@@ -440,25 +456,6 @@ describe('Posemesh Domain HTTP', async() => {
             expect(count).greaterThan(0);
         });
 
-        it('should upload domain data', async () => {
-            const data = `{"oidc": "token test"}`;
-            const dataBytes = new TextEncoder().encode(data);
-            let res: DomainDataMetadata[] = await clientWithOIDCAccessToken.uploadDomainData(domainId, [{
-                name: "oidc_access_token test",
-                data_type: "test",
-                data: dataBytes,
-            } as UploadDomainData]);
-
-            expect(res.length).toBe(1);
-            expect(res[0].name).toBe("oidc_access_token test");
-            expect(res[0].data_type).toBe("test");
-            expect(res[0].size).toBe(dataBytes.length);
-            expect(res[0].created_at).toBeDefined();
-            expect(res[0].updated_at).toBeDefined();
-
-            await clientWithOIDCAccessToken.deleteDomainDataById(domainId, res[0].id);
-        });
-
         it('should throw error if oidc_access_token is not valid', async () => {
             const invalidClient = client.withOIDCAccessToken("ddddd");
 
@@ -477,4 +474,3 @@ describe('Posemesh Domain HTTP', async() => {
         });
     });
 });
-

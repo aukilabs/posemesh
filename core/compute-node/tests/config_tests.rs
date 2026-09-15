@@ -23,6 +23,7 @@ fn clear(keys: &[&str]) {
         .iter()
         .chain(RELAY_ENV_KEYS)
         .chain(P2P_IDENTITY_ENV_KEYS)
+        .chain([&"DDS_ROBOT_AUDIENCE"])
     {
         std::env::remove_var(k);
     }
@@ -214,6 +215,7 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", credentials);
 
     let cfg = RobotNodeConfig::from_env().expect("robot config");
+    assert_eq!(cfg.audience(), None);
     assert_eq!(cfg.dms_base_url.as_str(), "https://dms.auki.network/v1");
     assert_eq!(cfg.dds_base_url.as_str(), "https://dds.auki.network/");
     assert_eq!(cfg.node_version, env!("CARGO_PKG_VERSION"));
@@ -239,6 +241,41 @@ fn loads_robot_defaults_without_siwe_fields_and_redacts_credentials() {
     let debug = format!("{cfg:?}");
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains(credentials));
+}
+
+#[test]
+fn robot_audience_env_preserves_overrides_and_rejects_invalid_values() {
+    let _g = ENV_GUARD.lock().unwrap();
+    let keys = [
+        "DDS_BASE_URL",
+        "DMS_BASE_URL",
+        "AUKI_P2P_ENABLED",
+        "ROBOT_REGISTRATION_CREDENTIALS",
+        "ROBOT_REGISTRATION_CREDENTIALS_FILE",
+    ];
+    clear(&keys);
+    std::env::set_var("ROBOT_REGISTRATION_CREDENTIALS", "robot-test-credentials");
+    std::env::set_var("DDS_ROBOT_AUDIENCE", "custom-robot-audience");
+    let cfg = RobotNodeConfig::from_env().expect("explicit audience");
+    assert_eq!(cfg.audience(), Some("custom-robot-audience"));
+
+    for audience in ["", " ", " custom-robot-audience ", "invalid audience"] {
+        std::env::set_var("DDS_ROBOT_AUDIENCE", audience);
+        let error = RobotNodeConfig::from_env().expect_err("invalid override must fail");
+        assert!(error.to_string().contains("DDS_ROBOT_AUDIENCE"));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        std::env::set_var(
+            "DDS_ROBOT_AUDIENCE",
+            std::ffi::OsString::from_vec(vec![0xff]),
+        );
+        let error = RobotNodeConfig::from_env().expect_err("invalid Unicode must fail");
+        assert!(error.to_string().contains("DDS_ROBOT_AUDIENCE"));
+    }
+    clear(&keys);
 }
 
 #[test]
@@ -729,4 +766,20 @@ fn programmatic_relay_config_enforces_p2p_gate() {
     cfg.auki_p2p_enabled = true;
     cfg.set_relay_config(Some(relay)).unwrap();
     assert_eq!(cfg.relay_config(), Some(relay));
+}
+
+#[test]
+fn robot_audience_must_be_supplied_explicitly_and_cannot_contain_whitespace() {
+    let mut cfg = RobotNodeConfig::new(
+        "https://dds.example.test".parse().unwrap(),
+        "https://dms.example.test/v1".parse().unwrap(),
+        "opaque-robot-credential",
+    )
+    .unwrap();
+    assert_eq!(cfg.audience(), None);
+    for invalid in ["", " ", "robot audience", "robots\n"] {
+        assert!(cfg.set_audience(invalid).is_err());
+    }
+    cfg.set_audience("https://dds.example.test/robots").unwrap();
+    assert_eq!(cfg.audience(), Some("https://dds.example.test/robots"));
 }

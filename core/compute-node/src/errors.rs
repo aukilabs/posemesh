@@ -1,18 +1,5 @@
 use thiserror::Error;
 
-/// Errors originating from DMS client operations.
-#[derive(Debug, Error)]
-pub enum DmsClientError {
-    #[error("unauthorized (401)")]
-    Unauthorized,
-    #[error("request timed out")]
-    Timeout,
-    #[error("http error: {0}")]
-    Http(String),
-    #[error("transport error: {0}")]
-    Transport(String),
-}
-
 /// Errors during task execution orchestration.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
@@ -20,13 +7,6 @@ pub enum ExecutorError {
     NoRunner(String),
     #[error("runner failed: {0}")]
     Runner(String),
-}
-
-/// Errors in token management / rotation.
-#[derive(Debug, Error)]
-pub enum TokenManagerError {
-    #[error("token rotation failed: {0}")]
-    Rotation(String),
 }
 
 /// Errors from Domain storage requests.
