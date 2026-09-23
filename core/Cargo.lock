@@ -504,7 +504,7 @@ dependencies = [
 [[package]]
 name = "auki-auth"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -538,7 +538,7 @@ dependencies = [
 [[package]]
 name = "auki-dms"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "anyhow",
  "auki-auth",
@@ -553,9 +553,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "auki-domain-client"
+version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
+dependencies = [
+ "auki-auth",
+ "bytes",
+ "chrono",
+ "futures",
+ "futures-timer",
+ "js-sys",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "auki-p2p"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "async-channel 2.5.0",
  "chrono",
@@ -588,7 +611,7 @@ dependencies = [
 [[package]]
 name = "auki-portable-echo"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "async-channel 2.5.0",
  "auki-sdk",
@@ -600,7 +623,7 @@ dependencies = [
 [[package]]
 name = "auki-relay-booking"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -615,13 +638,15 @@ dependencies = [
 [[package]]
 name = "auki-sdk"
 version = "0.1.0"
-source = "git+https://github.com/aukilabs/auki-sdk?rev=3ee1142529d5f64af87f6fc2276d3a6a78e728cc#3ee1142529d5f64af87f6fc2276d3a6a78e728cc"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
  "auki-auth",
+ "auki-domain-client",
  "auki-p2p",
  "auki-relay-booking",
+ "auki-tasks",
  "chrono",
  "futures",
  "futures-timer",
@@ -636,6 +661,30 @@ dependencies = [
  "tracing",
  "uuid",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "auki-tasks"
+version = "0.1.0"
+source = "git+https://github.com/aukilabs/auki-sdk?rev=95ef3b1cd2a2e5755bbeb47d323b44746de65ee4#95ef3b1cd2a2e5755bbeb47d323b44746de65ee4"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "auki-auth",
+ "auki-dms",
+ "auki-domain-client",
+ "auki-p2p",
+ "base64 0.22.1",
+ "chrono",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -1365,7 +1414,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -1614,7 +1663,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4176,21 +4225,15 @@ dependencies = [
  "hex",
  "httpmock",
  "jsonwebtoken",
- "k256",
  "once_cell",
  "p256",
  "parking_lot",
  "posemesh-compute-node-runner-api",
- "posemesh-domain-http",
- "posemesh-node-registration",
  "rand 0.8.8",
  "regex",
- "reqwest",
- "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "sha3",
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
@@ -4314,30 +4357,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
-]
-
-[[package]]
-name = "posemesh-node-registration"
-version = "0.2.1"
-dependencies = [
- "anyhow",
- "auki-auth",
- "axum",
- "chrono",
- "hex",
- "parking_lot",
- "rand 0.8.8",
- "reqwest",
- "secp256k1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sha3",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -4600,7 +4619,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.0",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4967,7 +4986,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5621,7 +5640,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6827,7 +6846,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

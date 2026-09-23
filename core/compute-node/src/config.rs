@@ -235,6 +235,7 @@ pub struct RobotNodeConfig {
     // Robot machine authentication.
     pub dds_base_url: Url,
     registration_credentials: String,
+    audience: Option<String>,
 
     // Optional runtime tuning shared with the SIWE entrypoint.
     pub heartbeat_jitter_ms: u64,
@@ -264,6 +265,7 @@ impl fmt::Debug for RobotNodeConfig {
             .field("request_timeout_secs", &self.request_timeout_secs)
             .field("dds_base_url", &self.dds_base_url)
             .field("registration_credentials", &"[REDACTED]")
+            .field("audience", &self.audience)
             .field("heartbeat_jitter_ms", &self.heartbeat_jitter_ms)
             .field("heartbeat_min_ratio", &self.heartbeat_min_ratio)
             .field("heartbeat_max_ratio", &self.heartbeat_max_ratio)
@@ -313,6 +315,7 @@ impl RobotNodeConfig {
             request_timeout_secs: DEFAULT_REQUEST_TIMEOUT_SECS,
             dds_base_url,
             registration_credentials,
+            audience: None,
             heartbeat_jitter_ms: 250,
             heartbeat_min_ratio: DEFAULT_HEARTBEAT_MIN_RATIO,
             heartbeat_max_ratio: DEFAULT_HEARTBEAT_MAX_RATIO,
@@ -344,6 +347,11 @@ impl RobotNodeConfig {
         let registration_credentials = robot_registration_credentials_from_env()?;
 
         let mut cfg = Self::new(dds_base_url, dms_base_url, registration_credentials)?;
+        match env::var("DDS_ROBOT_AUDIENCE") {
+            Ok(audience) => cfg.set_audience(audience).context("DDS_ROBOT_AUDIENCE")?,
+            Err(env::VarError::NotPresent) => {}
+            Err(_) => bail!("DDS_ROBOT_AUDIENCE must be valid Unicode"),
+        }
         cfg.request_timeout_secs =
             parse_u64_default("REQUEST_TIMEOUT_SECS", DEFAULT_REQUEST_TIMEOUT_SECS)?;
         cfg.node_version = env_var_trimmed("NODE_VERSION")
@@ -374,6 +382,23 @@ impl RobotNodeConfig {
 
     pub(crate) fn registration_credentials(&self) -> &str {
         &self.registration_credentials
+    }
+
+    /// Override the SDK's audience preset for an official Auki DDS endpoint.
+    /// Custom DDS endpoints require an explicit audience from trusted deployment
+    /// configuration. It is never inferred from a returned token.
+    pub fn set_audience(&mut self, audience: impl Into<String>) -> Result<()> {
+        let audience = audience.into();
+        if audience.is_empty() || audience.chars().any(char::is_whitespace) {
+            bail!("robot audience must be non-empty without whitespace");
+        }
+        self.audience = Some(audience);
+        Ok(())
+    }
+
+    /// Explicit override, or `None` to use the SDK's preset for the DDS endpoint.
+    pub fn audience(&self) -> Option<&str> {
+        self.audience.as_deref()
     }
 
     /// Return the SDK-owned relay policy used by the Robot peer facade.

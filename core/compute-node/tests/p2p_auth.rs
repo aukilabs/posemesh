@@ -1,29 +1,20 @@
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+#[path = "support/sdk.rs"]
+#[allow(dead_code)]
+mod sdk;
+
+use std::time::Duration;
 
 use async_trait::async_trait;
 use auki_p2p::{
-    Identity, P2PAccessClaims, PeerIdentityProof, PeerRole, DDS_VERIFICATION_KEY_MAX_BYTES,
-    P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER, P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
+    Identity, P2PAccessClaims, PeerIdentityProof, PeerRole, P2P_TOKEN_AUDIENCE, P2P_TOKEN_ISSUER,
+    P2P_TOKEN_SCOPE, P2P_TOKEN_TTL, P2P_TOKEN_TYPE,
 };
-use auki_sdk::{AukiPeer, AukiPeerConfig, ExternalAuthorityReplaceOutcome};
+use auki_sdk::{AukiPeer, AukiPeerConfig};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use httpmock::{prelude::*, Mock};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use p256::pkcs8::{DecodePublicKey, EncodePublicKey};
-use posemesh_compute_node::{
-    auth::{
-        token_manager::{TokenManagerConfig, TokenProviderError, TokenProviderResult},
-        AccessBundle, RobotMachineAuth, TokenProvider,
-    },
-    dds::p2p::{DdsP2pClient, DdsP2pError, PeerBindingClient, RobotP2pAuthoritySource},
-};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -31,7 +22,6 @@ use uuid::Uuid;
 const CHALLENGE_PATH: &str = "/internal/v1/auth/p2p/challenge";
 const VERIFY_PATH: &str = "/internal/v1/auth/p2p/verify";
 const ROBOT_REGISTER_PATH: &str = "/internal/v1/robots/register";
-const ROBOT_VERIFY_PATH: &str = "/internal/v1/auth/robot/verify";
 const ROBOT_P2P_TOKEN_PATH: &str = "/internal/v1/auth/robot/p2p-token";
 const VERIFICATION_KEYS_PATH: &str = "/service/p2p-verification-keys";
 
@@ -45,21 +35,6 @@ const TEST_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVMaw1idALRBkwGGeONdlTx6jAiqD
 8FKYQ5HDiJO0jg7CsFL0yIlK9dTW1wSZmwUX4REXM7LiuD1YWuXoNH1aqA==
 -----END PUBLIC KEY-----"#;
-
-const SECOND_DDS_PRIVATE_KEY: &[u8] = br#"-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgwRbuxaM6rEI3vYEl
-vRmIEsc1QtC3uPMWvXo1xXt+CcOhRANCAAQDFwBFAujMsiq78IWbq5vz0QSWEdc7
-7h5NE8sDwgD6Js22t9Ztq84hhkS3Aad4m9FOi8evk5QYW7ef+Bc2oZsr
------END PRIVATE KEY-----"#;
-
-const SECOND_DDS_PUBLIC_KEY: &[u8] = br#"-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAxcARQLozLIqu/CFm6ub89EElhHX
-O+4eTRPLA8IA+ibNtrfWbavOIYZEtwGneJvRTovHr5OUGFu3n/gXNqGbKw==
------END PUBLIC KEY-----"#;
-
-fn client(server: &MockServer) -> DdsP2pClient {
-    DdsP2pClient::new(server.base_url().parse().unwrap(), Duration::from_secs(2)).unwrap()
-}
 
 fn verification_key_id(public_key: &[u8]) -> String {
     let public_key =
@@ -125,7 +100,14 @@ fn binding_mocks<'a>(
     let public_key = URL_SAFE_NO_PAD.encode(identity.public_key_protobuf());
     let challenge = URL_SAFE_NO_PAD.encode(challenge_bytes);
     let signature = URL_SAFE_NO_PAD.encode(identity.sign_challenge(challenge_bytes).unwrap());
-    let expires_at = Utc::now() + chrono::Duration::minutes(10);
+    let expires_at = bound_token
+        .split('.')
+        .nth(1)
+        .and_then(|claims| URL_SAFE_NO_PAD.decode(claims).ok())
+        .and_then(|claims| serde_json::from_slice::<serde_json::Value>(&claims).ok())
+        .and_then(|claims| claims["exp"].as_i64())
+        .and_then(|expiry| DateTime::from_timestamp(expiry, 0))
+        .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(10));
     let challenge_mock = server.mock(|when, then| {
         when.method(POST)
             .path(CHALLENGE_PATH)
@@ -162,567 +144,6 @@ fn binding_mocks<'a>(
 }
 
 #[tokio::test]
-async fn compute_challenge_uses_the_exact_process_identity_without_robot_exchange() {
-    let server = MockServer::start();
-    let identity = Identity::generate();
-    let proof = identity.proof();
-    let binding = PeerBindingClient::new(client(&server), proof.clone());
-    let (challenge, verify) = binding_mocks(
-        &server,
-        &proof,
-        "compute-base-token",
-        "compute-peer-bound-token",
-        "compute-challenge",
-        b"compute challenge bytes",
-    );
-    let robot_exchange = server.mock(|when, then| {
-        when.method(POST).path(ROBOT_P2P_TOKEN_PATH);
-        then.status(500);
-    });
-
-    let bound = binding
-        .bind(&AccessBundle::new(
-            "compute-base-token",
-            Utc::now() + chrono::Duration::minutes(10),
-        ))
-        .await
-        .expect("Compute binding succeeds");
-
-    assert_eq!(bound.token(), "compute-peer-bound-token");
-    assert_eq!(binding.peer_id(), identity.peer_id());
-    challenge.assert_hits(1);
-    verify.assert_hits(1);
-    robot_exchange.assert_hits(0);
-}
-
-#[tokio::test]
-async fn robot_base_token_refresh_requires_a_new_peer_challenge() {
-    let server = MockServer::start();
-    let identity = Identity::generate();
-    let proof = identity.proof();
-    let binding = PeerBindingClient::new(client(&server), proof.clone());
-    let robot_id = Uuid::new_v4();
-    let credentials = "opaque-robot-credentials";
-    let capabilities = vec!["/robot/demo/v0".to_string()];
-    let expires_at = Utc::now() + chrono::Duration::hours(1);
-
-    let register = server.mock(|when, then| {
-        when.method(POST).path(ROBOT_REGISTER_PATH);
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "robot_id": robot_id,
-                "access_token": "robot-base-a",
-                "access_expires_at": expires_at,
-            }));
-    });
-    let refresh = server.mock(|when, then| {
-        when.method(POST).path(ROBOT_VERIFY_PATH);
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "robot_id": robot_id,
-                "access_token": "robot-base-b",
-                "access_expires_at": expires_at,
-            }));
-    });
-    let (challenge_a, verify_a) = binding_mocks(
-        &server,
-        &proof,
-        "robot-base-a",
-        "robot-bound-a",
-        "robot-challenge-a",
-        b"first robot challenge",
-    );
-    let (challenge_b, verify_b) = binding_mocks(
-        &server,
-        &proof,
-        "robot-base-b",
-        "robot-bound-b",
-        "robot-challenge-b",
-        b"second robot challenge",
-    );
-
-    let auth = RobotMachineAuth::new_peer_bound(
-        server.base_url().parse().unwrap(),
-        credentials,
-        "1.0.0",
-        capabilities,
-        Duration::from_secs(2),
-        TokenManagerConfig {
-            safety_ratio: 0.75,
-            max_retries: 0,
-            jitter: Duration::ZERO,
-        },
-        binding,
-    )
-    .unwrap();
-    let handle = auth.start().await.expect("Robot peer binding starts");
-    assert_eq!(handle.bearer().await.unwrap(), "robot-bound-a");
-
-    handle.on_unauthorized().await;
-    assert_eq!(handle.bearer().await.unwrap(), "robot-bound-b");
-    handle.shutdown().await;
-
-    register.assert_hits(1);
-    refresh.assert_hits(1);
-    challenge_a.assert_hits(1);
-    verify_a.assert_hits(1);
-    challenge_b.assert_hits(1);
-    verify_b.assert_hits(1);
-}
-
-#[tokio::test]
-async fn invalid_or_replayed_peer_proof_fails_closed() {
-    let server = MockServer::start();
-    let identity = Identity::generate();
-    let proof = identity.proof();
-    let binding = PeerBindingClient::new(client(&server), proof.clone());
-    let base_token = "proof-must-not-appear-in-error";
-    let challenge_bytes = b"one-time challenge";
-    let challenge = server.mock(|when, then| {
-        when.method(POST)
-            .path(CHALLENGE_PATH)
-            .header("authorization", format!("Bearer {base_token}"));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "challenge_id": "already-consumed",
-                "challenge": URL_SAFE_NO_PAD.encode(challenge_bytes),
-                "expires_at": Utc::now() + chrono::Duration::minutes(1),
-            }));
-    });
-    let verify = server.mock(|when, then| {
-        when.method(POST)
-            .path(VERIFY_PATH)
-            .header("authorization", format!("Bearer {base_token}"))
-            .json_body(json!({
-                "challenge_id": "already-consumed",
-                "signature": URL_SAFE_NO_PAD.encode(
-                    proof.sign_challenge(challenge_bytes).unwrap()
-                ),
-            }));
-        then.status(401);
-    });
-
-    let error = binding
-        .bind(&AccessBundle::new(
-            base_token,
-            Utc::now() + chrono::Duration::minutes(10),
-        ))
-        .await
-        .expect_err("consumed proof must fail");
-
-    assert!(matches!(
-        error,
-        DdsP2pError::UpstreamStatus(reqwest::StatusCode::UNAUTHORIZED)
-    ));
-    assert!(!error.to_string().contains(base_token));
-    challenge.assert_hits(1);
-    verify.assert_hits(1);
-}
-
-#[tokio::test]
-async fn dds_verification_key_set_is_fetched_once_and_cached() {
-    let server = MockServer::start();
-    let key_set = verification_keys_mock(&server, 7, TEST_DDS_PUBLIC_KEY, None);
-    let client = client(&server);
-
-    client.token_verifier().await.expect("first key fetch");
-    client.token_verifier().await.expect("cached key fetch");
-
-    key_set.assert_hits(1);
-}
-
-#[tokio::test]
-async fn dds_verification_key_response_is_bounded_before_parsing() {
-    let server = MockServer::start();
-    let key_set = server.mock(|when, then| {
-        when.method(GET).path(VERIFICATION_KEYS_PATH);
-        then.status(200)
-            .header("content-type", "application/json")
-            .body("x".repeat(DDS_VERIFICATION_KEY_MAX_BYTES + 1));
-    });
-
-    let error = match client(&server).token_verifier().await {
-        Err(error) => error,
-        Ok(_) => panic!("oversized key response must fail closed"),
-    };
-
-    assert!(matches!(
-        error,
-        DdsP2pError::VerificationKeyResponseTooLarge
-    ));
-    key_set.assert_hits(1);
-}
-
-#[tokio::test]
-async fn dds_verification_key_response_rejects_unknown_fields() {
-    let server = MockServer::start();
-    let mut body = verification_keys_body(1, TEST_DDS_PUBLIC_KEY, None);
-    body["unexpected"] = json!(true);
-    let key_set = server.mock(|when, then| {
-        when.method(GET).path(VERIFICATION_KEYS_PATH);
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(body.clone());
-    });
-
-    let error = match client(&server).token_verifier().await {
-        Err(error) => error,
-        Ok(_) => panic!("unknown key-set fields must fail closed"),
-    };
-    assert!(matches!(
-        error,
-        DdsP2pError::InvalidVerificationKeyResponse(_)
-    ));
-    key_set.assert_hits(1);
-}
-
-#[tokio::test]
-async fn restart_during_rotation_trusts_the_published_current_and_previous_keys() {
-    let server = MockServer::start();
-    let key_set = verification_keys_mock(
-        &server,
-        12,
-        SECOND_DDS_PUBLIC_KEY,
-        Some(TEST_DDS_PUBLIC_KEY),
-    );
-    let identity = Identity::generate();
-    let domain_id = Uuid::new_v4();
-    let issued_at = Utc::now().timestamp() as u64;
-    let (old_token, _) = signed_p2p_token_at_with_key(
-        &identity,
-        domain_id,
-        PeerRole::Compute,
-        Uuid::new_v4(),
-        issued_at,
-        TEST_DDS_PRIVATE_KEY,
-    );
-    let (new_token, _) = signed_p2p_token_at_with_key(
-        &identity,
-        domain_id,
-        PeerRole::Compute,
-        Uuid::new_v4(),
-        issued_at,
-        SECOND_DDS_PRIVATE_KEY,
-    );
-
-    let first = client(&server).token_verifier().await.unwrap();
-    assert_eq!(first.generation(), 12);
-    first.verify(&old_token).unwrap();
-    first.verify(&new_token).unwrap();
-
-    let restarted = client(&server).token_verifier().await.unwrap();
-    assert_eq!(restarted.generation(), 12);
-    restarted.verify(&old_token).unwrap();
-    restarted.verify(&new_token).unwrap();
-    key_set.assert_hits(2);
-}
-
-#[derive(Clone)]
-struct StaticMachineToken(String);
-
-#[async_trait]
-impl TokenProvider for StaticMachineToken {
-    async fn bearer(&self) -> TokenProviderResult<String> {
-        Ok(self.0.clone())
-    }
-
-    async fn on_unauthorized(&self) {}
-}
-
-struct SequencedMachineTokens {
-    tokens: Vec<String>,
-    next: AtomicUsize,
-}
-
-impl SequencedMachineTokens {
-    fn new(tokens: Vec<String>) -> Self {
-        Self {
-            tokens,
-            next: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
-impl TokenProvider for SequencedMachineTokens {
-    async fn bearer(&self) -> TokenProviderResult<String> {
-        let index = self.next.fetch_add(1, Ordering::SeqCst);
-        self.tokens
-            .get(index)
-            .cloned()
-            .ok_or_else(|| TokenProviderError::Message("no test machine token".to_owned()))
-    }
-
-    async fn on_unauthorized(&self) {}
-}
-
-#[tokio::test]
-async fn compute_facade_atomically_replaces_credential_and_rotated_keys() {
-    let initial_server = MockServer::start();
-    let initial_keys = verification_keys_mock(&initial_server, 1, TEST_DDS_PUBLIC_KEY, None);
-    let rotated_server = MockServer::start();
-    let rotated_keys = verification_keys_mock(
-        &rotated_server,
-        2,
-        SECOND_DDS_PUBLIC_KEY,
-        Some(TEST_DDS_PUBLIC_KEY),
-    );
-    let identity = Identity::generate();
-    let domain_id = Uuid::new_v4();
-    let first_subject = Uuid::new_v4();
-    let first_issued_at = Utc::now().timestamp().saturating_sub(2) as u64;
-    let (first_token, first_expiry) = signed_p2p_token_at(
-        &identity,
-        domain_id,
-        PeerRole::Compute,
-        first_subject,
-        first_issued_at,
-    );
-    let initial = client(&initial_server)
-        .external_authority_update(&identity.proof(), domain_id, &first_token, first_expiry)
-        .await
-        .unwrap();
-    let config = AukiPeerConfig::new("http://127.0.0.1:9")
-        .unwrap()
-        .direct_only();
-    let (peer, control) = AukiPeer::start_external(identity.clone(), initial, config)
-        .await
-        .unwrap();
-    assert_eq!(
-        peer.protocol_context()
-            .authorization()
-            .current()
-            .unwrap()
-            .claims()
-            .sub,
-        first_subject.to_string()
-    );
-
-    let second_subject = Uuid::new_v4();
-    let (second_token, second_expiry) = signed_p2p_token_at_with_key(
-        &identity,
-        domain_id,
-        PeerRole::Compute,
-        second_subject,
-        first_issued_at + 1,
-        SECOND_DDS_PRIVATE_KEY,
-    );
-    let replacement = client(&rotated_server)
-        .external_authority_update(&identity.proof(), domain_id, &second_token, second_expiry)
-        .await
-        .unwrap();
-    assert_eq!(replacement.verification_key_generation(), 2);
-    assert_eq!(
-        control.replace(replacement).await.unwrap(),
-        ExternalAuthorityReplaceOutcome::Replaced {
-            credential_revision: 2
-        }
-    );
-    let current = peer.protocol_context().authorization().current().unwrap();
-    assert_eq!(current.credential_revision(), 2);
-    assert_eq!(current.claims().sub, second_subject.to_string());
-    assert_eq!(current.claims().domain_ids, vec![domain_id.to_string()]);
-
-    peer.shutdown().await.unwrap();
-    initial_keys.assert_hits(1);
-    rotated_keys.assert_hits(1);
-}
-
-#[tokio::test]
-async fn external_authority_update_is_bound_to_the_persisted_peer_and_domain() {
-    let server = MockServer::start();
-    let key_set =
-        verification_keys_mock(&server, 7, SECOND_DDS_PUBLIC_KEY, Some(TEST_DDS_PUBLIC_KEY));
-    let identity = Identity::generate();
-    let domain_id = Uuid::new_v4();
-    let (token, expires_at) = signed_p2p_token_at_with_key(
-        &identity,
-        domain_id,
-        PeerRole::Compute,
-        Uuid::new_v4(),
-        Utc::now().timestamp() as u64,
-        SECOND_DDS_PRIVATE_KEY,
-    );
-
-    let update = client(&server)
-        .external_authority_update(&identity.proof(), domain_id, &token, expires_at)
-        .await
-        .expect("DDS authority envelope");
-
-    assert_eq!(update.domain_id(), domain_id);
-    assert_eq!(update.peer_id(), identity.peer_id());
-    assert_eq!(update.verification_key_generation(), 7);
-    assert_eq!(update.credential_expires_at(), expires_at);
-    key_set.assert_hits(1);
-}
-
-#[tokio::test]
-async fn robot_authority_is_prepared_before_any_network_runtime_starts() {
-    let server = MockServer::start();
-    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
-    let identity = Identity::generate();
-    let domain_id = Uuid::new_v4();
-    let machine_token = robot_machine_token(Some(domain_id));
-    let (p2p_token, expires_at) = signed_robot_p2p_token(&identity, domain_id);
-    let exchange = server.mock(|when, then| {
-        when.method(POST)
-            .path(ROBOT_P2P_TOKEN_PATH)
-            .header("authorization", format!("Bearer {machine_token}"))
-            .json_body(json!({"domain_id": domain_id}));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "p2p_access_token": p2p_token,
-                "p2p_access_expires_at": expires_at,
-            }));
-    });
-    let machine_auth: Arc<dyn TokenProvider> = Arc::new(StaticMachineToken(machine_token));
-    let source = RobotP2pAuthoritySource::new(client(&server), machine_auth, identity.proof());
-
-    let prepared = source.prepare().await.expect("Robot facade authority");
-
-    assert_eq!(prepared.domain_id(), domain_id);
-    assert_eq!(prepared.expires_at(), expires_at);
-    assert_eq!(prepared.into_update().peer_id(), identity.peer_id());
-    exchange.assert_hits(1);
-    key_set.assert_hits(1);
-}
-
-#[tokio::test]
-async fn robot_authority_source_refresh_hot_swaps_the_facade() {
-    let server = MockServer::start();
-    let key_set = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
-    let identity = Identity::generate();
-    let domain_id = Uuid::new_v4();
-    let machine_token_a = format!("{}-a", robot_machine_token(Some(domain_id)));
-    let machine_token_b = format!("{}-b", robot_machine_token(Some(domain_id)));
-    let issued_at = Utc::now().timestamp().saturating_sub(2) as u64;
-    let first_subject = Uuid::new_v4();
-    let second_subject = Uuid::new_v4();
-    let (p2p_token_a, expires_at_a) = signed_p2p_token_at(
-        &identity,
-        domain_id,
-        PeerRole::Robot,
-        first_subject,
-        issued_at,
-    );
-    let (p2p_token_b, expires_at_b) = signed_p2p_token_at(
-        &identity,
-        domain_id,
-        PeerRole::Robot,
-        second_subject,
-        issued_at + 1,
-    );
-    let exchange_a = server.mock(|when, then| {
-        when.method(POST)
-            .path(ROBOT_P2P_TOKEN_PATH)
-            .header("authorization", format!("Bearer {machine_token_a}"))
-            .json_body(json!({"domain_id": domain_id}));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "p2p_access_token": p2p_token_a,
-                "p2p_access_expires_at": expires_at_a,
-            }));
-    });
-    let exchange_b = server.mock(|when, then| {
-        when.method(POST)
-            .path(ROBOT_P2P_TOKEN_PATH)
-            .header("authorization", format!("Bearer {machine_token_b}"))
-            .json_body(json!({"domain_id": domain_id}));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(json!({
-                "p2p_access_token": p2p_token_b,
-                "p2p_access_expires_at": expires_at_b,
-            }));
-    });
-    let machine_auth: Arc<dyn TokenProvider> = Arc::new(SequencedMachineTokens::new(vec![
-        machine_token_a,
-        machine_token_b,
-    ]));
-    let source = RobotP2pAuthoritySource::new(client(&server), machine_auth, identity.proof());
-
-    let initial = source.prepare().await.unwrap();
-    assert_eq!(initial.domain_id(), domain_id);
-    assert_eq!(initial.expires_at(), expires_at_a);
-    let config = AukiPeerConfig::new("http://127.0.0.1:9")
-        .unwrap()
-        .direct_only();
-    let (peer, control) = AukiPeer::start_external(identity.clone(), initial.into_update(), config)
-        .await
-        .unwrap();
-    assert_eq!(
-        peer.protocol_context()
-            .authorization()
-            .current()
-            .unwrap()
-            .claims()
-            .sub,
-        first_subject.to_string()
-    );
-    let replacement = source.prepare().await.unwrap();
-    assert_eq!(replacement.domain_id(), domain_id);
-    assert_eq!(replacement.expires_at(), expires_at_b);
-    assert_eq!(
-        control.replace(replacement.into_update()).await.unwrap(),
-        ExternalAuthorityReplaceOutcome::Replaced {
-            credential_revision: 2
-        }
-    );
-    assert_eq!(
-        peer.protocol_context()
-            .authorization()
-            .current()
-            .unwrap()
-            .claims()
-            .sub,
-        second_subject.to_string()
-    );
-    exchange_a.assert_hits(1);
-    exchange_b.assert_hits(1);
-    key_set.assert_hits(2);
-
-    peer.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn robot_authority_source_rejects_missing_assignment_without_http() {
-    let server = MockServer::start();
-    let exchange = server.mock(|when, then| {
-        when.method(POST).path(ROBOT_P2P_TOKEN_PATH);
-        then.status(200);
-    });
-    let identity = Identity::generate();
-    let machine_auth: Arc<dyn TokenProvider> =
-        Arc::new(StaticMachineToken(robot_machine_token(None)));
-    let source = RobotP2pAuthoritySource::new(client(&server), machine_auth, identity.proof());
-
-    let error = match source.prepare().await {
-        Ok(_) => panic!("unassigned Robot must fail closed"),
-        Err(error) => error,
-    };
-
-    assert!(matches!(error, DdsP2pError::MissingRobotAssignment));
-    exchange.assert_hits(0);
-}
-
-fn robot_machine_token(assigned_domain_id: Option<Uuid>) -> String {
-    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"ES256","typ":"JWT"}"#);
-    let payload = URL_SAFE_NO_PAD.encode(
-        serde_json::to_vec(&json!({
-            "sub": Uuid::new_v4(),
-            "assigned_domain_id": assigned_domain_id,
-        }))
-        .unwrap(),
-    );
-    format!("{header}.{payload}.signature")
-}
-
-#[tokio::test]
 async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
     use futures::{AsyncReadExt, AsyncWriteExt};
     use posemesh_compute_node::{
@@ -746,19 +167,35 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
     let _keys = verification_keys_mock(&server, 1, TEST_DDS_PUBLIC_KEY, None);
     let identity = Identity::generate();
     let domain_id = Uuid::new_v4();
-    let bound = robot_machine_token(Some(domain_id));
     let (token, expires_at) = signed_robot_p2p_token(&identity, domain_id);
+    let robot_id = Uuid::new_v4();
+    let base = sdk::robot_token(
+        &server.base_url(),
+        robot_id,
+        domain_id,
+        expires_at,
+        "base",
+        None,
+    );
+    let bound = sdk::robot_token(
+        &server.base_url(),
+        robot_id,
+        domain_id,
+        expires_at,
+        "bound",
+        Some(identity.peer_id().to_string()),
+    );
     let _register = server.mock(|when, then| {
         when.method(POST).path(ROBOT_REGISTER_PATH);
         then.status(200).json_body(json!({
-            "robot_id": Uuid::new_v4(), "access_token": "robot-base",
+            "robot_id": robot_id, "access_token": base,
             "access_expires_at": expires_at,
         }));
     });
     let (_challenge, _verify) = binding_mocks(
         &server,
         &identity.proof(),
-        "robot-base",
+        &base,
         &bound,
         "robot-proof",
         b"robot proof",
@@ -785,6 +222,8 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
         "robot-test-credential",
     )
     .unwrap();
+    cfg.set_audience(format!("{}/robots", server.base_url()))
+        .unwrap();
     cfg.auki_p2p_enabled = true;
     cfg.set_relay_config(None).unwrap();
     cfg.auki_p2p_listen_multiaddrs = vec![address.clone()];
@@ -843,10 +282,21 @@ async fn robot_engine_supports_application_protocols_and_ordered_shutdown() {
         PeerRole::Compute,
         Uuid::new_v4(),
     );
-    let update = client(&server)
-        .external_authority_update(&remote_identity.proof(), domain_id, &token, expires_at)
-        .await
-        .unwrap();
+    let material = auki_auth::machine::p2p::DdsP2pClient::new(
+        server.base_url().parse().unwrap(),
+        Duration::from_secs(2),
+    )
+    .unwrap()
+    .authority_material(&remote_identity.proof(), domain_id, &token, expires_at)
+    .await
+    .unwrap();
+    let update = auki_sdk::ExternalAuthorityUpdate::new(
+        material.domain_id,
+        material.peer_id,
+        material.verification_keys,
+        material.credential,
+        material.expires_at,
+    );
     let (remote, _) = AukiPeer::start_external(
         remote_identity,
         update,
@@ -1019,11 +469,10 @@ async fn compute_protocols_follow_each_lease_and_are_cleared_on_every_exit() {
         enable_noop: false,
         noop_sleep_secs: 0,
     };
-    // Registration state is in memory, local to this integration-test process.
-    posemesh_node_registration::state::set_status(
-        posemesh_node_registration::state::STATUS_REGISTERED,
-    )
-    .unwrap();
+    let _register = server.mock(|when, then| {
+        when.method(POST).path("/internal/v1/nodes/register-wallet");
+        then.status(200);
+    });
     let (started_tx, mut started_rx) = mpsc::unbounded_channel();
     let (handle_tx, handle_rx) = oneshot::channel();
     let runners = RunnerComposition::with_protocols(move |protocols| {
@@ -1049,7 +498,7 @@ async fn compute_protocols_follow_each_lease_and_are_cleared_on_every_exit() {
         let (token, expiry) =
             signed_p2p_token(&identity, domain_id, PeerRole::Compute, Uuid::new_v4());
         let mut lease = json!({
-            "access_token": "domain-http-token",
+            "access_token": sdk::data_token(&server.base_url(), domain_id, Utc::now() + chrono::Duration::seconds(30), "task"),
             "access_token_expires_at": Utc::now() + chrono::Duration::seconds(30),
             "lease_expires_at": Utc::now() + chrono::Duration::seconds(30),
             "domain_id": domain_id, "domain_server_url": server.base_url(),

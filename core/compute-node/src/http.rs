@@ -1,8 +1,7 @@
-use axum::Router;
+use axum::{http::StatusCode, routing::get, Router};
 
-/// Build the node HTTP router by delegating to the shared
-/// `posemesh-node-registration` router. This is kept for legacy DDS callbacks
-/// but is no longer required for URL-less compute node registration.
+/// Build the host health router. SDK-managed workers register outbound with DDS;
+/// the obsolete registration callback and global credential store are removed.
 pub fn router() -> Router {
-    posemesh_node_registration::http::router_dds(posemesh_node_registration::http::DdsState)
+    Router::new().route("/health", get(|| async { StatusCode::OK }))
 }

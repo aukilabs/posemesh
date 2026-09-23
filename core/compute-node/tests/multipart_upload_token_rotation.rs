@@ -1,247 +1,151 @@
+#[path = "support/sdk.rs"]
+#[allow(dead_code)]
+mod sdk;
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-    routing::{delete, get, post},
+    response::{IntoResponse, Response},
+    routing::{get, post},
     Json, Router,
 };
-use posemesh_compute_node::storage::client::{DomainClient, UploadRequest};
-use posemesh_compute_node::storage::TokenRef;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::sync::{oneshot, Mutex};
+use posemesh_compute_node::storage::{
+    client::{DomainClient, UploadRequest},
+    TokenRef,
+};
+use serde_json::{json, Value};
+use std::{collections::HashMap, future::IntoFuture, sync::Arc, time::Duration};
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
-struct MultipartQuery {
-    #[serde(default)]
-    uploads: Option<String>,
-    #[serde(default, rename = "uploadId")]
-    upload_id: Option<String>,
-    #[serde(default, rename = "partNumber")]
-    part_number: Option<i32>,
+struct UploadState {
+    domain: Uuid,
+    id: Uuid,
+    upload: Uuid,
+    token: TokenRef,
+    first: String,
+    second: String,
+    parts: std::sync::Mutex<Vec<Vec<u8>>>,
 }
 
-#[derive(Debug, Deserialize)]
-struct InitiateMultipartRequest {
-    name: String,
-    data_type: String,
-    size: Option<i64>,
-    content_type: Option<String>,
-    existing_id: Option<String>,
+fn authorized(headers: &HeaderMap, token: &str) -> bool {
+    headers.get("authorization").and_then(|v| v.to_str().ok())
+        == Some(format!("Bearer {token}").as_str())
 }
 
-#[derive(Debug, Serialize)]
-struct InitiateMultipartResponse {
-    upload_id: String,
-    part_size: i64,
+async fn multipart_post(
+    State(state): State<Arc<UploadState>>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if query.contains_key("uploads") {
+        if !authorized(&headers, &state.first) {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        assert_eq!(body["name"], "big.bin");
+        assert_eq!(body["data_type"], "binary");
+        assert_eq!(body["size"], 12);
+        assert_eq!(body["content_type"], "application/octet-stream");
+        assert!(body["existing_id"].is_null());
+        // The external owner rotates after initiation, before the SDK reads parts.
+        state.token.swap(state.second.clone());
+        return Json(
+            json!({"upload_id":state.upload,"data_id":state.id,"part_size":5,
+            "expires_at":chrono::Utc::now()+chrono::Duration::hours(1)}),
+        )
+        .into_response();
+    }
+    assert_eq!(query.get("uploadId"), Some(&state.upload.to_string()));
+    if !authorized(&headers, &state.second) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    assert_eq!(
+        body,
+        json!({"parts":[{"part_number":1,"etag":"etag-1"},{"part_number":2,"etag":"etag-2"},{"part_number":3,"etag":"etag-3"}]})
+    );
+    Json(sdk::metadata(
+        state.domain,
+        state.id,
+        "big.bin",
+        "binary",
+        12,
+    ))
+    .into_response()
 }
 
-#[derive(Debug, Serialize)]
-struct UploadPartResult {
-    etag: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CompleteMultipartRequest {
-    parts: Vec<CompletedPart>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CompletedPart {
-    part_number: i32,
-    etag: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DomainDataMetadata {
-    id: String,
-    domain_id: String,
-    name: String,
-    data_type: String,
-    size: i64,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Clone)]
-struct ServerState {
-    init_seen_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
-    allow_init_rx: Arc<Mutex<Option<oneshot::Receiver<()>>>>,
-}
-
-fn bearer(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim().to_string())
+async fn multipart_put(
+    State(state): State<Arc<UploadState>>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    assert_eq!(query.get("uploadId"), Some(&state.upload.to_string()));
+    if !authorized(&headers, &state.second) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mut parts = state.parts.lock().unwrap();
+    let part = parts.len() + 1;
+    assert_eq!(query.get("partNumber"), Some(&part.to_string()));
+    assert_eq!(body.len(), if part == 3 { 2 } else { 5 });
+    parts.push(body.to_vec());
+    Json(json!({"etag":format!("etag-{part}")})).into_response()
 }
 
 #[tokio::test]
 async fn multipart_upload_uses_latest_token_after_rotation() {
-    let (init_seen_tx, init_seen_rx) = oneshot::channel::<()>();
-    let (allow_init_tx, allow_init_rx) = oneshot::channel::<()>();
-    let state = ServerState {
-        init_seen_tx: Arc::new(Mutex::new(Some(init_seen_tx))),
-        allow_init_rx: Arc::new(Mutex::new(Some(allow_init_rx))),
-    };
-
-    async fn info() -> impl IntoResponse {
-        // Force multipart by advertising a tiny request limit.
-        let resp = serde_json::json!({
-            "upload": {
-                "request_max_bytes": 1,
-                "multipart": { "enabled": true }
-            }
-        });
-        (StatusCode::OK, Json(resp))
-    }
-
-    async fn multipart_post(
-        State(state): State<ServerState>,
-        Path(domain_id): Path<String>,
-        Query(q): Query<MultipartQuery>,
-        headers: HeaderMap,
-        body: Bytes,
-    ) -> impl IntoResponse {
-        if domain_id != "dom1" {
-            return (StatusCode::NOT_FOUND, "unknown domain").into_response();
-        }
-
-        if q.uploads.is_some() {
-            if bearer(&headers).as_deref() != Some("Bearer tA") {
-                return (StatusCode::UNAUTHORIZED, "bad token for initiate").into_response();
-            }
-            let req: InitiateMultipartRequest =
-                serde_json::from_slice(&body).expect("initiate request json");
-            assert_eq!(req.name, "big.bin");
-            assert_eq!(req.data_type, "binary");
-            assert_eq!(req.size, Some(12));
-            assert_eq!(
-                req.content_type.as_deref(),
-                Some("application/octet-stream")
-            );
-            assert!(req.existing_id.is_none());
-
-            if let Some(tx) = state.init_seen_tx.lock().await.take() {
-                let _ = tx.send(());
-            }
-            if let Some(rx) = state.allow_init_rx.lock().await.take() {
-                let _ = rx.await;
-            }
-
-            return (
-                StatusCode::OK,
-                Json(InitiateMultipartResponse {
-                    upload_id: "up1".into(),
-                    part_size: 5,
-                }),
-            )
-                .into_response();
-        }
-
-        if q.upload_id.as_deref() == Some("up1") {
-            if bearer(&headers).as_deref() != Some("Bearer tB") {
-                return (StatusCode::UNAUTHORIZED, "bad token for complete").into_response();
-            }
-            let req: CompleteMultipartRequest =
-                serde_json::from_slice(&body).expect("complete request json");
-            assert_eq!(req.parts.len(), 3);
-            for (idx, part) in req.parts.iter().enumerate() {
-                assert_eq!(part.part_number, (idx + 1) as i32);
-                assert_eq!(part.etag, format!("etag-{}", idx + 1));
-            }
-            return (
-                StatusCode::OK,
-                Json(DomainDataMetadata {
-                    id: "data-123".into(),
-                    domain_id: "dom1".into(),
-                    name: "big.bin".into(),
-                    data_type: "binary".into(),
-                    size: 12,
-                    created_at: "2025-01-01T00:00:00Z".into(),
-                    updated_at: "2025-01-01T00:00:00Z".into(),
-                }),
-            )
-                .into_response();
-        }
-
-        (StatusCode::BAD_REQUEST, "missing uploads or uploadId").into_response()
-    }
-
-    async fn multipart_put(
-        Path(domain_id): Path<String>,
-        Query(q): Query<MultipartQuery>,
-        headers: HeaderMap,
-        body: Bytes,
-    ) -> impl IntoResponse {
-        if domain_id != "dom1" || q.upload_id.as_deref() != Some("up1") {
-            return (StatusCode::NOT_FOUND, "unknown upload").into_response();
-        }
-        if bearer(&headers).as_deref() != Some("Bearer tB") {
-            return (StatusCode::UNAUTHORIZED, "bad token for part").into_response();
-        }
-        let part_no = q.part_number.unwrap_or_default();
-        let expected_len = match part_no {
-            1 | 2 => 5,
-            3 => 2,
-            _ => 0,
-        };
-        assert_eq!(body.len(), expected_len);
-        (
-            StatusCode::OK,
-            Json(UploadPartResult {
-                etag: format!("etag-{}", part_no),
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let domain = Uuid::new_v4();
+    let expires = chrono::Utc::now() + chrono::Duration::hours(1);
+    let first = sdk::data_token(&base, domain, expires, "A");
+    let second = sdk::data_token(&base, domain, expires, "B");
+    let token = TokenRef::new(first.clone());
+    let state = Arc::new(UploadState {
+        domain,
+        id: Uuid::new_v4(),
+        upload: Uuid::new_v4(),
+        token: token.clone(),
+        first,
+        second,
+        parts: Default::default(),
+    });
+    let app = Router::new()
+        .route(
+            "/api/v1/info",
+            get(|| async {
+                Json(json!({"upload":{
+                    "request_max_bytes":128,"domain_data_max_bytes":1000,
+                    "multipart":{"enabled":true,"part_size_bytes":5}
+                }}))
             }),
         )
-            .into_response()
-    }
-
-    async fn multipart_delete() -> impl IntoResponse {
-        StatusCode::OK
-    }
-
-    let app = Router::new()
-        .route("/api/v1/info", get(info))
         .route(
-            "/api/v1/domains/:domain_id/data/multipart",
-            post(multipart_post)
-                .put(multipart_put)
-                .delete(delete(multipart_delete)),
+            &format!("/api/v1/domains/{domain}/data/multipart"),
+            post(multipart_post).put(multipart_put),
         )
-        .with_state(state);
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let token = TokenRef::new("tA".into());
-    let base: url::Url = format!("http://{}", addr).parse().unwrap();
-    let client = DomainClient::new(base, token.clone()).unwrap();
-
-    let upload_future = tokio::spawn(async move {
-        client
-            .upload_artifact(UploadRequest {
-                domain_id: "dom1",
-                name: "big.bin",
-                data_type: "binary",
-                logical_path: "out/big.bin",
-                bytes: &[42u8; 12],
-                existing_id: None,
-            })
-            .await
-    });
-
-    // Wait for initiation request to be received, then rotate the token before
-    // any part uploads begin.
-    init_seen_rx.await.unwrap();
-    token.swap("tB".into());
-    allow_init_tx.send(()).unwrap();
-
-    let result = upload_future.await.unwrap();
-    assert!(result.is_ok(), "expected multipart upload to succeed");
-    assert_eq!(result.unwrap().as_deref(), Some("data-123"));
+        .with_state(state.clone());
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(
+        axum::serve(listener, app)
+            .with_graceful_shutdown(stop.clone().cancelled_owned())
+            .into_future(),
+    );
+    let client = DomainClient::new(base.parse().unwrap(), token).unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.upload_artifact(UploadRequest {
+            domain_id: &domain.to_string(),
+            name: "big.bin",
+            data_type: "binary",
+            logical_path: "out/big.bin",
+            bytes: &[42; 12],
+            existing_id: None,
+        }),
+    )
+    .await;
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    assert_eq!(result.unwrap().unwrap(), Some(state.id.to_string()));
+    assert_eq!(state.parts.lock().unwrap().concat(), [42; 12]);
 }

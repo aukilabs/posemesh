@@ -1,7 +1,7 @@
 # Manage task lifecycle
 
 Implement these behaviors in each runner that performs ongoing work.
-The host handles DMS heartbeats and reporting; your runner controls the work
+The host delegates DMS heartbeats and reporting to the SDK; your runner controls the work
 it starts.
 
 ## Progress and results
@@ -9,11 +9,16 @@ it starts.
 Call `ctx.ctrl.progress(json_value).await?` with the latest progress.
 Each update replaces the previous progress value. Use
 `ctx.ctrl.log_event(json_value).await?` for events to include in a heartbeat;
-keep event volume bounded and exclude credentials.
+events remain ordered until an acknowledged heartbeat. The queue accepts up to
+1024 events and 64 KiB of serialized JSON; exceeding either limit returns an
+error. Progress is independently limited to 64 KiB. Exclude credentials.
 
 Upload result artifacts through `ctx.output`. Returning `Ok(())` asks the host
 to complete the task; returning an error asks it to report failure.
-The host includes uploaded artifact IDs and metadata in its receipt.
+The host includes uploaded artifact IDs and metadata in its receipt, including
+failure receipts with the runner error as the reason. SDK-managed execution
+drains in-flight heartbeats and flushes final events before reporting. Failure
+reasons and details are limited to 4096 bytes and 64 KiB respectively.
 Progress is not an artifact or an arbitrary completion result.
 
 DMS owns retries through the task's attempt policy. A new attempt may repeat
@@ -56,7 +61,10 @@ an `await` may never execute.
 Use input/output ports for ordinary Domain data operations. For a custom
 Domain HTTP request, read the current `ctx.access_token.get()` at request time;
 a token copied from the initial lease can expire during the task.
-Do not log the token or the full lease.
+The existing synchronous getter reads the SDK-owned rotating token; it returns
+an empty string after cancellation, expiry or task completion. Do not log the
+token or the full lease. The initial lease snapshot includes metadata from the
+first heartbeat and excludes P2P credentials.
 
 ## Shut down the host
 
@@ -71,11 +79,43 @@ and forced tokens. These functions take `tokio_util::sync::CancellationToken`;
 await the host future after signalling it. These entrypoints do not install a
 SIGTERM handler for your application.
 
-The compute registration helper starts a separate background task without a
-stop handle. Ending `run_node_with_shutdown` does not stop that registrar;
-the worker process's Tokio runtime must also end. Account for this if embedding
-the host in a longer-lived application.
+Both entrypoints await SDK registration, authentication, transfer and peer
+cleanup, including the compute registrar. Existing hosts may keep their call to
+`dds::register::spawn_registration_if_configured`: it is now a no-op compatibility
+shim, and `run_node` registers the actual runner capabilities. New hosts should
+call only the managed entrypoint.
+
+The old heartbeat/session engine, authentication wrappers, DDS P2P wrappers,
+global registration state and `posemesh-node-registration` crate are removed.
+`http::router()` still serves `/health`; the obsolete
+`/internal/v1/registrations` callback is removed. Low-level callers of those
+removed helpers must migrate to the SDK; runner and host interfaces remain.
+
+Authentication or registration failure stops the managed host after the SDK's
+bounded retries. Robot refresh denial does not fall back to SIWE or loop forever.
+Restart only after resolving credentials/assignment or deployment support.
 
 Robot shutdown stops authority renewal, awaits peer shutdown, and releases
 relay resources. One live process may own a given P2P private key.
 Cancel unfinished demo jobs before stopping workers that are waiting for them.
+
+## Domain transfer compatibility
+
+Existing `Runner`, `TaskCtx`, input/output and control traits are unchanged.
+Storage keeps CID/Domain URL lookup, temporary `datasets/<scan>/...`
+layout, artifact names/types, replacement IDs and receipt metadata. The task's
+selected Domain and renewed server URL determine request authority. A URL for
+another Domain is rejected. Standalone `DomainClient::new` also uses the SDK;
+its caller supplies an authenticated DDS/DMS grant and owns renewal through
+`TokenRef::swap`. The SDK validates issuer, Domain, server audience and expiry
+before sending it. A rejected, unchanged grant fails without a second login.
+`with_timeout` now enforces the supplied timeout (greater than zero, at most
+300 seconds). The separate Domain HTTP crate and bindings remain unchanged.
+
+Buffered uploads require Domain Server `/api/v1/info` upload limits.
+Larger files stream through SDK multipart uploads with bounded 16 MiB parts;
+the server must advertise multipart support and return upload/data IDs, part
+size and expiry. Metadata must follow the current UUID-based Domain contract.
+The optional `ArtifactSink::open_multipart` writer interface remains unsupported;
+use `put_file` for whole files. Confirm the deployed DDS/DMS/Domain Server
+versions before rollout; local fixtures are not proof of deployed support.

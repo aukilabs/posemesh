@@ -89,10 +89,8 @@ let runners = RunnerComposition::with_protocols(|protocols| {
 ~~~
 
 Remove `RunnerRegistry` from the earlier grouped engine import to avoid a
-duplicate import. In the compute binary, register the known capability with
-`spawn_registration_if_configured(&config, &[my_runner::CAPABILITY.into()])?`
-instead of calling `capabilities()` on the composition. Keep each host's
-existing `run_node` or `run_robot_node` call.
+duplicate import. Keep each host's existing `run_node` or `run_robot_node` call;
+it registers the capabilities from the composed runner registry.
 
 Enable P2P and provide a persistent [identity and routes](../reference/configuration.md#p2p).
 Run `cargo check --bins` to check your changes. The job's capability is now

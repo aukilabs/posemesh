@@ -6,8 +6,12 @@ build/test requirements. Native third-party submodules were not upgraded.
 
 ## Compatibility boundaries
 
-- Keep the Auki SDK crates on the same Git revision. This update preserves
-  `3ee1142529d5f64af87f6fc2276d3a6a78e728cc` and libp2p 0.56.
+- Keep the Auki SDK crates on the same Git revision. The worker migration pins
+  `95ef3b1cd2a2e5755bbeb47d323b44746de65ee4` from
+  [SDK PR #388](https://github.com/aukilabs/auki-sdk/pull/388), which includes
+  [#389](https://github.com/aukilabs/auki-sdk/pull/389) and robot audience defaults.
+  Merge #388 before this migration. libp2p remains 0.56; unrelated dependency
+  versions are retained.
 - Preserve Rust 1.89 support. Resolve Cargo updates with
   `--config 'resolver.incompatible-rust-versions="fallback"'` and check with
   Rust 1.89 before committing the lockfile.
